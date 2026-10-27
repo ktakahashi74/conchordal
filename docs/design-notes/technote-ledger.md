@@ -10730,6 +10730,64 @@ for 354 seconds with its other Voice, two Flora and reporting. It is not a unive
 Voice limit. Author listening and any future default preset adoption remain separate.
 
 <a id="known-final-expression"></a>
+### 9.3.108 Melodic continuity from committed self onsets (2026-10-27)
+
+Candidate: von Hippel (2000), *Redefining Pitch Proximity: Tessitura and Mobility as
+Constraints on Melodic Intervals*, Music Perception 17(3), 315–327. Eq. 1 gives
+`mu=m+r*(last-m)`; the stationary AR(1) explanation gives `v=s²*(1-r²)`.
+The p.324 printed distribution omits `+m` and the scale `s`. We explicitly adopt
+the text-consistent correction, not an author-approved erratum. Corpus fits and
+Figure 7's rounded 19%/18% are not claimed as reproduced: its finite-sample
+estimation convention is unspecified. I-R reversal is not added.
+
+Author rules: sample variance of the full committed self-On prefix, adjacent-series
+Pearson correlation, the command adapter, continuous log2-density differences and
+replacement of movement cost plus fixed-center gravity. These commands are not
+renderer receipts or auditory observations. Half-step symbol encoding from SQ-1 is
+not reused. The pitch remains continuous. Each model reads the same producer but
+owns independent state; PPM is absent when only ME is enabled.
+
+`melodic_continuity(w)` is initial-only, finite nonnegative f64, default zero, in
+score/bit units. Free HillClimb, sustained participation, gate snap or rearticulate,
+zero rearticulation threshold and no persistence are required. The final script
+must retain `seek_consonance`. Invalid or unsupported forms warn and disable ME.
+No preset is introduced, and existing base defaults remain intact.
+
+Known ME snapshots remove both old penalties before peak extraction. Only the
+resulting candidates receive ME scores. All terms evaluate the same legally mapped
+pitch, with duplicates removed after mapping; SQ-1 is then added independently.
+ME failure restores the original RNG and the old candidate extraction using the
+same fixed SQ-1 snapshot. SQ-1 failure leaves ME intact. Counterfactual reports
+compare full paths for ME, and the same candidate set for SQ-1. Unknown ME retains
+current old costs. Both snapshot retrievals occur once; no counterfactual learns.
+
+Three or fewer onsets are unknown by the selected estimator's mathematics.
+Outward-rounded binary64 moment intervals certify positive marginal and residual
+variance at larger counts. This is numerical support, not a new fitted correlation
+threshold. Uncertain statistics keep their prefix. Missing, late, nonincreasing,
+overlapping or pitch-updated execution closes the epoch. Off does not learn;
+identity deduplication survives epochs. Center, range and support changes flush
+pending controls with both models disabled, then reconfigure independently.
+Replacement inherits only weight, and section boundaries do not reset other Voices.
+
+The registered finite runtime envelope matches the existing execution adapter:
+16 ME resident states, 4,801 On identities, 38,400 decisions, 64 candidates and
+600 seconds from Scenario sample zero, at 20–20,000 Hz. Stopped ME remains unknown
+until replacement. Sixteen combined Voices own 16 ME and 16 PPM states but only
+16 producers. Statistics are constant space; identity sets and deferred controls
+are separately bounded. Reporting, field ownership and analysis wait count toward
+worker cost. The brief uses enabled v6b acquisition, not another 31-scene matrix.
+
+Numerical controls are in `tests/fixtures/melodic_continuity`: 18 algebraic AR(1)
+and Gaussian-bin cases from an independent Decimal-80 series. Binary64 conversion
+and standardization error determine the CDF bounds; the CDF is test-only. Consumer
+tests separate f32 score rounding from the 0.1 improvement threshold. Prefix A
+`[60,60,62,60]` and B `[64,60,62,60]`, with the same final two notes, choose 60 and
+62 respectively at weight 1, zero field difference and zero effective temperature.
+Tests also exercise narrow legal ranges, independent fallback, actual phonation
+production, report independence, same-hop causality, reconfiguration and limits.
+Acceptance of a candidate implementation is not confirmation of the hypothesis,
+subjective musical quality, or adoption of a default listener preset.
 ### 9.3.109 Expression over a known final interval (2026-10-27)
 
 `expressive_section(name, arch_weight, ritard_weight, callback)` is an initial-only
@@ -10795,6 +10853,56 @@ not v6b. Reference: [Todd 1992](https://continuum-hypothesis.com/music/todd_dyn.
 Once additionally requires `PhonationGate::Immediate`; viability-delayed initial onsets are outside the scheduled-onset contract.
 
 
+### 9.3.110 Heard tonal context (TC-1, 2026-10-27)
+
+The IPEM sensory-memory observation is a candidate, matched to the fixed public
+C/NumPy reference acquisition. ANI, PP and local/global leaky integration retain
+the published values and original linear lag measure. This is source agreement,
+not a claim that the hypothesis is true or that the original human experiments
+have been replicated. The sine probe, its 200–600 ms raw-Pearson mean, the
+zero-context precomputed PP approximation retaining real L/G, and generation
+coupling are author rules. The decoder uses a 1-cent continuous-pitch grid with
+linear interpolation; it does not round output pitch to a grid.
+
+`follow_tonal_context(w)` is initial-only, finite nonnegative, neutral at zero.
+It supports the same executable stepwise sustained pitch forms as SQ-1. Existing
+candidate generation precedes range-clamped rescoring and the current-target
+baseline receives the same w*q rule. Unknown anywhere disables the entire
+selection pass; the current-sounding-pitch dwell query falls back independently.
+The term acts outside objective/landscape weight, before the existing dwell
+sigmoid, without feeding habituation. Existing thresholds, temperature, ties and
+RNG remain. Extreme resulting scores saturate at the finite f32 score range.
+
+Every received PCM hop advances its owner once, independently of Latest delivery.
+Birth clones complete mixed state before own PCM; live ownership switches start
+fresh epochs. Gaps invalidate the current run, with no zero-fill repair. The
+listener observes presentation PCM and Voices use habitat PCM. Unused runs create
+no TC model or table. One shared table currently holds about 1.05 GB; LOO adds a
+full per-Voice observation including retirement. Runtime support is a measured
+load tuple, not a composer-weight bound. Candidate acceptance, whole-runtime
+acceptance and author audition remain separate. No default listener preset is
+introduced; its first eventual adoption requires 0 <= dwell < 1. Advanced dwell
+at or above 1 may stop, and positive phase speed does not guarantee departure.
+
+The decoder criterion compares actual candidate argmax and dwell zero/positive
+increments with direct probe replay: approximation-induced changes must be no
+more than one tenth of TC-induced changes. The full-scene 362-decision comparison
+passes at weights 0.25, 0.5 and 1 (4, 4 and 6 approximation changes, against 45,
+88 and 140 TC changes). These are about 1–2% of decisions, nearly independent of
+weight within those tested settings. The coordinator adopts [0.25, 1] as the
+approximation acceptance range on 2026-10-27; this is not a continuous sweep.
+Weights 0.125 and 2 fail (4/26 and 19/186); outside the declared range,
+approximation acceptance remains unverified. Dwell zero/positive changes are
+zero in all five tested settings. The finite nonnegative API range and lack of
+out-of-range warnings remain unchanged. This is a precision scope, not a cost cap.
+
+When enabled, the shared table has 9,673 nodes, about 1 GB, and takes about
+80 seconds to construct on the measured machine. These are cost estimates, not
+limits. This cost keeps TC out of the default listener preset PRE-1 for now.
+Restricting tables to Voice pitch ranges, lazy construction, and coarser grids
+with interpolation remain future work; none is implemented in this change.
+Source agreement, native real-time acceptance and author listening remain
+separate. Public technote changes remain outside this worker's scope.
 ### 9.3.111 Listener profile selection (PRE-1, 2026-10-27)
 
 `listener_profile(name)` is an initial Director setting, before scene actions or
@@ -10825,3 +10933,5 @@ precedence are checked at the actual Voice, and supported section expression is
 checked through device-clock preparation. The unchanged v6b and its step variant
 supply paired audition material and mechanism decision counts. These checks do not
 claim author adoption; changing the default to tonal is a separate approved change.
+
+<a id="melodic-continuity"></a>

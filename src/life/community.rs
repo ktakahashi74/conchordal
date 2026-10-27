@@ -379,6 +379,20 @@ impl Community {
             );
             sequence.reject_residency();
         }
+        if let Some(me) = &mut voice.pitch_ctl.melodic
+            && self
+                .voices
+                .iter()
+                .filter(|v| v.pitch_ctl.melodic.as_ref().is_some_and(|s| s.resident))
+                .count()
+                >= 16
+        {
+            warn!(
+                voice_id = id,
+                "melodic_continuity: resident state resource limit; disabled until replacement"
+            );
+            me.reject_residency();
+        }
         self.voices.push(voice);
     }
 
@@ -530,6 +544,9 @@ impl Community {
                 }
             });
             voice.pitch_ctl.dwell_trace_enabled = auto_observe_enabled;
+            if let Some(me) = &mut voice.pitch_ctl.melodic {
+                me.trace_enabled = auto_observe_enabled;
+            }
             if let Some(sequence) = &mut voice.pitch_ctl.own_sequence {
                 sequence.trace_enabled = auto_observe_enabled;
             }
@@ -691,6 +708,20 @@ impl Community {
                 "follow_own_sequence: resident state resource limit; disabled until replacement"
             );
             sequence.reject_residency();
+        }
+        if let Some(me) = &mut spawned.pitch_ctl.melodic
+            && self
+                .voices
+                .iter()
+                .filter(|v| v.pitch_ctl.melodic.as_ref().is_some_and(|s| s.resident))
+                .count()
+                >= 16
+        {
+            warn!(
+                voice_id = id,
+                "melodic_continuity: resident state resource limit; disabled until replacement"
+            );
+            me.reject_residency();
         }
         self.voices.push(spawned);
         #[cfg(test)]

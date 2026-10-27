@@ -704,3 +704,118 @@ The adapter tracks at most 16 overlapping identities during recovery and rejects
 more than 8192 pending events/control steps in a hop. Reporting stores traces only
 until their next hop emission. This term is not a default listener preset, and its
 example weight is not an adopted musical setting.
+
+## Melodic continuity from your own pitch history
+
+`melodic_continuity(w)` makes a stepwise Voice favor the next-pitch distribution
+predicted from its committed self onsets. Its weight is finite, nonnegative, and
+initial-only, in score/bit units. Zero is the default and creates no ME state.
+For example, append `.melodic_continuity(0.1)` to a sustained free
+`seek_consonance()` Voice using `metric()`, `entrained()`, `steady()` or `flow()`,
+with `pitch_apply_mode("rearticulate")` and `rearticulate_above(0)`.
+The example weight is not an adopted listening preset. Gate snap is also supported;
+glide, positive rearticulation thresholds and articulation persistence are not.
+Unsupported final forms and invalid weights warn and disable the term.
+
+**Candidate:** von Hippel (2000), *Redefining Pitch Proximity*, Eq. 1 and the
+stationary AR(1) explanation. In semitone coordinates the conditional mean is
+`mu = m + r*(last-m)` and variance is `v = s²*(1-r²)`. These restore the mean
+and scale omitted from the printed distribution on p.324; this is a text-consistent
+interpretation, not an author-approved erratum. **Author rules:** full-prefix sample
+variance, Pearson correlation of adjacent series, committed self-On input and
+continuous log-density scoring. These records are commands, not heard PCM.
+
+When a prediction is known, its weighted log2 density difference replaces both
+movement cost and fixed-center tessitura gravity. Those two terms are removed even
+from peak extraction; the new term scores only the resulting candidates. Candidates
+and the current baseline are mapped into the legal pitch range and duplicate mapped
+pitches are removed. The algorithm does not search exhaustively for the model mean.
+`follow_own_sequence` can be combined with it: it models interval order rather than
+full-prefix range and mobility. Each failure removes only the affected layer; ME
+failure restores the old candidate extraction. Positive weight starts a replacement,
+not a continuous fade of the old costs from zero.
+
+At least four onsets and certifiably positive variance are needed. Degenerate or
+numerically uncertain statistics use the current old costs and retain history.
+There is no variance floor, correlation clip or forgetting window. Center, range
+and support changes start a new epoch after pending controls are flushed; a pause
+or a `section` boundary does not reset an unrelated surviving Voice. Replacements
+inherit the weight and start empty. Choices can indirectly change later onset times;
+this term adds no clock, pause, phrase detector or harmony model.
+
+The supported runtime envelope is 16 resident ME states, including retiring Voices,
+4,801 unique On identities, 38,400 decisions per Voice, 64 candidates per decision,
+and 600 seconds from Scenario sample zero (not from birth). Support is bounded to
+20–20,000 Hz. Resource exhaustion stops ME until replacement and restores the old
+costs. ME and PPM states are counted separately; their producer is shared. Reporting
+adds `melodic_continuity` decisions and state records, including unknown reasons and
+the full old-path counterfactual. No default listener preset is added.
+
+## Following the heard harmonic context
+
+`follow_tonal_context(w)` is an initial-only preference for pitches that fit
+recently heard sound. It is neutral at 0. For example:
+
+```rhai
+let voice = modal().sustain().metric().seek_consonance()
+    .pitch_apply_mode("rearticulate").rearticulate_above(0)
+    .dwell(0.75).follow_tonal_context(0.25);
+place(voice, consonance(196.0, 784.0));
+wait(12.0);
+```
+
+The observation is a **Candidate**: the source-matched IPEM sensory short-term
+memory model, with 40-channel ANI, periodicity pitch and local/global half-lives
+of 0.1/1.5 seconds. This verifies an implementation of a hypothesis, not its truth
+or a replication of every human priming experiment. The standard sine probe,
+its precomputed approximation, raw-correlation readout, pitch preference and
+dwell coupling are **Author rules**.
+
+The first implementation supports free `seek_consonance()` with stepwise
+sustained participation: `metric()`, `entrained()`, `steady()` or `flow()`,
+`gate_snap` or `rearticulate`, `rearticulate_above(0)`, and no articulation
+persistence. Unsupported final forms warn and ignore the term. Negative and
+non-finite weights warn and become 0. Every finite nonnegative weight is accepted;
+large resulting scores saturate at the finite f32 score range. Cost does not set
+a weight ceiling. A live change to an unsupported form disables the term.
+
+At 48 kHz, every received habitat hop advances the observation once. The Voice
+reads mixed context or actual `mix - own` PCM according to `leave_self_out`.
+Birth copies the complete pre-birth mixed state. A live ownership change starts
+a new epoch; a gap invalidates context for the run instead of filling silence.
+An active listener separately observes presentation PCM. Neither branch changes
+H/R, habituation, or generation RNG. At other sample rates the query is unknown.
+
+Existing candidates are generated first. Within the executable pitch range,
+the term adds `w*q` to their existing scores and the current-target baseline;
+`q` averages local/global correlations over 200–600 ms of a 600 ms sine probe.
+One unknown candidate or baseline disables the whole rescoring pass. Dwell uses
+the current sounding frequency, adding the same term before its existing
+sigmoid. Its query can remain usable even when selection falls back. Reports
+retain snapshot sample times, epoch, known/unknown queries and selected targets.
+
+For the first future default listener preset, require `0 <= dwell < 1`.
+Advanced values at or above 1 remain possible and can stop the proposal clock.
+Positive clock speed does not guarantee a pitch change, departure or modulation.
+This term has not been adopted into a default listener preset.
+
+The probe table uses a 1-cent log-frequency grid and linear frequency/time
+interpolation over approximately 29.99–8000 Hz. One shared table contains
+9,673 nodes and about 1.05 GB of PP values; startup builds it only when enabled,
+taking about 80 seconds on the measured machine. These are cost estimates, not
+upper limits. Because of this cost, TC is not yet included in the default
+listener preset PRE-1.
+Each TC self-exclusion branch adds a full observation pipeline, including
+retiring Voices. Declared real-time support must include those branches, the
+listener, existing H/R/Flora and snapshot/query costs; query microbenchmarks
+alone do not establish a real-time load guarantee.
+
+The declared approximation acceptance range is **[0.25, 1]**, adopted from the
+full-scene comparison at weights 0.25, 0.5 and 1. Across 362 actual decisions,
+approximation changed 4–6 argmax choices (about 1–2%), at most one tenth of the
+TC effect. Dwell zero/positive changes were zero at every tested setting.
+Weights 0.125 and 2 failed the criterion; outside the declared range,
+approximation acceptance is unverified. The interval is an adopted operating
+range based on those three tested weights, not an exhaustive continuous sweep.
+The API still accepts every finite nonnegative weight, without an out-of-range
+warning. Acceptance scope is not a cost-based weight limit.

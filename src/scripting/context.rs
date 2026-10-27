@@ -654,6 +654,20 @@ impl ScriptContext {
             );
             population_spec.spec.control.pitch.follow_own_sequence = 0.0;
         }
+        if population_spec.spec.control.pitch.follow_tonal_context > 0.0
+            && (!population_spec.spec.consonance_movement
+                || !population_spec
+                    .spec
+                    .spawn_spec()
+                    .control
+                    .supports_own_sequence())
+        {
+            warn_at(
+                "follow_tonal_context",
+                "follow_tonal_context() requires free seek_consonance(), stepwise sustained participation, no glide or articulation persistence; ignored",
+            );
+            population_spec.spec.control.pitch.follow_tonal_context = 0.0;
+        }
         if population_spec.spec.control.pitch.follow_own_tonality > 0.0
             && (!population_spec.spec.consonance_movement
                 || !population_spec
@@ -667,6 +681,20 @@ impl ScriptContext {
                 "follow_own_tonality() requires free seek_consonance(), stepwise sustained participation, no glide or articulation persistence; ignored",
             );
             population_spec.spec.control.pitch.follow_own_tonality = 0.0;
+        }
+        if population_spec.spec.control.pitch.melodic_continuity > 0.0
+            && (!population_spec.spec.consonance_movement
+                || !population_spec
+                    .spec
+                    .spawn_spec()
+                    .control
+                    .supports_own_sequence())
+        {
+            warn_at(
+                "melodic_continuity",
+                "melodic_continuity() requires free seek_consonance(), stepwise sustained participation, no glide or articulation persistence; ignored",
+            );
+            population_spec.spec.control.pitch.melodic_continuity = 0.0;
         }
         if population_spec.spec.control.pitch.dwell > 0.0
             && (!population_spec.spec.consonance_movement

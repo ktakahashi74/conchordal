@@ -790,6 +790,30 @@ Slow pitch proposals while the current environment level is high. Initial-only a
 
 **Evidence:** Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: proposal delay driven by the habituated field level; neutral at weight 0 (§9.3.98).
 
+#### `follow_tonal_context`
+
+```rhai,ignore
+follow_tonal_context(w)
+```
+
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
+
+Favor pitches that fit the recently heard harmonic context. Initial-only finite nonnegative weight, default 0. At 48 kHz, adds w*q after candidate generation and before the current-pitch dwell sigmoid; ownership follows leave_self_out. Requires free, stepwise sustained seek_consonance(), rearticulate_above(0), no glide/persistence; unsupported forms warn and ignore it. Declared approximation range [0.25,1], based on weights 0.25/0.5/1: 4-6/362 argmax changes (1-2%), within 1/10 of TC effects; dwell sign changes zero. 0.125 and 2 failed. Outside this range acceptance is unverified; values remain valid without warnings. When enabled, the shared 9,673-node table costs about 1 GB and 80 seconds, estimates rather than limits. This cost excludes TC from PRE-1. See Rhythm for unknown fallback and scope.
+
+**Evidence:** Candidate (source matched): IPEM sensory short-term memory, 40-channel ANI, periodicity pitch and 0.1/1.5-second half-lives. This implements a hypothesis, not an established brain mechanism.<br>Author rule: sine probe, tabulated approximation, raw correlation readout, candidate rescoring and dwell coupling; default weight 0 (§9.3.110).
+
+#### `melodic_continuity`
+
+```rhai,ignore
+melodic_continuity(w)
+```
+
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
+
+Favor pitches predicted by the range and mobility of committed self onsets. Initial-only finite nonnegative score/bit weight; default 0. Requires free seek_consonance(), stepwise sustained participation and rearticulate_above(0), without glide or persistence. Invalid or unsupported final forms warn and disable it. Candidate: von Hippel (2000), text-consistent AR(1) equations. Prefix estimation and generation coupling are author rules. A known snapshot replaces movement cost and fixed-center gravity before candidate extraction; its log-density difference is added after extraction. Unknown statistics restore the current old terms. Four or more onsets and certified positive variance are required. SQ-1 can coexist independently. Replacements inherit only the weight. No rhythm, harmony or phrase learning. See Rhythm for support and resource limits.
+
+**Evidence:** Candidate: von Hippel (2000), text-consistent AR(1) mean and variance; not an author-approved erratum.<br>Author rule: finite-prefix Pearson estimation, committed self-onset adapter, continuous log-density scoring and replacement of movement cost and fixed-center gravity (§9.3.108).
+
 #### `follow_own_sequence`
 
 ```rhai,ignore

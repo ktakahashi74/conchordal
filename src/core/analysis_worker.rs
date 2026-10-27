@@ -126,6 +126,11 @@ pub(crate) fn run(
                     })
                 });
                 for source in &packet.sources {
+                    let birth = !loo_streams.iter().any(|s| {
+                        s.kind == source.kind
+                            && s.id == source.id
+                            && s.generation == source.generation
+                    });
                     let index = loo_streams
                         .iter()
                         .position(|s| {
@@ -154,6 +159,7 @@ pub(crate) fn run(
                             loo_streams.push(observer);
                             loo_streams.len() - 1
                         });
+                    loo_streams[index].configure_tonal(&stream, source.tonal_context, birth);
                     loo_streams[index].process(&hop, &source.habitat);
                 }
             } else {
@@ -178,6 +184,11 @@ pub(crate) fn run(
                 && let Some(id) = analysis.take()
             {
                 let mut frame = frame.clone();
+                frame.tonal_context = stream.tonal_snapshot();
+                frame.tonal_observations = loo_streams
+                    .iter()
+                    .filter_map(|s| s.tonal_snapshot())
+                    .collect();
                 frame.spectral_history = spectral_history
                     .as_ref()
                     .and_then(|history| history.snapshot());
@@ -201,6 +212,11 @@ pub(crate) fn run(
             && let AnalysisDelivery::Latest(stale) = &delivery
         {
             let mut frame = stream.last().clone();
+            frame.tonal_context = stream.tonal_snapshot();
+            frame.tonal_observations = loo_streams
+                .iter()
+                .filter_map(|s| s.tonal_snapshot())
+                .collect();
             frame.spectral_history = spectral_history
                 .as_ref()
                 .and_then(|history| history.snapshot());
@@ -752,6 +768,7 @@ mod tests {
             sources: vec![crate::core::stream::loo::SourcePcm {
                 kind: crate::core::stream::loo::SourceKind::Voice,
                 analyze_hr: true,
+                tonal_context: None,
                 id,
                 generation,
                 habitat: own.to_vec(),
@@ -777,6 +794,7 @@ mod tests {
                 SourcePcm {
                     kind: SourceKind::Voice,
                     analyze_hr: true,
+                    tonal_context: None,
                     id: 7,
                     generation: 0,
                     habitat: mix.to_vec(),
@@ -784,6 +802,7 @@ mod tests {
                 SourcePcm {
                     kind: SourceKind::Flora,
                     analyze_hr: true,
+                    tonal_context: None,
                     id: 7,
                     generation: u32::from(frame >= 36),
                     habitat: vec![0.0; hop],

@@ -25,6 +25,7 @@ pub struct PitchController {
     pub(crate) trace_owner: Option<(u64, u32)>,
     core: AnyPitchCore,
     pub(crate) own_tonality: Option<crate::life::own_tonality::OwnTonality>,
+    pub(crate) melodic: Option<crate::life::melodic_continuity::MelodicContinuity>,
     pub(crate) own_sequence: Option<crate::life::own_sequence::OwnSequence>,
     pub(crate) sequence_decisions: Vec<crate::life::own_sequence::SequenceDecision>,
     adaptation: AdaptationContext,
@@ -34,6 +35,7 @@ pub struct PitchController {
     proposal_phase: f32,
     pub(crate) dwell_state: Option<DwellRecord>,
     pub(crate) dwell_trace: Vec<DwellRecord>,
+    pub(crate) tonal_trace: Vec<crate::core::tonal_context::Record>,
     pub(crate) dwell_trace_enabled: bool,
     pub(crate) control_tick: Option<u64>,
     last_theta_phase: f32,
@@ -63,6 +65,7 @@ impl PitchController {
             core,
             own_sequence: None,
             own_tonality: None,
+            melodic: None,
             sequence_decisions: Vec::new(),
             adaptation,
             target_pitch_log2,
@@ -71,6 +74,7 @@ impl PitchController {
             proposal_phase: 0.0,
             dwell_state: None,
             dwell_trace: Vec::new(),
+            tonal_trace: Vec::new(),
             dwell_trace_enabled: false,
             control_tick: None,
             last_theta_phase: 0.0,
@@ -170,6 +174,33 @@ impl PitchController {
         } else {
             self.target_pitch_log2
         };
+        if let AnyPitchCore::PitchHillClimb(core) = &mut self.core {
+            if pitch.follow_tonal_context > 0. {
+                let snapshot = core
+                    .loo_input
+                    .tonal_context
+                    .clone()
+                    .filter(|s| self.control_tick.is_some_and(|at| s.end <= at));
+                let (fmin, fmax) = landscape.freq_bounds_log2();
+                let center = if pitch.freq.is_finite() && pitch.freq > 0. {
+                    pitch.freq.log2()
+                } else {
+                    current_pitch_log2
+                };
+                let half = pitch.range_oct.clamp(0., 6.) * 0.5;
+                let bounds = ((center - half).max(fmin), (center + half).min(fmax));
+                let bounds = if bounds.0 <= bounds.1 {
+                    bounds
+                } else {
+                    (fmin, fmax)
+                };
+                core.tonal
+                    .get_or_insert_with(crate::core::tonal_context::Use::new)
+                    .pin(snapshot, pitch.follow_tonal_context, bounds);
+            } else {
+                core.tonal = None;
+            }
+        }
         self.integration_window = Self::integration_window_for_freq(current_freq);
         self.accumulated_time += dt_sec;
         let dwelling = pitch.dwell > 0.0;
@@ -307,6 +338,10 @@ impl PitchController {
                         .as_ref()
                         .and_then(|t| t.snapshot(at, (center - half, center + half)))
                 });
+                core.melodic = self
+                    .control_tick
+                    .and_then(|at| self.melodic.as_mut().and_then(|me| me.predict(at)));
+                core.melodic_trace = self.melodic.as_ref().is_some_and(|me| me.trace_enabled);
                 core.sequence_enabled = self.own_sequence.is_some();
                 core.sequence_trace = self.own_sequence.as_ref().is_some_and(|s| s.trace_enabled);
                 core.sequence = self
@@ -368,6 +403,23 @@ impl PitchController {
                     tonality.decisions.push(record);
                 }
             }
+            if let AnyPitchCore::PitchHillClimb(core) = &self.core
+                && let Some(me) = &mut self.melodic
+            {
+                let record = core.melodic_decision.borrow_mut().take();
+                if let Some(mut record) = record {
+                    record.at = self.control_tick.unwrap_or(0);
+                    if record.reason == Some("candidate_resource_limit") {
+                        me.stop("candidate_resource_limit");
+                    }
+                    if record.snapshot.is_none() {
+                        record.reason = me.reason;
+                    }
+                    if me.trace_enabled {
+                        me.decisions.push(record);
+                    }
+                }
+            }
             target_pitch_log2 = proposal.target_pitch_log2;
             self.last_target_salience = proposal.salience;
             if self.adaptation_enabled
@@ -410,7 +462,30 @@ impl PitchController {
             target_pitch_log2.clamp(fmin, fmax)
         };
         target_pitch_log2 = clamped;
+        if should_propose
+            && let Some(record) = self.melodic.as_mut().and_then(|me| me.decisions.last_mut())
+            && Some(record.at) == self.control_tick
+        {
+            record.selected_log2 = clamped;
+            record.without_melodic_log2 = if min <= max {
+                record.without_melodic_log2.clamp(min, max)
+            } else {
+                record.without_melodic_log2.clamp(fmin, fmax)
+            };
+            record.changed =
+                record.selected_log2.to_bits() != record.without_melodic_log2.to_bits();
+        }
         self.target_pitch_log2 = target_pitch_log2;
+        if self.dwell_trace_enabled
+            && let AnyPitchCore::PitchHillClimb(core) = &self.core
+            && let Some(tonal) = &core.tonal
+        {
+            self.tonal_trace.push(tonal.record(
+                self.control_tick,
+                current_freq,
+                target_pitch_log2.exp2(),
+            ));
+        }
         if should_propose
             && previous_target > 0.0
             && target_pitch_log2 != previous_target

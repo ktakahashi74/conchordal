@@ -504,6 +504,17 @@ fn follow_own_tonality(population_spec: PopulationSpec, w: f64) -> PopulationSpe
 /// Evidence: Author rule: self-command encoding, numerical key selection and weighted profile preference after candidate generation; default 0.
 fn follow_own_tonality(population_spec: PopulationSpec, w: i64) -> PopulationSpec;
 
+/// Favor pitches that fit the recently heard harmonic context.
+/// Initial-only finite nonnegative weight, default 0. At 48 kHz, adds w*q after candidate generation and before the current-pitch dwell sigmoid; ownership follows leave_self_out. Requires free, stepwise sustained seek_consonance(), rearticulate_above(0), no glide/persistence; unsupported forms warn and ignore it. Declared approximation range [0.25,1], based on weights 0.25/0.5/1: 4-6/362 argmax changes (1-2%), within 1/10 of TC effects; dwell sign changes zero. 0.125 and 2 failed. Outside this range acceptance is unverified; values remain valid without warnings. When enabled, the shared 9,673-node table costs about 1 GB and 80 seconds, estimates rather than limits. This cost excludes TC from PRE-1. See Rhythm for unknown fallback and scope.
+/// Evidence: Candidate (source matched): IPEM sensory short-term memory, 40-channel ANI, periodicity pitch and 0.1/1.5-second half-lives. This implements a hypothesis, not an established brain mechanism.
+/// Evidence: Author rule: sine probe, tabulated approximation, raw correlation readout, candidate rescoring and dwell coupling; default weight 0 (§9.3.110).
+fn follow_tonal_context(population_spec: PopulationSpec, w: f64) -> PopulationSpec;
+/// Favor pitches that fit the recently heard harmonic context.
+/// Initial-only finite nonnegative weight, default 0. At 48 kHz, adds w*q after candidate generation and before the current-pitch dwell sigmoid; ownership follows leave_self_out. Requires free, stepwise sustained seek_consonance(), rearticulate_above(0), no glide/persistence; unsupported forms warn and ignore it. Declared approximation range [0.25,1], based on weights 0.25/0.5/1: 4-6/362 argmax changes (1-2%), within 1/10 of TC effects; dwell sign changes zero. 0.125 and 2 failed. Outside this range acceptance is unverified; values remain valid without warnings. When enabled, the shared 9,673-node table costs about 1 GB and 80 seconds, estimates rather than limits. This cost excludes TC from PRE-1. See Rhythm for unknown fallback and scope.
+/// Evidence: Candidate (source matched): IPEM sensory short-term memory, 40-channel ANI, periodicity pitch and 0.1/1.5-second half-lives. This implements a hypothesis, not an established brain mechanism.
+/// Evidence: Author rule: sine probe, tabulated approximation, raw correlation readout, candidate rescoring and dwell coupling; default weight 0 (§9.3.110).
+fn follow_tonal_context(population_spec: PopulationSpec, w: i64) -> PopulationSpec;
+
 /// Frequency lock in Hz; implies an anchored pitch (see `anchor()`).
 /// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
 fn freq(population: Population, hz: f64) -> Population;
@@ -679,6 +690,17 @@ fn measure_accent(population_spec: PopulationSpec, amount: f64) -> PopulationSpe
 /// Scales onset strength by 1 + 0.35 * amount * measure confidence * cos(measure phase). Zero phase follows observed accents. With no detected measure, strength stays unchanged. Does not schedule onsets or impose a grouping. Order-independent with metric/entrained/steady/flow presets.
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 fn measure_accent(population_spec: PopulationSpec, amount: i64) -> PopulationSpec;
+
+/// Favor pitches predicted by the range and mobility of committed self onsets.
+/// Initial-only finite nonnegative score/bit weight; default 0. Requires free seek_consonance(), stepwise sustained participation and rearticulate_above(0), without glide or persistence. Invalid or unsupported final forms warn and disable it. Candidate: von Hippel (2000), text-consistent AR(1) equations. Prefix estimation and generation coupling are author rules. A known snapshot replaces movement cost and fixed-center gravity before candidate extraction; its log-density difference is added after extraction. Unknown statistics restore the current old terms. Four or more onsets and certified positive variance are required. SQ-1 can coexist independently. Replacements inherit only the weight. No rhythm, harmony or phrase learning. See Rhythm for support and resource limits.
+/// Evidence: Candidate: von Hippel (2000), text-consistent AR(1) mean and variance; not an author-approved erratum.
+/// Evidence: Author rule: finite-prefix Pearson estimation, committed self-onset adapter, continuous log-density scoring and replacement of movement cost and fixed-center gravity (§9.3.108).
+fn melodic_continuity(population_spec: PopulationSpec, w: f64) -> PopulationSpec;
+/// Favor pitches predicted by the range and mobility of committed self onsets.
+/// Initial-only finite nonnegative score/bit weight; default 0. Requires free seek_consonance(), stepwise sustained participation and rearticulate_above(0), without glide or persistence. Invalid or unsupported final forms warn and disable it. Candidate: von Hippel (2000), text-consistent AR(1) equations. Prefix estimation and generation coupling are author rules. A known snapshot replaces movement cost and fixed-center gravity before candidate extraction; its log-density difference is added after extraction. Unknown statistics restore the current old terms. Four or more onsets and certified positive variance are required. SQ-1 can coexist independently. Replacements inherit only the weight. No rhythm, harmony or phrase learning. See Rhythm for support and resource limits.
+/// Evidence: Candidate: von Hippel (2000), text-consistent AR(1) mean and variance; not an author-approved erratum.
+/// Evidence: Author rule: finite-prefix Pearson estimation, committed self-onset adapter, continuous log-density scoring and replacement of movement cost and fixed-center gravity (§9.3.108).
+fn melodic_continuity(population_spec: PopulationSpec, w: i64) -> PopulationSpec;
 
 /// Attractor depth in 0-1: how readily a pulse forms.
 /// Scene-wide initial condition in [0,1], default 0; the last declaration wins. Shapes how readily a beat forms and the influence of the tempo basin. It does not schedule onsets.

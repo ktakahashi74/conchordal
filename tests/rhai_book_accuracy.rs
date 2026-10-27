@@ -278,8 +278,12 @@ fn prose_and_registry_details_only_name_registered_rhai_calls() {
                     start -= 1;
                 }
                 let name = &line[start..offset];
+                // In prose, AR(1) denotes a statistical model rather than a Rhai call.
+                let model_notation =
+                    name == "AR" && fence.is_none() && line[offset..].starts_with("(1)");
                 if name.is_empty()
                     || known.contains(name)
+                    || model_notation
                     || name == "cos"
                     || name == "Voice"
                     || (start > 0 && bytes[start - 1] == b'*')

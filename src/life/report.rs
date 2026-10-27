@@ -67,6 +67,10 @@ pub struct RhythmObservation {
 /// depend on the perception layer's own state type.
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ListenerStateSample {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tonal_context: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) tonal_context_end: Option<u64>,
     pub(crate) time_sec: f32,
     pub(crate) generated_frame_id: u64,
     pub(crate) analysis_frame_id: u64,
@@ -169,6 +173,28 @@ enum ReportRecord<'a> {
     PhraseExecution {
         #[serde(flatten)]
         receipt: &'a crate::life::phrase_boundary::Receipt,
+    },
+    MelodicContinuity {
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        #[serde(flatten)]
+        record: &'a crate::life::melodic_continuity::Decision,
+    },
+    MelodicContinuityState {
+        voice_id: u64,
+        generation: u32,
+        epoch: u64,
+        retained_onsets: usize,
+        resource_stopped: bool,
+        reason: Option<&'static str>,
+    },
+    TonalContext {
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        #[serde(flatten)]
+        record: &'a crate::core::tonal_context::Record,
     },
     OwnTonality {
         voice_id: u64,
@@ -813,6 +839,21 @@ impl JsonlReporter {
         })
     }
 
+    pub(crate) fn write_tonal_context(
+        &mut self,
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        record: &crate::core::tonal_context::Record,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::TonalContext {
+            voice_id,
+            generation,
+            sample_rate,
+            record,
+        })
+    }
+
     pub(crate) fn write_dwell(
         &mut self,
         voice_id: u64,
@@ -840,6 +881,44 @@ impl JsonlReporter {
         receipt: &crate::life::phrase_boundary::Receipt,
     ) -> Result<(), String> {
         self.write_record(&ReportRecord::PhraseExecution { receipt })
+    }
+
+    pub(crate) fn write_melodic_continuity(
+        &mut self,
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        me: &mut crate::life::melodic_continuity::MelodicContinuity,
+        emit_executions: bool,
+    ) -> Result<(), String> {
+        let changed = !me.executions.is_empty() || !me.decisions.is_empty();
+        for record in me.executions.drain(..) {
+            if emit_executions {
+                self.write_record(&ReportRecord::SelfExecution {
+                    sample_rate,
+                    record: &record,
+                })?;
+            }
+        }
+        for record in me.decisions.drain(..) {
+            self.write_record(&ReportRecord::MelodicContinuity {
+                voice_id,
+                generation,
+                sample_rate,
+                record: &record,
+            })?;
+        }
+        if changed {
+            self.write_record(&ReportRecord::MelodicContinuityState {
+                voice_id,
+                generation,
+                epoch: me.epoch,
+                retained_onsets: me.prefix.n,
+                resource_stopped: me.resource_stopped,
+                reason: me.reason,
+            })?;
+        }
+        Ok(())
     }
 
     pub(crate) fn write_own_tonality(
@@ -1782,6 +1861,8 @@ mod tests {
     #[test]
     fn listener_state_record_stays_flat_and_tagged() {
         let sample = ListenerStateSample {
+            tonal_context: None,
+            tonal_context_end: None,
             time_sec: 1.25,
             generated_frame_id: 7,
             analysis_frame_id: 5,

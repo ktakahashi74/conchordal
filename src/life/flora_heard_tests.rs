@@ -134,6 +134,7 @@ fn heard_flora_pcm_oracle_two_sources_routing_mute_fade_and_gap() {
                 .map(|id| SourcePcm {
                     kind: SourceKind::Flora,
                     analyze_hr: true,
+                    tonal_context: None,
                     id,
                     generation: 0,
                     habitat: vec![0.0; hop],
@@ -312,6 +313,7 @@ fn growth_and_seed_follow_recorded_pcm_reference() {
                 .map(|i| SourcePcm {
                     kind: SourceKind::Flora,
                     analyze_hr: flora[i].needs_hr_observer(),
+                    tonal_context: None,
                     id: 7 + i as u64,
                     generation: 0,
                     habitat: vec![0.0; hop],

@@ -33,6 +33,8 @@ pub(super) fn merge_latest_analysis_results(
             Ok((_, None)) => {
                 unavailable = true;
                 current_landscape.onset_habituation_known = false;
+                current_landscape.tonal_context = None;
+                current_landscape.tonal_observations.clear();
                 current_landscape.spectral_history = None;
                 current_landscape.loo.clear();
                 current_landscape.flora_observations.clear();
@@ -43,6 +45,8 @@ pub(super) fn merge_latest_analysis_results(
             Err(TryRecvError::Disconnected) => {
                 unavailable = true;
                 current_landscape.onset_habituation_known = false;
+                current_landscape.tonal_context = None;
+                current_landscape.tonal_observations.clear();
                 break;
             }
         }
@@ -82,6 +86,8 @@ pub(super) fn merge_latest_analysis_results(
     current_landscape.subjective_intensity = frame.subjective_intensity;
     current_landscape.nsgt_power = frame.nsgt_power;
     current_landscape.loo = frame.loo;
+    current_landscape.tonal_context = frame.tonal_context;
+    current_landscape.tonal_observations = frame.tonal_observations;
     current_landscape.flora_observations = frame.flora_observations;
     current_landscape.spectral_history = frame.spectral_history;
     current_landscape.recompute_consonance(lparams);

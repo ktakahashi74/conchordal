@@ -30,6 +30,7 @@ pub mod sound;
 #[cfg(test)]
 mod tests;
 
+pub(crate) mod melodic_continuity;
 pub(crate) mod own_sequence;
 pub(crate) mod phrase_boundary;
 pub(crate) mod ppm_decay;

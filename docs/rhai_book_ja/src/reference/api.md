@@ -790,6 +790,30 @@ Slow pitch proposals while the current environment level is high. Initial-only a
 
 **根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：馴化後の場の水準に応じた提案の遅延。重み0で中立（§9.3.98）。
 
+#### `follow_tonal_context`
+
+```rhai,ignore
+follow_tonal_context(w)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Favor pitches that fit the recently heard harmonic context. Initial-only finite nonnegative weight, default 0. At 48 kHz, adds w*q after candidate generation and before the current-pitch dwell sigmoid; ownership follows leave_self_out. Requires free, stepwise sustained seek_consonance(), rearticulate_above(0), no glide/persistence; unsupported forms warn and ignore it. Declared approximation range [0.25,1], based on weights 0.25/0.5/1: 4-6/362 argmax changes (1-2%), within 1/10 of TC effects; dwell sign changes zero. 0.125 and 2 failed. Outside this range acceptance is unverified; values remain valid without warnings. When enabled, the shared 9,673-node table costs about 1 GB and 80 seconds, estimates rather than limits. This cost excludes TC from PRE-1. See Rhythm for unknown fallback and scope.
+
+**根拠:** 候補（原典照合済み）：IPEMの感覚的短期記憶。40帯域ANI、periodicity pitch、半減時間0.1／1.5秒。仮説の実装であり、確定した脳機構ではない。<br>作者規則：正弦probe、表による近似、相関の読み出し、候補再採点とdwellへの接続。重みの既定値は0（§9.3.110）。
+
+#### `melodic_continuity`
+
+```rhai,ignore
+melodic_continuity(w)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Favor pitches predicted by the range and mobility of committed self onsets. Initial-only finite nonnegative score/bit weight; default 0. Requires free seek_consonance(), stepwise sustained participation and rearticulate_above(0), without glide or persistence. Invalid or unsupported final forms warn and disable it. Candidate: von Hippel (2000), text-consistent AR(1) equations. Prefix estimation and generation coupling are author rules. A known snapshot replaces movement cost and fixed-center gravity before candidate extraction; its log-density difference is added after extraction. Unknown statistics restore the current old terms. Four or more onsets and certified positive variance are required. SQ-1 can coexist independently. Replacements inherit only the weight. No rhythm, harmony or phrase learning. See Rhythm for support and resource limits.
+
+**根拠:** 候補：von Hippel (2000) の本文に整合する AR(1) の平均・分散。著者公認の訂正ではない。<br>作者規則：有限 prefix の Pearson 推定、確定した自己 On の入力、連続音高の対数密度採点、移動費用と固定中心への重力の置換（§9.3.108）。
+
 #### `follow_own_sequence`
 
 ```rhai,ignore

@@ -146,6 +146,14 @@ pub(crate) struct AudioCallbackCounters {
 }
 
 impl AudioOutput {
+    pub(crate) fn start_prepared(&self) -> anyhow::Result<()> {
+        self.stream
+            .as_ref()
+            .expect("prepared output stream")
+            .play()
+            .context("Failed to start output stream")
+    }
+
     /// Start AudioOutput and return a Producer for the worker loop.
     pub fn new(
         latency_ms: f32,
@@ -153,6 +161,7 @@ impl AudioOutput {
         guard_mode: LimiterMode,
         guard_meter: Option<Arc<LimiterMeter>>,
         output_gain: f32,
+        defer_start: bool,
     ) -> anyhow::Result<(Self, HeapProd<f32>)> {
         let host = cpal::default_host();
         let device = host
@@ -227,7 +236,9 @@ impl AudioOutput {
                 None,
             )
             .context("Failed to build output stream")?;
-        stream.play().context("Failed to start output stream")?;
+        if !defer_start {
+            stream.play().context("Failed to start output stream")?;
+        }
 
         Ok((
             Self {

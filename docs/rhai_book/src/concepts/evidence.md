@@ -113,3 +113,5 @@ listener preset receives one author audition; listening does not rank parameter
 values. Composer-control upper bounds follow failure or effect saturation, not
 computational cost. These acceptance conditions do not change simply because a
 label appears in an editor.
+
+`melodic_continuity` separates the von Hippel (2000) candidate from the author rules for estimation, self execution and generation coupling. Its default is zero.

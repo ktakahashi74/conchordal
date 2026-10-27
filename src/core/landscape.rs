@@ -150,6 +150,8 @@ pub struct Landscape {
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
     pub(crate) flora_observations: Vec<crate::core::stream::loo::FloraObservation>,
+    pub(crate) tonal_observations: Vec<crate::core::stream::loo::TonalObservation>,
+    pub(crate) tonal_context: Option<std::sync::Arc<crate::core::tonal_context::Snapshot>>,
     pub(crate) loo: Vec<crate::core::stream::loo::Observation>,
     pub(crate) spectral_history:
         Option<std::sync::Arc<crate::core::spectral_history::SpectralHistorySnapshot>>,
@@ -214,6 +216,8 @@ impl Landscape {
             nsgt_power: vec![0.0; n],
             spectral_history: None,
             loo: Vec::new(),
+            tonal_context: None,
+            tonal_observations: Vec::new(),
             flora_observations: Vec::new(),
             roughness01_scalar: 0.0,
             loudness_mass: 0.0,
@@ -233,6 +237,8 @@ impl Landscape {
         self.onset_habituation_known = false;
         self.spectral_history = None;
         self.loo.clear();
+        self.tonal_context = None;
+        self.tonal_observations.clear();
         self.flora_observations.clear();
         let n = space.n_bins();
         self.space = space;

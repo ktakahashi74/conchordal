@@ -772,6 +772,26 @@ impl ScriptHost {
         );
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
+            "follow_tonal_context",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: FLOAT| {
+                spec.spec
+                    .record_call("follow_tonal_context", call.call_position(), &diagnostics);
+                spec.spec.set_follow_tonal_context(weight);
+                spec
+            },
+        );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "melodic_continuity",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: FLOAT| {
+                spec.spec
+                    .record_call("melodic_continuity", call.call_position(), &diagnostics);
+                spec.spec.set_melodic_continuity(weight);
+                spec
+            },
+        );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
             "follow_own_tonality",
             move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: FLOAT| {
                 spec.spec
@@ -797,6 +817,26 @@ impl ScriptHost {
                 spec.spec
                     .record_call("follow_own_tonality", call.call_position(), &diagnostics);
                 spec.spec.set_follow_own_tonality(weight as FLOAT);
+                spec
+            },
+        );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "melodic_continuity",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: INT| {
+                spec.spec
+                    .record_call("melodic_continuity", call.call_position(), &diagnostics);
+                spec.spec.set_melodic_continuity(weight as FLOAT);
+                spec
+            },
+        );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "follow_tonal_context",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: INT| {
+                spec.spec
+                    .record_call("follow_tonal_context", call.call_position(), &diagnostics);
+                spec.spec.set_follow_tonal_context(weight as FLOAT);
                 spec
             },
         );

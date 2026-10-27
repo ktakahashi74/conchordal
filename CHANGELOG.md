@@ -6,6 +6,17 @@
   tonal bundles provisional sequence, tonality, phrase and final-section expression
   audition weights. Explicit axes (including zero) win; unsupported consumers are
   silently skipped without widening their support. Author adoption remains pending.
+- Add initial-only `melodic_continuity(w)`, neutral by default. A von Hippel (2000)
+  candidate predicts pitch from committed self-onset range and mobility; explicit
+  author rules estimate prefix statistics and score existing proposals. Known
+  predictions replace movement cost and fixed-center gravity; unknown or failed
+  predictions restore them. SQ-1 remains independent. Legal-pitch scoring, bounded
+  execution histories and numerical support checks preserve the selection contract.
+- Add opt-in `follow_tonal_context(w)` for stepwise sustained Voices. The IPEM
+  sensory-memory candidate observes continuous PCM; an authored tabulated sine
+  probe rescores existing pitches and couples to dwell. Weight 0 preserves the
+  existing path. Birth, ownership changes and gaps retain explicit context
+  availability; presentation and habitat observations stay separate.
 
 - Label all scripting terms and AppConfig keys by mechanism evidence in the
   documentation registry, generated bilingual API references and function hover.

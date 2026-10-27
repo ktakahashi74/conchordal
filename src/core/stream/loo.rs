@@ -13,6 +13,7 @@ pub(crate) enum SourceKind {
 pub(crate) struct SourcePcm {
     pub kind: SourceKind,
     pub analyze_hr: bool,
+    pub tonal_context: Option<bool>,
     pub id: u64,
     pub generation: u32,
     pub habitat: Vec<f32>,
@@ -59,6 +60,15 @@ impl Observation {
 }
 
 #[derive(Clone, Debug)]
+pub(crate) struct TonalObservation {
+    pub id: u64,
+    pub generation: u32,
+    pub shared: bool,
+    pub excluded: bool,
+    pub snapshot: Option<Arc<crate::core::tonal_context::Snapshot>>,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct FloraObservation {
     pub id: u64,
     pub generation: u32,
@@ -90,6 +100,9 @@ pub(crate) struct Observer {
     stream: Option<AnalysisStream>,
     power: Option<crate::core::nsgt_rt::RtNsgtKernelLog2>,
     pcm: Vec<f32>,
+    tonal: Option<crate::core::tonal_context::Context>,
+    tonal_ownership: Option<bool>,
+    tonal_shared: bool,
 }
 
 impl Observer {
@@ -98,6 +111,9 @@ impl Observer {
             id,
             generation,
             kind: SourceKind::Voice,
+            tonal: None,
+            tonal_ownership: None,
+            tonal_shared: false,
             stream: Some(before_birth.voice_observer()),
             power: None,
             pcm: vec![0.; before_birth.hop_samples()],
@@ -114,10 +130,41 @@ impl Observer {
             id,
             generation,
             kind: SourceKind::Flora,
+            tonal: None,
+            tonal_ownership: None,
+            tonal_shared: false,
             pcm: vec![0.0; before_birth.hop_samples()],
             power: Some(before_birth.resource_observer()),
             stream: analyze_hr.then(|| before_birth.voice_observer()),
         }
+    }
+
+    pub(crate) fn configure_tonal(
+        &mut self,
+        before: &AnalysisStream,
+        ownership: Option<bool>,
+        birth: bool,
+    ) {
+        if ownership == self.tonal_ownership {
+            return;
+        }
+        self.tonal_ownership = ownership;
+        self.tonal_shared = birth && ownership == Some(false);
+        self.tonal = if ownership.is_some() && !self.tonal_shared {
+            before.new_tonal_observer(birth)
+        } else {
+            None
+        };
+    }
+
+    pub(crate) fn tonal_snapshot(&self) -> Option<TonalObservation> {
+        self.tonal_ownership.map(|excluded| TonalObservation {
+            id: self.id,
+            generation: self.generation,
+            shared: self.tonal_shared,
+            excluded,
+            snapshot: self.tonal.as_ref().and_then(|s| s.snapshot()),
+        })
     }
 
     pub(crate) fn process(&mut self, mix: &[f32], own: &[f32]) {
@@ -125,6 +172,13 @@ impl Observer {
         assert_eq!(own.len(), self.pcm.len(), "LOO complete own hop");
         for ((out, &mix), &own) in self.pcm.iter_mut().zip(mix).zip(own) {
             *out = mix - own;
+        }
+        if let Some(tonal) = &mut self.tonal {
+            tonal.process(if self.tonal_ownership == Some(true) {
+                &self.pcm
+            } else {
+                mix
+            });
         }
         if let Some(stream) = &mut self.stream {
             stream.process(&self.pcm);
@@ -140,6 +194,9 @@ impl Observer {
     }
 
     pub(crate) fn reset(&mut self) {
+        if let Some(tonal) = &mut self.tonal {
+            tonal.invalidate();
+        }
         if let Some(stream) = &mut self.stream {
             stream.reset();
         }
@@ -193,6 +250,43 @@ impl Observer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tonal_birth_live_ownership_and_gap() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let mut mixed = AnalysisStream::new(params, nsgt).with_nsgt_power(false);
+        mixed.enable_tonal_context(crate::core::tonal_context::Decoder::unqueried_for_test());
+        let pcm = vec![0.01; mixed.hop_samples()];
+        let own = vec![0.005; mixed.hop_samples()];
+        for _ in 0..24 {
+            mixed.process(&pcm);
+        }
+        let before = mixed.tonal_snapshot().unwrap();
+        let mut observer = Observer::new(7, 2, &mixed);
+        observer.configure_tonal(&mixed, Some(true), true);
+        observer.process(&pcm, &own);
+        let born = observer.tonal_snapshot().unwrap();
+        assert!(born.excluded && !born.shared);
+        assert_eq!(born.snapshot.unwrap().epoch_start, before.epoch_start);
+        assert_eq!(mixed.tonal_snapshot().unwrap().end, before.end);
+        mixed.process(&pcm);
+        let start = mixed.tonal_snapshot().unwrap().end;
+        observer.configure_tonal(&mixed, Some(false), false);
+        assert!(observer.tonal_snapshot().unwrap().snapshot.is_none());
+        for _ in 0..24 {
+            observer.process(&pcm, &own);
+        }
+        let changed = observer.tonal_snapshot().unwrap();
+        assert!(!changed.excluded && !changed.shared);
+        assert_eq!(changed.snapshot.unwrap().epoch_start, start);
+        observer.reset();
+        for _ in 0..24 {
+            observer.process(&pcm, &own);
+        }
+        assert!(observer.tonal_snapshot().unwrap().snapshot.is_none());
+        observer.configure_tonal(&mixed, None, false);
+        assert!(observer.tonal_snapshot().is_none());
+    }
 
     #[test]
     #[ignore = "F-19b cost acquisition requires the machine timing lock"]

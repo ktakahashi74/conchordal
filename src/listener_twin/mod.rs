@@ -16,6 +16,8 @@ const NEUTRAL_STABILITY_LEVEL: f32 = 0.5;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ListenerState {
+    pub(crate) tonal_context: Option<f64>,
+    pub(crate) tonal_context_end: Option<u64>,
     pub(crate) time_sec: f32,
     pub(crate) generated_frame_id: u64,
     pub(crate) analysis_frame_id: u64,
@@ -194,6 +196,8 @@ impl ListenerTwin {
             };
 
         ListenerState {
+            tonal_context: landscape.tonal_context.as_ref().and_then(|s| s.observed),
+            tonal_context_end: landscape.tonal_context.as_ref().map(|s| s.end),
             time_sec,
             generated_frame_id,
             analysis_frame_id,

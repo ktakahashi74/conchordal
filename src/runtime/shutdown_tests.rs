@@ -22,6 +22,69 @@ fn options() -> WiringOptions {
 }
 
 #[test]
+#[ignore = "TC1b-render lock; TC1B_CAPTURE, TC1B_SCENE and TC1B_OUTPUT required"]
+fn tc1b_capture() {
+    use std::io::Write;
+    assert!(std::env::var_os("TC1B_CAPTURE").is_some());
+    let path = std::env::var("TC1B_SCENE").unwrap();
+    let directory = std::path::PathBuf::from(std::env::var("TC1B_OUTPUT").unwrap());
+    std::fs::create_dir_all(&directory).unwrap();
+    let config = AppConfig::default();
+    crate::life::modal::register_modal();
+    let (label, scenario, _) =
+        super::scenario_load::load_scenario(Path::new(&path), Some(21), &config.audio).unwrap();
+    // The bounded compatibility case retains the original 106-second prefix.
+    let end = std::env::var("TC1B_END")
+        .unwrap_or_else(|_| "130".into())
+        .parse::<f32>()
+        .unwrap();
+    let mut pcm_file =
+        std::io::BufWriter::new(std::fs::File::create(directory.join("habitat.bin")).unwrap());
+    let mut decisions =
+        std::io::BufWriter::new(std::fs::File::create(directory.join("decisions.jsonl")).unwrap());
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_at_end = stop.clone();
+    let mut opts = options();
+    opts.listener_forced = true;
+    opts.offline_body_probe = Some(Box::new(move |state, tick, _, pcm| {
+        if tick >= (end as f64 * 48000.) as u64 {
+            stop_at_end.store(true, Ordering::Relaxed);
+        }
+        pcm_file.write_all(&tick.to_le_bytes()).unwrap();
+        let sources: Vec<_> = state
+            .schedule_renderer
+            .loo_pcm
+            .iter()
+            .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Voice)
+            .collect();
+        pcm_file
+            .write_all(&(sources.len() as u32).to_le_bytes())
+            .unwrap();
+        for x in pcm[0] {
+            pcm_file.write_all(&x.to_le_bytes()).unwrap();
+        }
+        for source in sources {
+            pcm_file.write_all(&source.id.to_le_bytes()).unwrap();
+            pcm_file
+                .write_all(&source.generation.to_le_bytes())
+                .unwrap();
+            for x in &source.habitat {
+                pcm_file.write_all(&x.to_le_bytes()).unwrap();
+            }
+        }
+        let rows = crate::core::tonal_context::acquisition::take(
+            state.last_analysis_frame.map_or(0, |n| (n + 1) * 512),
+        );
+        for row in rows {
+            writeln!(decisions, "{}", serde_json::to_string(&row).unwrap()).unwrap();
+        }
+        decisions.flush().unwrap();
+    }));
+    let wiring = wire_runtime(&config, 48000, label, scenario, stop, opts).unwrap();
+    join(wiring).unwrap();
+}
+
+#[test]
 #[ignore = "L-1 acquisition requires the machine timing lock"]
 fn l1_sample_acquisition() {
     let path = std::env::var("L1_SAMPLE").expect("sample path");

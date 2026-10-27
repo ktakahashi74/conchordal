@@ -151,6 +151,16 @@ pub(super) fn advance_population(
     if state.reporter.is_some() {
         for voice in &mut state.pop.voices {
             let id = voice.id();
+            for record in voice.pitch_ctl.tonal_trace.drain(..) {
+                report_try(&mut state.reporter, "tonal context", |writer| {
+                    writer.write_tonal_context(
+                        id,
+                        voice.metadata.generation,
+                        cfg.fs as u32,
+                        &record,
+                    )
+                });
+            }
             if let Some(sequence) = &mut voice.pitch_ctl.own_sequence {
                 report_try(&mut state.reporter, "own sequence", |writer| {
                     writer.write_own_sequence(
@@ -170,6 +180,18 @@ pub(super) fn advance_population(
                         cfg.fs as u32,
                         tonality,
                         voice.pitch_ctl.own_sequence.is_some(),
+                    )
+                });
+            }
+            if let Some(me) = &mut voice.pitch_ctl.melodic {
+                report_try(&mut state.reporter, "melodic continuity", |writer| {
+                    writer.write_melodic_continuity(
+                        id,
+                        voice.metadata.generation,
+                        cfg.fs as u32,
+                        me,
+                        voice.pitch_ctl.own_sequence.is_none()
+                            && voice.pitch_ctl.own_tonality.is_none(),
                     )
                 });
             }
@@ -464,6 +486,8 @@ pub(super) fn emit_hop_reports(
     }
     if let Some(listener_state) = listener_state_update {
         let sample = ListenerStateSample {
+            tonal_context: listener_state.tonal_context,
+            tonal_context_end: listener_state.tonal_context_end,
             time_sec: listener_state.time_sec,
             generated_frame_id: listener_state.generated_frame_id,
             analysis_frame_id: listener_state.analysis_frame_id,
@@ -551,11 +575,24 @@ pub(super) fn render_and_route_audio(
                 sources.push(crate::core::stream::loo::SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    tonal_context: None,
                     id: voice.id(),
                     generation: voice.metadata.generation,
                     habitat: vec![0.; cfg.hop],
                 });
             }
+        }
+        for source in sources
+            .iter_mut()
+            .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Voice)
+        {
+            source.tonal_context = state
+                .pop
+                .voices
+                .iter()
+                .find(|v| v.id() == source.id && v.metadata.generation == source.generation)
+                .filter(|v| v.effective_control.pitch.follow_tonal_context > 0.)
+                .map(|v| v.effective_control.pitch.leave_self_out);
         }
         for flora in &state.pop.flora {
             if !sources
@@ -565,6 +602,7 @@ pub(super) fn render_and_route_audio(
                 sources.push(crate::core::stream::loo::SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Flora,
                     analyze_hr: flora.needs_hr_observer(),
+                    tonal_context: None,
                     id: flora.id,
                     generation: 0,
                     habitat: vec![0.0; cfg.hop],

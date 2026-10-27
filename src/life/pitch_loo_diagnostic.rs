@@ -89,6 +89,8 @@ pub(crate) fn replay(
     for variant in ["legacy", "corrected", "exact"] {
         let mut shadow = hill.clone();
         shadow.diagnostic_variant = Some(variant);
+        // Capture the adopted ME path, not its reporting-only counterfactual.
+        shadow.melodic_trace = false;
         let mut shadow_rng = rng.clone();
         CAPTURE.with_borrow_mut(|s| {
             s.active = true;

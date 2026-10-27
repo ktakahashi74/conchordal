@@ -470,6 +470,7 @@ fn rendered_loo_conformance() {
                     }
                 }
                 let mut input = LooInput {
+                    tonal_context: None,
                     exact_score: Some(candidate.snapshot().score_scan),
                     own_power_scan: own_power,
                     other_power_scan: other_power,
@@ -986,6 +987,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
         let mut sources = [crate::life::schedule_renderer::SourcePcm {
             kind: crate::core::stream::loo::SourceKind::Voice,
             analyze_hr: true,
+            tonal_context: None,
             id: 2,
             generation: 0,
             habitat: vec![0.; hop],
@@ -1170,6 +1172,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                         .map(|p| actual.evaluate_pitch_score_log2(*p))
                         .collect();
                     let mut legacy_input = LooInput {
+                        tonal_context: None,
                         exact_score: None,
                         own_power_scan: own_power.clone(),
                         other_power_scan: vec![0.; own_power.len()],

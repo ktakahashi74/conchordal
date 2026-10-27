@@ -288,6 +288,17 @@ pub(super) fn wire_runtime(
     let display_or_report = ui_tx.is_some() || reporter.is_some();
     let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
         .with_nsgt_power(display_or_report || taps[0].is_some() || resource_power);
+    let tonal_enabled = scenario.events.iter().flat_map(|e| &e.actions).any(
+        |a| matches!(a, Action::Spawn { spec, .. } if spec.control.pitch.follow_tonal_context > 0.),
+    );
+    let tonal_decoder = (tonal_enabled && core.fs == 48000.)
+        .then(|| std::sync::Arc::new(crate::core::tonal_context::Decoder::new()));
+    if let Some(decoder) = &tonal_decoder {
+        analysis_stream.enable_tonal_context(decoder.clone());
+    }
+    if tonal_enabled && tonal_decoder.is_none() {
+        tracing::warn!("follow_tonal_context requires 48000 Hz; queries remain unknown");
+    }
     let onset_habituation_enabled =
         scenario
             .events
@@ -336,8 +347,11 @@ pub(super) fn wire_runtime(
         listener_analysis_handle,
     ) = if listener_analysis_enabled {
         // The listener-side research tap also consumes its bus's NSGT power.
-        let listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
+        let mut listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
             .with_nsgt_power(display_or_report || taps[1].is_some());
+        if let Some(decoder) = &tonal_decoder {
+            listener_stream.enable_tonal_context(decoder.clone());
+        }
         let (presentation_tx, presentation_rx) = bounded::<analysis_worker::AnalysisHop>(64);
         let (result_tx, result_rx) = bounded::<analysis_worker::AnalysisResult>(4);
         let (update_tx, update_rx) = bounded::<LandscapeUpdate>(8);
@@ -410,7 +424,8 @@ pub(super) fn wire_runtime(
                 population_id,
                 spec,
                 ..
-            } if spec.control.pitch.leave_self_out
+            } if spec.control.pitch.follow_tonal_context > 0.
+                || spec.control.pitch.leave_self_out
                 || matches!(
                     &spec.articulation,
                     crate::scenario::ArticulationCoreConfig::Entrain {
@@ -537,14 +552,19 @@ pub(crate) fn init_runtime(
         None
     };
 
+    // Complete the optional probe table before starting device callbacks.
+    let prepare_tonal = scenario.events.iter().flat_map(|e| &e.actions).any(
+        |a| matches!(a, Action::Spawn { spec, .. } if spec.control.pitch.follow_tonal_context > 0.),
+    );
     // Audio
-    let (audio_out, audio_prod, audio_init_error) = if args.play {
+    let (audio_out, audio_prod, mut audio_init_error) = if args.play {
         match AudioOutput::new(
             latency_ms,
             config.analysis.hop_size,
             guard_mode,
             guard_meter.clone(),
             output_gain,
+            prepare_tonal,
         ) {
             Ok((out, prod)) => (Some(out), Some(prod), None),
             Err(e) => {
@@ -639,7 +659,7 @@ pub(crate) fn init_runtime(
         runtime_sample_rate,
         scenario_label,
         scenario,
-        stop_flag,
+        stop_flag.clone(),
         WiringOptions {
             #[cfg(test)]
             offline_body_probe: None,
@@ -665,6 +685,19 @@ pub(crate) fn init_runtime(
         eprintln!("{error}");
         std::process::exit(1);
     });
+
+    if prepare_tonal
+        && let Some(out) = &audio_out
+        && let Err(error) = out.start_prepared()
+    {
+        let message = error.to_string();
+        eprintln!("Audio start failed: {message}");
+        stop_flag.store(true, Ordering::SeqCst);
+        if args.nogui {
+            std::process::exit(1);
+        }
+        audio_init_error = Some(message);
+    }
 
     RuntimeInit {
         ui_frame_rx,

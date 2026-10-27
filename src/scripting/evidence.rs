@@ -577,3 +577,24 @@ pub const LISTENER_PROFILE: &[EvidenceDoc] = &[EvidenceDoc {
     en: "Not a mechanism (profile selection): see follow_own_sequence, follow_own_tonality, phrase_boundary and expressive_section for candidate models and author rules.",
     ja: "該当なし（型の選択）：候補モデルと作者規則の札は follow_own_sequence、follow_own_tonality、phrase_boundary、expressive_section を参照。",
 }];
+pub const MELODIC_CONTINUITY: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Candidate: von Hippel (2000), text-consistent AR(1) mean and variance; not an author-approved erratum.",
+        ja: "候補：von Hippel (2000) の本文に整合する AR(1) の平均・分散。著者公認の訂正ではない。",
+    },
+    EvidenceDoc {
+        en: "Author rule: finite-prefix Pearson estimation, committed self-onset adapter, continuous log-density scoring and replacement of movement cost and fixed-center gravity (§9.3.108).",
+        ja: "作者規則：有限 prefix の Pearson 推定、確定した自己 On の入力、連続音高の対数密度採点、移動費用と固定中心への重力の置換（§9.3.108）。",
+    },
+];
+
+pub const TONAL_CONTEXT: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Candidate (source matched): IPEM sensory short-term memory, 40-channel ANI, periodicity pitch and 0.1/1.5-second half-lives. This implements a hypothesis, not an established brain mechanism.",
+        ja: "候補（原典照合済み）：IPEMの感覚的短期記憶。40帯域ANI、periodicity pitch、半減時間0.1／1.5秒。仮説の実装であり、確定した脳機構ではない。",
+    },
+    EvidenceDoc {
+        en: "Author rule: sine probe, tabulated approximation, raw correlation readout, candidate rescoring and dwell coupling; default weight 0 (§9.3.110).",
+        ja: "作者規則：正弦probe、表による近似、相関の読み出し、候補再採点とdwellへの接続。重みの既定値は0（§9.3.110）。",
+    },
+];

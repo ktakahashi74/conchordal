@@ -20,6 +20,325 @@ mod tests {
     use super::*;
     use rand::SeedableRng;
 
+    fn produced_melodic(intervals: &[i32]) -> crate::life::melodic_continuity::MelodicContinuity {
+        let mut control = VoiceControl::default();
+        control.pitch.freq = 440.0;
+        control.pitch.pitch_apply_mode = PitchApplyMode::Rearticulate;
+        let mut voice = Voice::spawn_from_control(
+            control,
+            ArticulationCoreConfig::Drone {
+                sway: None,
+                breath_gain_init: None,
+            },
+            2,
+            0,
+            VoiceMetadata::default(),
+            48000.0,
+            None,
+            21,
+        );
+        voice.configure_control_hop(512, 64, 48000.0);
+        let mut observer = crate::life::melodic_continuity::MelodicContinuity::new(
+            48000.0,
+            1.0,
+            (220.0f32.log2(), 880.0f32.log2()),
+        );
+        observer.trace_enabled = true;
+        let mut deferred = DeferredPitch::default();
+        let mut batch = PhonationBatch::default();
+        voice.prepare_phonation_batch(&mut batch);
+        let tb = Timebase {
+            fs: 48000.0,
+            hop: 512,
+        };
+        let mut semitones = 0;
+        for i in 0..=intervals.len() {
+            let at = i as u64 * 6000;
+            if i > 0 {
+                semitones += intervals[i - 1];
+                let hz = (440.0 * 2.0f64.powf(semitones as f64 / 12.0)) as f32;
+                voice.force_set_pitch_log2(hz.log2());
+                voice
+                    .participation_pitch
+                    .rearticulations
+                    .push(Rearticulation {
+                        at,
+                        pitch_log2: hz.log2(),
+                    });
+            }
+            voice.tick_phonation_into(
+                &tb,
+                at,
+                &NeuralRhythms::default(),
+                None,
+                0.0,
+                1.0,
+                0.8,
+                &mut batch,
+            );
+            assert_eq!(batch.tones.len(), 1, "producer onset {i}");
+            voice.pitch_ctl.melodic = Some(observer);
+            voice.consume_sequence_execution(&mut deferred, &batch, &mut 0, &mut 0, at + 512);
+            observer = voice.pitch_ctl.melodic.take().unwrap();
+        }
+        assert_eq!(observer.prefix.n, intervals.len() + 1);
+        observer
+    }
+
+    #[test]
+    fn melodic_same_hop_causal_order_and_neutral_producer() {
+        let mut same_hop = 0;
+        for tie in [0.0, 0.5, 1.0] {
+            let mut control = VoiceControl::default();
+            control.pitch.freq = 330.0;
+            control.phonation.tie = tie;
+            control.pitch.pitch_apply_mode = PitchApplyMode::Rearticulate;
+            control.pitch.proposal_interval_sec = Some(0.001);
+            control.phonation.spec = crate::scenario::PhonationSpec {
+                timing: crate::scenario::PhonationTiming::Coupled(
+                    crate::scenario::CoupledTimingSpec {
+                        relation: crate::scenario::RhythmRelation::Participating,
+                        coupling: 0.8,
+                        ..Default::default()
+                    },
+                ),
+                duration: crate::scenario::DurationSpec::WhileAlive,
+                sustain_participation: true,
+            };
+            let make = |control| {
+                Voice::spawn_from_control(
+                    control,
+                    ArticulationCoreConfig::Drone {
+                        sway: None,
+                        breath_gain_init: None,
+                    },
+                    2,
+                    0,
+                    VoiceMetadata::default(),
+                    48000.0,
+                    None,
+                    21,
+                )
+            };
+            let mut old = make(control.clone());
+            control.pitch.melodic_continuity = 1.0;
+            let mut learned = make(control.clone());
+            learned.pitch_ctl.melodic.as_mut().unwrap().trace_enabled = true;
+            let mut causal = make(control);
+            causal.pitch_ctl.melodic = None;
+            let tb = Timebase {
+                fs: 48000.0,
+                hop: 512,
+            };
+            let mut field = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
+            for (i, &pitch) in field.space.centers_log2.iter().enumerate() {
+                field.consonance_field_score_eff[i] = (pitch * 7.0).sin();
+            }
+            for v in [&mut old, &mut causal, &mut learned] {
+                v.configure_control_hop(512, 64, tb.fs);
+            }
+            let mut a = PhonationBatch::default();
+            let mut b = PhonationBatch::default();
+            let mut c = PhonationBatch::default();
+            learned.prepare_phonation_batch(&mut c);
+            old.prepare_phonation_batch(&mut a);
+            causal.prepare_phonation_batch(&mut b);
+            for hop in 0..512 {
+                let at = hop * 512;
+                for (v, batch) in [
+                    (&mut old, &mut a),
+                    (&mut causal, &mut b),
+                    (&mut learned, &mut c),
+                ] {
+                    v.tick_phonation_into_with_arrival(
+                        &tb,
+                        at,
+                        &field.rhythm,
+                        None,
+                        0.0,
+                        1.0,
+                        0.8,
+                        None,
+                        Some(&field.space),
+                        batch,
+                    );
+                }
+                assert_eq!(
+                    serde_json::to_value(&a).unwrap(),
+                    serde_json::to_value(&b).unwrap(),
+                    "hop {hop}"
+                );
+                for step in 0..8 {
+                    for v in [&mut old, &mut causal, &mut learned] {
+                        v.set_control_tick(at + 512 + step * 64);
+                        v.tick_control(64.0 / tb.fs, &field.rhythm, &field, &[], &[], 0.0);
+                    }
+                }
+            }
+            let me = learned.pitch_ctl.melodic.as_ref().unwrap();
+            let records = &me.executions;
+            for decision in me.decisions.iter().filter(|d| d.old_terms_replaced) {
+                let previous = records
+                    .iter()
+                    .filter(|e| e.kind == ExecutionKind::On && e.sample < decision.at)
+                    .max_by_key(|e| e.sample)
+                    .unwrap();
+                let snapshot = decision.snapshot.unwrap();
+                let mut prefix = crate::life::melodic_continuity::Prefix::default();
+                for e in records
+                    .iter()
+                    .filter(|e| e.kind == ExecutionKind::On && e.sample < decision.at)
+                {
+                    prefix.push(12.0 * (e.frequency_hz.unwrap() as f64).log2());
+                }
+                let expected = prefix.distribution().unwrap();
+                assert_eq!(expected.mu, snapshot.distribution.mu);
+                assert_eq!(prefix.n, snapshot.n);
+                if previous.sample / 512 == decision.at / 512 {
+                    same_hop += 1;
+                }
+            }
+        }
+        assert!(same_hop > 0, "same-hop causal witness required");
+        println!("ME same-hop prior onset decisions={same_hop}");
+    }
+
+    #[test]
+    fn melodic_real_producer_and_report_independent_statistics() {
+        let mut a = produced_melodic(&[0, 2, -2]);
+        let mut b = produced_melodic(&[-4, 2, -2]);
+        let da = a.predict(30000).unwrap().distribution;
+        let db = b.predict(30000).unwrap().distribution;
+        assert!(da.variance > 0. && db.variance > 0.);
+        assert_eq!(
+            a.executions
+                .iter()
+                .filter(|r| r.kind == ExecutionKind::On)
+                .count(),
+            4
+        );
+        let mut quiet = crate::life::melodic_continuity::MelodicContinuity::new(
+            48000.,
+            1.,
+            (220.0f32.log2(), 880.0f32.log2()),
+        );
+        for record in &a.executions {
+            quiet.observe(record);
+        }
+        assert!(quiet.executions.is_empty());
+        assert_eq!(
+            serde_json::to_value(a.predict(30001).unwrap()).unwrap(),
+            serde_json::to_value(quiet.predict(30001).unwrap()).unwrap()
+        );
+        assert_eq!(a.epoch, 0);
+    }
+
+    #[test]
+    fn melodic_reconfigure_flushes_and_recovers_independently() {
+        for sq_mode in 0..3 {
+            let mut control = VoiceControl::default();
+            control.pitch.freq = 330.;
+            control.pitch.range_oct = 2.;
+            control.pitch.pitch_apply_mode = PitchApplyMode::Rearticulate;
+            control.pitch.proposal_interval_sec = Some(0.001);
+            control.pitch.melodic_continuity = 1.;
+            control.pitch.follow_own_sequence = if sq_mode > 0 { 1. } else { 0. };
+            control.phonation.spec.timing =
+                crate::scenario::PhonationTiming::Coupled(Default::default());
+            control.phonation.spec.sustain_participation = true;
+            control.phonation.spec.duration = crate::scenario::DurationSpec::WhileAlive;
+            assert!(control.supports_own_sequence());
+            let mut voice = Voice::spawn_from_control(
+                control.clone(),
+                ArticulationCoreConfig::Drone {
+                    sway: None,
+                    breath_gain_init: None,
+                },
+                2,
+                0,
+                VoiceMetadata::default(),
+                48000.,
+                None,
+                21,
+            );
+            voice.configure_control_hop(512, 64, 48000.);
+            if sq_mode == 2 {
+                voice
+                    .pitch_ctl
+                    .own_sequence
+                    .as_mut()
+                    .unwrap()
+                    .resource_stopped = true;
+            }
+            let me = voice.pitch_ctl.melodic.as_mut().unwrap();
+            for p in [100., 100., 102., 100.] {
+                me.prefix.push(p);
+            }
+            assert!(me.predict(0).is_some());
+            me.trace_enabled = true;
+            let field = Landscape::default();
+            voice.set_control_tick(64);
+            voice.tick_control(0.1, &field.rhythm, &field, &[], &[], 0.);
+            assert!(voice.sequence_control.as_ref().unwrap().used > 0);
+            control.pitch.range_oct = 1.;
+            voice.apply_effective_control(
+                control.clone(),
+                Dirty {
+                    body: false,
+                    pitch: true,
+                },
+            );
+            assert_eq!(voice.sequence_control.as_ref().unwrap().used, 0);
+            let me = voice.pitch_ctl.melodic.as_ref().unwrap();
+            assert_eq!(me.prefix.n, 0);
+            assert_eq!(me.epoch, 1);
+            assert!(me.decisions.iter().all(|d| !d.old_terms_replaced));
+            control.pitch.move_cost_coeff = 17.;
+            voice.apply_effective_control(
+                control.clone(),
+                Dirty {
+                    body: false,
+                    pitch: true,
+                },
+            );
+            assert_eq!(voice.pitch_ctl.melodic.as_ref().unwrap().epoch, 1);
+            control.pitch.pitch_apply_mode = PitchApplyMode::Glide;
+            voice.apply_effective_control(
+                control.clone(),
+                Dirty {
+                    body: false,
+                    pitch: true,
+                },
+            );
+            assert!(!voice.pitch_ctl.melodic.as_ref().unwrap().supported);
+            control.pitch.pitch_apply_mode = PitchApplyMode::Rearticulate;
+            voice.apply_effective_control(
+                control,
+                Dirty {
+                    body: false,
+                    pitch: true,
+                },
+            );
+            let me = voice.pitch_ctl.melodic.as_mut().unwrap();
+            assert!(me.supported);
+            assert_eq!(me.epoch, 3);
+            for p in [100., 100., 102., 100.] {
+                me.prefix.push(p);
+            }
+            assert!(me.predict(512).is_some());
+            if sq_mode == 2 {
+                assert!(
+                    voice
+                        .pitch_ctl
+                        .own_sequence
+                        .as_ref()
+                        .unwrap()
+                        .resource_stopped
+                );
+            }
+        }
+    }
+
     fn produced_history(intervals: &[i32]) -> crate::life::own_sequence::OwnSequence {
         let mut control = VoiceControl::default();
         control.pitch.freq = 440.0;
@@ -978,6 +1297,9 @@ impl Voice {
         for mut record in deferred.events.drain(..count) {
             record.execution_sequence = deferred.next_execution;
             deferred.next_execution += 1;
+            if let Some(me) = &mut self.pitch_ctl.melodic {
+                me.observe(&record);
+            }
             if let Some(sequence) = &mut self.pitch_ctl.own_sequence {
                 sequence.observe(record.clone());
             }

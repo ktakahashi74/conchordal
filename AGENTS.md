@@ -594,6 +594,28 @@ unknown key, or invalid numeric range fails the run.
 
 ## Environment-weighted pitch proposals
 
+- `melodic_continuity(w)` is initial-only, finite nonnegative f64, default zero.
+  Candidate: von Hippel (2000), text-consistent AR(1) mean and variance; the printed
+  distribution omits the mean offset and scale, and no authorized erratum is claimed.
+  Full-prefix sample variance and adjacent-series Pearson estimation, committed
+  self-On input, log-density scoring and replacement of old costs are author rules.
+- ME shares the deferred execution producer with SQ-1 but owns independent state.
+  A certified snapshot removes movement cost and fixed-center gravity before peak
+  extraction, maps candidates and baseline into the legal range, deduplicates mapped
+  pitches, then adds ME followed by SQ-1. ME failure replays the old scorer from the
+  saved RNG with the same SQ-1 snapshot; SQ-1 failure removes only SQ-1. Unknown
+  statistics retain the old costs. No state or new random draws exist at weight zero.
+- At most 16 resident ME states (including retiring Voices), 4,801 unique On identities,
+  38,400 decisions and 600 seconds from Scenario sample zero; 64 scored candidates.
+  Exceeding these limits disables ME until replacement. Statistics use constant
+  storage; the bounded deduplication sets and shared producer are separate costs.
+  Three or fewer onsets and uncertified positive residual variance are unknown;
+  outward-rounded f64 moment intervals reject numerical degeneracy without clipping.
+  Reconfiguration of center, range or support flushes with both models disabled and
+  starts a new ME epoch. Weight-only inheritance starts empty. Reports distinguish
+  ME-absent full-path decisions from SQ-1-absent decisions on ME's candidate set.
+
+
 - `follow_own_sequence(w)` is initial-only, finite nonnegative, default zero.
   PPM-Decay (Harrison et al. 2020, ppm v0.1.1) is a candidate model; the 100-cent
   executed-interval encoder, execution adapter and positive follow score are author
@@ -853,3 +875,17 @@ initialize independently. Do not feed authored endpoints to perceived closure.
   The selector composes existing + SQ + TK once; each failure removes only that
   term, and counterfactuals preserve the other. Zero TK retains the old SQ path.
   See ledger §9.3.107 and the independent Decimal fixture for acceptance scope.
+
+## Tonal context
+
+`core/tonal_context` owns the IPEM sensory-memory candidate and the authored
+1-cent probe decoder. `AnalysisStream` owns continuous mixed/presentation state;
+LOO observers clone complete pre-birth history and reset the TC epoch on live
+ownership changes. A PCM gap invalidates that run. `follow_tonal_context` is an
+initial-only, default-zero stepwise sustained pitch control. Pin one snapshot for
+dwell and candidate/baseline rescoring; one unknown candidate disables the whole
+selection term, while dwell falls back independently. Preserve the disabled
+path's RNG and clocks. Tables exist only for enabled runs and are shared;
+include construction memory and every LOO/retiring observer in cost reports.
+Use the fixed C/NumPy fixtures for observation agreement and consumer decisions
+for decoder acceptance. No preset adoption or modulation guarantee is implied.

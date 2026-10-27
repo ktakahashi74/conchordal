@@ -3580,3 +3580,185 @@ fn own_tonality_respawn_inherits_weight_without_learning() {
         assert_eq!(sequence.model.memory, [0.0; 12]);
     }
 }
+
+#[test]
+fn melodic_continuity_initial_final_shape_and_invalid_weights() {
+    let valid = "sustain().metric().seek_consonance().pitch_apply_mode(\"rearticulate\").rearticulate_above(0)";
+    for (suffix, expected, warns) in [
+        ("", 0.0, false),
+        (".melodic_continuity(0)", 0.0, false),
+        (".melodic_continuity(0.05)", 0.05, false),
+        (".melodic_continuity(1e100)", 1e100, false),
+        (".melodic_continuity(-1)", 0.0, true),
+        (".melodic_continuity(1).rearticulate_above(50)", 0.0, true),
+        (
+            ".melodic_continuity(1).pitch_apply_mode(\"glide\")",
+            0.0,
+            true,
+        ),
+        (".melodic_continuity(1).freq(220)", 0.0, true),
+    ] {
+        let (scenario, warnings) = run_script(&format!("place(sine().{valid}{suffix},at(220));"));
+        assert_eq!(
+            warnings
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|w| w.message.contains("melodic_continuity")),
+            warns
+        );
+        for action in scenario.events.iter().flat_map(|e| &e.actions) {
+            if let Action::Spawn { spec, .. } = action {
+                assert_eq!(spec.control.pitch.melodic_continuity, expected);
+            }
+        }
+    }
+    for value in [FLOAT::NAN, FLOAT::INFINITY, FLOAT::NEG_INFINITY] {
+        let mut spec = PopulationSpec::preset(BodyMethod::Sine);
+        spec.set_melodic_continuity(value);
+        assert_eq!(spec.control.pitch.melodic_continuity, 0.0);
+    }
+    assert!(
+        run_script_err("let p=create(sine(),1); p.melodic_continuity(1);")
+            .to_string()
+            .contains("melodic_continuity")
+    );
+}
+
+#[test]
+fn melodic_respawn_inherits_weight_without_learning() {
+    let (scenario, _) = run_script_with_seed(
+        "place(sine().sustain().steady().seek_consonance().pitch_apply_mode(\"rearticulate\").melodic_continuity(0.75).respawn_random().respawn_background_death_rate(10000),at(220));",
+        21,
+    );
+    let mut community = Community::new(Timebase {
+        fs: 48000.0,
+        hop: 512,
+    });
+    community.set_seed(scenario.seed);
+    let landscape = Landscape::default();
+    for action in scenario.events.iter().flat_map(|e| &e.actions) {
+        if matches!(
+            action,
+            Action::Spawn { .. } | Action::SetRespawnPolicy { .. }
+        ) {
+            community.apply_action(action.clone(), &landscape);
+        }
+    }
+    let parent = community.voices[0].id();
+    community.voices[0]
+        .pitch_ctl
+        .melodic
+        .as_mut()
+        .unwrap()
+        .prefix
+        .push(96.0);
+    community.advance(512, 0, 512.0 / 48000.0, &landscape);
+    community.cleanup_dead(0, 512.0 / 48000.0, false, &landscape);
+    let children: Vec<_> = community
+        .voices
+        .iter()
+        .filter(|v| v.id() != parent)
+        .collect();
+    assert!(!children.is_empty());
+    for child in children {
+        assert_eq!(child.effective_control.pitch.melodic_continuity, 0.75);
+        let sequence = child.pitch_ctl.melodic.as_ref().unwrap();
+        assert_eq!(sequence.epoch, 0);
+        assert_eq!(sequence.prefix.n, 0);
+    }
+}
+
+#[test]
+fn melodic_resident_limit_keeps_execution_records() {
+    let (scenario, _) = run_script(
+        "place(sine().sustain().steady().seek_consonance().pitch_apply_mode(\"rearticulate\").melodic_continuity(1),at(220).count(17));",
+    );
+    let mut community = Community::new(Timebase {
+        fs: 48000.0,
+        hop: 512,
+    });
+    let field = Landscape::default();
+    for action in scenario.events.iter().flat_map(|e| &e.actions) {
+        if matches!(action, Action::Spawn { .. }) {
+            community.apply_action(action.clone(), &field);
+        }
+    }
+    assert_eq!(community.voices.len(), 17);
+    assert_eq!(
+        community
+            .voices
+            .iter()
+            .filter(|v| v.pitch_ctl.melodic.as_ref().unwrap().resident)
+            .count(),
+        16
+    );
+    let rejected = community.voices.last_mut().unwrap();
+    let s = rejected.pitch_ctl.melodic.as_mut().unwrap();
+    assert!(s.resource_stopped);
+    assert_eq!(s.reason, Some("resident_state_resource_limit"));
+    s.trace_enabled = true;
+    let mut batch = crate::life::voice::PhonationBatch::default();
+    rejected.prepare_phonation_batch(&mut batch);
+    rejected.tick_phonation_into(
+        &Timebase {
+            fs: 48000.0,
+            hop: 512,
+        },
+        0,
+        &crate::core::modulation::NeuralRhythms::default(),
+        None,
+        0.0,
+        1.0,
+        0.8,
+        &mut batch,
+    );
+    rejected.finish_sequence_execution(&batch, 512);
+    let s = rejected.pitch_ctl.melodic.as_ref().unwrap();
+    assert!(!s.executions.is_empty());
+    assert_eq!(s.prefix.n, 0);
+}
+
+#[test]
+fn tonal_context_initial_final_shape_and_invalid_weights() {
+    let valid = "sustain().metric().seek_consonance().pitch_apply_mode(\"rearticulate\").rearticulate_above(0)";
+    for (suffix, expected, warns) in [
+        ("", 0.0, false),
+        (".follow_tonal_context(0)", 0.0, false),
+        (".follow_tonal_context(0.05)", 0.05, false),
+        (".follow_tonal_context(1e100)", 1e100, false),
+        (".follow_tonal_context(-1)", 0.0, true),
+        (".follow_tonal_context(1).rearticulate_above(50)", 0.0, true),
+        (
+            ".follow_tonal_context(1).pitch_apply_mode(\"glide\")",
+            0.0,
+            true,
+        ),
+        (".follow_tonal_context(1).freq(220)", 0.0, true),
+    ] {
+        let (scenario, warnings) = run_script(&format!("place(sine().{valid}{suffix},at(220));"));
+        assert_eq!(
+            warnings
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|w| w.message.contains("follow_tonal_context")),
+            warns
+        );
+        for action in scenario.events.iter().flat_map(|e| &e.actions) {
+            if let Action::Spawn { spec, .. } = action {
+                assert_eq!(spec.control.pitch.follow_tonal_context, expected);
+            }
+        }
+    }
+    for value in [FLOAT::NAN, FLOAT::INFINITY, FLOAT::NEG_INFINITY] {
+        let mut spec = PopulationSpec::preset(BodyMethod::Sine);
+        spec.set_follow_tonal_context(value);
+        assert_eq!(spec.control.pitch.follow_tonal_context, 0.0);
+    }
+    assert!(
+        run_script_err("let p=create(sine(),1); p.follow_tonal_context(1);")
+            .to_string()
+            .contains("follow_tonal_context")
+    );
+}

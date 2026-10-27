@@ -46,6 +46,8 @@ mod tests {
 
     fn listener_state(tension_level: f32, resolvability_level: f32) -> ListenerState {
         ListenerState {
+            tonal_context: None,
+            tonal_context_end: None,
             time_sec: 0.0,
             generated_frame_id: 0,
             analysis_frame_id: 0,

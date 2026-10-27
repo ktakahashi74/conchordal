@@ -408,6 +408,24 @@ impl PopulationSpec {
         };
     }
 
+    pub(super) fn set_melodic_continuity(&mut self, value: FLOAT) {
+        self.control.pitch.melodic_continuity = if value.is_finite() && value >= 0.0 {
+            value
+        } else {
+            self.warn("melodic_continuity() expects a finite nonnegative weight; using 0".into());
+            0.0
+        };
+    }
+
+    pub(super) fn set_follow_tonal_context(&mut self, value: FLOAT) {
+        self.control.pitch.follow_tonal_context = if value.is_finite() && value >= 0.0 {
+            value
+        } else {
+            self.warn("follow_tonal_context() expects a finite nonnegative weight; using 0".into());
+            0.0
+        };
+    }
+
     pub(super) fn set_dwell(&mut self, value: FLOAT) {
         if !(value as f32).is_finite() || value < 0.0 {
             self.warn(

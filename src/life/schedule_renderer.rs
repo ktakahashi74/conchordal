@@ -1087,6 +1087,7 @@ mod tests {
             let mut source = [SourcePcm {
                 kind: crate::core::stream::loo::SourceKind::Voice,
                 analyze_hr: true,
+                tonal_context: None,
                 id: 2,
                 generation: 7,
                 habitat: vec![0.0; 64],
@@ -1094,6 +1095,7 @@ mod tests {
             actual.loo_pcm = vec![SourcePcm {
                 kind: source[0].kind,
                 analyze_hr: true,
+                tonal_context: None,
                 id: 2,
                 generation: 7,
                 habitat: vec![0.0; 64],
@@ -1214,6 +1216,7 @@ mod tests {
                     .map(|(index, id)| SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
+                        tonal_context: None,
                         id,
                         generation: if index == 1 { 8 } else { 7 },
                         habitat: vec![0.; time.hop],
@@ -1224,6 +1227,7 @@ mod tests {
                     .map(|s| SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
+                        tonal_context: None,
                         id: s.id,
                         generation: s.generation,
                         habitat: s.habitat.clone(),
@@ -1958,6 +1962,7 @@ mod tests {
                 let mut sources = [SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    tonal_context: None,
                     id: 2,
                     generation: 7,
                     habitat: vec![0.; time.hop],
@@ -2033,6 +2038,7 @@ mod tests {
                 SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    tonal_context: None,
                     id: 2,
                     generation: 7,
                     habitat: vec![0.; time.hop],
@@ -2040,6 +2046,7 @@ mod tests {
                 SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    tonal_context: None,
                     id: 2,
                     generation: 8,
                     habitat: vec![0.; time.hop],
@@ -2047,6 +2054,7 @@ mod tests {
                 SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    tonal_context: None,
                     id: 999,
                     generation: 0,
                     habitat: vec![0.; time.hop],
@@ -2057,6 +2065,7 @@ mod tests {
                 .map(|s| SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    tonal_context: None,
                     id: s.id,
                     generation: s.generation,
                     habitat: vec![0.; time.hop],
@@ -2597,6 +2606,7 @@ mod tests {
                     SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
+                        tonal_context: None,
                         id: 2,
                         generation: 7,
                         habitat: vec![0.; 64],
@@ -2604,6 +2614,7 @@ mod tests {
                     SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
+                        tonal_context: None,
                         id: 2,
                         generation: 8,
                         habitat: vec![0.; 64],
@@ -2683,6 +2694,7 @@ mod tests {
         renderer.loo_pcm.push(SourcePcm {
             kind: crate::core::stream::loo::SourceKind::Voice,
             analyze_hr: true,
+            tonal_context: None,
             id: 2,
             generation: 7,
             habitat: vec![0.; tb.hop],
@@ -2733,6 +2745,7 @@ mod tests {
             renderer.loo_pcm.push(SourcePcm {
                 kind: crate::core::stream::loo::SourceKind::Flora,
                 analyze_hr: true,
+                tonal_context: None,
                 id: 7,
                 generation: 0,
                 habitat: vec![0.0; time.hop],

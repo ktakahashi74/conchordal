@@ -658,6 +658,16 @@ impl Voice {
             ));
         }
 
+        if effective_control.pitch.melodic_continuity > 0.0
+            && effective_control.supports_own_sequence()
+        {
+            let half = effective_control.pitch.range_oct.clamp(0.0, 6.0) * 0.5;
+            pitch_ctl.melodic = Some(crate::life::melodic_continuity::MelodicContinuity::new(
+                fs,
+                effective_control.pitch.melodic_continuity,
+                (target_pitch_log2 - half, target_pitch_log2 + half),
+            ));
+        }
         let body_envelope = &effective_control.body.envelope;
         let voice_adsr = Some(super::sound::ToneAdsr {
             attack_sec: body_envelope.attack_sec,
@@ -705,7 +715,8 @@ impl Voice {
 
         Voice {
             sequence_control: ((effective_control.pitch.follow_own_sequence > 0.0
-                || effective_control.pitch.follow_own_tonality > 0.0)
+                || effective_control.pitch.follow_own_tonality > 0.0
+                || effective_control.pitch.melodic_continuity > 0.0)
                 && effective_control.supports_own_sequence())
             .then(sequence_execution::DeferredPitch::default),
             participation_pitch: ParticipationPitchState {
@@ -866,22 +877,41 @@ impl Voice {
         self.pitch_ctl.apply_control(pitch);
     }
 
-    fn apply_effective_control(&mut self, control: VoiceControl, dirty: Dirty) {
-        let support_changed =
-            control.supports_own_sequence() != self.effective_control.supports_own_sequence();
-        let range_changed = control.pitch.freq != self.effective_control.pitch.freq
-            || control.pitch.range_oct != self.effective_control.pitch.range_oct;
-        if self.sequence_control.is_some() && (support_changed || range_changed) {
-            if self.pitch_ctl.own_tonality.is_some() {
-                self.flush_sequence_controls();
-            } else if let Some(sequence) = &mut self.pitch_ctl.own_sequence {
-                let was_supported = sequence.supported;
-                sequence.supported = false;
-                self.flush_sequence_controls();
-                self.pitch_ctl.own_sequence.as_mut().unwrap().supported = was_supported;
+    fn apply_effective_control(&mut self, mut control: VoiceControl, dirty: Dirty) {
+        if control.pitch.follow_tonal_context > 0. && !control.supports_own_sequence() {
+            tracing::warn!("follow_tonal_context disabled by unsupported live control");
+            control.pitch.follow_tonal_context = 0.;
+        }
+        if self.sequence_control.is_some()
+            && (control.supports_own_sequence() != self.effective_control.supports_own_sequence()
+                || control.pitch.freq != self.effective_control.pitch.freq
+                || control.pitch.range_oct != self.effective_control.pitch.range_oct)
+        {
+            let was_supported = self
+                .pitch_ctl
+                .own_sequence
+                .as_ref()
+                .is_some_and(|s| s.supported);
+            if let Some(s) = &mut self.pitch_ctl.own_sequence
+                && (self.pitch_ctl.own_tonality.is_none() || self.pitch_ctl.melodic.is_some())
+            {
+                s.supported = false;
+            }
+            if let Some(s) = &mut self.pitch_ctl.melodic {
+                s.supported = false;
+            }
+            self.flush_sequence_controls();
+            if let Some(s) = &mut self.pitch_ctl.own_sequence {
+                s.supported = was_supported;
             }
             let center = control.pitch.freq.log2();
             let half = control.pitch.range_oct.clamp(0.0, 6.0) * 0.5;
+            if let Some(me) = &mut self.pitch_ctl.melodic {
+                me.reconfigure(
+                    control.supports_own_sequence(),
+                    (center - half, center + half),
+                );
+            }
             if let Some(sequence) = &mut self.pitch_ctl.own_sequence {
                 sequence.reconfigure(
                     control.supports_own_sequence(),
@@ -1062,6 +1092,14 @@ impl Voice {
         neighbor_salience: &[f32],
         listener_pressure: ListenerPressure,
     ) {
+        #[cfg(test)]
+        crate::core::tonal_context::acquisition::owner(
+            self.id,
+            self.metadata.generation,
+            self.control_tick.unwrap_or(0),
+            current_freq,
+            self.effective_control.pitch.dwell,
+        );
         #[cfg(feature = "loo-diagnostic")]
         self::pitch_core::diagnostic::set_owner(
             self.id,
@@ -1069,6 +1107,31 @@ impl Voice {
             self.metadata.generation,
             self.control_tick.unwrap_or(0),
         );
+        if self.effective_control.pitch.follow_tonal_context > 0. {
+            let excluded = self.effective_control.pitch.leave_self_out;
+            self.pitch_ctl.loo_input_mut().tonal_context = landscape
+                .tonal_observations
+                .iter()
+                .find(|s| s.id == self.id && s.generation == self.metadata.generation)
+                .map(|s| {
+                    if s.excluded != excluded {
+                        None
+                    } else if s.shared {
+                        landscape.tonal_context.clone()
+                    } else {
+                        s.snapshot.clone()
+                    }
+                })
+                .unwrap_or_else(|| {
+                    if excluded {
+                        None
+                    } else {
+                        landscape.tonal_context.clone()
+                    }
+                });
+        } else {
+            self.pitch_ctl.loo_input_mut().tonal_context = None;
+        }
         let previous = self.target_pitch_log2();
         self.pitch_ctl.control_tick = self.control_tick;
         self.participation_pitch.adopted = self.pitch_ctl.update_pitch_target(

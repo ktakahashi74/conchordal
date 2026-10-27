@@ -9,6 +9,7 @@ pub struct AnalysisStream {
     params: LandscapeParams,
     onset_habituation: Option<crate::core::onset_habituation::OnsetHabituation>,
     next_sample: u64,
+    tonal_context: Option<crate::core::tonal_context::Context>,
 }
 
 impl AnalysisStream {
@@ -35,7 +36,37 @@ impl AnalysisStream {
             params,
             onset_habituation: None,
             next_sample: 0,
+            tonal_context: None,
         }
+    }
+
+    pub(crate) fn enable_tonal_context(
+        &mut self,
+        decoder: std::sync::Arc<crate::core::tonal_context::Decoder>,
+    ) {
+        self.tonal_context = Some(crate::core::tonal_context::Context::new(
+            decoder,
+            self.next_sample,
+        ));
+    }
+
+    pub(crate) fn tonal_snapshot(
+        &self,
+    ) -> Option<std::sync::Arc<crate::core::tonal_context::Snapshot>> {
+        self.tonal_context.as_ref().and_then(|s| s.snapshot())
+    }
+
+    pub(crate) fn new_tonal_observer(
+        &self,
+        birth: bool,
+    ) -> Option<crate::core::tonal_context::Context> {
+        self.tonal_context.as_ref().map(|s| {
+            if birth {
+                s.clone()
+            } else {
+                s.fresh(self.next_sample)
+            }
+        })
     }
 
     pub(crate) fn enable_onset_habituation(&mut self, period: f64) {
@@ -58,6 +89,9 @@ impl AnalysisStream {
         if let Some(state) = &mut self.onset_habituation {
             state.missing(sample.saturating_sub(self.next_sample));
             state.restart_frontend(window, self.analysis.frontend.band_hop_counts(), hop);
+        }
+        if let Some(state) = &mut self.tonal_context {
+            state.invalidate();
         }
         self.analysis.reset(&self.params);
         self.next_sample = sample;
@@ -83,6 +117,7 @@ impl AnalysisStream {
             params: self.params.clone(),
             onset_habituation: None,
             next_sample: self.next_sample,
+            tonal_context: None,
         };
         observer.analysis.landscape.onset_habituation_state_scan = std::sync::Arc::from([]);
         observer.analysis.landscape.onset_habituation_known = false;
@@ -119,6 +154,9 @@ impl AnalysisStream {
     pub fn process(&mut self, audio: &[f32]) -> &Landscape {
         if !audio.is_empty() {
             assert_eq!(audio.len(), self.hop_samples(), "one complete analysis hop");
+            if let Some(state) = &mut self.tonal_context {
+                state.process(audio);
+            }
             self.analysis.process_spectral(audio, 1, &self.params, true);
             self.next_sample = self.next_sample.saturating_add(audio.len() as u64);
             if let Some(state) = &mut self.onset_habituation {
@@ -147,6 +185,9 @@ impl AnalysisStream {
         if let Some(state) = &mut self.onset_habituation {
             state.reset();
             state.restart_frontend(window, self.analysis.frontend.band_hop_counts(), hop);
+        }
+        if let Some(state) = &mut self.tonal_context {
+            state.invalidate();
         }
         self.analysis.reset(&self.params);
         self.next_sample = 0;

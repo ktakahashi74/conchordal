@@ -4,6 +4,7 @@
 pub(crate) mod acquisition;
 mod ani;
 mod decoder;
+pub(crate) mod pitch_set;
 mod runtime;
 #[cfg(test)]
 mod tests;

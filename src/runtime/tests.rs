@@ -366,6 +366,8 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         control_update_mode: Default::default(),
         scaffold: Default::default(),
         harmonic_rhythm: 0,
+        remember_pitch_set: 0.,
+        pitch_set_position: None,
         meter_shaping: Default::default(),
         scene_markers: Vec::new(),
         events: vec![crate::scenario::TimedEvent {
@@ -866,6 +868,8 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             control_update_mode: Default::default(),
             scaffold: Default::default(),
             harmonic_rhythm: 0,
+            remember_pitch_set: 0.,
+            pitch_set_position: None,
             meter_shaping: Default::default(),
             scene_markers: Vec::new(),
             events: vec![crate::scenario::TimedEvent {
@@ -909,6 +913,8 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             control_update_mode: Default::default(),
             scaffold: Default::default(),
             harmonic_rhythm: 0,
+            remember_pitch_set: 0.,
+            pitch_set_position: None,
             meter_shaping: Default::default(),
             scene_markers: Vec::new(),
             events: vec![crate::scenario::TimedEvent {

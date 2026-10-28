@@ -592,3 +592,14 @@ pub const HARMONIC_RHYTHM: &[EvidenceDoc] = &[EvidenceDoc {
     en: "Author rule: shared opportunities for background changes. Zero is neutral; N is a composer quantity, not an inferred measure or a perceptual constant.",
     ja: "作者規則：背景の変化を共有の機会にまとめる。0は中立。Nは作曲者が置く量であり、推定小節長や知覚の定数ではない。",
 }];
+
+pub const PITCH_SET: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Author rule: cumulative periodicity experience, continuous-lag adapter, peak proposals and scoring. Zero is neutral (§9.3.114).",
+        ja: "作者規則：周期性の経験分布を累積し、その山を候補と採点へ戻す。連続化も作者規則であり、0は中立（§9.3.114）。",
+    },
+    EvidenceDoc {
+        en: "Candidate (source): IPEM ANI/periodicity observation. The complete control is not a published learning model or an established brain mechanism.",
+        ja: "候補（出典あり）：IPEMのANI・周期性観測。語全体が公表された学習モデルや確定した脳機構を実装するという意味ではない。",
+    },
+];

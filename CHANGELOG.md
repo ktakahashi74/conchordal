@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add experimental `remember_pitch_set(w)`, neutral by default. Actual habitat
+  periodicity supplies cumulative experience and legal peak proposals for free
+  HillClimb Voices. IPEM observation is a candidate; memory and generation coupling
+  are author rules. No scale, octave folding or listener-profile default is added.
+
 - Add neutral-by-default `harmonic_rhythm(N)`: shared background change opportunities
   for all Flora and supported stepwise held Voices. Preserve local pitch selection,
   private rest clocks and ecological pace; retain release/support-loss precedence.

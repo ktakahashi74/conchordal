@@ -87,6 +87,8 @@ pub(super) fn merge_latest_analysis_results(
     current_landscape.nsgt_power = frame.nsgt_power;
     current_landscape.loo = frame.loo;
     current_landscape.tonal_context = frame.tonal_context;
+    current_landscape.pitch_set = frame.pitch_set;
+    current_landscape.pitch_set_weight = frame.pitch_set_weight;
     current_landscape.tonal_observations = frame.tonal_observations;
     current_landscape.flora_observations = frame.flora_observations;
     current_landscape.spectral_history = frame.spectral_history;

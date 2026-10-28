@@ -189,6 +189,13 @@ enum ReportRecord<'a> {
         resource_stopped: bool,
         reason: Option<&'static str>,
     },
+    PitchSet {
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        #[serde(flatten)]
+        record: &'a crate::core::tonal_context::pitch_set::Decision,
+    },
     TonalContext {
         voice_id: u64,
         generation: u32,
@@ -829,6 +836,21 @@ impl JsonlReporter {
             tracked_h,
             tracked_raw_score,
             tracked_eff_score,
+        })
+    }
+
+    pub(crate) fn write_pitch_set(
+        &mut self,
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        record: &crate::core::tonal_context::pitch_set::Decision,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::PitchSet {
+            voice_id,
+            generation,
+            sample_rate,
+            record,
         })
     }
 

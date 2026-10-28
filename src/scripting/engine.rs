@@ -2027,6 +2027,35 @@ impl ScriptHost {
         // soft priors, symmetric to the consonance-field ops). These never
         // schedule a beat: `meter_stability` sets how readily a pulse forms,
         // `temporal_basin` sets the tempo region the pulse gravitates toward.
+        let ctx_for_pitch_set = ctx.clone();
+        let pitch_set_operation = move |call: NativeCallContext, value: f64| {
+            let mut ctx = ctx_for_pitch_set.lock().expect("lock script context");
+            let position = call.call_position();
+            if ctx.cursor != 0.0
+                || !ctx.scenario.events.is_empty()
+                || !ctx.scenario.scene_markers.is_empty()
+                || !ctx.scopes.is_empty()
+            {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    "remember_pitch_set must precede scene actions and scopes".into(),
+                    position,
+                )));
+            }
+            if !value.is_finite() || value < 0. {
+                return Err(Box::new(EvalAltResult::ErrorRuntime(
+                    "remember_pitch_set requires a finite nonnegative weight".into(),
+                    position,
+                )));
+            }
+            ctx.scenario.remember_pitch_set = value;
+            ctx.scenario.pitch_set_position = position.line().zip(position.position());
+            Ok::<_, Box<EvalAltResult>>(())
+        };
+        engine.register_fn("remember_pitch_set", pitch_set_operation.clone());
+        engine.register_fn(
+            "remember_pitch_set",
+            move |call: NativeCallContext, value: INT| pitch_set_operation(call, value as f64),
+        );
         let ctx_for_harmonic = ctx.clone();
         engine.register_fn(
             "harmonic_rhythm",

@@ -296,6 +296,9 @@ pub(super) fn wire_runtime(
     if let Some(decoder) = &tonal_decoder {
         analysis_stream.enable_tonal_context(decoder.clone());
     }
+    if scenario.remember_pitch_set > 0. {
+        analysis_stream.enable_pitch_set(scenario.remember_pitch_set);
+    }
     if tonal_enabled && tonal_decoder.is_none() {
         tracing::warn!("follow_tonal_context requires 48000 Hz; queries remain unknown");
     }

@@ -648,7 +648,9 @@ disappear as their research questions settle.",
                 if let Some(applies) = applies_line(doc, sigs, language) {
                     let _ = writeln!(out, "{applies}\n");
                 }
-                if language == ReferenceLanguage::Japanese && doc.name == "harmonic_rhythm" {
+                if language == ReferenceLanguage::Japanese && doc.name == "remember_pitch_set" {
+                    out.push_str("実際のhabitat音から周期性の経験分布を作り、自由音高のHillClimbで山を再提案する実験的な作者規則。場面の動作とscopeより前に有限非負の重みを指定する。省略と0は中立。入力は48 kHz、問い合わせ範囲は約15.84〜1378.13 Hz。自己を含む音を聴き、有効な聴取時間で累積平均する。候補と現在目標へ同じ記憶を加点し、Floraのlane選択には接続しない。PPの観測部分はIPEM候補、連続化・記憶・候補化・採点は作者規則。部分調波や平均で移動した山も含むため、発音基音の台帳とは呼ばない。欠測では経験を保持してPS観測を再開し、TCは従来どおり無効のまま。固定音階、オクターブ折り畳み、忘却時間の指定、listener profileへの追加はない。");
+                } else if language == ReferenceLanguage::Japanese && doc.name == "harmonic_rhythm" {
                     out.push_str("背景の変化をN拍ごとの共有機会にまとめる作者規則。Nは作曲者が置く非負整数で、0と省略は中立。最後の有効な指定を場面全体の初期前提とし、wait()後の記述も途中変更にはならない。対象は全Floraと、出生時にOnce／WhileAlive、Free、Rearticulate、閾値0のVoice。準備が整わなければ機会を見送る。解放と支持喪失は優先し、競合する実行中の音高設定はwarningとともに拒否する。調・和音・進行の表や、小節頭への再整列は導入しない。Nは推定小節長ではない。");
                 } else {
                     out.push_str(doc.summary);

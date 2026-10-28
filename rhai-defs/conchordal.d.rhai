@@ -1036,6 +1036,17 @@ fn release(population: Population);
 /// Evidence: Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 fn release(flora: Flora);
 
+/// [experimental] Reuse peaks of the periodicity distribution heard in habitat; zero is neutral.
+/// Author rule, Experimental. Set a finite nonnegative weight before scene actions or scopes. Default 0. At 48000 Hz, actual mixed habitat PCM, including self, supplies an IPEM periodicity observation (Candidate). Continuous-lag interpolation, normalization, cumulative listening-time averaging, two peak proposals and score addition are author rules. Free HillClimb Voices consume it; Flora does not. No pitch names, fixed scale, octave folding, forgetting control, or listener-profile adoption. Peaks can be subharmonics or shift under averaging; they are not a record of emitted fundamentals. Gaps retain experience and restart only PS observation; TC remains invalid. Long sessions adapt slowly.
+/// Evidence: Author rule: cumulative periodicity experience, continuous-lag adapter, peak proposals and scoring. Zero is neutral (§9.3.114).
+/// Evidence: Candidate (source): IPEM ANI/periodicity observation. The complete control is not a published learning model or an established brain mechanism.
+fn remember_pitch_set(weight: f64);
+/// [experimental] Reuse peaks of the periodicity distribution heard in habitat; zero is neutral.
+/// Author rule, Experimental. Set a finite nonnegative weight before scene actions or scopes. Default 0. At 48000 Hz, actual mixed habitat PCM, including self, supplies an IPEM periodicity observation (Candidate). Continuous-lag interpolation, normalization, cumulative listening-time averaging, two peak proposals and score addition are author rules. Free HillClimb Voices consume it; Flora does not. No pitch names, fixed scale, octave folding, forgetting control, or listener-profile adoption. Peaks can be subharmonics or shift under averaging; they are not a record of emitted fundamentals. Gaps retain experience and restart only PS observation; TC remains invalid. Long sessions adapt slowly.
+/// Evidence: Author rule: cumulative periodicity experience, continuous-lag adapter, peak proposals and scoring. Zero is neutral (§9.3.114).
+/// Evidence: Candidate (source): IPEM ANI/periodicity observation. The complete control is not a published learning model or an established brain mechanism.
+fn remember_pitch_set(weight: i64);
+
 /// Repeated/pulsed phonation mode.
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 fn repeat(population_spec: PopulationSpec) -> PopulationSpec;

@@ -10,6 +10,7 @@ pub struct AnalysisStream {
     onset_habituation: Option<crate::core::onset_habituation::OnsetHabituation>,
     next_sample: u64,
     tonal_context: Option<crate::core::tonal_context::Context>,
+    pitch_set: Option<crate::core::tonal_context::pitch_set::Tracker>,
 }
 
 impl AnalysisStream {
@@ -37,6 +38,7 @@ impl AnalysisStream {
             onset_habituation: None,
             next_sample: 0,
             tonal_context: None,
+            pitch_set: None,
         }
     }
 
@@ -46,6 +48,17 @@ impl AnalysisStream {
     ) {
         self.tonal_context = Some(crate::core::tonal_context::Context::new(
             decoder,
+            self.next_sample,
+        ));
+    }
+
+    pub(crate) fn enable_pitch_set(&mut self, weight: f64) {
+        assert_eq!(self.params.fs, 48000.);
+        self.analysis.landscape.pitch_set_weight = weight;
+        self.pitch_set = Some(crate::core::tonal_context::pitch_set::Tracker::new(
+            self.tonal_context.as_ref().is_some_and(|s| s.valid()),
+            self.hop_samples(),
+            self.window_samples(),
             self.next_sample,
         ));
     }
@@ -93,8 +106,14 @@ impl AnalysisStream {
         if let Some(state) = &mut self.tonal_context {
             state.invalidate();
         }
+        if let Some(state) = &mut self.pitch_set {
+            state.gap(sample);
+        }
+        let pitch_set_weight = self.analysis.landscape.pitch_set_weight;
         self.analysis.reset(&self.params);
+        self.analysis.landscape.pitch_set_weight = pitch_set_weight;
         self.next_sample = sample;
+        self.analysis.landscape.pitch_set = self.pitch_set.as_ref().and_then(|s| s.snapshot());
         self.analysis.landscape.onset_habituation_known = false;
     }
 
@@ -118,6 +137,7 @@ impl AnalysisStream {
             onset_habituation: None,
             next_sample: self.next_sample,
             tonal_context: None,
+            pitch_set: None,
         };
         observer.analysis.landscape.onset_habituation_state_scan = std::sync::Arc::from([]);
         observer.analysis.landscape.onset_habituation_known = false;
@@ -154,10 +174,22 @@ impl AnalysisStream {
     pub fn process(&mut self, audio: &[f32]) -> &Landscape {
         if !audio.is_empty() {
             assert_eq!(audio.len(), self.hop_samples(), "one complete analysis hop");
-            if let Some(state) = &mut self.tonal_context {
+            if self.pitch_set.is_none()
+                && let Some(state) = &mut self.tonal_context
+            {
                 state.process(audio);
             }
             self.analysis.process_spectral(audio, 1, &self.params, true);
+            if let Some(ps) = &mut self.pitch_set {
+                let mass = self.analysis.landscape.loudness_mass;
+                let gate = mass.is_finite() && mass > self.params.roughness_ref_eps.max(1e-12);
+                if let Some(tc) = &mut self.tonal_context {
+                    tc.process_with_pitch_set(audio, self.next_sample, gate, ps);
+                } else {
+                    ps.process_standalone(audio, self.next_sample, gate);
+                }
+                self.analysis.landscape.pitch_set = ps.snapshot();
+            }
             self.next_sample = self.next_sample.saturating_add(audio.len() as u64);
             if let Some(state) = &mut self.onset_habituation {
                 state.process(
@@ -189,8 +221,13 @@ impl AnalysisStream {
         if let Some(state) = &mut self.tonal_context {
             state.invalidate();
         }
+        let pitch_set_weight = self.analysis.landscape.pitch_set_weight;
         self.analysis.reset(&self.params);
+        self.analysis.landscape.pitch_set_weight = pitch_set_weight;
         self.next_sample = 0;
+        if self.pitch_set.is_some() {
+            self.enable_pitch_set(pitch_set_weight);
+        }
         self.analysis.landscape.onset_habituation_known = false;
     }
 
@@ -207,6 +244,30 @@ impl AnalysisStream {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pitch_set_scene_reset_restarts_without_reviving_tc() {
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let mut stream = AnalysisStream::new(params, nsgt).with_nsgt_power(false);
+        stream.enable_tonal_context(crate::core::tonal_context::Decoder::unqueried_for_test());
+        stream.enable_pitch_set(1.);
+        let pcm: Vec<_> = (0..51200)
+            .map(|n| (0.1 * (std::f64::consts::TAU * 220. * n as f64 / 48000.).sin()) as f32)
+            .collect();
+        for hop in pcm.chunks(512) {
+            stream.process(hop);
+        }
+        let before = stream.last().pitch_set.clone().unwrap();
+        assert!(stream.tonal_snapshot().is_some());
+        stream.reset();
+        assert!(stream.last().pitch_set.is_none());
+        for hop in pcm.chunks(512) {
+            stream.process(hop);
+        }
+        let after = stream.last().pitch_set.as_ref().unwrap();
+        assert_eq!(before.exposure, after.exposure);
+        assert!(stream.tonal_snapshot().is_none());
+    }
 
     #[test]
     fn onset_habituation_has_one_optional_owner_and_reset_invalidates_publication() {

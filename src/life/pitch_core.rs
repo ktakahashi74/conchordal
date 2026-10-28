@@ -125,6 +125,7 @@ pub struct PitchHillClimbPitchCore {
     pub(crate) sequence: Option<crate::life::own_sequence::SequenceSnapshot>,
     pub(crate) sequence_enabled: bool,
     pub(crate) tonal: Option<crate::core::tonal_context::Use>,
+    pub(crate) pitch_set: Option<crate::core::tonal_context::pitch_set::Use>,
     pub(crate) sequence_trace: bool,
     pub(crate) sequence_decision:
         std::cell::RefCell<Option<crate::life::own_sequence::SequenceDecision>>,
@@ -178,6 +179,7 @@ impl PitchHillClimbPitchCore {
             sequence: None,
             sequence_enabled: false,
             tonal: None,
+            pitch_set: None,
             sequence_trace: false,
             sequence_decision: Default::default(),
             scratch: Default::default(),
@@ -399,6 +401,31 @@ impl PitchHillClimbPitchCore {
         );
         candidates.retain(|x| x.is_finite());
         dedupe_log2_by_cents(candidates, 1.0);
+        if let Some(ps) = &self.pitch_set {
+            ps.added.borrow_mut().clear();
+            ps.tc_failed_added.set(false);
+            for candidate in candidates.iter_mut() {
+                *candidate = candidate.clamp(ps.bounds.0, ps.bounds.1);
+            }
+            candidates.dedup_by(|a, b| a.exp2().to_bits() == b.exp2().to_bits());
+            if let Some(memory) = &ps.snapshot {
+                for candidate in memory
+                    .candidates(current_target_log2, ps.bounds)
+                    .into_iter()
+                    .flatten()
+                {
+                    if !candidates
+                        .iter()
+                        .any(|p| p.exp2().to_bits() == candidate.exp2().to_bits())
+                    {
+                        candidates.push(candidate);
+                        if ps.trace {
+                            ps.added.borrow_mut().push(candidate);
+                        }
+                    }
+                }
+            }
+        }
         scored.clear();
         for &candidate in candidates.iter() {
             let mut pitch = candidate.clamp(fmin, fmax);
@@ -415,7 +442,12 @@ impl PitchHillClimbPitchCore {
             if let Some((lo, hi)) = melodic_bounds {
                 pitch = pitch.clamp(lo, hi);
             }
-            if melodic.is_some() && scored.last().is_some_and(|&(x, _)| x == pitch) {
+            if (melodic.is_some() && scored.last().is_some_and(|&(x, _)| x == pitch))
+                || (self.pitch_set.is_some()
+                    && scored
+                        .iter()
+                        .any(|&(x, _)| x.exp2().to_bits() == pitch.exp2().to_bits()))
+            {
                 continue;
             }
             let score = scorer(pitch);
@@ -451,6 +483,9 @@ impl PitchHillClimbPitchCore {
         let current_target_log2 = melodic_bounds.map_or(current_target_log2, |(lo, hi)| {
             current_target_log2.clamp(lo, hi)
         });
+        let current_target_log2 = self.pitch_set.as_ref().map_or(current_target_log2, |ps| {
+            current_target_log2.clamp(ps.bounds.0, ps.bounds.1)
+        });
         let current_adjusted = scorer(current_target_log2);
         #[cfg(test)]
         crate::core::tonal_context::acquisition::decision(
@@ -479,6 +514,16 @@ impl PitchHillClimbPitchCore {
                 if let Some(q) = tonal.query(candidate.exp2()) {
                     counterfactual.push((candidate, tonal.score(scorer(candidate), q)));
                 } else {
+                    if known.is_some()
+                        && let Some(ps) = &self.pitch_set
+                    {
+                        ps.tc_failed_added.set(
+                            ps.added
+                                .borrow()
+                                .iter()
+                                .any(|p| p.exp2().to_bits() == candidate.exp2().to_bits()),
+                        );
+                    }
                     known = None;
                     break;
                 }
@@ -491,7 +536,7 @@ impl PitchHillClimbPitchCore {
             }
         }
         if let Some(snapshot) = melodic {
-            if scored.len() > 64 {
+            if scored.len() > if self.pitch_set.is_some() { 66 } else { 64 } {
                 return Err("candidate_resource_limit");
             }
             if !current_adjusted.is_finite() {
@@ -526,14 +571,20 @@ impl PitchHillClimbPitchCore {
         rng: &mut R,
     ) -> TargetProposal {
         if !self.sequence_enabled {
-            return self.select_scored(current_target_log2, current_adjusted, scored, rng, None);
+            return self.select_with_pitch_set(
+                current_target_log2,
+                current_adjusted,
+                scored,
+                rng,
+                None,
+            );
         }
         counterfactual.clear();
         counterfactual.extend_from_slice(scored);
         let mut reason = None;
         let mut terms = Vec::new();
         if let Some(snapshot) = &self.sequence {
-            if scored.len() > 64 {
+            if scored.len() > if self.pitch_set.is_some() { 66 } else { 64 } {
                 reason = Some("candidate_resource_limit");
             } else {
                 for (pitch, score) in scored.iter_mut() {
@@ -564,21 +615,23 @@ impl PitchHillClimbPitchCore {
             scored.copy_from_slice(counterfactual);
         }
         let mut counter_rng = rng.clone();
-        let without = self.select_scored(
+        let without = self.select_with_pitch_set(
             current_target_log2,
             current_adjusted,
             counterfactual,
             &mut counter_rng,
             None,
         );
-        let mut precision = (self.sequence_trace && self.sequence.is_some()).then(|| {
-            crate::life::own_sequence::SelectionPrecision {
-                score_error_bound: terms.iter().map(|t| t.rounding_error).fold(0.0, f64::max)
-                    + 4e-12 * self.sequence.as_ref().unwrap().weight,
-                ..Default::default()
-            }
+        // The SQ-only f32 audit does not bound the composed PS candidate/affinity error.
+        let mut precision = (self.sequence_trace
+            && self.sequence.is_some()
+            && self.pitch_set.is_none())
+        .then(|| crate::life::own_sequence::SelectionPrecision {
+            score_error_bound: terms.iter().map(|t| t.rounding_error).fold(0.0, f64::max)
+                + 4e-12 * self.sequence.as_ref().unwrap().weight,
+            ..Default::default()
         });
-        let selected = self.select_scored(
+        let selected = self.select_with_pitch_set(
             current_target_log2,
             current_adjusted,
             scored,
@@ -604,6 +657,125 @@ impl PitchHillClimbPitchCore {
             candidates: terms,
             precision,
         });
+        selected
+    }
+
+    fn select_with_pitch_set<R: Rng + Clone>(
+        &self,
+        current: f32,
+        baseline: f32,
+        scored: &mut Vec<(f32, f32)>,
+        rng: &mut R,
+        precision: Option<&mut crate::life::own_sequence::SelectionPrecision>,
+    ) -> TargetProposal {
+        let Some(ps) = &self.pitch_set else {
+            return self.select_scored(current, baseline, scored, rng, precision);
+        };
+        let affinity = |p: f32| {
+            ps.snapshot
+                .as_ref()
+                .map_or(0., |s| s.affinity(f64::from(p)))
+        };
+        let scale = ps.weight.max(1.);
+        let mut shadow = rng.clone();
+        let choose = |items: &[(f32, f32)], weight: f64, rng: &mut R| {
+            let scale = weight.max(1.);
+            let score = |p: f32, b: f32| f64::from(b) / scale + (weight / scale) * affinity(p);
+            let mut best_pitch = current;
+            let mut best_score = f64::NEG_INFINITY;
+            let mut best_distance = f32::INFINITY;
+            for &(pitch, base) in items.iter() {
+                let value = score(pitch, base);
+                let distance = (pitch - current).abs();
+                let better = value > best_score + 1e-6 / scale;
+                let same = (value - best_score).abs() <= 1e-6 / scale;
+                let closer = distance < best_distance - 1e-6;
+                let same_distance = (distance - best_distance).abs() <= 1e-6;
+                let random = same && same_distance && rng.random_range(0.0_f32..1.0) < 0.5;
+                if better || (same && closer) || random {
+                    best_pitch = pitch;
+                    best_score = value;
+                    best_distance = distance;
+                }
+            }
+            let current_score = score(current, baseline);
+            let improvement = best_score - current_score;
+            let mut target = current;
+            if improvement > f64::from(IMPROVEMENT_THRESHOLD) / scale {
+                target = best_pitch;
+            } else if self.temperature > 0. {
+                let count = items
+                    .iter()
+                    .filter(|(p, _)| (*p - current).abs() > 1e-9)
+                    .count();
+                if count > 0 {
+                    let pick = rng.random_range(0..count);
+                    let &(p, b) = items
+                        .iter()
+                        .filter(|(p, _)| (*p - current).abs() > 1e-9)
+                        .nth(pick)
+                        .unwrap();
+                    let delta = score(p, b) - current_score;
+                    if delta >= 0.
+                        || f64::from(rng.random_range(0.0_f32..1.0))
+                            < (delta / (f64::from(self.temperature) / scale)).exp()
+                    {
+                        target = p;
+                    }
+                }
+            }
+            TargetProposal {
+                target_pitch_log2: target,
+                salience: (improvement / (0.2 / scale)).clamp(0., 1.) as f32,
+            }
+        };
+        let selected = choose(scored, ps.weight, rng);
+        let target = selected.target_pitch_log2;
+        if ps.trace {
+            let added = ps.added.borrow();
+            let subset: Vec<_> = scored
+                .iter()
+                .copied()
+                .filter(|(p, _)| {
+                    !added
+                        .iter()
+                        .any(|a| a.exp2().to_bits() == p.exp2().to_bits())
+                })
+                .collect();
+            let without_candidates = choose(&subset, ps.weight, &mut shadow.clone());
+            let outer_probes = [1. / 64., 16.].map(|weight| {
+                (
+                    weight,
+                    choose(scored, weight, &mut shadow.clone()).target_pitch_log2,
+                )
+            });
+            let mut same_candidates = scored.clone();
+            let without =
+                self.select_scored(current, baseline, &mut same_candidates, &mut shadow, None);
+            *ps.decision.borrow_mut() = Some(crate::core::tonal_context::pitch_set::Decision {
+                at: None,
+                epoch: ps.snapshot.as_ref().map(|s| s.epoch),
+                version: ps.snapshot.as_ref().map(|s| s.version),
+                support_end: ps.snapshot.as_ref().map(|s| s.support_end),
+                available_at: ps.snapshot.as_ref().map(|s| s.available_at),
+                exposure: ps.snapshot.as_ref().map_or(0., |s| s.exposure),
+                weight: ps.weight,
+                baseline: (current, baseline, affinity(current)),
+                candidates: scored.iter().map(|&(p, b)| (p, b, affinity(p))).collect(),
+                selected: target,
+                without_term: without.target_pitch_log2,
+                outer_probes,
+                added_candidates: added.clone(),
+                without_candidates: without_candidates.target_pitch_log2,
+                tc_failed_added: ps.tc_failed_added.get(),
+                saturated_base: scored.iter().any(|&(p, b)| {
+                    let a = (ps.weight / scale) * affinity(p);
+                    b != 0. && a + f64::from(b) / scale == a
+                }),
+                changed: target.exp2().to_bits() != without.target_pitch_log2.exp2().to_bits(),
+                salience: selected.salience,
+            });
+        }
         selected
     }
 
@@ -839,6 +1011,10 @@ impl PitchCore for PitchHillClimbPitchCore {
             && reason.is_none()
             && let Some(mut counter_rng) = original_rng
         {
+            let ps_record = self
+                .pitch_set
+                .as_ref()
+                .and_then(|p| p.decision.borrow_mut().take());
             let sequence_record = self.sequence_decision.borrow_mut().take();
             let tonal_known = self.tonal.as_ref().and_then(|t| t.selection_known.get());
             without = self
@@ -852,6 +1028,9 @@ impl PitchCore for PitchHillClimbPitchCore {
                 )
                 .target_pitch_log2;
             *self.sequence_decision.borrow_mut() = sequence_record;
+            if let Some(ps) = &self.pitch_set {
+                *ps.decision.borrow_mut() = ps_record;
+            }
             if let Some(tonal) = &self.tonal {
                 tonal.selection_known.set(tonal_known);
             }
@@ -2633,93 +2812,106 @@ mod tests {
 
     #[test]
     fn melodic_native_replacement_and_independent_failures() {
-        let landscape = test_landscape(&[(330., 1.), (440., 0.8)]);
-        let perceptual = test_adaptation(landscape.space.n_bins());
-        let features =
-            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
-        let current = 330.0f32.log2();
-        let mut me = melodic_snapshot(&[96., 96., 98., 96.]);
-        me.bounds = (220.0f32.log2(), 880.0f32.log2());
-        let mut core = PitchHillClimbPitchCore::new(200., current, 1000.);
-        core.set_move_cost_coeff(1000.);
-        core.set_temperature(0.0);
-        core.melodic = Some(me);
-        core.melodic_trace = true;
-        let run = |c: &mut PitchHillClimbPitchCore| {
-            let mut rng = SmallRng::seed_from_u64(21);
-            let result = c.propose_target(
-                current,
-                current,
-                330.,
-                1.,
-                &landscape,
-                &perceptual,
-                &features,
-                &[],
-                &mut rng,
+        for with_ps in [false, true] {
+            let landscape = test_landscape(&[(330., 1.), (440., 0.8)]);
+            let perceptual = test_adaptation(landscape.space.n_bins());
+            let features =
+                FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+            let current = 330.0f32.log2();
+            let mut me = melodic_snapshot(&[96., 96., 98., 96.]);
+            me.bounds = (220.0f32.log2(), 880.0f32.log2());
+            let mut core = PitchHillClimbPitchCore::new(200., current, 1000.);
+            core.set_move_cost_coeff(1000.);
+            core.set_temperature(0.0);
+            core.melodic = Some(me);
+            if with_ps {
+                core.pitch_set = Some(crate::core::tonal_context::pitch_set::Use {
+                    snapshot: Some(crate::core::tonal_context::pitch_set::heard_for_test(307.)),
+                    weight: 1.,
+                    bounds: me.bounds,
+                    trace: true,
+                    decision: Default::default(),
+                    added: Default::default(),
+                    tc_failed_added: Default::default(),
+                });
+            }
+            core.melodic_trace = true;
+            let run = |c: &mut PitchHillClimbPitchCore| {
+                let mut rng = SmallRng::seed_from_u64(21);
+                let result = c.propose_target(
+                    current,
+                    current,
+                    330.,
+                    1.,
+                    &landscape,
+                    &perceptual,
+                    &features,
+                    &[],
+                    &mut rng,
+                );
+                (result.target_pitch_log2, rng.random::<u64>())
+            };
+            let chosen = run(&mut core);
+            let mut zero_old = core.clone();
+            zero_old.set_tessitura_gravity(0.);
+            zero_old.set_move_cost_coeff(0.);
+            assert_eq!(chosen, run(&mut zero_old));
+            let mut failed_sequence = core.clone();
+            failed_sequence.sequence_enabled = true;
+            failed_sequence.sequence = Some(crate::life::own_sequence::SequenceSnapshot {
+                probabilities: [0.; 241],
+                alphabet: 241,
+                offset: 120,
+                previous_hz: 330.,
+                weight: 1.,
+                bounds_log2: me.bounds,
+                at: 10,
+                version: 1,
+                epoch: 0,
+            });
+            assert_eq!(chosen, run(&mut failed_sequence));
+            assert!(
+                failed_sequence
+                    .melodic_decision
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .old_terms_replaced
             );
-            (result.target_pitch_log2, rng.random::<u64>())
-        };
-        let chosen = run(&mut core);
-        let mut zero_old = core.clone();
-        zero_old.set_tessitura_gravity(0.);
-        zero_old.set_move_cost_coeff(0.);
-        assert_eq!(chosen, run(&mut zero_old));
-        let mut failed_sequence = core.clone();
-        failed_sequence.sequence_enabled = true;
-        failed_sequence.sequence = Some(crate::life::own_sequence::SequenceSnapshot {
-            probabilities: [0.; 241],
-            alphabet: 241,
-            offset: 120,
-            previous_hz: 330.,
-            weight: 1.,
-            bounds_log2: me.bounds,
-            at: 10,
-            version: 1,
-            epoch: 0,
-        });
-        assert_eq!(chosen, run(&mut failed_sequence));
-        assert!(
-            failed_sequence
-                .melodic_decision
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .old_terms_replaced
-        );
-        assert_eq!(
-            failed_sequence
-                .sequence_decision
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .reason,
-            Some("nonfinite_sequence_score")
-        );
-        core.sequence_enabled = true;
-        core.sequence = Some(crate::life::own_sequence::SequenceSnapshot {
-            probabilities: std::array::from_fn(|i| (i + 1) as f64 / 29161.0),
-            alphabet: 241,
-            offset: 120,
-            previous_hz: 330.,
-            weight: 0.1,
-            bounds_log2: me.bounds,
-            at: 10,
-            version: 1,
-            epoch: 0,
-        });
-        let mut legacy = core.clone();
-        legacy.melodic = None;
-        let expected = run(&mut legacy);
-        core.melodic.as_mut().unwrap().weight = f64::MAX;
-        assert_eq!(expected, run(&mut core));
-        assert!(core.sequence_decision.borrow().as_ref().unwrap().active);
-        assert_eq!(
-            core.melodic_decision.borrow().as_ref().unwrap().reason,
-            Some("nonfinite_melodic_score")
-        );
-        core.melodic.as_mut().unwrap().bounds = (20., 21.);
-        assert_eq!(expected, run(&mut core));
+            assert_eq!(
+                failed_sequence
+                    .sequence_decision
+                    .borrow()
+                    .as_ref()
+                    .unwrap()
+                    .reason,
+                Some("nonfinite_sequence_score")
+            );
+            core.sequence_enabled = true;
+            core.sequence = Some(crate::life::own_sequence::SequenceSnapshot {
+                probabilities: std::array::from_fn(|i| (i + 1) as f64 / 29161.0),
+                alphabet: 241,
+                offset: 120,
+                previous_hz: 330.,
+                weight: 0.1,
+                bounds_log2: me.bounds,
+                at: 10,
+                version: 1,
+                epoch: 0,
+            });
+            let mut legacy = core.clone();
+            legacy.melodic = None;
+            let expected = run(&mut legacy);
+            core.melodic.as_mut().unwrap().weight = f64::MAX;
+            assert_eq!(expected, run(&mut core));
+            assert!(core.sequence_decision.borrow().as_ref().unwrap().active);
+            assert_eq!(
+                core.melodic_decision.borrow().as_ref().unwrap().reason,
+                Some("nonfinite_melodic_score")
+            );
+            core.melodic.as_mut().unwrap().bounds = (20., 21.);
+            assert_eq!(expected, run(&mut core));
+        }
     }
 
     use super::*;
@@ -4121,6 +4313,269 @@ mod tests {
             selected.push(proposal.target_pitch_log2.to_bits());
         }
         assert_ne!(selected[0], selected[1]);
+    }
+
+    #[test]
+    fn pitch_set_history_changes_choice_and_unknown_tc_keeps_ps() {
+        let landscape = test_landscape(&[]);
+        let current = 250_f32.log2();
+        let bounds = (100_f32.log2(), 400_f32.log2());
+        let mut selected = Vec::new();
+        for hz in [220., 307.] {
+            let mut core = PitchHillClimbPitchCore::new(10., current, 0.);
+            core.pitch_set = Some(crate::core::tonal_context::pitch_set::Use {
+                snapshot: Some(crate::core::tonal_context::pitch_set::heard_for_test(hz)),
+                weight: 4.,
+                bounds,
+                trace: true,
+                decision: Default::default(),
+                added: Default::default(),
+                tc_failed_added: Default::default(),
+            });
+            let mut rng = SmallRng::seed_from_u64(21);
+            let without =
+                core.propose_with_scorer(current, current, &landscape, &[], &mut rng, |_| 0.);
+            let mut tonal = crate::core::tonal_context::Use::new();
+            tonal.pin(None, 1., bounds);
+            core.tonal = Some(tonal);
+            let mut rng2 = SmallRng::seed_from_u64(21);
+            let with =
+                core.propose_with_scorer(current, current, &landscape, &[], &mut rng2, |_| 0.);
+            assert_eq!(without.target_pitch_log2, with.target_pitch_log2);
+            assert_eq!(rng.random::<u64>(), rng2.random::<u64>());
+            assert_eq!(
+                core.tonal.as_ref().unwrap().selection_known.get(),
+                Some(false)
+            );
+            assert_ne!(with.target_pitch_log2, current);
+            selected.push(with.target_pitch_log2);
+            // SQ failure restores its own term and leaves PS active.
+            core.sequence_enabled = true;
+            core.sequence = Some(crate::life::own_sequence::SequenceSnapshot {
+                probabilities: [0.; 241],
+                alphabet: 241,
+                offset: 120,
+                previous_hz: 250.,
+                weight: 1.,
+                bounds_log2: bounds,
+                at: 0,
+                version: 0,
+                epoch: 0,
+            });
+            let mut rng3 = SmallRng::seed_from_u64(21);
+            let failed_sq =
+                core.propose_with_scorer(current, current, &landscape, &[], &mut rng3, |_| 0.);
+            assert_eq!(failed_sq.target_pitch_log2, with.target_pitch_log2);
+            assert!(!core.sequence_decision.borrow().as_ref().unwrap().active);
+            core.sequence_trace = true;
+            core.sequence
+                .as_mut()
+                .unwrap()
+                .probabilities
+                .fill(1. / 241.);
+            core.propose_with_scorer(current, current, &landscape, &[], &mut rng3, |_| 0.);
+            let decision = core.sequence_decision.borrow();
+            let decision = decision.as_ref().unwrap();
+            assert!(decision.active);
+            assert!(!decision.candidates.is_empty());
+            assert!(decision.precision.is_none());
+        }
+        assert_ne!(selected[0], selected[1]);
+    }
+
+    #[test]
+    fn pitch_set_added_unknown_candidate_disables_only_tc() {
+        let landscape = test_landscape(&[]);
+        let current = 250_f32.log2();
+        let bounds = (100_f32.log2(), 400_f32.log2());
+        let mut core = PitchHillClimbPitchCore::new(10., current, 0.);
+        core.pitch_set = Some(crate::core::tonal_context::pitch_set::Use {
+            snapshot: Some(crate::core::tonal_context::pitch_set::heard_for_test(220.)),
+            weight: 4.,
+            bounds,
+            trace: true,
+            decision: Default::default(),
+            added: Default::default(),
+            tc_failed_added: Default::default(),
+        });
+        let run = |core: &PitchHillClimbPitchCore| {
+            let mut rng = SmallRng::seed_from_u64(21);
+            core.propose_with_scorer(current, current, &landscape, &[], &mut rng, |_| 0.)
+        };
+        let expected = run(&core);
+        let record = core
+            .pitch_set
+            .as_ref()
+            .unwrap()
+            .decision
+            .borrow()
+            .clone()
+            .unwrap();
+        assert!(!record.added_candidates.is_empty());
+        let mut context = crate::core::tonal_context::Context::new(
+            crate::core::tonal_context::Decoder::unqueried_for_test(),
+            0,
+        );
+        context.process(&vec![0.1; 12000]);
+        let mut tonal = crate::core::tonal_context::Use::new();
+        tonal.pin(context.snapshot(), 1., bounds);
+        tonal.seed_query_for_test(current.exp2(), Some(0.));
+        for &(p, _, _) in &record.candidates {
+            if !record.added_candidates.contains(&p) {
+                tonal.seed_query_for_test(p.exp2(), Some(0.));
+            }
+        }
+        core.tonal = Some(tonal);
+        let actual = run(&core);
+        assert_eq!(actual.target_pitch_log2, expected.target_pitch_log2);
+        assert_eq!(
+            core.tonal.as_ref().unwrap().selection_known.get(),
+            Some(false)
+        );
+        assert!(
+            core.pitch_set
+                .as_ref()
+                .unwrap()
+                .decision
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .tc_failed_added
+        );
+    }
+
+    #[test]
+    #[ignore = "PS1_UNIT: independent continuous histories and candidate acceptance"]
+    fn pitch_set_independent_candidate_selection() {
+        let root = std::path::PathBuf::from(std::env::var("PS1_UNIT").unwrap());
+        let data: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.join("candidate-acceptance.json")).unwrap())
+                .unwrap();
+        let load = |hz: i64| -> Vec<f64> {
+            let d: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(root.join(format!("reference/history-{hz}.json"))).unwrap(),
+            )
+            .unwrap();
+            d["coefficients"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_f64().unwrap())
+                .collect()
+        };
+        let first = load(220);
+        let mut definite = 0;
+        for case in data["cases"].as_array().unwrap() {
+            if case["extraction_uncertain"].as_bool().unwrap()
+                || case["selection_uncertain"].as_bool().unwrap()
+            {
+                continue;
+            }
+            let second = load(case["history"][1].as_i64().unwrap());
+            let mix = case["history"][2].as_f64().unwrap();
+            let memory = crate::core::tonal_context::pitch_set::coefficients_for_test(
+                first
+                    .iter()
+                    .zip(second)
+                    .map(|(a, b)| (1. - mix) * a + mix * b)
+                    .collect(),
+            );
+            let hz = case["current_hz"].as_f64().unwrap();
+            let current = hz.log2() as f32;
+            let bounds = (
+                case["bounds"][0].as_f64().unwrap().log2() as f32,
+                case["bounds"][1].as_f64().unwrap().log2() as f32,
+            );
+            let base = |p: f32| {
+                let p = f64::from(p);
+                let target = hz.log2();
+                (-0.12 * (p - target).powi(2) + 0.03 * (3. * p).sin()
+                    - 0.02 * (p - (target + 0.1)).powi(2)
+                    + 0.01 * (5. * p).cos()) as f32
+            };
+            let mut scored: Vec<_> = [-0.04, 0., 0.04]
+                .into_iter()
+                .map(|d| ((hz.log2() + d) as f32).clamp(bounds.0, bounds.1))
+                .map(|p| (p, base(p)))
+                .collect();
+            for p in memory.candidates(current, bounds).into_iter().flatten() {
+                if !scored
+                    .iter()
+                    .any(|(x, _)| x.exp2().to_bits() == p.exp2().to_bits())
+                {
+                    scored.push((p, base(p)));
+                }
+            }
+            let mut core = PitchHillClimbPitchCore::new(0., current, 0.);
+            core.pitch_set = Some(crate::core::tonal_context::pitch_set::Use {
+                snapshot: Some(memory),
+                weight: case["weight"].as_f64().unwrap(),
+                bounds,
+                trace: false,
+                decision: Default::default(),
+                added: Default::default(),
+                tc_failed_added: Default::default(),
+            });
+            let actual = core.select_with_pitch_set(
+                current,
+                base(current),
+                &mut scored,
+                &mut SmallRng::seed_from_u64(21),
+                None,
+            );
+            let expected = case["reference_hz"].as_f64().unwrap().log2();
+            let allowance = case["position_error_cents"].as_f64().unwrap() / 1200.
+                + 4. * f64::from(f32::EPSILON);
+            assert!(
+                (f64::from(actual.target_pitch_log2) - expected).abs() <= allowance,
+                "{case}"
+            );
+            definite += 1;
+        }
+        println!(
+            "independent candidate extraction and final Rust selection: {definite} definite decisions"
+        );
+        assert!(definite > 0);
+    }
+
+    #[test]
+    fn pitch_set_narrow_range_large_weight_and_shadow_rng() {
+        let landscape = test_landscape(&[]);
+        let current = 220_f32.log2();
+        let mut core = PitchHillClimbPitchCore::new(500., current, 0.);
+        let memory = crate::core::tonal_context::pitch_set::heard_for_test(220.);
+        core.pitch_set = Some(crate::core::tonal_context::pitch_set::Use {
+            snapshot: Some(memory),
+            weight: 1e300,
+            bounds: (219_f32.log2(), 221_f32.log2()),
+            trace: false,
+            decision: Default::default(),
+            added: Default::default(),
+            tc_failed_added: Default::default(),
+        });
+        core.temperature = 0.1;
+        let mut rng = SmallRng::seed_from_u64(19);
+        let mut shadow = rng.clone();
+        let quiet = core.propose_with_scorer(current, current, &landscape, &[], &mut rng, |p| -p);
+        core.pitch_set.as_mut().unwrap().trace = true;
+        let traced =
+            core.propose_with_scorer(current, current, &landscape, &[], &mut shadow, |p| -p);
+        assert_eq!(quiet.target_pitch_log2, traced.target_pitch_log2);
+        assert_eq!(rng.random::<u64>(), shadow.random::<u64>());
+        assert!(traced.salience.is_finite());
+        assert!((219_f32.log2()..=221_f32.log2()).contains(&traced.target_pitch_log2));
+        for &(p, _, _) in &core
+            .pitch_set
+            .as_ref()
+            .unwrap()
+            .decision
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .candidates
+        {
+            assert!((219_f32.log2()..=221_f32.log2()).contains(&p));
+        }
     }
 
     #[test]

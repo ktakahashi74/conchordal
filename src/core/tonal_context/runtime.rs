@@ -22,6 +22,10 @@ impl Context {
         Self::new(self.decoder.clone(), at)
     }
 
+    pub(crate) fn valid(&self) -> bool {
+        self.model.valid
+    }
+
     pub(crate) fn invalidate(&mut self) {
         self.model.valid = false;
     }
@@ -30,6 +34,16 @@ impl Context {
         for &x in pcm {
             self.model.push(f64::from(x));
         }
+    }
+
+    pub(crate) fn process_with_pitch_set(
+        &mut self,
+        pcm: &[f32],
+        at: u64,
+        gate: bool,
+        tracker: &mut super::pitch_set::Tracker,
+    ) {
+        tracker.process(pcm, at, gate, Some(&mut self.model));
     }
 
     pub(crate) fn snapshot(&self) -> Option<Arc<Snapshot>> {
@@ -117,6 +131,11 @@ impl Use {
         let q = snapshot.query(hz);
         cache.push((key, q));
         q
+    }
+
+    #[cfg(test)]
+    pub(crate) fn seed_query_for_test(&self, hz: f32, value: Option<f64>) {
+        self.cache.borrow_mut().push((hz.to_bits(), value));
     }
 
     pub(crate) fn score(&self, old: f32, q: f64) -> f32 {

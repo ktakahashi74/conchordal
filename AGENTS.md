@@ -899,3 +899,15 @@ Temporary range exits resume only at an opportunity, including same-pitch resume
 Reject conflicting live pitch patches without dropping unrelated controls. N=4
 in the audition is a fixture, not an adopted default. No authored harmony or
 perceptual foreground classifier is implied.
+
+## Heard periodicity memory (PS-1, §9.3.114)
+
+`remember_pitch_set(w)` is an initial-only scene author rule, default 0 and
+Experimental. The IPEM observation is a candidate; continuous-lag adaptation,
+normalization, cumulative occupancy, peak proposals and scores are author rules.
+One mixed habitat owner includes self; never train from planned pitches or clone
+PS learning into LOO/listener observers. Preserve TC invalidation over gaps while
+PS retains experience and starts a fresh observation epoch. Free HillClimb uses
+legal peaks and the same snapshot for baseline and candidates, including ME/SQ
+fallback. Omission/0 bypass observation, candidate changes and score arithmetic.
+No fixed scale, octave folding, memory-time control or profile adoption is implied.

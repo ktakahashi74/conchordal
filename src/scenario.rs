@@ -77,6 +77,8 @@ pub struct Scenario {
     /// Scene-global shaping of the emergent production meter (composer-set soft
     /// priors: attractor depth + frequency basin). Default = neutral.
     pub harmonic_rhythm: u64,
+    pub remember_pitch_set: f64,
+    pub(crate) pitch_set_position: Option<(usize, usize)>,
     pub meter_shaping: MeterShaping,
     pub scene_markers: Vec<SceneMarker>,
     pub events: Vec<TimedEvent>,

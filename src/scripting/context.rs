@@ -102,6 +102,8 @@ impl ScriptContext {
                 control_update_mode: ControlUpdateMode::SnapshotPhased,
                 scaffold: ScaffoldConfig::Off,
                 harmonic_rhythm: 0,
+                remember_pitch_set: 0.,
+                pitch_set_position: None,
                 meter_shaping: MeterShaping::default(),
                 scene_markers: Vec::new(),
                 events: Vec::new(),

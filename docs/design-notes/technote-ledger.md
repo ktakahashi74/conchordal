@@ -11072,3 +11072,73 @@ that audition. Live N changes, glide consumers, perceptual roles, measure resets
 and new acoustic harmonic-change cues are outside this first version. Neither
 numerical synchronization nor offline completion alone establishes musical
 benefit or real-time operation on an unmeasured load.
+
+<a id="heard-periodicity-memory"></a>
+### 9.3.114 Reusing heard periodicity experience (PS-1)
+
+`remember_pitch_set(w)` is an Experimental, initial-only **author rule**, neutral
+at omission/0. Actual mixed habitat PCM, including self, supplies periodicity;
+no intended note, fixed tuning, pitch-class profile, root progression or authored
+scale trains this state. The observation component uses the IPEM ANI/PP
+**candidate**, pinned to `6907d7373d134b6d4856033473177606a11ad61f`.
+Continuous-lag interpolation, normalization, cumulative occupancy, peak proposals
+and score addition are author rules, not a published long-term learning model.
+
+The PS-1 design and review recorded full-text consultation of Brown & Jordania
+(2013), Loui et al. (2010), Lantz et al. (2020), and Jacoby et al. (2019).
+These support experience-sensitive judgments and qualify claims about universals;
+they do not derive this generator. Loui's scale and grammar were experimenter
+supplied. Lantz separates event frequency from total duration, so occupancy does
+not explain all learning effects. Jacoby's group differences do not establish
+universal octave folding. Oram & Cuddy (1995), Miranda (2002), and the cited
+Demany studies were checked at abstract level (the review did not reacquire
+all abstracts). Savage et al. (2015) and Micheyl et al. (2012) were consulted
+through indexed passages, not complete directly retrieved articles. De Boer
+(2000) was seen as a bibliography entry. This implementation inherits those
+recorded access levels; it does not claim a new literature replication.
+IPEM agreement means the retained unmodified C and explicit NumPy transcription,
+including the resampling and ASCII boundary, not a new MATLAB execution.
+
+The continuous coordinate is absolute `log2(Hz)`, without octave folding.
+Four-point Lagrange interpolation of nonnegative FANI is rectified before each
+correlation product. A nonnegative cubic B-spline approximates this continuous
+lag function over lags 2–174, about 15.84–1378.13 Hz at 48 kHz input. Numerical
+knots are not allowed pitches: interior derivative roots supply continuous peaks.
+Frame coefficients are normalized by their spline integral. With valid duration
+d and accumulated duration E, update `M'=(E*M+d*q)/(E+d)`. This rate follows
+algebraically from the chosen occupancy estimator; choosing occupancy and no
+forgetting is itself an author rule. Silence, gaps and incomplete windows add no
+exposure. Long sessions necessarily adapt more slowly.
+
+One mixed owner updates experience once per PP interval, matching source support
+to the habitat intensity gate before habituation. Duplicate snapshot reads and
+Latest delivery do not change learning. TC and PS share continuous ANI/FANI while
+TC is valid; after a gap, TC keeps its invalid state and PS restarts observation
+with retained M/E. LOO births clone TC history without copying PS learning.
+PS alone constructs no decoder table or presentation observer. Memory peaks can
+be subharmonics or move under averaging: 220/307 Hz control histories have an
+averaged upper peak near 296.5 Hz in the independent reference. They are not an
+exact record of performed fundamentals.
+
+Free HillClimb Voices append at most the strongest and nearest legal interior
+peaks after existing candidate generation. The same pinned memory scores the
+current target and all candidates, with support-external proposals retained at
+zero PS contribution. TC's all-candidate unknown fallback, ME's RNG-restored
+regeneration, and SQ's term-only fallback retain PS. Its score is `B+w*A`, with
+`A=M/max(M)`. Positive-branch arithmetic rescales scores, comparison tolerances,
+improvement threshold, temperature and salience together for large finite w.
+Zero takes the original arithmetic and RNG path. Proposal timing, HRY eligibility,
+participation and articulation are unchanged; Flora does not query this memory.
+
+Acceptance distinguishes source-model agreement, density/mass and cumulative
+peak approximation, candidate extraction, final selection, history-only causal
+controls, neutral identity across the nine registered scenes and release hop
+costs. A common-candidate score comparison alone cannot establish candidate
+agreement. Near peak-height/distance or selection boundaries, uncertainty is
+reported separately; definite decisions must be nonempty and agree. Single-note
+collapse, loss of a voice or support-edge attraction is not successful learning.
+Weight selection uses same-candidate counterfactual decisions near 25%, with an
+outside-range probe when all initial weights lie on one side, not listener ranking.
+The final v6b pair is material for one author audition, not evidence of adoption.
+Forgetting, live weight changes, Flora consumers, presentation memory, fixed scale
+formation and automatic listener-profile inclusion remain outside this version.

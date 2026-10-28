@@ -152,6 +152,8 @@ pub struct Landscape {
     pub(crate) flora_observations: Vec<crate::core::stream::loo::FloraObservation>,
     pub(crate) tonal_observations: Vec<crate::core::stream::loo::TonalObservation>,
     pub(crate) tonal_context: Option<std::sync::Arc<crate::core::tonal_context::Snapshot>>,
+    pub(crate) pitch_set_weight: f64,
+    pub(crate) pitch_set: Option<std::sync::Arc<crate::core::tonal_context::pitch_set::Snapshot>>,
     pub(crate) loo: Vec<crate::core::stream::loo::Observation>,
     pub(crate) spectral_history:
         Option<std::sync::Arc<crate::core::spectral_history::SpectralHistorySnapshot>>,
@@ -217,6 +219,8 @@ impl Landscape {
             spectral_history: None,
             loo: Vec::new(),
             tonal_context: None,
+            pitch_set: None,
+            pitch_set_weight: 0.,
             tonal_observations: Vec::new(),
             flora_observations: Vec::new(),
             roughness01_scalar: 0.0,

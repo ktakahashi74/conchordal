@@ -162,6 +162,16 @@ pub(super) fn load_scenario(
         .unwrap_or("scenario")
         .to_string();
     let scenario = compile_scenario_from_script(path, seed)?;
+    if scenario.remember_pitch_set > 0. && audio.sample_rate != 48000 {
+        let position = scenario
+            .pitch_set_position
+            .map(|(line, column)| format!(":{line}:{column}"))
+            .unwrap_or_default();
+        return Err(format!(
+            "{}{position}: remember_pitch_set requires 48000 Hz",
+            path.display()
+        ));
+    }
     let db = audio.output_gain_db + scenario.output_gain_db;
     let output_gain = 10.0f32.powf(db / 20.0);
     if !db.is_finite() || !output_gain.is_finite() || output_gain <= 0.0 {

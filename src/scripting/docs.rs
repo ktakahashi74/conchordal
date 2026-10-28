@@ -59,7 +59,14 @@ pub enum Tier {
 
 /// Candidate core verbs under audition: composing purpose, but research-grade
 /// stability until validated.
-const EXPERIMENTAL_FNS: &[&str] = &["phonate_when_viable", "flora", "fade", "tone", "residual"];
+const EXPERIMENTAL_FNS: &[&str] = &[
+    "remember_pitch_set",
+    "phonate_when_viable",
+    "flora",
+    "fade",
+    "tone",
+    "residual",
+];
 
 /// Mechanism-tuning functions. Everything not listed here or in
 /// [`RESEARCH_FNS`] is `Tier::Core`. `defs_gen::check()` verifies that every
@@ -1904,6 +1911,17 @@ absent from the presented sound; `send(presentation_bus)` is heard without pertu
 ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
     },
     // --- director ---
+    FnDoc {
+        name: "remember_pitch_set",
+        evidence: PITCH_SET,
+        owner: Owner::Global,
+        category: "director",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["remember_pitch_set(weight)"],
+        summary: "Reuse peaks of the periodicity distribution heard in habitat; zero is neutral.",
+        details: "Author rule, Experimental. Set a finite nonnegative weight before scene actions or scopes. Default 0. At 48000 Hz, actual mixed habitat PCM, including self, supplies an IPEM periodicity observation (Candidate). Continuous-lag interpolation, normalization, cumulative listening-time averaging, two peak proposals and score addition are author rules. Free HillClimb Voices consume it; Flora does not. No pitch names, fixed scale, octave folding, forgetting control, or listener-profile adoption. Peaks can be subharmonics or shift under averaging; they are not a record of emitted fundamentals. Gaps retain experience and restart only PS observation; TC remains invalid. Long sessions adapt slowly.",
+    },
     FnDoc {
         name: "harmonic_rhythm",
         evidence: HARMONIC_RHYTHM,

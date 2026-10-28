@@ -3726,3 +3726,24 @@ fn harmonic_rhythm_is_a_scene_initial_integer_and_rejects_conflicting_live_patch
             .any(|w| w.message.contains("no supported"))
     );
 }
+
+#[test]
+fn remember_pitch_set_is_f64_initial_only_and_neutral_by_default() {
+    let (omitted, _) = run_script("wait(0.1);");
+    let (zero, _) = run_script("remember_pitch_set(0); wait(0.1);");
+    assert_eq!(omitted.remember_pitch_set, 0.);
+    assert_eq!(zero.remember_pitch_set, 0.);
+    let (large, _) = run_script("remember_pitch_set(1.0e300); wait(0.1);");
+    assert_eq!(large.remember_pitch_set, 1e300);
+    for script in [
+        "remember_pitch_set(-1);",
+        "wait(0.1); remember_pitch_set(1);",
+        "section(\"late\", || { remember_pitch_set(1); });",
+    ] {
+        assert!(
+            run_script_err(script)
+                .to_string()
+                .contains("remember_pitch_set")
+        );
+    }
+}

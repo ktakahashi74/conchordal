@@ -411,3 +411,29 @@ Mode constructors include `harmonic_modes()`, `odd_modes()`,
 `custom_modes([ratios])`, `modal_table(name)`, `landscape_density_modes()`,
 and `landscape_peaks_modes()` — see the
 [API Reference](../reference/api.md#mode-patterns).
+
+## Remembering periodicity heard in the scene
+
+`remember_pitch_set(weight)` is an experimental, scene-wide **author rule**.
+Declare it before scene actions or scopes. Omission and `remember_pitch_set(0)`
+retain the existing behavior. A positive finite weight uses actual habitat PCM,
+including the Voice itself, to accumulate a distribution of heard periodicity.
+The IPEM observation is a **Candidate**; interpolation, cumulative averaging,
+peak proposals and score addition are author rules. This is not an established
+model of long-term human pitch learning.
+
+Free `seek_consonance()` Voices can propose the strongest and nearest interior
+peaks within their legal range. The same memory also contributes to each
+candidate and the current target's score. Existing proposal clocks, articulation,
+habituation and self-exclusion of the current field remain in force. Flora feeds
+the acoustic input but does not consult this memory when choosing lanes.
+
+The supported input rate is 48 kHz, with memory queries at approximately
+15.84–1378.13 Hz. Existing proposals outside that range remain available without
+a memory contribution. No note names, tuning grid, pitch-class folding, scale
+size, root progression or forgetting control is supplied. Peaks can represent
+subharmonics or move when observations are averaged; they are not a list of
+performed fundamentals. Gaps retain past experience and restart observation,
+while TC keeps its existing invalidation rule. Longer sessions adapt more slowly.
+The control is absent from both listener profiles; choosing a positive weight
+does not imply musical improvement or author adoption.

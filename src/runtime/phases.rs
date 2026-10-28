@@ -191,6 +191,11 @@ pub(super) fn advance_population(
                     writer.write_harmonic_voice(id, voice.metadata.generation, &event)
                 });
             }
+            for record in voice.pitch_ctl.pitch_set_trace.drain(..) {
+                report_try(&mut state.reporter, "pitch set", |writer| {
+                    writer.write_pitch_set(id, voice.metadata.generation, cfg.fs as u32, &record)
+                });
+            }
             for record in voice.pitch_ctl.tonal_trace.drain(..) {
                 report_try(&mut state.reporter, "tonal context", |writer| {
                     writer.write_tonal_context(

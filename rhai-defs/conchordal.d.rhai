@@ -1476,6 +1476,15 @@ fn sustain_drive(population_spec: PopulationSpec, value: f64) -> PopulationSpec;
 /// Evidence: Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57).
 fn sustain_drive(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
 
+/// [experimental] Let the Population's participation density sway with a 1/f spectrum; depth in [0, 4] octaves, default 0.
+/// The Population shares one process g with unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods, as Rain's sway. Each Voice takes an otherwise eligible onset opportunity with probability 2^(depth * g), capped at 1, and otherwise lets it pass, in every timing mode. The composer's density is the ceiling; the sway thins it. Sustained notes, pitch and loudness are not changed. Out-of-range values warn and are clamped.
+/// Evidence: Author rule: 1/f fluctuation of activity from nine AR(1) processes between 0.4 and 102 s; motivated by auditory-cortex tuning to 1/f dynamics (Garcia-Lazaro et al. 2006), not a model of it.
+fn sway(population_spec: PopulationSpec, octaves: f64) -> PopulationSpec;
+/// [experimental] Let the Population's participation density sway with a 1/f spectrum; depth in [0, 4] octaves, default 0.
+/// The Population shares one process g with unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods, as Rain's sway. Each Voice takes an otherwise eligible onset opportunity with probability 2^(depth * g), capped at 1, and otherwise lets it pass, in every timing mode. The composer's density is the ceiling; the sway thins it. Sustained notes, pitch and loudness are not changed. Out-of-range values warn and are clamped.
+/// Evidence: Author rule: 1/f fluctuation of activity from nine AR(1) processes between 0.4 and 102 s; motivated by auditory-cortex tuning to 1/f dynamics (Garcia-Lazaro et al. 2006), not a model of it.
+fn sway(population_spec: PopulationSpec, octaves: i64) -> PopulationSpec;
+
 /// [experimental] Let the impact rate fluctuate with a 1/f spectrum; depth in [0, 4] octaves, default 0.
 /// The rate becomes rate * 2^(depth * g), where g has unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods; faster than that would read as a pulse. Depth is one standard deviation in octaves: 1 doubles or halves the rate at one deviation. The swayed rate is capped at 2000 per second. Struck objects follow the swayed rate.
 /// Evidence: Author rule: 1/f fluctuation of activity from nine AR(1) processes between 0.4 and 102 s; motivated by auditory-cortex tuning to 1/f dynamics (Garcia-Lazaro et al. 2006), not a model of it.

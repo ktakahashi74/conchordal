@@ -831,6 +831,7 @@ impl ScriptHost {
                     "rest_on_habituation",
                     PopulationSpec::set_rest_on_habituation,
                 ),
+                ("sway", PopulationSpec::set_sway),
             ],
         );
         // Clamp finite Rhai floats before narrowing to the DSP representation.

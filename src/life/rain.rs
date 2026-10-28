@@ -32,12 +32,6 @@ const IMPACT_FLOOR: f32 = 1e-4;
 pub(crate) const MAX_RAIN_OBJECTS: u32 = 16;
 /// Upper impact rate; it bounds per-sample work, not a musical choice.
 pub(crate) const MAX_RAIN_RATE: f32 = 2000.0;
-/// Time constants of the sway process: one AR(1) per octave from 0.4 s to 102 s. Equal
-/// variances at octave spacing give a 1/f spectrum between about 0.0016 and 0.4 Hz.
-/// The fastest stays below the pulse range (about 0.5 Hz and up), so the sway is heard as
-/// changing intensity, not as a beat.
-const SWAY_TAU_MIN_SEC: f32 = 0.4;
-const SWAY_POLES: usize = 9;
 const OBJECT_MIN_SPACING_ERB: f32 = 1.0;
 const OBJECT_DECAY_EXPONENT: f32 = 0.7;
 /// Largest retuning per strike: one semitone, so an object drifts slowly.
@@ -126,8 +120,7 @@ pub(crate) struct Rain {
     impact_budget: f32,
     /// Impact rate per sample after sway, updated once per rendered block.
     rate_per_sample: f32,
-    /// Unit-variance AR(1) states whose sum drives the sway.
-    sway: [f32; SWAY_POLES],
+    sway: super::sway::Sway,
     #[cfg(test)]
     impacts_struck: u64,
     impacts: Vec<Impact>,
@@ -224,7 +217,7 @@ impl Rain {
             fs,
             impact_budget: 0.0,
             rate_per_sample: 0.0,
-            sway: [0.0; SWAY_POLES],
+            sway: super::sway::Sway::new(&mut rng),
             #[cfg(test)]
             impacts_struck: 0,
             rng,
@@ -248,9 +241,6 @@ impl Rain {
             spec,
         };
         rain.impact_budget = rain.exponential();
-        for k in 0..SWAY_POLES {
-            rain.sway[k] = rain.normal();
-        }
         rain.advance(landscape);
         rain.gain.to(1.0, rain.spec.fade_sec, fs);
         rain
@@ -384,14 +374,7 @@ impl Rain {
     /// Advance the sway by `dt` seconds and set the impact rate it gives:
     /// `rate * 2^(sway * g)`, where `g` has unit variance and a 1/f spectrum.
     fn advance_rate(&mut self, dt: f32) {
-        let mut g = 0.0f32;
-        for k in 0..SWAY_POLES {
-            let a = (-dt / (SWAY_TAU_MIN_SEC * (1u32 << k) as f32)).exp();
-            let n = self.normal();
-            self.sway[k] = a * self.sway[k] + (1.0 - a * a).sqrt() * n;
-            g += self.sway[k];
-        }
-        g /= (SWAY_POLES as f32).sqrt();
+        let g = self.sway.advance(dt, &mut self.rng);
         let rate = (self.spec.rate * (self.spec.sway * g).exp2()).clamp(0.0, MAX_RAIN_RATE);
         self.rate_per_sample = rate / self.fs;
     }

@@ -636,6 +636,8 @@ fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationE
     PhonationEngine {
         phrase_boundary: None,
         expression_active: false,
+        participation_activity: 1.0,
+        sway_rng: None,
         rest: None,
         span_gap: None,
         #[cfg(test)]
@@ -2792,4 +2794,58 @@ fn expression_maps_new_gate_offs_but_preserves_already_reserved_off() {
             .any(|p| p.0.tone_id == 77 && p.0.off_tick == 60000)
     );
     assert!(engine.footprint_hold().is_none());
+}
+
+#[test]
+fn sway_activity_thins_participation_opportunities() {
+    let fs = 48_000u64;
+    let count = |activity: f32| {
+        let config = PhonationConfig {
+            mode: PhonationMode::Gated,
+            onset: OnsetConfig::Always { strength: 1. },
+            duration: DurationConfig::FixedGate { length_gates: 1 },
+            clock: PhonationClockConfig::Participation {
+                coupling: 0.0,
+                base_rate_hz: 4.0,
+                flow_depth: 0.0,
+                steady: false,
+            },
+            measure_accent: 0.,
+        };
+        let mut engine = PhonationEngine::from_config(&config, 21);
+        engine.sway_rng = Some(SmallRng::seed_from_u64(5));
+        engine.participation_activity = activity;
+        let (mut cmds, mut events, mut onsets) = (Vec::new(), Vec::new(), Vec::new());
+        for now in (0..20 * fs).step_by(512) {
+            let ctx = CoreTickCtx {
+                now_tick: now,
+                frame_end: now + 512,
+                fs: fs as f32,
+                rhythms: NeuralRhythms::default(),
+            };
+            engine.tick(
+                &ctx,
+                &CoreState {
+                    is_alive: true,
+                    onset_allowed: true,
+                },
+                None,
+                0.,
+                1.,
+                None,
+                &mut cmds,
+                &mut events,
+                &mut onsets,
+            );
+        }
+        onsets.len()
+    };
+    let full = count(1.0);
+    assert!((75..=81).contains(&full), "{full}");
+    assert_eq!(count(0.0), 0);
+    let half = count(0.5);
+    assert!(
+        (full * 35 / 100..=full * 65 / 100).contains(&half),
+        "{half} of {full}"
+    );
 }

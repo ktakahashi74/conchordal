@@ -181,6 +181,11 @@ pub struct PhonationEngine {
     pub(crate) expression_active: bool,
     pub(crate) rest: Option<RestState>,
     pub(crate) span_gap: Option<crate::life::span_gap::SpanGap>,
+    /// Probability that a participation opportunity is taken, from the Population's
+    /// shared sway; below 1 an opportunity is skipped on a private draw.
+    pub(crate) participation_activity: f32,
+    /// Present only for Voices whose Population sways.
+    pub(crate) sway_rng: Option<SmallRng>,
     pub(crate) sustain_participation: bool,
     #[cfg(test)]
     pub(crate) synchronized_counts: [usize; 4],
@@ -498,6 +503,8 @@ impl PhonationEngine {
             expression_active: false,
             rest: None,
             span_gap: None,
+            participation_activity: 1.0,
+            sway_rng: None,
             #[cfg(test)]
             synchronized_counts: [0; 4],
             sustain_participation: config.mode == PhonationMode::Hold
@@ -1018,6 +1025,15 @@ impl PhonationEngine {
         }
     }
 
+    /// A swayed Population leaves an otherwise eligible opportunity on a private draw.
+    fn sway_skips(&mut self) -> bool {
+        self.participation_activity < 1.0
+            && self
+                .sway_rng
+                .as_mut()
+                .is_some_and(|rng| rng.random::<f32>() >= self.participation_activity)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn process_candidates(
         &mut self,
@@ -1098,6 +1114,7 @@ impl PhonationEngine {
                 && rest_allowed
                 && !intentional
                 && state.onset_allowed
+                && !self.sway_skips()
                 && let Some(mut kick) = self.onset_rule.on_candidate(&input, state)
             {
                 let measure = ctx.rhythms.measure;

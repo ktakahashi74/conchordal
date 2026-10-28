@@ -1577,6 +1577,18 @@ Set the T60 of an object's first mode in [0.01, 30] seconds. Higher modes decay 
 
 ### Phonationとリズム
 
+#### `sway`
+
+```rhai,ignore
+sway(octaves)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Let the Population's participation density sway with a 1/f spectrum; depth in [0, 4] octaves, default 0. The Population shares one process g with unit variance and a 1/f spectrum from about 100 s down to 2.5 s periods, as Rain's sway. Each Voice takes an otherwise eligible onset opportunity with probability 2^(depth * g), capped at 1, and otherwise lets it pass, in every timing mode. The composer's density is the ceiling; the sway thins it. Sustained notes, pitch and loudness are not changed. Out-of-range values warn and are clamped.
+
+**根拠:** 作者規則：0.4〜102秒の九つのAR(1)過程による活動の1/fの揺らぎ。聴覚野の1/f変動への同調（Garcia-Lazaro et al. 2006）を動機とするが、そのモデルではない。
+
 #### `phonate_when_viable`
 
 ```rhai,ignore

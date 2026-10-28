@@ -3747,3 +3747,30 @@ fn remember_pitch_set_is_f64_initial_only_and_neutral_by_default() {
         );
     }
 }
+
+#[test]
+fn population_sway_is_stored_and_clamped() {
+    let (scenario, warnings) = run_script(
+        r#"
+        let a = place(harmonic().metric().sway(1), at(220));
+        let b = place(harmonic().metric().sway(9), at(330));
+        wait(1);
+        "#,
+    );
+    let sways: Vec<f32> = scenario
+        .events
+        .iter()
+        .flat_map(|event| event.actions.iter())
+        .filter_map(|action| match action {
+            Action::Spawn { spec, .. } => Some(spec.control.phonation.sway),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sways, [1.0, 4.0]);
+    let warnings = warnings.lock().unwrap();
+    assert!(
+        warnings
+            .iter()
+            .any(|warning| warning.message.contains("sway() expects octaves"))
+    );
+}

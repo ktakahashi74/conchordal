@@ -70,6 +70,20 @@ Sample 18 places a Rain with four objects on `gap(150, 5000)` with `sway(1)`, ad
 
 With `sway(1)` (S2, the sample as written), the author reported a very strong cognitive effect: pleasure, and the body sways by itself, although the rain has no beat. S3 added three quiet sustained voices seeking the same field, to make the unheard field audible; the author found them unnatural. They share neither the impacts' onsets nor the rain's sway, so they are heard as a separate overlay (the C2 finding) rather than part of the rain world. The sample keeps the S2 form.
 
+## Population sway (experimental)
+
+After the 1/f rain, the author asked what the finding implies for Conchordal. Two alternatives were tried and rejected first:
+- Multi-timescale landscape habituation as a bottom-up source. It is on `research/multiscale-habituation-20261027`, and it left the onset fluctuation index unchanged.
+- An offline loudness sway. The author rejected it, because changing only the output level changes nothing the ensemble does.
+
+Rain's sway changes the event process itself, so the Voice analog changes participation density.
+
+- `PopulationSpec.sway(octaves)`, Initial, range [0, 4], default 0.
+- Each Population that sways owns one process `g` from the same 1/f source as Rain (`src/life/sway.rs`), seeded from the scene seed and the Population id.
+- At every otherwise eligible onset opportunity, in every timing mode, a Voice sounds with probability `min(1, 2^(depth · g))` on a private draw and otherwise lets the opportunity pass. This is the same gate a refused onset uses, so participation clocks resolve it as a skip.
+- The composer's density is the ceiling; the sway thins it. While `g` is positive nothing changes, so a Population whose slow components stay positive for a whole short piece does not thin. Sample 16's far crowd did this with seed 21.
+- Pitch, loudness and sustained notes are not changed. With depth 0 no draw is taken, so behavior is bit-identical to before.
+
 ## Caveats and exclusions in v1
 
 - Rain reads the mixed Landscape, including its own sound. A Landscape-following Rain can reinforce itself. Flora's self-exclusion observer is not mirrored.

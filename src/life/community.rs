@@ -117,6 +117,15 @@ pub struct Community {
     // of allocating a fresh Vec on the audio thread.
     gate_open_scratch: Vec<PhonationGateOpenEvent>,
     dead_id_scratch: Vec<u64>,
+    population_sway: BTreeMap<u64, PopulationSway>,
+}
+
+/// Shared 1/f participation process of one Population (`sway()`).
+#[derive(Debug, Clone)]
+struct PopulationSway {
+    process: super::sway::Sway,
+    rng: rand::rngs::SmallRng,
+    g: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -253,6 +262,7 @@ impl Community {
             advance_scratch: AdvanceScratch::default(),
             gate_open_scratch: Vec::new(),
             dead_id_scratch: Vec::new(),
+            population_sway: BTreeMap::new(),
         }
     }
 
@@ -510,6 +520,29 @@ impl Community {
         let social_trace = self.social_trace.as_ref();
         let auto_observe_enabled = self.auto_observe.is_some();
         let time_sec = self.current_time_sec();
+        for (&population_id, population) in &self.populations {
+            if population.template.control.phonation.sway > 0.0
+                && !self.population_sway.contains_key(&population_id)
+            {
+                let mut rng = <rand::rngs::SmallRng as rand::SeedableRng>::seed_from_u64(
+                    self.seed ^ population_id.wrapping_mul(0x5357_4159_5f50_4f50),
+                );
+                let process = super::sway::Sway::new(&mut rng);
+                self.population_sway.insert(
+                    population_id,
+                    PopulationSway {
+                        process,
+                        rng,
+                        g: 0.0,
+                    },
+                );
+            }
+        }
+        let hop_sec = hop_tick as f32 / tb.fs;
+        for sway in self.population_sway.values_mut() {
+            sway.g = sway.process.advance(hop_sec, &mut sway.rng);
+        }
+        let population_sway = &self.population_sway;
         let gate_open_events = &mut self.gate_open_scratch;
         gate_open_events.clear();
         for voice in &mut self.voices {
@@ -573,6 +606,14 @@ impl Community {
                     owner: (voice.id(), voice.metadata.generation, body_generation),
                 }
             });
+            let depth = voice.effective_control.phonation.sway;
+            voice.phonation_engine.participation_activity = if depth > 0.0 {
+                population_sway
+                    .get(&voice.metadata.population_id)
+                    .map_or(1.0, |sway| (depth * sway.g).exp2().min(1.0))
+            } else {
+                1.0
+            };
             voice.pitch_ctl.dwell_trace_enabled = auto_observe_enabled;
             if let Some(me) = &mut voice.pitch_ctl.melodic {
                 me.trace_enabled = auto_observe_enabled;

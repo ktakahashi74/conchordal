@@ -536,6 +536,14 @@ impl Voice {
                 target_freq,
             ));
         }
+        if effective_control.phonation.sway > 0.0 {
+            phonation_engine.sway_rng = Some(rand::SeedableRng::seed_from_u64(
+                seed_offset
+                    ^ assigned_id.rotate_left(17)
+                    ^ u64::from(metadata.generation).rotate_left(39)
+                    ^ 0x5357_4159_5f56_4f49,
+            ));
+        }
         if let Some(periods) = effective_control.phonation.rest_periods {
             let mut finite = effective_control.phonation.spec.clone();
             finite.duration = effective_control

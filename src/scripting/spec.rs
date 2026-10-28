@@ -854,6 +854,18 @@ impl PopulationSpec {
         self.control.phonation.rest_on_habituation = value;
     }
 
+    pub(super) fn set_sway(&mut self, value: f32) {
+        let clamped = if value.is_finite() {
+            value.clamp(0.0, 4.0)
+        } else {
+            0.0
+        };
+        if clamped != value {
+            self.warn("sway() expects octaves in [0, 4]; clamped (non-finite becomes 0)".into());
+        }
+        self.control.phonation.sway = clamped;
+    }
+
     pub(super) fn set_rest(&mut self, periods: f32) {
         self.rest_periods = Some(crate::core::float::sanitize_nonnegative_finite(periods));
     }

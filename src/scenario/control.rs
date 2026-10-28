@@ -343,6 +343,8 @@ pub struct PhonationControl {
     pub(crate) rest_periods: Option<f32>,
     pub(crate) rest_on_habituation: f32,
     pub(crate) phrase_boundary: f64,
+    /// Population participation sway in octaves (`sway()`); 0 disables it.
+    pub(crate) sway: f32,
     pub(crate) articulation_persistence: f32,
     pub(crate) tie: f32,
     #[cfg(test)]

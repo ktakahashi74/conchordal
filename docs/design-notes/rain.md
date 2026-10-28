@@ -83,6 +83,7 @@ Rain's sway changes the event process itself, so the Voice analog changes partic
 - At every otherwise eligible onset opportunity, in every timing mode, a Voice sounds with probability `min(1, 2^(depth · g))` on a private draw and otherwise lets the opportunity pass. This is the same gate a refused onset uses, so participation clocks resolve it as a skip.
 - The composer's density is the ceiling; the sway thins it. While `g` is positive nothing changes, so a Population whose slow components stay positive for a whole short piece does not thin. Sample 16's far crowd did this with seed 21.
 - Pitch, loudness and sustained notes are not changed. With depth 0 no draw is taken, so behavior is bit-identical to before.
+- Status: unvalidated. The only audition compared sample 16 with and without crowd sway. The author ruled it unusable for the decision because sample 16 does not function as music. This is not a negative result. Population sway waits for Voice material that works as music; until then it stays experimental, default 0, and is not used in samples.
 
 ## Caveats and exclusions in v1
 

@@ -1,5 +1,6 @@
 //! Author-rule continuous periodicity memory; no pitch classes or authored scale.
 use super::{FA, W};
+use fearless_simd::{Level, Simd, dispatch, f64x4, prelude::*};
 use std::sync::Arc;
 
 const INTERVALS: usize = 775;
@@ -81,8 +82,47 @@ impl Geometry {
         d[3]
     }
 
-    /// Direct continuous-lag reference; rectification precedes correlation.
     fn coefficients(&self, ring: &[[f64; 40]], start: usize, out: &mut [f64]) {
+        dispatch!(Level::new(), simd => self.coefficients_lanes(simd, ring, start, out));
+    }
+
+    #[inline(always)]
+    fn coefficients_lanes<S: Simd>(
+        &self,
+        simd: S,
+        ring: &[[f64; 40]],
+        start: usize,
+        out: &mut [f64],
+    ) {
+        let zero = f64x4::splat(simd, 0.);
+        let mut channels = [zero; 2 * W];
+        out.fill(0.);
+        // Lanes are channels, keeping both temporal and final channel sums ordered.
+        for c in (0..40).step_by(4) {
+            for (n, v) in channels.iter_mut().enumerate() {
+                *v = f64x4::from_slice(simd, &ring[(start + n) % (2 * W)][c..c + 4]);
+            }
+            for (lag, total) in self.lags.iter().zip(out.iter_mut()) {
+                let [a, b, c, d] = lag.weights.map(|w| f64x4::splat(simd, w));
+                let mut sum = zero;
+                for n in 0..W {
+                    let j = n + lag.index;
+                    let y = a * channels[j - 1]
+                        + b * channels[j]
+                        + c * channels[j + 1]
+                        + d * channels[j + 2];
+                    sum += channels[n] * y.max(zero);
+                }
+                for value in sum.to_array() {
+                    *total += value;
+                }
+            }
+        }
+    }
+
+    /// Independent scalar ordering for all SIMD-level equality checks.
+    #[cfg(test)]
+    fn coefficients_scalar(&self, ring: &[[f64; 40]], start: usize, out: &mut [f64]) {
         let mut channel = [0.; 2 * W];
         out.fill(0.);
         for c in 0..40 {
@@ -278,6 +318,57 @@ impl Memory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pitch_set_coefficients_match_scalar_bits_on_every_available_level() {
+        let geometry = Geometry::new();
+        let level = Level::new();
+        for pattern in 0..3 {
+            let ring: Vec<[f64; 40]> = (0..2 * W)
+                .map(|n| {
+                    std::array::from_fn(|c| match pattern {
+                        0 => 0.,
+                        1 => 1. + ((n * 41 + c) as f64 * 0.17).sin(),
+                        _ => ((n * 6361 + c * 131 + 17) % 8191) as f64 / 8191.,
+                    })
+                })
+                .collect();
+            let mut reference = vec![0.; INTERVALS + 3];
+            geometry.coefficients_scalar(&ring, 43, &mut reference);
+            let expected: Vec<_> = reference.iter().map(|x| x.to_bits()).collect();
+            let check = |actual: Vec<f64>| {
+                assert_eq!(
+                    actual.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
+                    expected
+                )
+            };
+            let mut actual = reference.clone();
+            geometry.coefficients(&ring, 43, &mut actual);
+            check(actual);
+            macro_rules! check_level {
+                ($level:expr) => {
+                    if let Some(simd) = $level {
+                        let mut actual = reference.clone();
+                        simd.vectorize(|| {
+                            geometry.coefficients_lanes(simd, &ring, 43, &mut actual)
+                        });
+                        check(actual);
+                    }
+                };
+            }
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+            {
+                check_level!(level.as_sse2());
+                check_level!(level.as_sse4_2());
+                check_level!(level.as_avx2());
+                check_level!(level.as_avx512());
+            }
+            #[cfg(target_arch = "aarch64")]
+            check_level!(level.as_neon());
+            #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+            check_level!(level.as_wasm_simd128());
+        }
+    }
+
     #[test]
     fn spline_constant_mass_and_interior_maxima() {
         let g = Geometry::new();

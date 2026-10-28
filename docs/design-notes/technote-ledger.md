@@ -11142,3 +11142,9 @@ outside-range probe when all initial weights lie on one side, not listener ranki
 The final v6b pair is material for one author audition, not evidence of adoption.
 Forgetting, live weight changes, Flora consumers, presentation memory, fixed scale
 formation and automatic listener-profile inclusion remain outside this version.
+
+The continuous-lag evaluator batches four channels with `fearless_simd::f64x4`.
+Each channel retains its temporal sum order, and the four sums are added in the
+original channel order. The scalar evaluator remains a test oracle, with bit
+comparisons on every available SIMD level. This reduces processing cost without
+changing the interpolation, resolution, accumulated memory or choice rule.

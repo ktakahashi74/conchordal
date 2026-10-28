@@ -911,3 +911,8 @@ PS retains experience and starts a fresh observation epoch. Free HillClimb uses
 legal peaks and the same snapshot for baseline and candidates, including ME/SQ
 fallback. Omission/0 bypass observation, candidate changes and score arithmetic.
 No fixed scale, octave folding, memory-time control or profile adoption is implied.
+
+The PS continuous-lag evaluator batches four independent channels with
+`fearless_simd::f64x4`, preserving temporal accumulation and final channel order.
+Its per-level tests compare every coefficient bit against the retained scalar
+evaluator; it does not lower the spline resolution or alter the memory rule.

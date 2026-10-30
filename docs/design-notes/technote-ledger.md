@@ -11148,3 +11148,30 @@ Each channel retains its temporal sum order, and the four sums are added in the
 original channel order. The scalar evaluator remains a test oracle, with bit
 comparisons on every available SIMD level. This reduces processing cost without
 changing the interpolation, resolution, accumulated memory or choice rule.
+
+### 9.3.115 Flora pace and the heard harmonic context (BG-3, RG-9, 2026-10-30)
+
+The author heard the FD-1 v6b draft as "harmonic connections between moves sound
+random". Layers that changed the plucks' pitch choice, timing or registers
+(candidate layers, `harmonic_rhythm`, `remember_pitch_set`, separated registers,
+a shared beat, a narrow pitch set with restrikes) moved their measured targets but
+not the percept. With the same ecology, routing the background (two Flora and the
+drone) away from the presentation removed the randomness for the author.
+
+Using the IPEM periodicity image and its 1.5 s global memory (a candidate observer,
+Leman 2000; Bigand et al. 2014), the mixed context was almost entirely the
+background's (correlation 0.9998), and its 8-second self-correlation was 0.44
+against 0.89 for the plucks alone. Hearing either the Flora or the drone alone with
+the plucks gave about 0.45. The v6b Flora used `pace(16)`: at a 2 Hz beat its
+ecology renews in about 0.6 s, faster than the listener's context memory, and the
+drone follows the moving field. Lowering only the Flora pace to 1 (the default)
+raised the 8-second correlation to 0.78, reduced the Flora tuning-frame drift from
+125 to 61 cents and kept the background changing over a minute. The author heard
+that version as quite complete ambient music. Continuous Flora updates with glide
+and context-weighted Flora growth lowered the correlation instead; both remain on
+unmerged branches.
+
+No mechanism changed: the cause was a composer quantity. The Flora composer guide
+now explains how pace relates to the heard harmonic context. Pace keeps no upper
+bound. Which elements join a Flora field (none, Rain, sparse tones, plucks) is a
+composer choice per piece, not an instrument decision.

@@ -163,6 +163,16 @@ is unchanged; the previous per-hop saturation and its cost estimate are supersed
 No new real-time measurement is claimed. As with Voice self-exclusion,
 real-time cost depends on the entire scene and is the composer's responsibility.
 
+When a Flora is the loudest sustained layer, its audible spectrum largely sets the
+harmonic context a listener hears. At pace k and beat f, the ecology renews roughly
+every `10 s / (k * f / 2 Hz)` of real time: about 0.6 s at k = 16 and 2 Hz. If that is
+shorter than the listener's short-term pitch context (the global memory of the
+periodicity model behind `follow_tonal_context` has a 1.5 s half-life), the context
+is replaced faster than it can be held, and other parts heard against it lose a
+stable reference. In one study scene, pace 16 left an 8-second context correlation of
+0.44 in the mixed sound, while pace 1 reached 0.78 (0.89 without the Flora layer).
+This describes what the quantity does; it is not a bound on `pace`.
+
 ## Partial motion
 
 `flora().pitch_apply_mode("glide")` keeps the default peak following.

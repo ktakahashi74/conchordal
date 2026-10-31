@@ -119,6 +119,7 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.104 Mechanism evidence tiers and composer controls](#mechanism-evidence-and-composer-controls)
   - [§9.3.109 Known final expression](#known-final-expression)
   - [§9.3.117 2026-10-31: Incremental evaluation of endless scores](#incremental-endless-scores-20261031)
+  - [§9.3.118 2026-10-31: Open-ended performance, implementation and acceptance boundaries](#indefinite-performance-20261031)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -10108,6 +10109,7 @@ The first increases exit rate proportionally. The second retains
 reaches speed `1+w` at L=0. The speed range in §9.3.98 therefore becomes
 `[max(0,1-w),1+w]`. These are authored controls, not new perceptual claims.
 
+
 ## 9.4 Alignment and Extension Sequence
 
 For scope and acceptance from 2026-10-07 onward, use [§9.3.57](#two-tier-rule);
@@ -11270,3 +11272,102 @@ only the three wall-clock timing fields (`elapsed_us`, `analysis_wait_us`,
 `listener_wait_us`); the score, state and remaining report fields compare exactly.
 These checks establish implementation behavior. V6b endurance, V7 estimator
 precision, V8 realtime load and author audition are not established by this unit.
+
+<a id="indefinite-performance-20261031"></a>
+
+### 9.3.118 2026-10-31: Open-ended performance, implementation and acceptance boundaries
+
+The [indefinite-performance design](../superpowers/specs/2026-10-31-indefinite-performance-design.md)
+revision 9 addresses the Manifesto's open-ended ecosystem and the temporal-DCC
+"Memory and continuing operation" obligation. The author adopted four decisions
+on 2026-10-30–31 (§0): **A1**, two stages, an open end followed by incremental script
+evaluation; **A2**, the scene-level `endless()` declaration; **A3**, `u64` sample ticks
+for runtime comparisons and `f64` seconds for script/IR time; **A4**, adoption of the
+remaining recommendations. Astra reviewed the design nine times: round 8 passed
+with three minor clarifications, and round 9 confirmed revision 9 with no findings.
+
+**Integrated implementation.** At `1b5db013`, IP-U1–U5 are present:
+
+- **IP-U1 (§3):** absolute dispatch and scene selection use ticks; script cursors,
+  IR, UI and report seconds use f64. Local intervals, ages and phases remain f32.
+  Listener intervals come from tick differences, not differences of rounded seconds.
+- **IP-U3 (§6.3–§6.5, §4.5):** released populations are pruned after their last live
+  member; audio supervision rebuilds lost streams, retains the producer and recycles
+  callback state. Retry intervals double up to 1 s; unsupported configuration is
+  terminal. WAV production enforces the RIFF limit. Opt-in telemetry keeps interval
+  summaries rather than per-hop history.
+- **IP-U4 (§4, §8):** `ScenarioEnd::Open` separates an empty score queue from Finish.
+  End and the first Ctrl-C release Population, Flora and Rain, preserving remaining fades;
+  the second Ctrl-C exits immediately. `--duration` dispatches due items before
+  requesting the end. Open render, compile-only, report and profile require a bound.
+- **IP-U2 (§6.1, §6.2, §6.6, §7.1):** beat cycles wrap modulo 12, recurrence timestamps
+  derive from ticks, and SlidingPlv refreshes its saved-window sums. The fixed-ridge
+  estimator uses compensated Gram/scalar sums, Cholesky rank-1 updates and refactorization
+  every 10 issues, with observer phases staggered. The integrated optimization folds
+  response sums with TwoSum every K=2 terms and batches at most 10 observed responses,
+  materialized before query, clone, gap or freeze. Rank-1 updates use contiguous
+  `U=Lᵀ` rows after input checks; refactorization alone uses reusable scratch. Failed
+  updates freeze the coherent committed estimator and expose its status. This changes
+  numerical computation, not the cumulative definition or its retention policy.
+- **IP-U5 (§5):** see [§9.3.117](#incremental-endless-scores-20261031) for incremental
+  evaluation, C/B calibration and V2–V4. The implementation-review fixes additionally
+  retain producer-computed credit, making worker pop/return O(1) in action count, and
+  report the interval's minimum watermark margin. IP-R1 round 1 requested these
+  repairs; round 2 passed at `b1aaf91c` by static inspection.
+
+**Adopted constraints and their reasons.** These are implemented rules, not author
+choices awaiting a decision:
+
+- Endless pieces reject `parallel` (§5.1). Its cursor rewind requires retaining all
+  branches until completion and defeats bounded storage and pacing. Finite pieces
+  retain it.
+- The header declarations `seed`, `output_gain`, `temporal_mode`, `scaffold_*`,
+  `control_update_mode`, `meter_stability` and `temporal_basin` precede the first time
+  advance (§5.6). Wiring needs them before runtime construction, and initial Spawns
+  need the final basin. `endless()` itself is declared once at top level before any
+  playback event or time advance. Pre-header items exceeding C or B fail at load.
+- Self-exclusion is requested at placement (§5.8); enabling `leave_self_out` later on
+  an unreserved population is an error in an endless piece. The observer must inherit
+  pre-birth history, and capturing every Voice would add an analysis stream per Voice.
+  Shared resource power and the Flora meter are therefore also created at run start
+  for open scenarios, so a later Flora placement has the required earlier evidence.
+- In both finite and endless scenarios, `eval`, file imports, `sleep` and wall-clock
+  timestamps are unavailable (§5.13). Score time advances through `wait()`; these
+  restrictions preserve deterministic score construction and interruptible execution.
+- Every placement in an unbounded loop must be released explicitly or by `section`
+  or `play` (§6.3, §5.12). Natural Voice death does not release its Population. Unreleased
+  identities and script-owned growing arrays remain the composer's responsibility;
+  bounded score transport alone does not bound them.
+
+**Open design unit (§7.2).** Adaptation gain falls as 1/N. Forecasts approach run-long
+averages, and new Voices inherit shared statistics. Numerical stabilization does not
+resolve this behavioural retention question. It remains a temporal-DCC design unit
+under the [I10 contract's](#i10-sensorimotor-contract) "Memory and continuing operation"
+obligation; no forgetting constant is adopted here.
+
+**Acceptance still unacquired ([§9](../superpowers/specs/2026-10-31-indefinite-performance-design.md#9-validation)).**
+Unit tests, static review, short numerical comparisons, capacity calibration and U2's
+offline cost estimates do not establish these results:
+
+- **V5 — hardware recovery:** restart/stop PipeWire on blanche and exercise GUI End
+  and headless Ctrl-C during an outage. The result decides whether the implemented
+  recovery and ending path works on the target host.
+- **V6 — endurance, V6a/V6b:** observe stationary live counts and the second-half RSS
+  slope, with stage 2 also tracking watermark margin. The result decides whether the
+  technote may claim continuing operation for the tested duration, whether a leak
+  needs repair and whether the 64-hop lead must grow.
+- **V7 — long-run estimator precision:** check shared and long-lived Voice observers
+  at 10⁶, 10⁷ and 3·10⁷ issues against the registered high-precision reference. A
+  decidable failure selects double-double-residual iterative refinement for the
+  matrix path or double-double accumulation for scalar sums; checkpoints must then
+  pass again, followed by V8.
+- **V8 — realtime load:** compare the reference and integrated implementation on the
+  registered Voice/body/report/DCC matrix, including observed births and an active
+  endless script. The result decides whether estimator and stage-2 costs fit the
+  existing supported load; a regression requires revision. U2's offline comparisons
+  are engineering estimates, not this acceptance.
+
+The technote records the implemented mechanisms and marks the open-ended commitment
+partial. It does not yet claim supported continuing operation.
+
+**2026-11-01 integration addendum.** The acquisitions and costs above describe the old base; V6/V8 must be acquired on the integrated auditory front end, Rain, Flora and TC implementation. At 22:5x JST the author adopted unconditional run-start shared onset-habituation observation for endless pieces and the pre-time-advance `observe_tonal_context()` header declaration (Author rule). Declared endless pieces reserve the TC observer and table from run start. Positive `follow_tonal_context` placement without it is a positioned script error; late declaration uses the existing header error. Finite pieces warn and ignore this declaration, preserving look-ahead for both onset and TC.

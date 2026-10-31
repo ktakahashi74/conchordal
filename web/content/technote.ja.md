@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "ec3c1327"
+source_commit = "89341622"
 author = "Koichi Takahashi"
-last_updated = "2026-10-25"
+last_updated = "2026-11-01"
 source_version = "0.5.0"
-source_snapshot = "ec3c1327"
-revision_scope = "Floraの自己除外・拍の機会・pace、作者規則の休止とdwell、置換時のrelease、NSGTの条件付き計算に同期（2026-10-25）"
+source_snapshot = "89341622"
+revision_scope = "Floraの自己除外・拍・休止・条件付きNSGTを保持し、開いた終端、脚本の逐次評価、音声の復旧、推定器の数値実装に同期（2026-11-01）"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム
@@ -840,7 +840,7 @@ $$ p = \frac{f}{2}\min\{k,20r\}, \qquad \Delta t_{eco}=p\,\Delta t. $$
 
 # 6. システムアーキテクチャと実装詳細
 
-Conchordal はリアルタイムオーディオの厳格な要件（レイテンシ < 10ms）と重い数値解析（聴覚フィルタバンク、NSGT、畳み込み）を両立するため、Rust で実装されている。アーキテクチャは並行・ロックフリーの設計パターンを採用する。
+Conchordal は実時間の音声処理と数値解析（聴覚フィルタバンク、NSGT、畳み込み）を両立するため、Rust で実装されている。音声callbackはロックフリーのring bufferを消費する。ほかのthreadは容量を制限したmessageを受け渡し、脚本の逐次配信ではcallbackの外にmutex付きoutboxを置く。
 
 ## 6.1 スレッディングモデル
 
@@ -869,6 +869,7 @@ UIのmeterは元のbusの水準を保つ。既定値の+4.5 dBは同梱のtop-le
 任意の演奏での保護動作を排除するものではない。`limiter = "none"`でも利得は掛かる。
 
 アプリケーションは4つの主要なスレッドコンテキストとGUIイベントループを生成する。
+終端のない曲では、脚本を評価する専用threadが加わる。
 
 1.  **オーディオスレッド（リアルタイム優先度）**:
     *   `audio/output.rs` で `cpal` により管理される。
@@ -891,6 +892,9 @@ UIのmeterは元のbusの水準を保つ。既定値の+4.5 dBは同梱のtop-le
 5.  **App/GUI スレッド（メイン）**:
     *   `eframe`/`egui` ビジュアライザを実行する。
     *   **責務**: ユーザー入力の処理、ランドスケープの可視化、シミュレーションメタデータの表示。ワーカースレッドから `UiFrame` スナップショットを受信する。
+
+6.  **脚本スレッド（終端のない曲）**:
+    *   RhaiのEngineと脚本の状態を所有し、演奏中に評価してheaderと容量制限付きのscore itemを渡す（6.4.2節）。有限曲はruntimeを作る前に一括評価する。
 
 ## 6.2 データフロー
 
@@ -1017,7 +1021,9 @@ entrained／steady／flow以外は、配置時の書き込み前にerrorにす�
 *   `flush()`: タイムラインを進めずに保留中のライブパッチを発行する。
 *   `seed(value)`: ランダムシード設定。
 *   `section(name, callback)`: スコープ付きシーン——終了時に自動リリース。
-*   `play(callback)` / `parallel([callbacks])`: スコープ付き/並行ブロック実行。
+*   `play(callback)`: スコープ付きのブロックを実行する。
+*   `parallel([callbacks])`: 有限曲で時間軸を分岐し、最も遅い終端までcursorを進める。終端のない曲では使えない。
+*   `endless()`: 再生eventも時刻進行もない最上位で一度だけ、開いた終端を宣言する（6.4節）。
 
 **ディレクター操作**（両軸のシーングローバルな地形シェイピング）:
 *   調波地形: `set_roughness_aversion(w)`, `set_harmonicity_preference(w_H)`, `set_pitch_objective("consonance"|"dissonance")`。いずれも評価を変え、感覚としての $R_{01}$ / $H_{01}$ は変えない。
@@ -1027,6 +1033,112 @@ entrained／steady／flow以外は、配置時の書き込み前にerrorにす�
 `harmonic_rhythm(N)`は、背景の変わる機会をまとめる、場面全体の初期設定である。正の整数Nを指定すると、共有時計の拍の交差をN回ごとに全Floraと対象の持続Voiceへ渡す。Voiceは自由な音高探索と再発音を使うものに限り、既存の音高選択と準備状態が実際の変更を決める。releaseや支持の喪失はこの機会を待たない。時計は完了したhabitat音声の観測に追従し、観測が未知の間はテンポの事前値で継続する。省略と0は従来動作を保つ。これは変化の時刻についての**作者規則**であり、Nは作曲者が指定する量である。調、和音の表、進行を与えず、知覚された小節長とも同一視しない。
 
 `remember_pitch_set(w)`は、自由に音高を探すHillClimb Voiceに、聴いた周期性の記憶を加える初期設定である。48 kHzで、自己を含むhabitatの実音から周期性の分布を正規化し、有効な有音時間にわたって蓄積する。その山から最大二つの候補を加え、既存の評価に記憶との近さを重み付きで足す。省略と0は従来の経路を保つ。語全体は**作者規則**、観測に用いるIPEMの周期性モデルは**候補**に位置づける。記憶は絶対周波数上にあり、音名の格子、調、和音の表、書かれた進行は使わない。部分調波や平均によって移動した山も含むため、発音した基音の一覧とは異なる。欠測時には記憶を保ち、観測窓が満たされてから再開する。無効になったtonal contextは復活させない。忘却とFloraのlane選択への接続はなく、どちらのlistener profileにも自動追加しない。
+
+<a id="open-ended-performance"></a>
+
+## 6.4 終端を決めない演奏
+
+### 6.4.1 宣言と演奏の終わらせ方
+
+`endless()`を宣言した曲の終端は`Open`となる。有限曲は期間と譜面上のFinishを持つ。
+endlessの脚本が戻ると、保留中のactionは出すがFinishは足さない。すべての音を解放した後も、
+queueが空になっただけでは実行は終わらない。GUIは有限曲の進捗の代わりに、
+時・日を含む経過時間と「open end」を表示する。
+
+GUIの**End**と最初の**Ctrl-C**は、次のhopで穏やかな終了を要求する。runtimeはscoreを
+閉じてPopulation、Flora、Rainを解放し、すでに進行中のfadeも含めて最も長い残り時間を待ち、
+Finishへ進む。二度目のCtrl-C、**Exit**、windowを閉じる操作は即時停止する。
+音声の復旧中に終了を求めた場合は、聴こえないfadeやringの空きを待たずに退出する。
+
+両binaryは`--duration <sec>`を受け取る。対応するsample tickで、まずscoreの準備を待ち、
+その時刻までのactionを配ってから終了を要求する。指定期間の後にfadeとrendererの末尾が
+加わる。Openの`conchordal-render`、compile-only、report、profileには`--duration`が要る。
+WAV writerは有限曲にもOpenにも出力中のRIFF上限を適用し、上限までの有効なfileを閉じて
+からerrorを返す。楽器の`conchordal`は音声ファイルの出力経路を持たない。
+
+### 6.4.2 脚本の逐次評価と容量
+
+終端のない脚本では、`wait()`を含む`loop`や`while`で演奏中にscore itemを作る。
+脚本threadの先行幅は64 hop（48 kHz・hop 512で約0.68秒）である。開始tickが`a`のhopを
+配る前に、workerは確定済みwatermarkが`round(watermark_sec * fs) > a`を満たすか、
+outboxが終端状態になるのを待つ。itemは`(time, order)`の順を保つ。同じ脚本・seed・
+sample rate・hopなら、実時間、render、compile-onlyで譜面列と容量errorの発生点が揃う。
+実時間の生態系や解析threadの進み方まで同一にする規則ではない。
+
+事前確保したoutboxの容量は**C = 131,072 action**と、保持byte数の
+**B = C × size_of::<Action>()**（記載したbuildでは77,594,624 bytes）である。
+markerは1 actionと数え、heap上のpayloadはcapacityで課金する。取り出したitemも
+workerが適用し終わるまでcreditを保持する。producerがringの外に保留する1 itemも
+B以下なので、scoreの保持量は2Bとslot headerの合計以下になる。課金はproducerが
+lock前に計算し、workerのpopと返却はaction数に対してO(1)である。score queueの確保や
+actionのコピーは行わない。actionの適用、LOO登録、UIやreportのsnapshotには別の費用がある。
+header前や1配布hop内のitemが容量を超えると、譜面で決まる位置でerrorとなる。
+実時間ではwatermarkの待機が先行幅の時間を超えると脚本の遅れとしてscoreを閉じる。
+offlineには実時間のwatchdogを置かない。header後の脚本errorでは、確定済みitemを
+配り終え、生態系自体は終了させない。
+
+脚本には次の規則がある。
+
+- `seed`、`output_gain`、`temporal_mode`、`scaffold_*`、`control_update_mode`、
+  `meter_stability`、`temporal_basin`は最初に時刻が進む前に宣言する。
+  このheaderを公開してからruntimeを作る。終端のない曲では`parallel`を使えない。
+- 自己除外は配置時に求める。予約していないPopulationへ後から`leave_self_out`を
+  有効にすることはできない。Openでは共有のresource powerとFlora meterを実行開始時に
+  作り、後の配置より前の観測も保持する。
+- 無限loop内の配置は、明示的な`release`か`section`／`play`の終了で解放する。
+  Voiceの自然死はPopulationの解放ではない。解放済みで生きたmemberのいないPopulationは
+  除去する。脚本が伸ばし続ける配列は作者が管理する。
+- 有限曲でも終端のない曲でも、`eval`、fileのimport、`sleep`、実時間のtimestampは
+  使えない。譜面の時間は`wait()`で進める。
+
+期間を指定したrenderとcompile-onlyでは、`wait()`が`--duration`を越えるとcursorを
+その境界へ止め、scopeの解放をそこで出してから、脚本で捕捉できないtokenで評価を終える。
+renderは同じtickの終了要求より先に解放を配る。compile-onlyは仮想playheadを進め、
+同じ準備条件と容量判定を使う。繰り返す警告は種類と脚本上の位置でまとめる。
+
+`observe_tonal_context()`は時間を進める前の場面の宣言であり、**作者規則**に属する。endlessでは演奏開始からTCの観測器と表を用意し、宣言なしで正の`follow_tonal_context`を配置すると位置付きのscript errorになる。有限の曲では宣言を警告して無視し、従来の先読みで必要性を決める。endlessではonset habituationの共有観測器も演奏開始から無条件に用意する。有限の曲は従来の先読みを保つ。
+
+### 6.4.3 時刻の表し方
+
+実行時の絶対時刻の比較は`u64`のsample tickを使う。脚本のcursor、IRの時刻、UIとreportの
+秒は`f64`とし、runtimeが`round(sec * fs)`で一度だけtickへ変換する。局所の間隔・長さ・
+位相・年齢は`f32`を保つ。Listenerの間隔はtick差から求め、Shared scaffoldの位相は
+tickからf64で計算する。meterのbeat cyclesは12で折り返す。再来の時刻は秒を加算し続けず、
+hopのtickとsample rateから直接求める。report用のSlidingPlvは、窓が一周するごとに
+保存窓から和を計算し直す。
+
+### 6.4.4 音声の復旧とtelemetry
+
+音声の監督は`Running`、`Recovering`、終了状態の`Failed`を分ける。streamの喪失通知か、
+ringの時間幅を超えてcallback frameが進まない状態で再構築を始める。再試行は監督の周期から
+間隔を延ばし、最大1秒とする。最初のsample rateと形式を保ち、破棄されたstreamや失敗した
+buildからconsumerとlimiterの状態を回収する。workerは元のproducerを保ち、ringが満ちると
+進行を止める。対応しない設定はerrorで実行を終えるが、xrunなどを数えただけでは失敗にしない。
+
+GUIはframeごと、headlessは50 msごとに監督する。System欄はxrun、slow hop、再構築数、
+復旧状態を示す。楽器の`--telemetry`は、取得できる環境でのRSS、hop時間の平均と最大、
+音声counter、Voice・Population・Floraの生存数、出生・死亡数を区間ごとに出す。
+逐次評価中はwatermarkの余裕の最小値も出し、hopごとのlogは保持しない。
+
+<a id="cumulative-estimator-numerics"></a>
+
+## 6.5 累積推定器の数値計算
+
+履歴からエネルギーを予測する推定器は、ridge 0.01と57特徴の累積回帰を保つ。
+Gram行列はf64の補償和で保持する。逆行列を更新し続ける代わりに、Cholesky因子を
+rank-1更新し、10発行ごとに再分解する。その位相はobserverごとにずらす。
+射影には二回の三角解法を使う。rank-1更新の前に入力を検査し、再分解はthread内で
+再利用するscratchに作って、成功した場合だけ確定する。
+
+応答和は高位・低位を保持し、2項ごとにTwoSumで畳む。観測済みの応答更新を最大10件
+まとめ、各成分の加算順を保ちながら同じ行を続けて処理する。照会・clone・gap・凍結の前には
+確定する。scalarの学習和と比較和も補償する。学習重みの補数は、丸めた比を1から引かず、
+補償項を含む`(square - cross) / square`から求めて範囲内へ収める。
+
+因子の更新に失敗した推定器は、最後に確定したGram行列と因子、その時点までに観測した
+応答を凍結する。その後の観測では更新せず、reportとSystem欄に状態を示す。
+cloneは累積統計を継ぎ、独自の再分解位相を持つ。rewindは推定器を初期化する。
+これらの機構は累積モデルの定義を保つ。
 
 # 7. ケーススタディ：創発的挙動の分析
 
@@ -1096,6 +1208,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | 実際に提示された音との認知的結合 | presentation 専用分析。入力欠落時は観測を無効化し、連続した1窓分が揃うまで DCC 圧力を停止 | §6.2 | 実装済み。実機での過負荷検証は未解決 |
 | 励振と身体の放射 | 楽器とoffline用binaryで任意に選べる励振renderer。Sine/Harmonicの即時応答、Modalの自由減衰、Offと退役の分離 | §5.1, §6.1 | 実装済み。既定は従来のrenderer |
 | 生きた演奏としての音楽 | 楽器は音声ファイル出力を持たず、別バイナリ `conchordal-render` がオフライン検証を担う | §6 | バイナリ境界として実装済み |
+| 終端を決めない演奏 | `endless()`、脚本の逐次配信、終了操作、tick/f64の時刻、音声の監督、累積推定の数値実装 | §6.4–6.5 | 部分。実装は統合済み。V5の実機復旧、V6の耐久、V7の推定器の長時間精度、V8の実機負荷の受入は未取得 |
 | 役割の溶解・空間ランドスケープ・音色の遺伝・他領域 | 遺伝的リスポーンはアッセイとして存在 | — | 地平 |
 
 ## 9.2 未解決問題

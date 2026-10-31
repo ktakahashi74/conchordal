@@ -110,6 +110,7 @@
   - [§9.3.104 機構の根拠の段と、作曲者の量の統一方針](#mechanism-evidence-and-composer-controls)
   - [§9.3.109 既知の最終区間の表情](#known-final-expression)
   - [§9.3.117 2026-10-31：endlessな脚本の逐次評価](#incremental-endless-scores-20261031)
+  - [§9.3.118 2026-10-31：終端を決めない演奏の実装と受入の境界](#indefinite-performance-20261031)
 - [§9.4 整合と拡張の順序](#94-整合と拡張の順序)
 
 ---
@@ -7284,6 +7285,7 @@ F-19dのk=16の実測（690 bin、55 substep、1437 µs/hop）を比例させる
 L=0では最大`1+w`倍で進む。§9.3.98の速さの範囲は`[max(0,1-w),1+w]`となる。
 いずれも作曲上の規則であり、新しい知覚の主張ではない。
 
+
 ## 9.4 整合と拡張の順序
 
 2026-10-07以後の範囲・受入は[§9.3.57](#two-tier-rule)、作業の依存と順序は[現行計画](../roadmap/plan-current.md)を正とする。以下は2026-09-20までの範囲と、その後に保存した数値準備・実装の履歴であり、現在の作業順や完了条件ではない。
@@ -8095,3 +8097,89 @@ compile-onlyのaction数・payload容量超過、二つのcredit競合順序（V
 report比較から除くのは実時間計時の`elapsed_us`、`analysis_wait_us`、`listener_wait_us`の
 3欄だけであり、譜面、状態、残りのreport欄は厳密に比較する。これらは実装動作の検証であり、
 V6b耐久試験、V7推定器精度、V8実時間負荷、作者の試聴はこの単位の受入に含めない。
+
+<a id="indefinite-performance-20261031"></a>
+
+### 9.3.118 2026-10-31：終端を決めない演奏の実装と受入の境界
+
+[終わりのない演奏の設計書](../superpowers/specs/2026-10-31-indefinite-performance-design.md)
+revision 9に沿って、Manifestoが掲げる終端のない生態系と、temporal DCCの
+「Memory and continuing operation」の義務を受け、実装の範囲を定めた。作者は2026-10-30〜31に
+四つを採択した（§0）。**A1**は、開いた終端を先に、演奏中の脚本評価を後に作る二段階。
+**A2**は、曲全体の宣言`endless()`。**A3**は、実行時の比較を`u64`のsample tick、
+脚本とIRの秒を`f64`とする時刻表現。**A4**は、それ以外の推奨の採用である。
+Astraによる設計reviewは9回行い、第8回で軽微な補足3件を残してPASS、
+第9回でrevision 9の補足を確認し、指摘なしでPASSとなった。
+
+**統合した実装。** `1b5db013`にはIP-U1〜U5が入っている。
+
+- **IP-U1（§3）**：eventの配布とsceneの選択はtickで比較する。脚本のcursor、IR、
+  UIとreportの秒はf64、局所の間隔・年齢・位相はf32を保つ。Listenerの間隔は、
+  丸めた絶対秒の差でなくtick差から求める。
+- **IP-U3（§6.3〜§6.5、§4.5）**：解放済みで生きたmemberのいないPopulationを除去する。
+  音声streamの喪失を監督し、producerを保ったままcallbackの状態を回収して再構築する。
+  再試行の間隔は倍増して1秒で止まり、対応しない設定は終了扱いとなる。WAVには出力中の
+  RIFF上限検査を置いた。任意のtelemetryは区間ごとの要約を出し、hop履歴を蓄えない。
+- **IP-U4（§4、§8）**：`ScenarioEnd::Open`を導入し、空queueとFinishを分けた。
+  Endと最初のCtrl-CはPopulation、Flora、Rainを解放し、進行中のfadeの残りも待つ。
+  二度目のCtrl-Cは即時停止する。`--duration`では、そのhopで配るitemを適用してから
+  終了を要求する。Openのrender、compile-only、report、profileには期間の指定が要る。
+- **IP-U2（§6.1、§6.2、§6.6、§7.1）**：beat cyclesを12で折り返し、再来の時刻は
+  tickから直接求め、SlidingPlvは保存窓から和を更新し直す。固定ridgeの推定器はGram行列と
+  scalarの補償和、Choleskyのrank-1更新、10発行ごとの再分解を使い、observerごとに位相を
+  ずらす。統合した軽量化では応答和をK=2項ごとにTwoSumで畳み、観測済み応答を最大10件
+  まとめて処理する。照会・clone・gap・凍結の前には確定する。入力を検査したrank-1更新は
+  連続した`U=Lᵀ`の行で行い、再分解だけが再利用scratchを使う。失敗時は整合した確定状態を
+  凍結し、その状態を表示する。累積推定の定義と保持方針は変えていない。
+- **IP-U5（§5）**：逐次評価、C/Bの校正、V2〜V4は[§9.3.117](#incremental-endless-scores-20261031)
+  に記録した。実装review後はproducerが求めたcreditを保持し、workerのpopと返却をaction数に
+  対してO(1)にした。watermarkの余裕も区間の最小値を出す。IP-R1の第1回で求められた
+  この2件の修正は、第2回の静的reviewで`b1aaf91c`に対してPASSとなった。
+
+**採用した制約と理由。** 以下は判断待ちでなく、実装済みの規則である。
+
+- 終端のない曲では`parallel`を拒否する（§5.1）。cursorを巻き戻すため、全branchが
+  終わるまでitemを保留する必要があり、保持量と先行評価を制限できない。有限曲では使える。
+- `seed`、`output_gain`、`temporal_mode`、`scaffold_*`、`control_update_mode`、
+  `meter_stability`、`temporal_basin`は、最初に時刻が進む前に宣言する（§5.6）。
+  runtimeの構築と、時刻0のSpawnへの最終basinの適用に要る。`endless()`自体は
+  再生eventも時刻進行もない最上位で一度だけ宣言する。header前のitemがCかBを超えると
+  読み込み時にerrorとなる。
+- 自己除外は配置時に求める（§5.8）。配置時に予約しなかったPopulationへ後から
+  `leave_self_out`を有効にすると、終端のない曲ではerrorとなる。出生前の履歴をobserverへ
+  渡す必要があり、全Voiceを出生から収録すればVoiceごとに解析streamが増える。
+  後のFlora配置が必要とする過去の観測も保つため、Openでは共有のresource powerと
+  Flora meterを実行開始時から作る。
+- 有限曲でも終端のない曲でも、`eval`、fileのimport、`sleep`、実時間のtimestampは
+  使えない（§5.13）。譜面の時間は`wait()`で進める。脚本から作る譜面の決定性と、
+  評価を中断できる経路を保つ規則である。
+- 無限loop内の配置は、明示的な`release`か、`section`／`play`の終了で解放する
+  （§6.3、§5.12）。Voiceの自然死はPopulationの解放ではない。未解放の識別子や、
+  脚本が伸ばし続ける配列は作者の所有に属し、scoreの転送容量だけでは有界にならない。
+
+**残る設計単位（§7.2）。** 適応の利得は1/Nで下がり、予測は運転全体の平均へ近づく。
+新しいVoiceも共有統計を継ぐ。数値計算の安定化では、この保持の振る舞いは解決しない。
+[I10契約](#i10-sensorimotor-contract)の「Memory and continuing operation」の義務の下に
+temporal DCCの設計単位として残し、ここでは忘却の定数を採らない。
+
+**まだ取っていない受入（[設計§9](../superpowers/specs/2026-10-31-indefinite-performance-design.md#9-validation)）。**
+単体試験、静的review、短い数値比較、容量の校正、U2のofflineの費用見積もりでは、
+次の受入を満たしたとはしない。
+
+- **V5・実機の復旧**：blancheでPipeWireを再起動・停止し、停止中にGUIのEndとheadlessの
+  Ctrl-Cを使う。対象機で復旧と終了の経路が動くかを決める。
+- **V6・耐久（V6a/V6b）**：生存数を定常に保ち、後半のRSSの傾きを調べる。段階2では
+  watermarkの余裕も記録する。検査した時間を添えてtechnoteに継続運転の対応を記せるか、
+  leakの修正が要るか、64 hopの先行幅を増やすかを決める。
+- **V7・推定器の長時間精度**：共有observerと長寿命Voiceのobserverを10⁶、10⁷、3·10⁷発行で
+  登録済みの高精度参照と比べる。判定できる不合格が出た経路に応じ、行列側はdouble-doubleの
+  残差による反復改良、scalar側はdouble-doubleの累積へ進む。修正後は同じcheckpointを通し、
+  V8も取り直す。
+- **V8・実機の負荷**：登録したVoice・body・report・DCCの行列で、出生と動作中のendless脚本を
+  含めて基準と統合版を比べる。推定器と段階2の費用が既存の対応負荷に収まるかを決め、
+  退行があれば実装を直す。U2のoffline比較は工学上の見積もりであり、この受入ではない。
+
+technoteには実装した機構を記し、終端のない運転の約束は部分とする。
+継続運転への対応が受け入れられたとは、まだ書かない。
+
+**2026-11-01 統合追記。** 上記の取得と費用は旧土台の記録であり、新しい聴覚 front end、Rain、Flora、TCを統合した後のV6/V8は別途取得する。作者は同日22:5x JSTに、endlessでonset habituationの共有観測器を開始時から無条件に作ることと、時間を進める前の`observe_tonal_context()`宣言（Author rule）を採択した。宣言したendlessはTCの観測器と表を開始時から用意する。宣言なしの正の`follow_tonal_context`配置は位置付きscript error、遅い宣言は既存のheader errorとなる。有限の曲の宣言は警告して無視し、onsetとTCとも従来の先読みを保つ。

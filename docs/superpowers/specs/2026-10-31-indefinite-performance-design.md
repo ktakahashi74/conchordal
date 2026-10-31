@@ -2,13 +2,15 @@
 
 Date: 2026-10-31. Source revision: `a6b197d5`. Status: revision 9. The independent
 review (Astra) passed at round 8, and round 9 confirmed revision 9 with no remaining
-findings. No implementation has started.
+findings. Implementation status is recorded in §0.
 
 This design lets Conchordal perform a piece with no planned end. It covers the Rhai
 API, the scenario IR, the runtime, the GUI and CLI, and the long-run defects that a
 performance lasting days would expose.
 
 ## 0. Authority and accepted decisions
+
+Implementation status (2026-10-31): IP-U1–U5 are integrated, including the U5 review fixes and U2 numerical optimization; V5 hardware recovery, V6 endurance (V6a/V6b), V7 long-run estimator precision and V8 realtime-load acceptance remain unacquired.
 
 - Manifesto (`web/content/manifesto.md:106`): alongside finite works, Conchordal
   envisages an acoustic ecosystem running without a predetermined end.

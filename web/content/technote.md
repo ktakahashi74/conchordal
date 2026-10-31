@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "ec3c1327"
+source_commit = "89341622"
 author = "Koichi Takahashi"
-last_updated = "2026-10-25"
+last_updated = "2026-11-01"
 source_version = "0.5.0"
-source_snapshot = "ec3c1327"
-revision_scope = "Flora self-exclusion, beat opportunities and pace; authored rest and dwell; replacement release and conditional NSGT (2026-10-25)"
+source_snapshot = "89341622"
+revision_scope = "Retains Flora self-exclusion, beat/rest controls and conditional NSGT; open-ended performances, incremental scores, audio recovery and estimator numerics (2026-11-01)"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -1056,7 +1056,7 @@ The API stability tier, Experimental, is independent of that classification.
 
 # 6. System Architecture and Implementation Details
 
-Conchordal is implemented in Rust to satisfy the stringent requirements of real-time audio (latency < 10ms) alongside heavy numerical analysis (auditory filterbank, NSGT and convolution). The architecture uses a concurrent, lock-free design pattern.
+Conchordal is implemented in Rust to combine real-time audio with numerical analysis (auditory filterbank, NSGT and convolution). The audio callback consumes a lock-free ring buffer. Background threads exchange bounded messages; incremental score delivery uses a mutex-protected outbox outside the callback.
 
 ## 6.1 Threading Model
 
@@ -1085,7 +1085,8 @@ samples at three seeds against the peak limiter's 0.98 ceiling, rounded down to
 0.5 dB steps; `0.0` restores unity gain. This calibration covers those renders,
 not arbitrary performances. Selecting `limiter = "none"` keeps the gain.
 
-The application creates four primary thread contexts, plus the GUI event loop:
+The application creates four primary thread contexts, plus the GUI event loop and,
+for an endless piece, a dedicated script thread:
 
 1.  **Audio Thread (Real-Time Priority)**:
     *   Managed by `cpal` in `audio/output.rs`.
@@ -1108,6 +1109,9 @@ The application creates four primary thread contexts, plus the GUI event loop:
 5.  **App/GUI Thread (Main)**:
     *   Runs the `eframe`/`egui` visualizer.
     *   **Responsibility**: Handles user input, visualizing the Landscape (`ui/plots.rs`), and displaying simulation metadata. It receives `UiFrame` snapshots from the worker thread via a bounded channel.
+
+6.  **Script Thread (endless pieces)**:
+    *   Owns the Rhai Engine and script state, evaluates the score during performance, and publishes bounded score items and the header (Section 6.4.2). Finite pieces are evaluated eagerly before runtime construction.
 
 ## 6.2 Data Flow
 
@@ -1269,7 +1273,8 @@ Placements determine the founder Voices' initial frequency allocation when a Pop
 *   `seed(n)`: Sets the random seed for reproducible runs.
 *   `section(name, callback)`: Marks a named scene boundary; Populations created within the callback are automatically released when the section ends.
 *   `play(callback)`: Executes a scoped block—Populations created inside are released on exit.
-*   `parallel([callbacks])`: Runs multiple blocks concurrently (timeline branches), advancing the cursor to the latest endpoint.
+*   `parallel([callbacks])`: In finite pieces, runs timeline branches and advances the cursor to the latest endpoint. Endless pieces reject it.
+*   `endless()`: Declares an open end once at top level, before any playback event or time advance (Section 6.4).
 
 ### 6.3.6 Director Operations
 
@@ -1284,6 +1289,129 @@ Scene-global terrain shaping, on both axes:
 `remember_pitch_set(w)` is an optional initial Director setting for free HillClimb pitch choices. At 48 kHz it accumulates normalized periodicity evidence from the actual habitat PCM, including the acting Voice, over observed audible time. It adds at most two continuous memory-peak candidates and a weighted affinity to the existing evaluation. Omission or 0 preserves the previous path. The whole term is an **author rule**; its IPEM periodicity observation is a **candidate** model. The memory uses absolute frequency, with no pitch-class grid, key, chord table or written progression. Its peaks can include subharmonics and move when observations are averaged; they are not a list of physical fundamentals. Gaps retain the memory while a fresh observation window fills, without reviving an invalid tonal-context state. It has no forgetting, does not control Flora lane selection, and is not part of either listener profile.
 
 **Scenario Parsing**: Scenarios are loaded from `.rhai` files. This separation allows users to compose the "Macro-Structure" (the narrative arc, the changing laws of physics) while the "Micro-Structure" (the specific notes and rhythms) emerges from the agents' adaptation to those changes.
+
+<a id="open-ended-performance"></a>
+
+## 6.4 Open-Ended Performance
+
+### 6.4.1 Declaring and ending a performance
+
+`endless()` makes the scenario's end `Open`; finite pieces retain their duration and
+scripted Finish. Returning from an endless script flushes pending actions without
+adding Finish. An empty score queue, including one left after all sound is released,
+does not end the run. The GUI shows elapsed time, including hours and days, and
+"open end" in place of a finite progress bar.
+
+GUI **End** and the first **Ctrl-C** request a graceful end at the next hop. The
+runtime closes the score, releases Population, Flora and Rain, and waits for the largest
+remaining fade, including fades already in progress, before Finish. A second Ctrl-C,
+**Exit** or window close stops immediately. During audio recovery, an end request
+exits immediately rather than waiting for an inaudible fade or ring-buffer vacancy.
+
+Both binaries accept `--duration <sec>`. At that sample-tick boundary, the runtime
+first waits for score readiness and dispatches due actions, then requests the end;
+the output can include end fades and the renderer tail after the requested duration.
+Open `conchordal-render`, compile-only, report and profile runs require `--duration`.
+The WAV writer enforces the RIFF size limit during production for finite and open
+renders, finalizing a valid prefix before returning an error. The instrument
+`conchordal` has no audio-file output.
+
+### 6.4.2 Incremental scores and their limits
+
+An endless script may use `loop` or `while` with `wait()` to produce score items
+during performance. The script thread is paced with a 64-hop lead (about 0.68 s at
+48 kHz / hop 512). At hop tick `a`, the worker dispatches only after the committed
+watermark satisfies `round(watermark_sec * fs) > a`, or the outbox is terminal.
+Items keep `(time, order)` ordering. Given the same script, seed, sample rate and hop,
+the score sequence and capacity-error point agree in realtime, render and compile-only;
+this does not remove other realtime ecology or analysis scheduling differences.
+
+The preallocated outbox allows **C = 131,072 actions** and
+**B = C × size_of::<Action>()** retained bytes (77,594,624 bytes on the documented
+build). Markers count as one action and heap payload is charged by capacity. Credit
+stays charged after pop until the worker applies the item. One bounded producer item
+may remain outside the ring, limiting score storage to 2B plus slot headers. The
+producer computes charges before locking; worker pop and credit return take O(1)
+work in action count and allocate no score queue or action copy. This excludes the
+separate costs of applying actions, LOO registration and UI/report snapshots.
+Excess items before the header or within one dispatch hop produce a deterministic
+capacity error. A realtime watermark wait longer than one lead closes the score with
+a script-lag error; offline evaluation has no wall-clock watchdog. A script error
+after the header leaves committed items to drain and does not itself finish the ecology.
+
+The score has the following rules:
+
+- `seed`, `output_gain`, `temporal_mode`, `scaffold_*`, `control_update_mode`,
+  `meter_stability` and `temporal_basin` precede the first time advance. This header
+  is published before runtime construction. Endless pieces reject `parallel`.
+- Self-exclusion must be requested at placement; an endless script cannot enable
+  `leave_self_out` later on an unreserved Population. Open scenarios create shared
+  resource power and the Flora meter at run start, including evidence before a later
+  placement.
+- Every placement inside an unbounded loop must be released explicitly or through
+  `section`/`play` cleanup. Natural Voice death does not release its Population.
+  Released, empty populations are pruned; arrays grown by the script remain its
+  author's responsibility.
+- Finite and endless scenarios reject `eval`, file imports, `sleep` and wall-clock
+  timestamps. Score time advances through `wait()`.
+
+Bounded render and compile-only evaluation stop at a `wait()` crossing `--duration`.
+The cursor is clamped to the bound, scope releases are emitted there, and evaluation
+terminates through an uncatchable token. Render dispatches these releases before the
+end request at the same tick. Compile-only uses a virtual playhead and the same
+readiness and capacity rules. Repeated warnings are coalesced by kind and script position.
+
+`observe_tonal_context()` is an **Author rule** declared before time advances. In an endless piece it reserves the TC observer and table from run start; placing a positive `follow_tonal_context` without this declaration is a positioned script error. In a finite piece the declaration warns and is ignored, preserving the existing look-ahead. Endless pieces also create the shared onset-habituation observer unconditionally at run start; finite pieces retain look-ahead.
+
+### 6.4.3 Time representation
+
+Runtime absolute comparisons use `u64` sample ticks. Script cursors, IR timestamps,
+UI and report seconds use `f64`; the runtime converts score times once with
+`round(sec * fs)`. Local intervals, durations, phases and ages remain `f32`.
+Listener intervals come from tick differences, and Shared scaffold phase is computed
+in f64 from the tick. Meter beat cycles wrap modulo 12; recurrence timestamps come
+directly from the hop tick and sample rate rather than a running sum. Report-only
+SlidingPlv refreshes its sums from its retained window once per window length.
+
+### 6.4.4 Audio supervision and telemetry
+
+Audio supervision distinguishes `Running`, `Recovering` and terminal `Failed`.
+Stream-loss errors, or callback frames failing to advance for longer than the ring's
+duration, trigger rebuilding. Retries back off from the supervisor cadence to a
+maximum interval of 1 s, retaining the original sample rate and format. Callback
+consumer and limiter state are recycled after a dropped stream or failed build;
+the worker retains its producer and pauses when the ring fills. Unsupported
+configuration ends the run with an error. Counted errors such as xruns alone do not.
+
+The GUI supervises once per frame and headless execution polls every 50 ms. System
+indicators show xruns, slow hops, rebuilds and recovery state. Instrument
+`--telemetry` emits interval summaries of RSS where available, hop-time mean/max,
+audio counters, live Voice/Population/Flora counts, births/deaths and, while an
+incremental script is active, the minimum watermark margin. It retains no per-hop log.
+
+<a id="cumulative-estimator-numerics"></a>
+
+## 6.5 Cumulative Estimator Numerics
+
+The history-energy predictor retains the fixed ridge 0.01 and 57-feature cumulative
+regression. Its Gram matrix uses compensated f64 sums. It maintains a Cholesky
+factor through rank-1 updates and refactorization every 10 issues, staggered by
+observer, and computes projections with two triangular solves instead of propagating
+an inverse. Input checks precede rank-1 updates; refactorization uses reusable
+thread-local scratch and commits only on success.
+
+Response sums retain high and low parts, folding every two terms with TwoSum.
+At most 10 observed response updates are batched for locality without changing
+per-component addition order; queries, clone, gap and freeze materialize them first.
+Scalar learning and comparison sums use compensated accumulation. The learning
+complement is formed from `(square - cross) / square` with retained compensation
+before clamping, avoiding subtraction of a rounded ratio from 1.
+
+A failed factor update freezes the last committed Gram/factor pair and responses
+observed by that point. Further observations do not update the frozen estimator;
+reports and the System panel expose its status. Clones inherit accumulated statistics
+with their own refactorization phase; rewind resets the estimator. These mechanisms
+preserve the cumulative model's definition.
 
 # 7. Case Studies: Analysis of Emergent Behavior
 
@@ -1355,6 +1483,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations and suspend DCC pressure until a complete window is available | §6.2 | Implemented. Physical-device overload validation is open |
 | Excitation and body radiation | Optional excitation renderer in the instrument and offline binary: immediate Sine/Harmonic response and Modal free decay, with separate Off and disposal | §5.1, §6.1 | Implemented as an opt-in; the default remains the legacy renderer |
 | Music as a living performance | The instrument exposes no audio-file output; the separate `conchordal-render` binary supports offline study | §6 | Implemented as a binary boundary |
+| Performance without a predetermined end | `endless()`, incremental score delivery, explicit ending, tick/f64 clocks, audio supervision and stabilized cumulative numerics | §6.4–6.5 | Partial. Implementation is integrated; V5 hardware recovery, V6 endurance, V7 long-run estimator precision and V8 realtime-load acceptance remain unacquired |
 | Dissolution of roles; spatial landscapes; heredity of timbre; other domains | Hereditary respawn exists as assays | — | Horizon |
 
 ## 9.2 Open Problems

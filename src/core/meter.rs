@@ -146,6 +146,8 @@ pub(crate) const RECURRENCE_HISTORY_SECONDS: f64 = 2.0 / F_BEAT_MIN as f64 + 0.0
 
 #[derive(Debug)]
 struct Echo {
+    onset: (u64, f64),
+    period: f64,
     observation_deadline: f64,
     target: f64,
     window: f64,
@@ -157,6 +159,9 @@ struct Echo {
 #[derive(Debug)]
 struct Recurrence {
     history: Vec<f64>,
+    onsets: Vec<(u64, f64)>,
+    origin_tick: u64,
+    onset: (u64, f64),
     echo: Vec<Echo>,
     time: f64,
     onset_time: f64,
@@ -175,6 +180,9 @@ impl Recurrence {
         let capacity = (RECURRENCE_HISTORY_SECONDS / REFRACTORY_SEC as f64).ceil() as usize + 2;
         Self {
             history: Vec::with_capacity(capacity),
+            onsets: Vec::with_capacity(capacity),
+            origin_tick: 0,
+            onset: (0, 0.0),
             echo: Vec::with_capacity(capacity),
             time: 0.0,
             onset_time: 0.0,
@@ -188,6 +196,11 @@ impl Recurrence {
         }
     }
 
+    fn relative_time((tick, fraction): (u64, f64), origin: u64, fs: f32) -> f64 {
+        // Subtract integers before conversion; absolute run age never enters f64.
+        ((tick as i128 - origin as i128) as f64 + fraction) / fs as f64
+    }
+
     fn observe(
         &mut self,
         start_tick: u64,
@@ -197,9 +210,31 @@ impl Recurrence {
         frac: f32,
     ) -> Option<f32> {
         let dt = hop as f64 / fs as f64;
-        let onset_time = (start_tick as f64 + frac as f64 * hop as f64) / fs as f64;
+        self.onset = (start_tick, frac as f64 * hop as f64);
+        // Keep the closed history endpoint despite its local arithmetic error.
+        let retention_roundoff = 8.0 * f64::EPSILON * (RECURRENCE_HISTORY_SECONDS + dt);
+        let start = self.onsets.partition_point(|&(tick, fraction)| {
+            Self::relative_time((start_tick, self.onset.1 - fraction), tick, fs)
+                > RECURRENCE_HISTORY_SECONDS + retention_roundoff
+        });
+        self.onsets.drain(..start);
+        self.history.drain(..start);
+        let origin = self.onsets.first().map_or(start_tick, |t| t.0);
+        if origin != self.origin_tick {
+            self.origin_tick = origin;
+            // Rebuild from raw ticks, never repeatedly subtract rounded seconds.
+            for (time, &onset) in self.history.iter_mut().zip(&self.onsets) {
+                *time = Self::relative_time(onset, origin, fs);
+            }
+            for echo in &mut self.echo {
+                let time = Self::relative_time(echo.onset, origin, fs);
+                echo.observation_deadline = time + 0.06;
+                echo.target = time + echo.period;
+            }
+        }
+        let onset_time = Self::relative_time(self.onset, origin, fs);
         self.onset_time = onset_time;
-        self.time = (start_tick + hop as u64) as f64 / fs as f64;
+        self.time = Self::relative_time((start_tick + hop as u64, 0.0), origin, fs);
         let decay = (-dt / PERSIST_TAU as f64).exp();
         self.observed *= decay;
         self.predicted *= decay;
@@ -236,15 +271,12 @@ impl Recurrence {
         }
         self.echo
             .retain(|e| !(e.observation_done && e.prediction_done));
-        let start = self
-            .history
-            .partition_point(|t| *t < onset_time - RECURRENCE_HISTORY_SECONDS);
-        self.history.drain(..start);
         if !fired {
             return None;
         }
         assert!(self.history.len() < self.history.capacity());
         self.history.push(onset_time);
+        self.onsets.push(self.onset);
         let n = self.history.len();
         self.uniform = if n >= 3 {
             let p = self.history[n - 2] - self.history[n - 3];
@@ -274,16 +306,16 @@ impl Recurrence {
                     continue;
                 }
                 let coverage = self.coverage(period, window);
-                // Each timestamp has at most four roundings (tick conversion,
-                // fractional product, addition, division): <= 4 eps |time|.
-                // A period difference contributes <= 9 eps |time|; forming a
-                // target and subtracting an observed timestamp adds <= 10 more.
-                // A candidate period also perturbs the window by <= 0.2 * 9.
-                // Two coverages cost <= 2 * (19 + 1.8) = 41.6; use 48
-                // to cover the window's period rounding and accept's difference.
-                // The local arithmetic term also covers division and mass sums.
-                let roundoff = 48.0 * f64::EPSILON * self.time.abs() / window
-                    + (8 * n + 32) as f64 * f64::EPSILON;
+                // T = max(relative hop end, history span) + max lag + hop
+                // bounds every timestamp, target and arithmetic result below.
+                // raw timestamp error is <= 4 eps T; a lag costs <= 9 eps T,
+                // target-minus-onset <= 19 eps T, and its window <= 2 eps T.
+                // Comparing two smooth coverage masses costs <= 42 eps T/window;
+                // allow 11 more for confirmation/accept f64 arithmetic: c = 64.
+                // Discrete endpoint membership is handled in coverage, not by c.
+                let scale = self.time.abs().max(RECURRENCE_HISTORY_SECONDS) + 2.0 + dt;
+                let roundoff =
+                    64.0 * f64::EPSILON * scale / window + (8 * n + 32) as f64 * f64::EPSILON;
                 if coverage > best_coverage + roundoff
                     || ((coverage - best_coverage).abs() <= roundoff
                         && (best_period == 0.0 || period < best_period))
@@ -299,11 +331,19 @@ impl Recurrence {
     fn coverage(&self, period: f64, window: f64) -> f64 {
         let start = self.history[0] + period;
         let end = *self.history.last().unwrap();
-        let mut j = self.history.partition_point(|t| *t < start);
+        // A target/end comparison costs <= (4 + 9 + 1 + 4 + 1) eps T.
+        // Admit that endpoint uncertainty explicitly; a score tolerance cannot
+        // repair a whole match dropped before the mass is formed.
+        let endpoint_roundoff = 24.0
+            * f64::EPSILON
+            * (end.abs().max(start.abs()).max(RECURRENCE_HISTORY_SECONDS) + 2.0);
+        let mut j = self
+            .history
+            .partition_point(|t| *t < start - endpoint_roundoff);
         let mut mass = 0.0;
         for t in &self.history {
             let target = *t + period;
-            if target > end {
+            if target - end > endpoint_roundoff {
                 break;
             }
             while j < self.history.len() && self.history[j] < target - window {
@@ -339,6 +379,8 @@ impl Recurrence {
             let t = self.onset_time;
             assert!(self.echo.len() < self.echo.capacity());
             self.echo.push(Echo {
+                onset: self.onset,
+                period: period as f64,
                 observation_deadline: t + 0.06,
                 target: t + period as f64,
                 window: ioi_window(period as f64),
@@ -464,7 +506,7 @@ impl MeterNetwork {
         let start = self
             .recurrence
             .events()
-            .map_or(0, |s| (s.time * 1e9).round() as u64);
+            .map_or(0, |s| s.origin_tick + (s.time * 1e9).round() as u64);
         self.process_at(start, (dt as f64 * 1e9).round() as usize, 1e9, Some(drive))
     }
     fn continuous(&self) -> Option<&continuous::State> {

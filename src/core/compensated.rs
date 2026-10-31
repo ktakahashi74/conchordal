@@ -23,6 +23,29 @@ impl Sum {
         self.hi + self.lo
     }
 
+    /// Accumulate a product of raw f32 differences in double-double precision.
+    pub(crate) fn add_product(&mut self, left: [f32; 2], right: [f32; 2]) {
+        let two_sum = |a: f64, b: f64| {
+            let hi = a + b;
+            let tail = hi - a;
+            Self {
+                hi,
+                lo: (a - (hi - tail)) + (b - tail),
+            }
+        };
+        let a = two_sum(left[0] as f64, -(left[1] as f64));
+        let b = two_sum(right[0] as f64, -(right[1] as f64));
+        let product = a.hi * b.hi;
+        let error = a.hi.mul_add(b.hi, -product);
+        let p = two_sum(product, error + (a.hi * b.lo + a.lo * b.hi));
+        let p = two_sum(p.hi, p.lo + a.lo * b.lo);
+        // Renormalize both retained parts at every step, not just their total.
+        let s = two_sum(self.hi, p.hi);
+        let t = two_sum(self.lo, p.lo);
+        let u = two_sum(s.hi, s.lo + t.hi);
+        *self = two_sum(u.hi, u.lo + t.lo);
+    }
+
     pub(crate) fn difference(self, other: Self) -> f64 {
         // Grow an exact four-term expansion before the one final f64 rounding.
         let mut expansion = [0.0; 4];

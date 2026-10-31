@@ -298,6 +298,13 @@ struct Scalar {
     quad: Quad,
 }
 impl Scalar {
+    fn add_product(&mut self, left: [f32; 2], right: [f32; 2]) {
+        let dd = |[a, b]: [f32; 2]| Bound::exact(a as f64) - Bound::exact(b as f64);
+        let quad = |[a, b]: [f32; 2]| Quad::exact(a as f64) - Quad::exact(b as f64);
+        self.dd = self.dd + dd(left) * dd(right);
+        self.quad = self.quad + quad(left) * quad(right);
+    }
+
     fn add(&mut self, term: f64) {
         self.dd = self.dd + Bound::exact(term);
         self.quad.add_term(term);
@@ -638,14 +645,15 @@ pub(crate) fn response(id: u64, lead: usize, x: &[f64; FEATURES], residual: [f64
         }
     });
 }
-pub(crate) fn comparison(id: u64, lead: usize, band: usize, square: f64, cross: f64) {
+pub(crate) fn comparison(id: u64, lead: usize, band: usize, operands: [f32; 3]) {
     capture(|c| {
         let Some(r) = c.history(id) else {
             return;
         };
         let sums = &mut r.comparison[lead][band];
-        sums[0].add(square);
-        sums[1].add(cross);
+        let [history, recurrence, observed] = operands;
+        sums[0].add_product([history, recurrence], [history, recurrence]);
+        sums[1].add_product([history, recurrence], [observed, recurrence]);
     });
 }
 pub(crate) fn forecast(
@@ -739,8 +747,8 @@ pub(crate) fn learning(
     id: u64,
     lead: usize,
     band: usize,
-    term: f64,
-    square: bool,
+    candidates: [f32; 2],
+    observed: Option<f32>,
     output: Option<f32>,
 ) {
     capture(|c| {
@@ -749,12 +757,47 @@ pub(crate) fn learning(
             .entry(id)
             .or_insert_with(|| vec![[[Scalar::default(); 2]; 3]; FORECAST_LEN]);
         let sums = &mut rows[lead][band];
-        let i = usize::from(!square);
-        sums[i].add(term);
+        let i = usize::from(observed.is_some());
+        let right = [observed.unwrap_or(candidates[0]), candidates[1]];
+        sums[i].add_product(candidates, right);
         if let Some(out) = output {
             c.counts.scalar(2, out, *sums, true);
         }
     });
+}
+
+#[test]
+fn raw_scalar_products_distinguish_rounded_products_at_zero_complement() {
+    let mut raw = [Scalar::default(); 2];
+    let mut rounded = [crate::core::compensated::Sum::ZERO; 2];
+    let unit = 2.0_f32.powi(-23);
+    for (baseline, observed) in [
+        (2.0_f32.powi(-30), 1.0 + unit),
+        (2.0_f32.powi(-31), 1.0 - unit),
+    ] {
+        raw[0].add_product([1.0, baseline], [1.0, baseline]);
+        raw[1].add_product([1.0, baseline], [observed, baseline]);
+        let delta = 1.0 - baseline as f64;
+        rounded[0].add(delta * delta);
+        rounded[1].add(delta * (observed as f64 - baseline as f64));
+    }
+    // Independent algebra: u * (2^-30 - 2^-31) = 2^-54.
+    assert_eq!((raw[0].dd - raw[1].dd).center(), 2.0_f64.powi(-54));
+    assert_eq!(
+        (raw[0].quad - raw[1].quad).bound().center(),
+        2.0_f64.powi(-54)
+    );
+    let old = (rounded[0].difference(rounded[1]) / rounded[0].total()).clamp(0.0, 1.0) as f32;
+    assert_eq!(old, 0.0);
+    let mut counts = Counts::default();
+    counts.scalar(2, old, raw, true);
+    assert_eq!(counts.failed, [0, 0, 1]);
+    assert_eq!(counts.inconclusive, [0; 3]);
+    // Differences themselves must also be formed before f64 discards low bits.
+    let mut tiny = Scalar::default();
+    tiny.add_product([1.0, 2.0_f32.powi(-80)], [1.0, 0.0]);
+    assert_eq!(tiny.dd.v.1, -2.0_f64.powi(-80));
+    assert_eq!(tiny.quad.bound().v.1, -2.0_f64.powi(-80));
 }
 
 #[test]

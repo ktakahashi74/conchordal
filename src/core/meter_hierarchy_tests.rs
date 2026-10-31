@@ -393,6 +393,89 @@ fn bounded_beat_cycles_preserve_measure_motion_and_negative_corrections() {
 }
 
 #[test]
+fn recurrence_translated_endpoint_patterns_preserve_coverage_and_period_bits() {
+    for ticks in [
+        vec![0, 4800, 9600],
+        vec![0, 12000, 24000],
+        vec![0, 4800, 9600, 14400],
+    ] {
+        let mut near = Recurrence::new();
+        let mut far = Recurrence::new();
+        for tick in ticks {
+            assert_eq!(
+                near.observe(tick, 0, 48000.0, true, 0.0),
+                far.observe((1 << 40) + tick, 0, 48000.0, true, 0.0)
+            );
+            assert_eq!(near.history, far.history);
+            if near.history.len() >= 2 {
+                let period = near.history[1] - near.history[0];
+                let coverage = near.coverage(period, ioi_window(period));
+                assert_eq!(
+                    coverage.to_bits(),
+                    far.coverage(period, ioi_window(period)).to_bits()
+                );
+                let expected = (near.history.len() - 1) as f64 / near.history.len() as f64;
+                assert!((coverage - expected).abs() < 8.0 * f64::EPSILON);
+            }
+        }
+    }
+}
+
+#[test]
+fn recurrence_rebases_raw_ticks_through_fractional_onsets_silence_and_restart() {
+    let mut near = Recurrence::new();
+    let mut far = Recurrence::new();
+    let mut saw_empty = false;
+    for step in 0..1600 {
+        let fired = !(600..1200).contains(&step) && step % 10 == 0;
+        let fraction = [0.0, 0.375, 1.0][step % 3];
+        let tick = step as u64 * 480;
+        let selected = near.observe(tick, 480, 48000.0, fired, fraction);
+        assert_eq!(
+            selected,
+            far.observe((1 << 40) + tick, 480, 48000.0, fired, fraction)
+        );
+        assert_eq!(near.history, far.history);
+        assert_eq!(near.time.to_bits(), far.time.to_bits());
+        assert_eq!(near.onset_time.to_bits(), far.onset_time.to_bits());
+        assert_eq!(near.support().to_bits(), far.support().to_bits());
+        assert_eq!(near.echo.len(), far.echo.len());
+        for (a, b) in near.echo.iter().zip(&far.echo) {
+            assert_eq!(
+                (
+                    a.target,
+                    a.observation_deadline,
+                    a.weight,
+                    a.prediction_done,
+                    a.observation_done
+                ),
+                (
+                    b.target,
+                    b.observation_deadline,
+                    b.weight,
+                    b.prediction_done,
+                    b.observation_done
+                )
+            );
+        }
+        if step > 600 && near.history.is_empty() {
+            saw_empty = true;
+        }
+        for state in [&mut near, &mut far] {
+            if let Some(period) = selected {
+                state.accept(period, 1.0);
+            }
+            if fired {
+                state.issue();
+            }
+        }
+    }
+    assert!(saw_empty);
+    assert!(near.origin_tick > 0);
+    assert_eq!(far.origin_tick - near.origin_tick, 1 << 40);
+}
+
+#[test]
 fn aged_recurrence_reproduces_old_tie_and_ticks_preserve_period() {
     fn legacy_choice(state: &Recurrence, steps: u64) -> f32 {
         let mut best = 0.0;
@@ -438,6 +521,7 @@ fn aged_recurrence_reproduces_old_tie_and_ticks_preserve_period() {
             // Inject the old multi-day accumulated time and step count, retaining
             // the same onset geometry. The former bound admits unrelated lags.
             let old_steps = start / 480;
+            state.time += start as f64 / 48000.0;
             let old = legacy_choice(&state, old_steps);
             assert!(
                 (old - selected.unwrap()).abs() > 0.05,

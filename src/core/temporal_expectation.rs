@@ -71,18 +71,19 @@ impl EnergyForecastLearning {
                 continue;
             }
             for (band, observed) in energy.into_iter().enumerate() {
-                let delta = issued.persistence[band] as f64 - issued.recurrence[lead][band] as f64;
                 #[cfg(test)]
                 crate::core::history_prediction::reference::learning(
                     self.reference_id,
                     lead,
                     band,
-                    delta * (observed as f64 - issued.recurrence[lead][band] as f64),
-                    false,
+                    [issued.persistence[band], issued.recurrence[lead][band]],
+                    Some(observed),
                     None,
                 );
-                self.residual_cross[lead][band]
-                    .add(delta * (observed as f64 - issued.recurrence[lead][band] as f64));
+                self.residual_cross[lead][band].add_product(
+                    [issued.persistence[band], issued.recurrence[lead][band]],
+                    [observed, issued.recurrence[lead][band]],
+                );
             }
         }
     }
@@ -100,8 +101,8 @@ impl EnergyForecastLearning {
         for lead in 0..FORECAST_LEN {
             for band in 0..3 {
                 // Candidate differences are already known; their outcomes are not.
-                let delta = persistence[band] as f64 - recurrence[lead][band] as f64;
-                self.feature_square[lead][band].add(delta * delta);
+                let delta = [persistence[band], recurrence[lead][band]];
+                self.feature_square[lead][band].add_product(delta, delta);
                 let square = self.feature_square[lead][band];
                 issued.weight[lead][band] = if square.total() > 0.0 {
                     (square.difference(self.residual_cross[lead][band]) / square.total())
@@ -114,8 +115,8 @@ impl EnergyForecastLearning {
                     self.reference_id,
                     lead,
                     band,
-                    delta * delta,
-                    true,
+                    [persistence[band], recurrence[lead][band]],
+                    None,
                     Some(issued.weight[lead][band]),
                 );
             }
@@ -2026,6 +2027,29 @@ fn numerical_reference_on_existing_learning_fixture() {
     reference::stop();
     println!("numerical learning fixture {counts:?}");
     assert!(counts.passed[2] > 0);
+    assert_eq!(counts.failed, [0; 3]);
+    assert_eq!(counts.inconclusive, [0; 3]);
+}
+
+#[cfg(test)]
+#[test]
+fn learning_raw_operand_cancellation_matches_independent_reference() {
+    use crate::core::history_prediction::reference;
+    reference::start();
+    let mut learning = EnergyForecastLearning::new();
+    let unit = 2.0_f32.powi(-23);
+    for (step, baseline, observed) in [
+        (0, 2.0_f32.powi(-30), 1.0 + unit),
+        (1, 2.0_f32.powi(-31), 1.0 - unit),
+    ] {
+        learning.issue(step, [[baseline; 3]; FORECAST_LEN], [1.0; 3]);
+        learning.observe(step, [observed; 3]);
+    }
+    learning.issue(2, [[0.0; 3]; FORECAST_LEN], [0.0; 3]);
+    let counts = reference::counts();
+    reference::stop();
+    println!("numerical raw scalar cancellation {counts:?}");
+    assert_eq!(learning.pending[2].weight[0][0], 2.0_f32.powi(-55));
     assert_eq!(counts.failed, [0; 3]);
     assert_eq!(counts.inconclusive, [0; 3]);
 }

@@ -388,18 +388,17 @@ impl HistoryEnergyPrediction {
                         });
                     }
                     for (band, observed) in energy.into_iter().enumerate() {
-                        let baseline = comparison.recurrence[lead][band] as f64;
-                        let delta = comparison.history[lead][band] as f64 - baseline;
+                        let baseline = comparison.recurrence[lead][band];
+                        let delta = [comparison.history[lead][band], baseline];
                         #[cfg(test)]
                         reference::comparison(
                             self.phase,
                             lead,
                             band,
-                            delta * delta,
-                            delta * (observed as f64 - baseline),
+                            [comparison.history[lead][band], baseline, observed],
                         );
-                        self.comparison_square[lead][band].add(delta * delta);
-                        self.comparison_cross[lead][band].add(delta * (observed as f64 - baseline));
+                        self.comparison_square[lead][band].add_product(delta, delta);
+                        self.comparison_cross[lead][band].add_product(delta, [observed, baseline]);
                     }
                 }
             }

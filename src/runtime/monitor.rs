@@ -154,6 +154,8 @@ impl AudioMonitor {
                     "{}",
                     Telemetry {
                         rss_bytes,
+                        #[cfg(feature = "profile-alloc")]
+                        heap_live_bytes: crate::runtime_profile::heap_live_bytes(),
                         hop_mean_us: self.hop_total.as_secs_f64() * 1e6 / self.hop_count as f64,
                         hop_max_us: self.hop_max.as_secs_f64() * 1e6,
                         slow_hops: self.slow_chunks,
@@ -202,6 +204,8 @@ impl AudioMonitor {
 
 struct Telemetry {
     rss_bytes: Option<u64>,
+    #[cfg(feature = "profile-alloc")]
+    heap_live_bytes: usize,
     hop_mean_us: f64,
     hop_max_us: f64,
     slow_hops: u32,
@@ -221,6 +225,8 @@ impl std::fmt::Display for Telemetry {
         if let Some(rss) = self.rss_bytes {
             write!(f, " rss_bytes={rss}")?;
         }
+        #[cfg(feature = "profile-alloc")]
+        write!(f, " heap_live_bytes={}", self.heap_live_bytes)?;
         write!(
             f,
             " hop_mean_us={:.3} hop_max_us={:.3} slow_hops={} underrun_frames={} rebuilds={} voices={} populations={} flora={} births={} deaths={}",
@@ -267,6 +273,8 @@ mod tests {
     fn telemetry_is_one_line_with_optional_rss_and_interval_counts() {
         let mut summary = Telemetry {
             rss_bytes: Some(4096),
+            #[cfg(feature = "profile-alloc")]
+            heap_live_bytes: 2048,
             hop_mean_us: 12.5,
             hop_max_us: 25.0,
             slow_hops: 2,
@@ -279,10 +287,23 @@ mod tests {
             deaths: 5,
             min_watermark_margin_sec: None,
         };
+        let expected = concat!(
+            " hop_mean_us=12.500 hop_max_us=25.000 slow_hops=2 underrun_frames=128",
+            " rebuilds=1 voices=8 populations=2 flora=3 births=4 deaths=5"
+        );
+        #[cfg(feature = "profile-alloc")]
         assert_eq!(
             summary.to_string(),
-            "telemetry rss_bytes=4096 hop_mean_us=12.500 hop_max_us=25.000 slow_hops=2 underrun_frames=128 rebuilds=1 voices=8 populations=2 flora=3 births=4 deaths=5"
+            format!("telemetry rss_bytes=4096 heap_live_bytes=2048{expected}")
         );
+        #[cfg(not(feature = "profile-alloc"))]
+        {
+            assert_eq!(
+                summary.to_string(),
+                format!("telemetry rss_bytes=4096{expected}")
+            );
+            assert!(!summary.to_string().contains("heap_live_bytes"));
+        }
         summary.rss_bytes = None;
         assert!(!summary.to_string().contains("rss"));
         assert_eq!(summary.to_string().lines().count(), 1);

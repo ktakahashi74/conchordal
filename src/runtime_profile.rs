@@ -227,18 +227,33 @@ mod allocations {
     use super::AllocationCounts;
     use std::alloc::{GlobalAlloc, Layout, System};
     use std::cell::Cell;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     thread_local! {
         static COUNTS: Cell<Option<AllocationCounts>> = const { Cell::new(None) };
     }
 
-    struct ProfileAllocator;
+    struct ProfileAllocator {
+        live_bytes: AtomicUsize,
+    }
 
     #[global_allocator]
-    static ALLOCATOR: ProfileAllocator = ProfileAllocator;
+    static ALLOCATOR: ProfileAllocator = ProfileAllocator {
+        live_bytes: AtomicUsize::new(0),
+    };
 
-    fn record(ptr: *mut u8, bytes: usize) {
-        if !ptr.is_null() {
+    impl ProfileAllocator {
+        fn record(&self, ptr: *mut u8, bytes: usize, previous_bytes: usize) {
+            if ptr.is_null() {
+                return;
+            }
+            if bytes >= previous_bytes {
+                self.live_bytes
+                    .fetch_add(bytes - previous_bytes, Ordering::Relaxed);
+            } else {
+                self.live_bytes
+                    .fetch_sub(previous_bytes - bytes, Ordering::Relaxed);
+            }
             let _ = COUNTS.try_with(|cell| {
                 if let Some(mut counts) = cell.get() {
                     counts.count = counts.count.saturating_add(1);
@@ -249,27 +264,28 @@ mod allocations {
         }
     }
 
-    // Accounting uses only const-initialized TLS scalars; it must never allocate.
+    // Accounting uses only an atomic and const-initialized TLS; it must never allocate.
     unsafe impl GlobalAlloc for ProfileAllocator {
         unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
             let ptr = unsafe { System.alloc(layout) };
-            record(ptr, layout.size());
+            self.record(ptr, layout.size(), 0);
             ptr
         }
 
         unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
             let ptr = unsafe { System.alloc_zeroed(layout) };
-            record(ptr, layout.size());
+            self.record(ptr, layout.size(), 0);
             ptr
         }
 
         unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            self.live_bytes.fetch_sub(layout.size(), Ordering::Relaxed);
             unsafe { System.dealloc(ptr, layout) };
         }
 
         unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, size: usize) -> *mut u8 {
             let next = unsafe { System.realloc(ptr, layout, size) };
-            record(next, size);
+            self.record(next, size, layout.size());
             next
         }
     }
@@ -281,6 +297,85 @@ mod allocations {
     pub(super) fn finish() -> Option<AllocationCounts> {
         COUNTS.with(Cell::take)
     }
+
+    pub(super) fn live_bytes() -> usize {
+        ALLOCATOR.live_bytes.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        // A separate instance exercises the global allocator's implementation while
+        // other test threads continue allocating through the process-wide instance.
+        #[test]
+        fn live_heap_returns_to_baseline_after_alloc_and_zeroed_alloc() {
+            let allocator = ProfileAllocator {
+                live_bytes: AtomicUsize::new(0),
+            };
+            let layout = Layout::from_size_align(16, 8).unwrap();
+            unsafe {
+                let ptr = allocator.alloc(layout);
+                assert!(!ptr.is_null());
+                assert_eq!(allocator.live_bytes.load(Ordering::Relaxed), 16);
+                let zeroed = allocator.alloc_zeroed(layout);
+                assert!(!zeroed.is_null());
+                assert_eq!(allocator.live_bytes.load(Ordering::Relaxed), 32);
+                allocator.dealloc(ptr, layout);
+                allocator.dealloc(zeroed, layout);
+            }
+            assert_eq!(allocator.live_bytes.load(Ordering::Relaxed), 0);
+        }
+
+        #[test]
+        fn live_heap_tracks_realloc_growth_and_shrink_and_ignores_failure() {
+            let allocator = ProfileAllocator {
+                live_bytes: AtomicUsize::new(0),
+            };
+            let layout = Layout::from_size_align(16, 8).unwrap();
+            unsafe {
+                let ptr = allocator.alloc(layout);
+                assert!(!ptr.is_null());
+                let ptr = allocator.realloc(ptr, layout, 64);
+                assert!(!ptr.is_null());
+                assert_eq!(allocator.live_bytes.load(Ordering::Relaxed), 64);
+                allocator.record(std::ptr::null_mut(), 128, 64);
+                assert_eq!(allocator.live_bytes.load(Ordering::Relaxed), 64);
+                let ptr = allocator.realloc(ptr, Layout::from_size_align(64, 8).unwrap(), 8);
+                assert!(!ptr.is_null());
+                assert_eq!(allocator.live_bytes.load(Ordering::Relaxed), 8);
+                allocator.dealloc(ptr, Layout::from_size_align(8, 8).unwrap());
+            }
+            assert_eq!(allocator.live_bytes.load(Ordering::Relaxed), 0);
+        }
+
+        #[test]
+        fn live_heap_includes_unprofiled_threads_and_cross_thread_deallocation() {
+            let allocator = ProfileAllocator {
+                live_bytes: AtomicUsize::new(0),
+            };
+            let layout = Layout::from_size_align(32, 8).unwrap();
+            let address = std::thread::scope(|scope| {
+                scope
+                    .spawn(|| {
+                        assert!(finish().is_none());
+                        let ptr = unsafe { allocator.alloc(layout) };
+                        assert!(!ptr.is_null());
+                        ptr as usize
+                    })
+                    .join()
+                    .unwrap()
+            });
+            assert_eq!(allocator.live_bytes.load(Ordering::Relaxed), 32);
+            unsafe { allocator.dealloc(address as *mut u8, layout) };
+            assert_eq!(allocator.live_bytes.load(Ordering::Relaxed), 0);
+        }
+    }
+}
+
+#[cfg(feature = "profile-alloc")]
+pub(crate) fn heap_live_bytes() -> usize {
+    allocations::live_bytes()
 }
 
 pub(crate) fn begin_allocations() {

@@ -1063,13 +1063,20 @@ pub(super) fn drive_production_meter(
                 observed_end: Some(state.timebase.frame_end_tick(state.frame_idx)),
                 known,
                 flux: flux_drive,
-                state: meter
-                    .process_evidence(cfg.hop_duration.as_secs_f32(), known.then_some(flux_drive)),
+                state: meter.process_at(
+                    state.timebase.frame_start_tick(state.frame_idx),
+                    cfg.hop,
+                    cfg.fs,
+                    known.then_some(flux_drive),
+                ),
             };
         }
-        state
-            .prod_meter
-            .process(cfg.hop_duration.as_secs_f32(), drive)
+        state.prod_meter.process_at(
+            state.timebase.frame_start_tick(state.frame_idx),
+            cfg.hop,
+            cfg.fs,
+            Some(drive),
+        )
     };
     state.current_landscape.rhythm = NeuralRhythms::from_meter_state(&meter_state);
 }

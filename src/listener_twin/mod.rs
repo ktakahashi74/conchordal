@@ -140,7 +140,12 @@ impl ListenerTwin {
         } else {
             salience_level
         };
-        let meter_state = self.meter.process(dt_sec, salience_level);
+        let meter_state = self.meter.process_at(
+            generated_frame_id * audio.len() as u64,
+            audio.len(),
+            self.sample_rate,
+            Some(salience_level),
+        );
         self.last_tick = tick;
         self.fast_state = ListenerFastState {
             time_sec: tick as f64 / self.sample_rate as f64,
@@ -494,11 +499,15 @@ mod tests {
         let target = bottom_up_salience_level_from_metrics(state.attention_metrics);
         let expected = smooth_attention_level(first.attention_level, target, hop as f32 / fs);
         let mut reference = MeterNetwork::new();
-        reference.process(
-            0.0,
-            bottom_up_salience_level_from_metrics(first.attention_metrics),
+        reference.process_at(
+            0,
+            hop as usize,
+            fs,
+            Some(bottom_up_salience_level_from_metrics(
+                first.attention_metrics,
+            )),
         );
-        let meter = reference.process(hop as f32 / fs, target);
+        let meter = reference.process_at(hop, hop as usize, fs, Some(target));
         assert_eq!(
             serde_json::to_value(state.meter_state).unwrap(),
             serde_json::to_value(meter).unwrap()

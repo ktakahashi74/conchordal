@@ -58,6 +58,11 @@ impl SlidingPlv {
         self.sum_cos += c;
         self.sum_sin += s;
         self.idx = (self.idx + 1) % window;
+        if self.idx == 0 {
+            // Bound drift by one window, with constant amortized work per push.
+            self.sum_cos = self.buf_cos.iter().sum();
+            self.sum_sin = self.buf_sin.iter().sum();
+        }
         if self.len < window {
             self.len += 1;
         }
@@ -189,5 +194,21 @@ mod tests {
         let mut plv_zero = SlidingPlv::new(0);
         plv_zero.push(1.0); // should not panic
         assert_eq!(plv_zero.plv(), None);
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn sliding_plv_refresh_removes_accumulated_roundoff_each_window() {
+    let mut plv = SlidingPlv::new(31);
+    for i in 0..31_000 {
+        plv.push((i as f32 * 0.073).sin());
+        if i % 31 == 30 {
+            assert_eq!(plv.sum_cos, plv.buf_cos.iter().sum::<f32>());
+            assert_eq!(plv.sum_sin, plv.buf_sin.iter().sum::<f32>());
+            // Deliberately aged sums must disappear at the next refresh.
+            plv.sum_cos += 0.01;
+            plv.sum_sin -= 0.02;
+        }
     }
 }

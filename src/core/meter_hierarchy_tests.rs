@@ -285,19 +285,25 @@ fn recurrence_candidates_share_the_complete_observation_denominator() {
 #[test]
 fn an_accepted_period_remains_available_without_a_new_confirming_triple() {
     let mut recurrence = Recurrence::new();
-    for _ in 0..6 {
-        recurrence.observe(0.5, true, 1.0);
+    for i in 0..6 {
+        recurrence.observe(i * 5000, 5000, 10000.0, true, 1.0);
     }
     recurrence.accept(0.5, 1.0);
-    assert_eq!(recurrence.observe(0.75, true, 1.0), Some(0.5));
+    assert_eq!(
+        recurrence.observe(30000, 7500, 10000.0, true, 1.0),
+        Some(0.5)
+    );
 }
 
 #[test]
 fn confirmation_retains_the_maximum_period_plus_its_window_tail() {
     let mut recurrence = Recurrence::new();
-    assert_eq!(recurrence.observe(0.0001, true, 0.0), None);
-    assert_eq!(recurrence.observe(1.9999, true, 1.0), None);
-    assert_eq!(recurrence.observe(2.06, true, 1.0), Some(2.0));
+    assert_eq!(recurrence.observe(0, 1, 10000.0, true, 0.0), None);
+    assert_eq!(recurrence.observe(1, 19999, 10000.0, true, 1.0), None);
+    assert_eq!(
+        recurrence.observe(20000, 20600, 10000.0, true, 1.0),
+        Some(2.0)
+    );
     assert_eq!(recurrence.history.len(), 3);
 }
 
@@ -317,7 +323,13 @@ fn alternating_and_eight_position_patterns_confirm_the_radiated_period() {
         for cycle in 0..12 {
             for &offset in &offsets {
                 let time = cycle as f64 * 0.5 + offset;
-                selected = recurrence.observe((time - now) as f32, true, 1.0);
+                selected = recurrence.observe(
+                    (now * 1e6_f64).round() as u64,
+                    ((time - now) * 1e6).round() as usize,
+                    1e6,
+                    true,
+                    1.0,
+                );
                 now = time;
                 if let Some(period) = selected {
                     recurrence.accept(period, 1.0);
@@ -343,4 +355,95 @@ fn uniform_streams_keep_the_registered_native_frequency_and_confidence() {
         assert_eq!(net.last.beat.freq_hz, expected_hz);
         assert_eq!(net.last.beat.confidence, expected_confidence);
     }
+}
+
+#[test]
+fn bounded_beat_cycles_preserve_measure_motion_and_negative_corrections() {
+    let mut net = MeterNetwork::new();
+    for i in 0..100_000 {
+        net.integrate_hopf(DT, 0.0, 1.0);
+        assert!((0.0..12.0).contains(&net.beat_cycles));
+        if i % 71 == 0 {
+            net.correct_phase(DT, 0.5, 1.0, 1.0, net.beat_omega, Some(0.5));
+            assert!((0.0..12.0).contains(&net.beat_cycles));
+        }
+        if i % 997 == 0 {
+            net.seed_beat(2.0, DT, 0.3);
+            assert!((0.0..12.0).contains(&net.beat_cycles));
+        }
+    }
+    for ratio in MEASURE_RATIOS {
+        net.beat_cycles = 12.0_f32.next_down();
+        net.beat_omega = TAU * 2.0;
+        let before = net.beat_cycles as f64;
+        net.integrate_hopf(DT, 0.0, 1.0);
+        let actual = (net.beat_cycles as f64 - before).rem_euclid(12.0) * std::f64::consts::TAU
+            / ratio as f64;
+        let expected = net.beat_omega as f64 * DT as f64 / ratio as f64;
+        // One cycle-coordinate f32 ulp, propagated into measure radians.
+        let tolerance =
+            (12.0_f32 - 12.0_f32.next_down()) as f64 * std::f64::consts::TAU / ratio as f64;
+        assert!((actual - expected).abs() <= tolerance);
+    }
+    net.beat_cycles = 0.0;
+    net.previous_phase_error = None;
+    net.correct_phase(DT, 1.0, 1.0, 1.0, net.beat_omega, None);
+    assert!(net.beat_cycles > 11.0 && net.beat_cycles < 12.0);
+    assert_eq!(wrap_beat_cycles(-f32::MIN_POSITIVE), 0.0);
+}
+
+#[test]
+fn aged_recurrence_reproduces_old_tie_and_ticks_preserve_period() {
+    fn legacy_choice(state: &Recurrence, steps: u64) -> f32 {
+        let mut best = 0.0;
+        let mut score = -1.0;
+        let n = state.history.len();
+        let now = *state.history.last().unwrap();
+        for j in 1..n - 1 {
+            for k in 0..j {
+                let period = state.history[j] - state.history[k];
+                if !(0.0625..=2.0).contains(&period)
+                    || ((now - state.history[j]) - period).abs() > ioi_window(period)
+                {
+                    continue;
+                }
+                let coverage = state.coverage(period, ioi_window(period));
+                let q = steps as f64 * f64::EPSILON;
+                let roundoff = 4.0 * q / (1.0 - q) * state.time / ioi_window(period)
+                    + (8 * n + 32) as f64 * f64::EPSILON;
+                if coverage > score + roundoff
+                    || ((coverage - score).abs() <= roundoff && (best == 0.0 || period < best))
+                {
+                    best = period;
+                    score = coverage;
+                }
+            }
+        }
+        best as f32
+    }
+    let mut choices = Vec::new();
+    for start in [0, 1u64 << 40] {
+        let mut state = Recurrence::new();
+        let mut selected = None;
+        for cycle in 0..12 {
+            for offset in [5388, 6384, 6898, 10605, 11320, 11533, 14025, 22938] {
+                selected = state.observe(start + cycle * 24000 + offset, 0, 48000.0, true, 0.0);
+                if let Some(p) = selected {
+                    state.accept(p, 1.0);
+                }
+            }
+        }
+        choices.push(selected.unwrap());
+        if start != 0 {
+            // Inject the old multi-day accumulated time and step count, retaining
+            // the same onset geometry. The former bound admits unrelated lags.
+            let old_steps = start / 480;
+            let old = legacy_choice(&state, old_steps);
+            assert!(
+                (old - selected.unwrap()).abs() > 0.05,
+                "old={old} fixed={selected:?}"
+            );
+        }
+    }
+    assert_eq!(choices, vec![0.5, 0.5]);
 }

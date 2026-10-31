@@ -761,7 +761,7 @@ impl MeterNetwork {
         state.predicted *= decay;
         state.observed *= decay;
         state.expire(end);
-        self.process_evidence(dt, drive)
+        self.process_evidence(dt, drive, 0, 0, 1.0)
     }
 
     pub(crate) fn continuous_ingest(&mut self, p: Packet) -> Result<(), &'static str> {

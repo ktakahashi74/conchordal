@@ -78,6 +78,12 @@ const SUB_RATIOS: [u8; 3] = [2, 3, 4];
 // generated slow subharmonic of the beat, revealed by periodic accent (Regime B:
 // the brain imposes meter endogenously by emphasis, not by a faster pulse).
 const MEASURE_RATIOS: [u8; 3] = [2, 3, 4];
+
+fn wrap_beat_cycles(cycles: f32) -> f32 {
+    let wrapped = cycles.rem_euclid(12.0);
+    // A tiny negative input can round rem_euclid up to the modulus.
+    if wrapped < 12.0 { wrapped } else { 0.0 }
+}
 // Accent recurrence spans several beats, so the measure integrates over more
 // history than the beat-level PLV.
 const MEASURE_TAU: f32 = 6.0;
@@ -153,7 +159,7 @@ struct Recurrence {
     history: Vec<f64>,
     echo: Vec<Echo>,
     time: f64,
-    steps: u64,
+    onset_time: f64,
     period: Option<f32>,
     multi: bool,
     uniform: bool,
@@ -171,7 +177,7 @@ impl Recurrence {
             history: Vec::with_capacity(capacity),
             echo: Vec::with_capacity(capacity),
             time: 0.0,
-            steps: 0,
+            onset_time: 0.0,
             period: None,
             multi: false,
             uniform: false,
@@ -182,11 +188,19 @@ impl Recurrence {
         }
     }
 
-    fn observe(&mut self, dt: f32, fired: bool, frac: f32) -> Option<f32> {
-        let onset_time = self.time + dt as f64 * frac as f64;
-        self.time += dt as f64;
-        self.steps += 1;
-        let decay = (-dt as f64 / PERSIST_TAU as f64).exp();
+    fn observe(
+        &mut self,
+        start_tick: u64,
+        hop: usize,
+        fs: f32,
+        fired: bool,
+        frac: f32,
+    ) -> Option<f32> {
+        let dt = hop as f64 / fs as f64;
+        let onset_time = (start_tick as f64 + frac as f64 * hop as f64) / fs as f64;
+        self.onset_time = onset_time;
+        self.time = (start_tick + hop as u64) as f64 / fs as f64;
+        let decay = (-dt / PERSIST_TAU as f64).exp();
         self.observed *= decay;
         self.predicted *= decay;
         self.matched *= decay;
@@ -260,11 +274,16 @@ impl Recurrence {
                     continue;
                 }
                 let coverage = self.coverage(period, window);
-                // Bound timestamp summation and subsequent coverage arithmetic roundoff.
-                let q = self.steps as f64 * f64::EPSILON;
-                let gamma = q / (1.0 - q);
-                let roundoff =
-                    4.0 * gamma * self.time.abs() / window + (8 * n + 32) as f64 * f64::EPSILON;
+                // Each timestamp has at most four roundings (tick conversion,
+                // fractional product, addition, division): <= 4 eps |time|.
+                // A period difference contributes <= 9 eps |time|; forming a
+                // target and subtracting an observed timestamp adds <= 10 more.
+                // A candidate period also perturbs the window by <= 0.2 * 9.
+                // Two coverages cost <= 2 * (19 + 1.8) = 41.6; use 48
+                // to cover the window's period rounding and accept's difference.
+                // The local arithmetic term also covers division and mass sums.
+                let roundoff = 48.0 * f64::EPSILON * self.time.abs() / window
+                    + (8 * n + 32) as f64 * f64::EPSILON;
                 if coverage > best_coverage + roundoff
                     || ((coverage - best_coverage).abs() <= roundoff
                         && (best_period == 0.0 || period < best_period))
@@ -315,9 +334,9 @@ impl Recurrence {
         self.matched = 0.0;
     }
 
-    fn issue(&mut self, frac: f32, dt: f32) {
+    fn issue(&mut self) {
         if let Some(period) = self.period {
-            let t = self.time - dt as f64 * (1.0 - frac as f64);
+            let t = self.onset_time;
             assert!(self.echo.len() < self.echo.capacity());
             self.echo.push(Echo {
                 observation_deadline: t + 0.06,
@@ -364,8 +383,8 @@ pub struct MeterNetwork {
     sub_re: [f32; 3],
     sub_im: [f32; 3],
 
-    // Measure (accent subharmonic) state. beat_cycles is the unwrapped beat
-    // count; accent-weighted resultants at candidate subharmonics select the
+    // Measure (accent subharmonic) state. beat_cycles is the beat count
+    // modulo lcm(2, 3, 4); accent-weighted resultants at candidate subharmonics select the
     // grouping, normalized by the accumulated accent mass.
     beat_cycles: f32,
     strength_baseline: f32,
@@ -429,10 +448,24 @@ impl MeterNetwork {
         self.shaping = shaping;
     }
 
-    /// Advance the network by `dt` seconds under acoustic onset `drive` in
-    /// [0, 1] (rectified spectral flux). Returns the updated meter state.
-    pub fn process(&mut self, dt: f32, drive: f32) -> MeterState {
-        self.process_evidence(dt, Some(drive))
+    /// Advance from the source hop's absolute sample clock.
+    pub(crate) fn process_at(
+        &mut self,
+        start: u64,
+        hop: usize,
+        fs: f32,
+        drive: Option<f32>,
+    ) -> MeterState {
+        self.process_evidence(hop as f32 / fs, drive, start, hop, fs)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn process(&mut self, dt: f32, drive: f32) -> MeterState {
+        let start = self
+            .recurrence
+            .events()
+            .map_or(0, |s| (s.time * 1e9).round() as u64);
+        self.process_at(start, (dt as f64 * 1e9).round() as usize, 1e9, Some(drive))
     }
     fn continuous(&self) -> Option<&continuous::State> {
         match &self.recurrence {
@@ -446,13 +479,20 @@ impl MeterNetwork {
             _ => None,
         }
     }
-    pub(crate) fn process_evidence(&mut self, dt: f32, drive: Option<f32>) -> MeterState {
+    pub(crate) fn process_evidence(
+        &mut self,
+        dt: f32,
+        drive: Option<f32>,
+        start: u64,
+        hop: usize,
+        fs: f32,
+    ) -> MeterState {
         let preference_weight = self.shaping.stability.clamp(0.0, 1.0);
         let dt = dt.max(MIN_STEP_SEC);
         let drive_known = drive.is_some();
         let drive = drive.unwrap_or(0.0).clamp(0.0, 1.0);
         let onset = self.observe_onset(dt, drive_known, drive);
-        let confirmed_period = self.confirm_period(dt, onset);
+        let confirmed_period = self.confirm_period(dt, onset, start, hop, fs);
         let force_gain = 1.0 + self.shaping.stability.clamp(0.0, 1.0);
         let phi_before = self.beat_phi;
         let omega_before = self.beat_omega;
@@ -497,7 +537,7 @@ impl MeterNetwork {
             && self.seeded
             && !seeded_now
         {
-            state.issue(onset.frac, dt);
+            state.issue();
         }
         let att_a = (-dt / 0.3).exp();
         self.attention_ema = att_a * self.attention_ema + (1.0 - att_a) * drive;
@@ -514,7 +554,14 @@ impl MeterNetwork {
         }
     }
 
-    fn confirm_period(&mut self, dt: f32, onset: Onset) -> Option<f32> {
+    fn confirm_period(
+        &mut self,
+        dt: f32,
+        onset: Onset,
+        start: u64,
+        hop: usize,
+        fs: f32,
+    ) -> Option<f32> {
         let confirmed_period = match &mut self.recurrence {
             RecurrenceInput::Continuous(state) => {
                 let onset_tick = state.fast_start as f64
@@ -529,7 +576,9 @@ impl MeterNetwork {
                     })
                     .map(|p| p.lag_sec as f32)
             }
-            RecurrenceInput::Events(state) => state.observe(dt, onset.fired, onset.frac),
+            RecurrenceInput::Events(state) => {
+                state.observe(start, hop, fs, onset.fired, onset.frac)
+            }
         };
         if self.recurrence.events().is_some_and(|s| s.uniform) {
             self.onset_age
@@ -550,7 +599,7 @@ impl MeterNetwork {
             + FORCE_AMP * force_gain * drive * phi_before.cos();
         self.beat_r = (self.beat_r + dr * dt).clamp(0.0, 2.0);
         self.beat_phi = wrap_pm_pi(phi_before + omega_before * dt);
-        self.beat_cycles += omega_before * dt / TAU;
+        self.beat_cycles = wrap_beat_cycles(self.beat_cycles + omega_before * dt / TAU);
     }
 
     fn apply_tempo_prior(&mut self, dt: f32, preference_weight: f32) -> (f32, f32, f32) {
@@ -655,7 +704,7 @@ impl MeterNetwork {
     fn seed_beat(&mut self, frequency: f32, dt: f32, onset_frac: f32) {
         self.beat_omega = TAU * frequency;
         self.beat_phi = wrap_pm_pi(self.beat_omega * dt * (1.0 - onset_frac));
-        self.beat_cycles = self.beat_omega * dt * (1.0 - onset_frac) / TAU;
+        self.beat_cycles = wrap_beat_cycles(self.beat_omega * dt * (1.0 - onset_frac) / TAU);
         // A new coordinate discards old evidence; this onset cannot certify itself.
         match &mut self.recurrence {
             RecurrenceInput::Continuous(state) => state.seed(),
@@ -690,13 +739,13 @@ impl MeterNetwork {
         let correction = -PHASE_GAIN * force_gain * observed_phi.sin();
         let tail = (self.beat_omega - omega_before) * dt * (1.0 - onset_frac);
         self.beat_phi = wrap_pm_pi(self.beat_phi + correction + tail);
-        self.beat_cycles += (correction + tail) / TAU;
+        self.beat_cycles = wrap_beat_cycles(self.beat_cycles + (correction + tail) / TAU);
         self.previous_phase_error = Some(observed_phi);
         if let Some(frequency) = proposal {
             let omega = TAU * frequency;
             let tail = (omega - self.beat_omega) * dt * (1.0 - onset_frac);
             self.beat_phi = wrap_pm_pi(self.beat_phi + tail);
-            self.beat_cycles += tail / TAU;
+            self.beat_cycles = wrap_beat_cycles(self.beat_cycles + tail / TAU);
             self.beat_omega = omega;
         }
     }

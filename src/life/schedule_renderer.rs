@@ -1364,6 +1364,20 @@ mod tests {
                     let ids = if hop < 8 { [2, 3, 9] } else { [2, 3, 12] };
                     actual.prepare_self_sound(ids.into_iter(), now, &observer);
                     oracle.prepare_self_sound(ids.into_iter(), now, &observer);
+                    // This exact renderer control compares the same observer schedule.
+                    // Independent observers deliberately stagger their factor refreshes.
+                    for own in actual.self_sound.iter().flatten() {
+                        let other = oracle
+                            .self_sound
+                            .iter_mut()
+                            .flatten()
+                            .find(|other| other.source_id == own.source_id)
+                            .unwrap();
+                        other
+                            .history
+                            .external
+                            .align_refactor_phase(&own.history.external);
+                    }
                     let mut commands = if hop == 0 {
                         batches.clone()
                     } else {

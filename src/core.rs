@@ -2,6 +2,7 @@ pub(crate) mod analysis_worker;
 pub(crate) mod auditory_frontend;
 #[cfg(test)]
 pub(crate) use auditory_frontend as auditory_shadow;
+pub(crate) mod compensated;
 pub mod consonance_kernel;
 pub(crate) mod db;
 pub(crate) mod density;

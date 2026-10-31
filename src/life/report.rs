@@ -369,6 +369,10 @@ enum ReportRecord<'a> {
         #[serde(flatten)]
         record: &'a crate::life::onset_footprint::Record,
     },
+    EstimatorStatus {
+        freeze_count: u64,
+        frozen_at_issue: u64,
+    },
     LocalPredictionError {
         voice_id: u64,
         sample_rate: u32,
@@ -513,6 +517,14 @@ impl JsonlReporter {
         self.write_record(&ReportRecord::TemporalObservation {
             time_sec,
             observation,
+        })
+    }
+
+    pub(crate) fn write_estimator_status(&mut self) -> Result<(), String> {
+        let (freeze_count, frozen_at_issue) = crate::core::history_prediction::freeze_status();
+        self.write_record(&ReportRecord::EstimatorStatus {
+            freeze_count,
+            frozen_at_issue,
         })
     }
 

@@ -1,11 +1,126 @@
 //! Matching-horizon energy regression from observed auditory history.
 
+use crate::core::compensated::Sum;
+use std::cell::{Cell, RefCell};
+
 use crate::core::temporal_expectation::{ENERGY_PENDING_LEN, FORECAST_LEN, FORECAST_STRIDE};
 use crate::core::temporal_history::AuditoryHistorySnapshot;
+
+#[cfg(test)]
+#[path = "prediction_reference.rs"]
+pub(crate) mod reference;
 
 const FEATURES: usize = 57;
 const RIDGE: f64 = 0.01;
 pub(crate) const SCORE_LEADS: [usize; 7] = [0, 5, 10, 25, 50, 100, 200];
+
+const REFACTOR_INTERVAL: u64 = FEATURES.div_ceil(6) as u64;
+fn next_observer() -> u64 {
+    NEXT_OBSERVER.with(|next| {
+        let id = next.get();
+        next.set(id + 1);
+        id
+    })
+}
+
+pub(crate) fn freeze_status() -> (u64, u64) {
+    FREEZE_STATUS.with(Cell::get)
+}
+
+#[derive(Clone, PartialEq, Debug)]
+struct Gram {
+    sum: [[Sum; FEATURES]; FEATURES],
+    lower: [[f64; FEATURES]; FEATURES],
+}
+
+impl Gram {
+    fn new() -> Self {
+        let mut result = Self {
+            sum: [[Sum::ZERO; FEATURES]; FEATURES],
+            lower: [[0.0; FEATURES]; FEATURES],
+        };
+        for i in 0..FEATURES {
+            result.sum[i][i].hi = RIDGE;
+            result.lower[i][i] = RIDGE.sqrt();
+        }
+        result
+    }
+
+    fn update(&mut self, mut x: [f64; FEATURES], refactor: bool) -> bool {
+        for i in 0..FEATURES {
+            for j in 0..=i {
+                self.sum[i][j].add(x[i] * x[j]);
+                if !self.sum[i][j].total().is_finite() {
+                    return false;
+                }
+            }
+        }
+        // The lower triangle alone owns the symmetric Gram.
+        for k in 0..FEATURES {
+            let diagonal = self.lower[k][k];
+            let r = diagonal.hypot(x[k]);
+            if !(r.is_finite() && r > 0.0 && diagonal > 0.0) {
+                return false;
+            }
+            let c = r / diagonal;
+            let s = x[k] / diagonal;
+            self.lower[k][k] = r;
+            for j in k + 1..FEATURES {
+                self.lower[j][k] = (self.lower[j][k] + s * x[j]) / c;
+                x[j] = c * x[j] - s * self.lower[j][k];
+                if !self.lower[j][k].is_finite() || !x[j].is_finite() {
+                    return false;
+                }
+            }
+        }
+        if refactor {
+            for i in 0..FEATURES {
+                for j in 0..=i {
+                    let mut value = self.sum[i][j].total();
+                    for k in 0..j {
+                        value -= self.lower[i][k] * self.lower[j][k];
+                    }
+                    if i == j {
+                        if !(value > 0.0 && value.is_finite()) {
+                            return false;
+                        }
+                        self.lower[i][j] = value.sqrt();
+                    } else {
+                        self.lower[i][j] = value / self.lower[j][j];
+                        if !self.lower[i][j].is_finite() {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    fn solve(&self, mut x: [f64; FEATURES]) -> [f64; FEATURES] {
+        for i in 0..FEATURES {
+            for j in 0..i {
+                x[i] -= self.lower[i][j] * x[j];
+            }
+            x[i] /= self.lower[i][i];
+        }
+        for i in (0..FEATURES).rev() {
+            for j in i + 1..FEATURES {
+                x[i] -= self.lower[j][i] * x[j];
+            }
+            x[i] /= self.lower[i][i];
+        }
+        x
+    }
+}
+
+thread_local! {
+    static NEXT_OBSERVER: Cell<u64> = const { Cell::new(0) };
+    // Each runtime owns its estimator thread and its cumulative failure telemetry.
+    static FREEZE_STATUS: Cell<(u64, u64)> = const { Cell::new((0, 0)) };
+    // One transactional buffer per estimator thread, initialized only on first use.
+    static GRAM_SCRATCH: RefCell<Gram> = RefCell::new(Gram::new());
+}
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
 pub(crate) struct PredictionMatch<'a> {
@@ -23,6 +138,8 @@ pub(crate) struct PredictionMatch<'a> {
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
 pub(crate) struct PredictionErrorTotals {
+    pub(crate) frozen_at_issue: Option<u64>,
+    pub(crate) freeze_count: u64,
     pub(crate) issued: u64,
     pub(crate) completed: [u64; 7],
     pub(crate) recurrence_squared_error: [[f64; 3]; 7],
@@ -50,13 +167,16 @@ struct PendingComparison {
 
 /// Pending targets penalize corrections but never supply invented outcome labels.
 pub(crate) struct HistoryEnergyPrediction {
-    inverse: [[f64; FEATURES]; FEATURES],
-    response_cross: Box<[[[f64; 3]; FEATURES]]>,
+    gram: Gram,
+    issues: u64,
+    phase: u64,
+    frozen_at_issue: Option<u64>,
+    response_cross: Box<[[[Sum; 3]; FEATURES]]>,
     pending: Box<[PendingHistory]>,
     comparisons: Vec<PendingComparison>,
     comparison_slots: [Option<usize>; ENERGY_PENDING_LEN],
-    comparison_square: [[f64; 3]; FORECAST_LEN],
-    comparison_cross: [[f64; 3]; FORECAST_LEN],
+    comparison_square: [[Sum; 3]; FORECAST_LEN],
+    comparison_cross: [[Sum; 3]; FORECAST_LEN],
     comparison_completed: [u64; 7],
     errors: PredictionErrorTotals,
 }
@@ -66,8 +186,11 @@ impl Clone for HistoryEnergyPrediction {
         // Reserve every ring slot, but copy only records that have been issued.
         let mut comparisons = Vec::with_capacity(ENERGY_PENDING_LEN);
         comparisons.extend_from_slice(&self.comparisons);
-        Self {
-            inverse: self.inverse,
+        let result = Self {
+            gram: self.gram.clone(),
+            issues: self.issues,
+            phase: next_observer(),
+            frozen_at_issue: self.frozen_at_issue,
             response_cross: self.response_cross.clone(),
             pending: self.pending.clone(),
             comparisons,
@@ -76,19 +199,26 @@ impl Clone for HistoryEnergyPrediction {
             comparison_cross: self.comparison_cross,
             comparison_completed: self.comparison_completed,
             errors: self.errors,
-        }
+        };
+        #[cfg(test)]
+        reference::clone_history(self.phase, result.phase);
+        result
     }
 }
 
 impl HistoryEnergyPrediction {
+    #[cfg(test)]
+    pub(crate) fn align_refactor_phase(&mut self, other: &Self) {
+        self.phase = other.phase;
+    }
+
     pub(crate) fn new() -> Self {
-        let mut inverse = [[0.0; FEATURES]; FEATURES];
-        for (i, row) in inverse.iter_mut().enumerate() {
-            row[i] = 1.0 / RIDGE;
-        }
         Self {
-            inverse,
-            response_cross: vec![[[0.0; 3]; FEATURES]; FORECAST_LEN].into_boxed_slice(),
+            gram: Gram::new(),
+            issues: 0,
+            phase: next_observer(),
+            frozen_at_issue: None,
+            response_cross: vec![[[Sum::ZERO; 3]; FEATURES]; FORECAST_LEN].into_boxed_slice(),
             pending: vec![
                 PendingHistory {
                     step: None,
@@ -100,8 +230,8 @@ impl HistoryEnergyPrediction {
             .into_boxed_slice(),
             comparisons: Vec::with_capacity(ENERGY_PENDING_LEN),
             comparison_slots: [None; ENERGY_PENDING_LEN],
-            comparison_square: [[0.0; 3]; FORECAST_LEN],
-            comparison_cross: [[0.0; 3]; FORECAST_LEN],
+            comparison_square: [[Sum::ZERO; 3]; FORECAST_LEN],
+            comparison_cross: [[Sum::ZERO; 3]; FORECAST_LEN],
             comparison_completed: [0; 7],
             errors: PredictionErrorTotals::default(),
         }
@@ -114,15 +244,16 @@ impl HistoryEnergyPrediction {
         self.comparisons.clear();
         self.comparison_slots.fill(None);
         if rewind {
-            self.comparison_square.fill([0.0; 3]);
-            self.comparison_cross.fill([0.0; 3]);
+            #[cfg(test)]
+            reference::reset(self.phase);
+            self.comparison_square.fill([Sum::ZERO; 3]);
+            self.comparison_cross.fill([Sum::ZERO; 3]);
             self.comparison_completed.fill(0);
             self.errors = PredictionErrorTotals::default();
-            self.response_cross.fill([[0.0; 3]; FEATURES]);
-            for (i, row) in self.inverse.iter_mut().enumerate() {
-                row.fill(0.0);
-                row[i] = 1.0 / RIDGE;
-            }
+            self.response_cross.fill([[Sum::ZERO; 3]; FEATURES]);
+            self.gram = Gram::new();
+            self.issues = 0;
+            self.frozen_at_issue = None;
         }
     }
 
@@ -172,18 +303,28 @@ impl HistoryEnergyPrediction {
                 for (band, observed) in energy.into_iter().enumerate() {
                     let baseline = comparison.recurrence[lead][band] as f64;
                     let delta = comparison.history[lead][band] as f64 - baseline;
-                    self.comparison_square[lead][band] += delta * delta;
-                    self.comparison_cross[lead][band] += delta * (observed as f64 - baseline);
+                    #[cfg(test)]
+                    reference::comparison(
+                        self.phase,
+                        lead,
+                        band,
+                        delta * delta,
+                        delta * (observed as f64 - baseline),
+                    );
+                    self.comparison_square[lead][band].add(delta * delta);
+                    self.comparison_cross[lead][band].add(delta * (observed as f64 - baseline));
                 }
             }
             let p = &self.pending[(issued_step % ENERGY_PENDING_LEN as u64) as usize];
-            if p.step != Some(issued_step) {
+            if p.step != Some(issued_step) || self.frozen_at_issue.is_some() {
                 continue;
             }
             let residual: [f64; 3] = std::array::from_fn(|b| energy[b] as f64 - p.energy[b] as f64);
+            #[cfg(test)]
+            reference::response(self.phase, lead, &p.features, residual);
             for (row, x) in cross.iter_mut().zip(p.features) {
                 for (b, value) in row.iter_mut().enumerate() {
-                    *value += x * residual[b];
+                    value.add(x * residual[b]);
                 }
             }
         }
@@ -221,17 +362,36 @@ impl HistoryEnergyPrediction {
     }
 
     pub(crate) fn issue(&mut self, step: u64, energy: [f32; 3], history: &AuditoryHistorySnapshot) {
+        if self.frozen_at_issue.is_some() {
+            return;
+        }
         let p = &mut self.pending[(step % ENERGY_PENDING_LEN as u64) as usize];
         debug_assert_ne!(p.step, Some(step));
         let x = Self::features(energy, history);
-        let projected: [f64; FEATURES] =
-            std::array::from_fn(|i| self.inverse[i].iter().zip(x).map(|(p, x)| p * x).sum());
-        let denominator = 1.0 + x.iter().zip(projected).map(|(x, p)| x * p).sum::<f64>();
-        for (i, row) in self.inverse.iter_mut().enumerate() {
-            for (j, value) in row.iter_mut().enumerate() {
-                *value -= projected[i] * projected[j] / denominator;
+        let next = self.issues + 1;
+        let success = GRAM_SCRATCH.with(|scratch| {
+            let mut scratch = scratch.borrow_mut();
+            scratch.clone_from(&self.gram);
+            if scratch.update(
+                x,
+                next % REFACTOR_INTERVAL == self.phase % REFACTOR_INTERVAL,
+            ) {
+                std::mem::swap(&mut self.gram, &mut scratch);
+                true
+            } else {
+                false
             }
+        });
+        if !success {
+            self.frozen_at_issue = Some(next);
+            self.errors.frozen_at_issue = Some(next);
+            self.errors.freeze_count += 1;
+            FREEZE_STATUS.with(|status| status.set((status.get().0 + 1, next)));
+            return;
         }
+        self.issues = next;
+        #[cfg(test)]
+        reference::issue(self.phase, &x);
         *p = PendingHistory {
             step: Some(step),
             features: x,
@@ -245,17 +405,19 @@ impl HistoryEnergyPrediction {
         history: &AuditoryHistorySnapshot,
     ) -> [[f32; 3]; FORECAST_LEN] {
         let x = Self::features(energy, history);
-        let projected: [f64; FEATURES] =
-            std::array::from_fn(|i| self.inverse[i].iter().zip(x).map(|(p, x)| p * x).sum());
-        std::array::from_fn(|lead| {
+        let projected = self.gram.solve(x);
+        let output = std::array::from_fn(|lead| {
             let mut correction = [0.; 3];
             for (row, &x) in self.response_cross[lead].iter().zip(&projected) {
                 for band in 0..3 {
-                    correction[band] += row[band] * x;
+                    correction[band] += row[band].total() * x;
                 }
             }
             std::array::from_fn(|band| (energy[band] as f64 + correction[band]).max(0.) as f32)
-        })
+        });
+        #[cfg(test)]
+        reference::forecast(self.phase, &x, energy, &output);
+        output
     }
 
     pub(crate) fn preview_comparison(
@@ -265,14 +427,16 @@ impl HistoryEnergyPrediction {
     ) -> ([[f32; 3]; FORECAST_LEN], [[f32; 3]; FORECAST_LEN]) {
         let weights = std::array::from_fn(|lead| {
             std::array::from_fn(|band| {
-                let square = self.comparison_square[lead][band];
+                let square = self.comparison_square[lead][band].total();
                 if square > 0.0 {
-                    (self.comparison_cross[lead][band] / square).clamp(0.0, 1.0) as f32
+                    (self.comparison_cross[lead][band].total() / square).clamp(0.0, 1.0) as f32
                 } else {
                     0.0
                 }
             })
         });
+        #[cfg(test)]
+        reference::weights(self.phase, &weights);
         let prediction = std::array::from_fn(|lead| {
             std::array::from_fn(|band| {
                 let w = weights[lead][band];
@@ -322,8 +486,14 @@ impl HistoryEnergyPrediction {
 
     /// Diagnostics consume completed errors, never prediction or learning state.
     pub(crate) fn take_errors(&mut self) -> Option<PredictionErrorTotals> {
-        (self.errors.issued > 0 || self.errors.completed.iter().any(|&n| n > 0))
-            .then(|| std::mem::take(&mut self.errors))
+        (self.errors.freeze_count > 0
+            || self.errors.issued > 0
+            || self.errors.completed.iter().any(|&n| n > 0))
+        .then(|| {
+            let mut errors = std::mem::take(&mut self.errors);
+            errors.frozen_at_issue = self.frozen_at_issue;
+            errors
+        })
     }
 }
 
@@ -331,6 +501,112 @@ impl HistoryEnergyPrediction {
 mod tests {
     use super::*;
     use crate::core::temporal_history::{AuditoryHistory, HISTORY_AGES_SEC};
+
+    #[test]
+    fn partial_update_failure_freezes_committed_pair_and_rewind_recovers() {
+        let history = AuditoryHistory::new(HISTORY_AGES_SEC).snapshot();
+        let mut predictor = HistoryEnergyPrediction::new();
+        predictor.issue(1, [0.1; 3], &history);
+        predictor.observe(1, [0.2; 3], |_| {});
+        let gram = predictor.gram.clone();
+        let response = predictor.response_cross.clone();
+        let prediction = predictor.forecast([0.1; 3], &history);
+        // G[0][0] is already changed in scratch when the next row fails.
+        predictor.issue(2, [f32::NAN, 0.0, 0.0], &history);
+        assert_eq!(predictor.frozen_at_issue, Some(2));
+        assert_eq!(predictor.gram, gram);
+        assert_eq!(predictor.response_cross, response);
+        predictor.observe(2, [10.0; 3], |_| {});
+        predictor.issue(3, [0.2; 3], &history);
+        assert_eq!(predictor.gram, gram);
+        assert_eq!(predictor.response_cross, response);
+        assert_eq!(predictor.forecast([0.1; 3], &history), prediction);
+        let status = predictor.take_errors().unwrap();
+        assert_eq!(status.frozen_at_issue, Some(2));
+        assert_eq!(status.freeze_count, 1);
+        predictor.clear_pending(false);
+        assert_eq!(predictor.frozen_at_issue, Some(2));
+        predictor.clear_pending(true);
+        assert_eq!(predictor.frozen_at_issue, None);
+        assert_eq!(predictor.gram, Gram::new());
+        predictor.issue(1, [0.1; 3], &history);
+        assert_eq!(predictor.issues, 1);
+    }
+
+    #[test]
+    fn cloned_factor_waits_for_its_own_phase() {
+        let history = AuditoryHistory::new(HISTORY_AGES_SEC).snapshot();
+        let mut parent = HistoryEnergyPrediction::new();
+        parent.phase = 0;
+        for step in 1..=9 {
+            parent.issue(step, [0.1; 3], &history);
+        }
+        let mut child = parent.clone();
+        child.phase = 9;
+        assert_eq!(child.gram, parent.gram);
+        assert_eq!(child.response_cross, parent.response_cross);
+        let mut expected = parent.gram.clone();
+        for step in 10..=19 {
+            let x = HistoryEnergyPrediction::features([0.2; 3], &history);
+            assert!(expected.update(x, step == 19));
+            child.issue(step, [0.2; 3], &history);
+            assert_eq!(child.gram, expected);
+        }
+    }
+
+    #[test]
+    fn numerical_reference_on_existing_history_fixture() {
+        reference::start_selected(2, vec![100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]);
+        let mut predictor = HistoryEnergyPrediction::new();
+        let mut history = AuditoryHistory::new(HISTORY_AGES_SEC);
+        for step in 0..1000 {
+            let phase = step as f32 * 0.031;
+            let energy = [
+                0.05 * (1.0 + phase.sin()),
+                0.03 * (1.0 + (phase * 1.7).cos()),
+                if step % 71 < 20 { 0.02 } else { 0.0 },
+            ];
+            predictor.observe(step, energy, |_| {});
+            history.advance(0.01, Some(energy.map(f32::sqrt)));
+            predictor.issue(step + 1, energy, &history.snapshot());
+            let candidate = predictor.forecast(energy, &history.snapshot());
+            predictor.issue_comparison(step + 1, [[0.01; 3]; FORECAST_LEN], candidate, None);
+            if step == 408 {
+                predictor = predictor.clone();
+            }
+        }
+        let counts = reference::counts();
+        reference::stop();
+        println!("numerical history fixture {counts:?}");
+        assert!(counts.passed[0] > 0 && counts.passed[1] > 0);
+        assert_eq!(counts.failed, [0; 3]);
+        assert_eq!(counts.inconclusive, [0; 3]);
+    }
+
+    #[test]
+    #[ignore = "release-only estimator cost estimate, not realtime acceptance"]
+    fn estimator_release_cost() {
+        let mut predictor = HistoryEnergyPrediction::new();
+        let history = AuditoryHistory::new(HISTORY_AGES_SEC).snapshot();
+        predictor.issue(1, [0.1; 3], &history);
+        let start = std::time::Instant::now();
+        for step in 2..=10001 {
+            let energy = [0.01 * (1.0 + (step as f32 * 0.031).sin()); 3];
+            predictor.observe(step, energy, |_| {});
+            predictor.issue(step + 1, energy, &history);
+            let candidate = predictor.forecast(energy, &history);
+            std::hint::black_box(predictor.issue_comparison(
+                step + 1,
+                [[0.01; 3]; FORECAST_LEN],
+                candidate,
+                None,
+            ));
+        }
+        println!(
+            "estimator cost: {} us/observer issue+observe+forecast+comparison (10000 iterations)",
+            start.elapsed().as_secs_f64() * 100.0
+        );
+    }
 
     #[test]
     fn sparse_comparisons_match_dense_ring_after_clone_wrap_and_clear() {
@@ -388,6 +664,26 @@ mod tests {
                 serde_json::to_value(dense.take_errors()).unwrap()
             );
         }
+    }
+
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn estimator_updates_and_refactors_reuse_thread_scratch() {
+        let mut first = HistoryEnergyPrediction::new();
+        let mut second = first.clone();
+        let history = AuditoryHistory::new(HISTORY_AGES_SEC).snapshot();
+        first.issue(1, [0.1; 3], &history);
+        second.issue(1, [0.1; 3], &history);
+        crate::runtime_profile::begin_allocations();
+        for step in 2..32 {
+            for predictor in [&mut first, &mut second] {
+                predictor.observe(step, [0.2; 3], |_| {});
+                predictor.issue(step + 1, [0.1; 3], &history);
+                std::hint::black_box(predictor.forecast([0.1; 3], &history));
+            }
+        }
+        let counts = crate::runtime_profile::finish_allocations().unwrap();
+        assert_eq!((counts.count, counts.bytes), (0, 0));
     }
 
     #[test]
@@ -622,24 +918,6 @@ mod tests {
         let current = *energies.last().unwrap();
         let x = *inputs.last().unwrap();
         let actual = predictor.forecast(current, &snapshot);
-        // Preserve the former three separate dot products bit for bit on trained state.
-        let legacy_projection: [f64; FEATURES] =
-            std::array::from_fn(|i| predictor.inverse[i].iter().zip(x).map(|(p, x)| p * x).sum());
-        for (lead, bands) in actual.iter().enumerate() {
-            for (band, &value) in bands.iter().enumerate() {
-                let correction: f64 = predictor.response_cross[lead]
-                    .iter()
-                    .zip(legacy_projection)
-                    .map(|(row, x)| row[band] * x)
-                    .sum();
-                let expected = (current[band] as f64 + correction).max(0.) as f32;
-                assert_eq!(
-                    value.to_bits(),
-                    expected.to_bits(),
-                    "lead={lead} band={band}"
-                );
-            }
-        }
         // Cholesky solve of the batch Gram, independent of inverse rank-one updates.
         let mut lower = [[0.0; FEATURES]; FEATURES];
         for i in 0..FEATURES {

@@ -67,6 +67,8 @@ pub struct SimulationMeta {
     pub slow_hops: u64,
     pub voice_count: usize,
     pub event_queue_len: usize,
+    pub estimator_freezes: u64,
+    pub estimator_last_frozen_issue: u64,
     pub audio_xruns: u64,
     pub audio_rebuilds: u64,
     pub audio_recovering: bool,

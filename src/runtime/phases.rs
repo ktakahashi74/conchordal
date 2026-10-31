@@ -477,6 +477,9 @@ pub(super) fn emit_hop_reports(
     // Only reporting is decimated; each analysis hop has already advanced history.
     let report_hops = (0.1 * cfg.fs / cfg.hop as f32).ceil().max(1.0) as u64;
     if state.frame_idx.is_multiple_of(report_hops) {
+        report_try(&mut state.reporter, "estimator status", |writer| {
+            writer.write_estimator_status()
+        });
         for observation in state.temporal_frames.iter() {
             if observation.state != crate::temporal_cognition::observation::ObservationState::Off {
                 report_try(&mut state.reporter, "temporal observation", |writer| {

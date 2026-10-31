@@ -1,5 +1,6 @@
 //! Causal recurrence inference. Period candidates are not a common onset clock.
 
+use crate::core::compensated::Sum;
 use crate::core::history_prediction::HistoryEnergyPrediction;
 use crate::core::onset::OnsetDetector;
 use crate::core::stream::dorsal::DorsalStream;
@@ -23,14 +24,18 @@ struct IssuedEnergyForecast {
 /// Delayed regression, separately for each lead and acoustic band.
 /// Its cumulative statistics are an engineering estimator, not cognitive forgetting.
 struct EnergyForecastLearning {
+    #[cfg(test)]
+    reference_id: u64,
     pending: Box<[IssuedEnergyForecast]>,
-    feature_square: [[f64; 3]; FORECAST_LEN],
-    residual_cross: [[f64; 3]; FORECAST_LEN],
+    feature_square: [[Sum; 3]; FORECAST_LEN],
+    residual_cross: [[Sum; 3]; FORECAST_LEN],
 }
 
 impl EnergyForecastLearning {
     fn new() -> Self {
         Self {
+            #[cfg(test)]
+            reference_id: crate::core::history_prediction::reference::next_id(),
             pending: vec![
                 IssuedEnergyForecast {
                     step: None,
@@ -41,14 +46,16 @@ impl EnergyForecastLearning {
                 ENERGY_PENDING_LEN
             ]
             .into_boxed_slice(),
-            feature_square: [[0.0; 3]; FORECAST_LEN],
-            residual_cross: [[0.0; 3]; FORECAST_LEN],
+            feature_square: [[Sum::ZERO; 3]; FORECAST_LEN],
+            residual_cross: [[Sum::ZERO; 3]; FORECAST_LEN],
         }
     }
 
     fn reset(&mut self) {
-        self.feature_square.fill([0.0; 3]);
-        self.residual_cross.fill([0.0; 3]);
+        #[cfg(test)]
+        crate::core::history_prediction::reference::learning_reset(self.reference_id);
+        self.feature_square.fill([Sum::ZERO; 3]);
+        self.residual_cross.fill([Sum::ZERO; 3]);
         for issued in &mut self.pending {
             issued.step = None;
         }
@@ -65,8 +72,17 @@ impl EnergyForecastLearning {
             }
             for (band, observed) in energy.into_iter().enumerate() {
                 let delta = issued.persistence[band] as f64 - issued.recurrence[lead][band] as f64;
-                self.residual_cross[lead][band] +=
-                    delta * (observed as f64 - issued.recurrence[lead][band] as f64);
+                #[cfg(test)]
+                crate::core::history_prediction::reference::learning(
+                    self.reference_id,
+                    lead,
+                    band,
+                    delta * (observed as f64 - issued.recurrence[lead][band] as f64),
+                    false,
+                    None,
+                );
+                self.residual_cross[lead][band]
+                    .add(delta * (observed as f64 - issued.recurrence[lead][band] as f64));
             }
         }
     }
@@ -85,13 +101,23 @@ impl EnergyForecastLearning {
             for band in 0..3 {
                 // Candidate differences are already known; their outcomes are not.
                 let delta = persistence[band] as f64 - recurrence[lead][band] as f64;
-                self.feature_square[lead][band] += delta * delta;
-                issued.weight[lead][band] = if self.feature_square[lead][band] > 0.0 {
-                    (1.0 - (self.residual_cross[lead][band] / self.feature_square[lead][band])
-                        .clamp(0.0, 1.0)) as f32
+                self.feature_square[lead][band].add(delta * delta);
+                let square = self.feature_square[lead][band];
+                issued.weight[lead][band] = if square.total() > 0.0 {
+                    (square.difference(self.residual_cross[lead][band]) / square.total())
+                        .clamp(0.0, 1.0) as f32
                 } else {
                     1.0
                 };
+                #[cfg(test)]
+                crate::core::history_prediction::reference::learning(
+                    self.reference_id,
+                    lead,
+                    band,
+                    delta * delta,
+                    true,
+                    Some(issued.weight[lead][band]),
+                );
             }
         }
     }
@@ -141,6 +167,12 @@ pub(crate) struct BandEnergyHistory {
 }
 
 impl BandEnergyHistory {
+    #[cfg(test)]
+    pub(crate) fn align_refactor_phase(&mut self, other: &Self) {
+        self.history_prediction
+            .align_refactor_phase(&other.history_prediction);
+    }
+
     pub(crate) fn new(step_sec: f32, start_step: u64) -> Self {
         Self {
             history: [[0.0; 3]; HISTORY],
@@ -1977,4 +2009,36 @@ mod tests {
         assert_eq!(allocations.bytes, 0);
         assert!(matches > 0);
     }
+}
+
+#[cfg(test)]
+#[test]
+fn numerical_reference_on_existing_learning_fixture() {
+    use crate::core::history_prediction::reference;
+    reference::start();
+    let mut learning = EnergyForecastLearning::new();
+    for step in 0..1000 {
+        let actual = [0.01 * (1.0 + (step as f32 * 0.031).sin()); 3];
+        learning.observe(step, actual);
+        learning.issue(step + 1, [[0.01; 3]; FORECAST_LEN], actual);
+    }
+    let counts = reference::counts();
+    reference::stop();
+    println!("numerical learning fixture {counts:?}");
+    assert!(counts.passed[2] > 0);
+    assert_eq!(counts.failed, [0; 3]);
+    assert_eq!(counts.inconclusive, [0; 3]);
+}
+
+#[cfg(test)]
+#[test]
+fn learning_complement_preserves_low_parts_near_unit_ratio() {
+    let mut learning = EnergyForecastLearning::new();
+    learning.feature_square[0][0] = Sum { hi: 1e20, lo: 1.0 };
+    learning.residual_cross[0][0] = Sum { hi: 1e20, lo: 0.0 };
+    learning.issue(1, [[0.0; 3]; FORECAST_LEN], [0.0; 3]);
+    let weight = learning.pending[1].weight[0][0];
+    assert_eq!(weight, 1e-20_f32);
+    let old = 1.0 - learning.residual_cross[0][0].total() / learning.feature_square[0][0].total();
+    assert_eq!(old, 0.0);
 }

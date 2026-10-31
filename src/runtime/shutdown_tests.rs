@@ -1624,3 +1624,41 @@ fn endless_onset_history_starts_before_future_consumers() {
     assert!(reached.load(Ordering::SeqCst));
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn numerical_reference_on_bundled_sample_histories() {
+    use crate::core::history_prediction::reference;
+    for sample in ["01_a_single_voice", "08_murmuration", "09_rain"] {
+        let scenario =
+            compile_scenario_from_script(Path::new(&format!("samples/{sample}.rhai")), Some(21))
+                .unwrap();
+        let counts = Arc::new(std::sync::Mutex::new(reference::Counts::default()));
+        let captured = counts.clone();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_probe = stop.clone();
+        let mut opts = options();
+        let mut started = false;
+        opts.offline_body_probe = Some(Box::new(move |_, tick, _, _| {
+            if !started {
+                reference::start();
+                started = true;
+            }
+            *captured.lock().unwrap() = reference::counts();
+            if tick >= 8 * 48000 {
+                stop_probe.store(true, Ordering::Relaxed);
+            }
+        }));
+        let config = AppConfig::default();
+        let wiring = wire_runtime(&config, 48000, sample.into(), scenario, stop, opts).unwrap();
+        join(wiring).unwrap();
+        let result = *counts.lock().unwrap();
+        println!("numerical sample={sample} {result:?}");
+        // Sustained-only pieces need not issue comparison candidates.
+        assert!(result.passed[2] > 0, "{result:?}");
+        assert_eq!(result.failed, [0; 3], "{result:?}");
+        assert_eq!(result.inconclusive, [0; 3], "{result:?}");
+        if sample != "01_a_single_voice" {
+            result.assert_passed();
+        }
+    }
+}

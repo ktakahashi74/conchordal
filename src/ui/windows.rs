@@ -351,6 +351,17 @@ fn draw_system_diagnostics(ui: &mut egui::Ui, frame: &UiFrame) {
                 ));
             }
         }
+        fixed_system_label(
+            ui,
+            if frame.meta.estimator_freezes == 0 {
+                "estimator freezes=0".into()
+            } else {
+                format!(
+                    "estimator freezes={} frozen at issue {}",
+                    frame.meta.estimator_freezes, frame.meta.estimator_last_frozen_issue
+                )
+            },
+        );
         ui.separator();
         fixed_system_label(ui, format!("listener_t={:07.2}s", frame.listener.time_sec));
         ui.separator();

@@ -15,6 +15,11 @@ const RIDGE: f64 = 0.01;
 pub(crate) const SCORE_LEADS: [usize; 7] = [0, 5, 10, 25, 50, 100, 200];
 
 const REFACTOR_INTERVAL: u64 = FEATURES.div_ceil(6) as u64;
+// Reuse the adopted cadence, preserving every per-component addition in order.
+// Queries materialize the bounded batch; their cost is part of the hop p99.
+const RESPONSE_BATCH: usize = REFACTOR_INTERVAL as usize;
+// The oldest queued outcome still needs its full 400-window issuance history.
+const HISTORY_PENDING_LEN: usize = ENERGY_PENDING_LEN + RESPONSE_BATCH - 1;
 fn next_observer() -> u64 {
     NEXT_OBSERVER.with(|next| {
         let id = next.get();
@@ -30,67 +35,85 @@ pub(crate) fn freeze_status() -> (u64, u64) {
 #[derive(Clone, PartialEq, Debug)]
 struct Gram {
     sum: [[Sum; FEATURES]; FEATURES],
-    lower: [[f64; FEATURES]; FEATURES],
+    upper: Box<[[f64; FEATURES]; FEATURES]>,
 }
 
 impl Gram {
     fn new() -> Self {
         let mut result = Self {
             sum: [[Sum::ZERO; FEATURES]; FEATURES],
-            lower: [[0.0; FEATURES]; FEATURES],
+            upper: Box::new([[0.0; FEATURES]; FEATURES]),
         };
         for i in 0..FEATURES {
             result.sum[i][i].hi = RIDGE;
-            result.lower[i][i] = RIDGE.sqrt();
+            result.upper[i][i] = RIDGE.sqrt();
         }
         result
     }
 
     fn update(&mut self, mut x: [f64; FEATURES], refactor: bool) -> bool {
+        // Features come from f32 values (or bounded contrasts). Even u64::MAX
+        // products fit f64, so a positive rank-one update cannot overflow.
+        if x.iter()
+            .any(|v| !v.is_finite() || v.abs() > 2.0 * f32::MAX as f64)
+        {
+            return false;
+        }
+        if refactor {
+            let success = FACTOR_SCRATCH.with(|scratch| {
+                let mut scratch = scratch.borrow_mut();
+                for i in 0..FEATURES {
+                    for j in i..FEATURES {
+                        let mut sum = self.sum[j][i];
+                        sum.add(x[i] * x[j]);
+                        scratch[i][j] = sum.total();
+                    }
+                }
+                for k in 0..FEATURES {
+                    let (done, remaining) = scratch.split_at_mut(k + 1);
+                    let row = &mut done[k];
+                    if !(row[k] > 0.0 && row[k].is_finite()) {
+                        return false;
+                    }
+                    let diagonal = row[k].sqrt();
+                    row[k] = diagonal;
+                    for value in &mut row[k + 1..] {
+                        *value /= diagonal;
+                    }
+                    // Right-looking Cholesky streams each Schur-complement row.
+                    for (offset, target) in remaining.iter_mut().enumerate() {
+                        let i = k + 1 + offset;
+                        for (value, source) in target[i..].iter_mut().zip(&row[i..]) {
+                            *value -= row[i] * source;
+                        }
+                    }
+                }
+                std::mem::swap(&mut self.upper, &mut scratch);
+                true
+            });
+            if !success {
+                return false;
+            }
+        }
+        // Commit G only after a scheduled factorization has succeeded.
         for i in 0..FEATURES {
             for j in 0..=i {
                 self.sum[i][j].add(x[i] * x[j]);
-                if !self.sum[i][j].total().is_finite() {
-                    return false;
-                }
             }
         }
-        // The lower triangle alone owns the symmetric Gram.
-        for k in 0..FEATURES {
-            let diagonal = self.lower[k][k];
-            let r = diagonal.hypot(x[k]);
-            if !(r.is_finite() && r > 0.0 && diagonal > 0.0) {
-                return false;
-            }
-            let c = r / diagonal;
-            let s = x[k] / diagonal;
-            self.lower[k][k] = r;
-            for j in k + 1..FEATURES {
-                self.lower[j][k] = (self.lower[j][k] + s * x[j]) / c;
-                x[j] = c * x[j] - s * self.lower[j][k];
-                if !self.lower[j][k].is_finite() || !x[j].is_finite() {
-                    return false;
-                }
-            }
-        }
-        if refactor {
-            for i in 0..FEATURES {
-                for j in 0..=i {
-                    let mut value = self.sum[i][j].total();
-                    for k in 0..j {
-                        value -= self.lower[i][k] * self.lower[j][k];
-                    }
-                    if i == j {
-                        if !(value > 0.0 && value.is_finite()) {
-                            return false;
-                        }
-                        self.lower[i][j] = value.sqrt();
-                    } else {
-                        self.lower[i][j] = value / self.lower[j][j];
-                        if !self.lower[i][j].is_finite() {
-                            return false;
-                        }
-                    }
+        if !refactor {
+            // Row-major U = L^T makes each rank-one tail contiguous.
+            for k in 0..FEATURES {
+                let row = &mut self.upper[k];
+                let diagonal = row[k];
+                let r = (diagonal * diagonal + x[k] * x[k]).sqrt();
+                let c = diagonal / r;
+                let s = x[k] / r;
+                row[k] = r;
+                for j in k + 1..FEATURES {
+                    let previous = row[j];
+                    row[j] = c * previous + s * x[j];
+                    x[j] = c * x[j] - s * previous;
                 }
             }
         }
@@ -99,16 +122,17 @@ impl Gram {
 
     fn solve(&self, mut x: [f64; FEATURES]) -> [f64; FEATURES] {
         for i in 0..FEATURES {
-            for j in 0..i {
-                x[i] -= self.lower[i][j] * x[j];
+            x[i] /= self.upper[i][i];
+            let value = x[i];
+            for (target, coefficient) in x[i + 1..].iter_mut().zip(&self.upper[i][i + 1..]) {
+                *target -= coefficient * value;
             }
-            x[i] /= self.lower[i][i];
         }
         for i in (0..FEATURES).rev() {
             for j in i + 1..FEATURES {
-                x[i] -= self.lower[j][i] * x[j];
+                x[i] -= self.upper[i][j] * x[j];
             }
-            x[i] /= self.lower[i][i];
+            x[i] /= self.upper[i][i];
         }
         x
     }
@@ -118,8 +142,9 @@ thread_local! {
     static NEXT_OBSERVER: Cell<u64> = const { Cell::new(0) };
     // Each runtime owns its estimator thread and its cumulative failure telemetry.
     static FREEZE_STATUS: Cell<(u64, u64)> = const { Cell::new((0, 0)) };
-    // One transactional buffer per estimator thread, initialized only on first use.
-    static GRAM_SCRATCH: RefCell<Gram> = RefCell::new(Gram::new());
+    // Only refactorization uses scratch; commit exchanges pointers, not matrices.
+    static FACTOR_SCRATCH: RefCell<Box<[[f64; FEATURES]; FEATURES]>> =
+        RefCell::new(Box::new([[0.0; FEATURES]; FEATURES]));
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize)]
@@ -165,13 +190,45 @@ struct PendingComparison {
     completed_before_issue: [u64; 7],
 }
 
+// Keep high and low parts in separate contiguous arrays. For the design's
+// 4e13 comparable unit terms, gamma_K * N must stay below RIDGE = 0.01,
+// gamma_K = K*u/(1-K*u), u = epsilon/2. K=2 gives 0.00889; K=4
+// gives 0.01777. Thus 2 is the largest power of two retaining that scale.
+// TwoSum keeps each fold's residual; the lower-order O(N*u^2) term remains.
+// G itself keeps per-term compensation. This accumulation bound is NOT an
+// output tolerance: cancellation and conditioning still use the unchanged
+// double-double end-to-end criterion.
+const RESPONSE_BLOCK: u8 = 2;
+
+#[derive(Clone, Debug, PartialEq)]
+struct ResponseCross {
+    hi: [[f64; FEATURES]; 3],
+    lo: [[f64; FEATURES]; 3],
+    count: u8,
+}
+
+impl ResponseCross {
+    const ZERO: Self = Self {
+        hi: [[0.0; FEATURES]; 3],
+        lo: [[0.0; FEATURES]; 3],
+        count: 0,
+    };
+}
+
+#[derive(Clone)]
+struct ResponseState {
+    cross: Box<[ResponseCross]>,
+    queued: [(u64, [f32; 3]); RESPONSE_BATCH],
+    len: usize,
+}
+
 /// Pending targets penalize corrections but never supply invented outcome labels.
 pub(crate) struct HistoryEnergyPrediction {
     gram: Gram,
     issues: u64,
     phase: u64,
     frozen_at_issue: Option<u64>,
-    response_cross: Box<[[[Sum; 3]; FEATURES]]>,
+    responses: RefCell<ResponseState>,
     pending: Box<[PendingHistory]>,
     comparisons: Vec<PendingComparison>,
     comparison_slots: [Option<usize>; ENERGY_PENDING_LEN],
@@ -183,6 +240,8 @@ pub(crate) struct HistoryEnergyPrediction {
 
 impl Clone for HistoryEnergyPrediction {
     fn clone(&self) -> Self {
+        // Pay shared pre-birth work once, not again in every newborn observer.
+        self.flush_responses();
         // Reserve every ring slot, but copy only records that have been issued.
         let mut comparisons = Vec::with_capacity(ENERGY_PENDING_LEN);
         comparisons.extend_from_slice(&self.comparisons);
@@ -191,7 +250,7 @@ impl Clone for HistoryEnergyPrediction {
             issues: self.issues,
             phase: next_observer(),
             frozen_at_issue: self.frozen_at_issue,
-            response_cross: self.response_cross.clone(),
+            responses: self.responses.clone(),
             pending: self.pending.clone(),
             comparisons,
             comparison_slots: self.comparison_slots,
@@ -213,19 +272,30 @@ impl HistoryEnergyPrediction {
     }
 
     pub(crate) fn new() -> Self {
+        // Allocate the thread scratch at birth, outside steady-state updates.
+        FACTOR_SCRATCH.with(|_| {});
         Self {
             gram: Gram::new(),
             issues: 0,
             phase: next_observer(),
             frozen_at_issue: None,
-            response_cross: vec![[[Sum::ZERO; 3]; FEATURES]; FORECAST_LEN].into_boxed_slice(),
+            responses: RefCell::new(ResponseState {
+                cross: (0..FORECAST_LEN)
+                    .map(|lead| ResponseCross {
+                        count: (lead % RESPONSE_BLOCK as usize) as u8,
+                        ..ResponseCross::ZERO
+                    })
+                    .collect(),
+                queued: [(0, [0.0; 3]); RESPONSE_BATCH],
+                len: 0,
+            }),
             pending: vec![
                 PendingHistory {
                     step: None,
                     features: [0.0; FEATURES],
                     energy: [0.0; 3]
                 };
-                ENERGY_PENDING_LEN
+                HISTORY_PENDING_LEN
             ]
             .into_boxed_slice(),
             comparisons: Vec::with_capacity(ENERGY_PENDING_LEN),
@@ -238,6 +308,11 @@ impl HistoryEnergyPrediction {
     }
 
     pub(crate) fn clear_pending(&mut self, rewind: bool) {
+        if rewind {
+            self.responses.get_mut().len = 0;
+        } else {
+            self.flush_responses();
+        }
         for p in &mut self.pending {
             p.step = None;
         }
@@ -250,8 +325,18 @@ impl HistoryEnergyPrediction {
             self.comparison_cross.fill([Sum::ZERO; 3]);
             self.comparison_completed.fill(0);
             self.errors = PredictionErrorTotals::default();
-            self.response_cross.fill([[Sum::ZERO; 3]; FEATURES]);
-            self.gram = Gram::new();
+            for (lead, cross) in self.responses.get_mut().cross.iter_mut().enumerate() {
+                *cross = ResponseCross {
+                    count: (lead % RESPONSE_BLOCK as usize) as u8,
+                    ..ResponseCross::ZERO
+                };
+            }
+            self.gram.sum.fill([Sum::ZERO; FEATURES]);
+            self.gram.upper.fill([0.0; FEATURES]);
+            for i in 0..FEATURES {
+                self.gram.sum[i][i].hi = RIDGE;
+                self.gram.upper[i][i] = RIDGE.sqrt();
+            }
             self.issues = 0;
             self.frozen_at_issue = None;
         }
@@ -263,71 +348,155 @@ impl HistoryEnergyPrediction {
         energy: [f32; 3],
         mut emit: impl FnMut(&PredictionMatch<'_>),
     ) {
-        for (lead, cross) in self.response_cross.iter_mut().enumerate() {
-            let Some(issued_step) = step.checked_sub((lead * FORECAST_STRIDE) as u64) else {
-                continue;
-            };
-            let comparison = self.comparison_slots
-                [(issued_step % ENERGY_PENDING_LEN as u64) as usize]
-                .map(|slot| &self.comparisons[slot])
-                .filter(|p| p.step == Some(issued_step));
-            if let Some(comparison) = comparison {
-                if let Some(index) = SCORE_LEADS.iter().position(|&h| h == lead) {
-                    self.errors.completed[index] += 1;
-                    self.comparison_completed[index] += 1;
-                    for (band, observed) in energy.into_iter().enumerate() {
-                        let observed = observed as f64;
-                        self.errors.recurrence_squared_error[index][band] +=
-                            (comparison.recurrence[lead][band] as f64 - observed).powi(2);
-                        self.errors.history_squared_error[index][band] +=
-                            (comparison.history[lead][band] as f64 - observed).powi(2);
-                        self.errors.mixed_squared_error[index][band] +=
-                            (comparison.mixed[lead][band] as f64 - observed).powi(2);
+        if !self.comparisons.is_empty() {
+            for lead in 0..FORECAST_LEN {
+                let Some(issued_step) = step.checked_sub((lead * FORECAST_STRIDE) as u64) else {
+                    continue;
+                };
+                let comparison = self.comparison_slots
+                    [(issued_step % ENERGY_PENDING_LEN as u64) as usize]
+                    .map(|slot| &self.comparisons[slot])
+                    .filter(|p| p.step == Some(issued_step));
+                if let Some(comparison) = comparison {
+                    if let Some(index) = SCORE_LEADS.iter().position(|&h| h == lead) {
+                        self.errors.completed[index] += 1;
+                        self.comparison_completed[index] += 1;
+                        for (band, observed) in energy.into_iter().enumerate() {
+                            let observed = observed as f64;
+                            self.errors.recurrence_squared_error[index][band] +=
+                                (comparison.recurrence[lead][band] as f64 - observed).powi(2);
+                            self.errors.history_squared_error[index][band] +=
+                                (comparison.history[lead][band] as f64 - observed).powi(2);
+                            self.errors.mixed_squared_error[index][band] +=
+                                (comparison.mixed[lead][band] as f64 - observed).powi(2);
+                        }
+                        // Borrow the issuance context before the raw-history ring advances.
+                        let context =
+                            &self.pending[(issued_step % HISTORY_PENDING_LEN as u64) as usize];
+                        emit(&PredictionMatch {
+                            issued_step,
+                            target_step: step,
+                            requested_frame: comparison.requested_frame,
+                            completed_before_issue: comparison.completed_before_issue[index],
+                            issued_features: (context.step == Some(issued_step))
+                                .then_some(context.features.as_slice()),
+                            history_weight: comparison.history_weight[index],
+                            recurrence: comparison.recurrence[lead],
+                            history: comparison.history[lead],
+                            mixed: comparison.mixed[lead],
+                            observed: energy,
+                        });
                     }
-                    // Borrow the issuance context before the raw-history ring advances.
-                    let context = &self.pending[(issued_step % ENERGY_PENDING_LEN as u64) as usize];
-                    emit(&PredictionMatch {
-                        issued_step,
-                        target_step: step,
-                        requested_frame: comparison.requested_frame,
-                        completed_before_issue: comparison.completed_before_issue[index],
-                        issued_features: (context.step == Some(issued_step))
-                            .then_some(context.features.as_slice()),
-                        history_weight: comparison.history_weight[index],
-                        recurrence: comparison.recurrence[lead],
-                        history: comparison.history[lead],
-                        mixed: comparison.mixed[lead],
-                        observed: energy,
-                    });
-                }
-                for (band, observed) in energy.into_iter().enumerate() {
-                    let baseline = comparison.recurrence[lead][band] as f64;
-                    let delta = comparison.history[lead][band] as f64 - baseline;
-                    #[cfg(test)]
-                    reference::comparison(
-                        self.phase,
-                        lead,
-                        band,
-                        delta * delta,
-                        delta * (observed as f64 - baseline),
-                    );
-                    self.comparison_square[lead][band].add(delta * delta);
-                    self.comparison_cross[lead][band].add(delta * (observed as f64 - baseline));
-                }
-            }
-            let p = &self.pending[(issued_step % ENERGY_PENDING_LEN as u64) as usize];
-            if p.step != Some(issued_step) || self.frozen_at_issue.is_some() {
-                continue;
-            }
-            let residual: [f64; 3] = std::array::from_fn(|b| energy[b] as f64 - p.energy[b] as f64);
-            #[cfg(test)]
-            reference::response(self.phase, lead, &p.features, residual);
-            for (row, x) in cross.iter_mut().zip(p.features) {
-                for (b, value) in row.iter_mut().enumerate() {
-                    value.add(x * residual[b]);
+                    for (band, observed) in energy.into_iter().enumerate() {
+                        let baseline = comparison.recurrence[lead][band] as f64;
+                        let delta = comparison.history[lead][band] as f64 - baseline;
+                        #[cfg(test)]
+                        reference::comparison(
+                            self.phase,
+                            lead,
+                            band,
+                            delta * delta,
+                            delta * (observed as f64 - baseline),
+                        );
+                        self.comparison_square[lead][band].add(delta * delta);
+                        self.comparison_cross[lead][band].add(delta * (observed as f64 - baseline));
+                    }
                 }
             }
         }
+        #[cfg(test)]
+        if self.frozen_at_issue.is_none() {
+            // The oracle consumes raw outcomes immediately, independently of batching.
+            for lead in 0..FORECAST_LEN {
+                let Some(issued_step) = step.checked_sub((lead * FORECAST_STRIDE) as u64) else {
+                    continue;
+                };
+                let p = &self.pending[(issued_step % HISTORY_PENDING_LEN as u64) as usize];
+                if p.step == Some(issued_step) {
+                    let residual = std::array::from_fn(|b| energy[b] as f64 - p.energy[b] as f64);
+                    reference::response(self.phase, lead, &p.features, residual);
+                }
+            }
+        }
+        if self.frozen_at_issue.is_none() {
+            let flush = {
+                let mut responses = self.responses.borrow_mut();
+                let index = responses.len;
+                responses.queued[index] = (step, energy);
+                responses.len += 1;
+                responses.len == RESPONSE_BATCH
+                    || (self.issues + 1) % RESPONSE_BATCH as u64
+                        == self.phase % RESPONSE_BATCH as u64
+            };
+            if flush {
+                self.flush_responses();
+            }
+        }
+    }
+
+    fn flush_responses(&self) {
+        #[cfg(target_arch = "x86_64")]
+        if std::arch::is_x86_feature_detected!("avx2") {
+            // SAFETY: feature detection guards the only AVX2 entry point.
+            unsafe { self.flush_responses_avx2() };
+            return;
+        }
+        self.flush_responses_scalar();
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    #[target_feature(enable = "avx2")]
+    unsafe fn flush_responses_avx2(&self) {
+        self.flush_responses_scalar();
+    }
+
+    // A row stays in L1 across the batch; only independent components are widened.
+    #[inline(always)]
+    fn flush_responses_scalar(&self) {
+        let mut responses = self.responses.borrow_mut();
+        let ResponseState { cross, queued, len } = &mut *responses;
+        if *len == 0 {
+            return;
+        }
+        for (lead, cross) in cross.iter_mut().enumerate() {
+            for &(step, energy) in &queued[..*len] {
+                let Some(issued_step) = step.checked_sub((lead * FORECAST_STRIDE) as u64) else {
+                    continue;
+                };
+                let p = &self.pending[(issued_step % HISTORY_PENDING_LEN as u64) as usize];
+                if p.step != Some(issued_step) {
+                    continue;
+                }
+                let residual: [f64; 3] =
+                    std::array::from_fn(|b| energy[b] as f64 - p.energy[b] as f64);
+                cross.count += 1;
+                if cross.count == RESPONSE_BLOCK {
+                    // Fuse the block's final add with its fold: read/write low once.
+                    for (band, residual) in residual.into_iter().enumerate() {
+                        for ((hi, lo), x) in cross.hi[band]
+                            .iter_mut()
+                            .zip(&mut cross.lo[band])
+                            .zip(&p.features)
+                        {
+                            let low = *lo + x * residual;
+                            // TwoSum retains the fold's exact rounding residual.
+                            let sum = *hi + low;
+                            let tail = sum - *hi;
+                            *lo = (*hi - (sum - tail)) + (low - tail);
+                            *hi = sum;
+                        }
+                    }
+                    cross.count = 0;
+                } else {
+                    for (band, residual) in residual.into_iter().enumerate() {
+                        for (low, x) in cross.lo[band].iter_mut().zip(&p.features) {
+                            *low += x * residual;
+                        }
+                    }
+                }
+            }
+        }
+        *len = 0;
     }
 
     fn features(energy: [f32; 3], history: &AuditoryHistorySnapshot) -> [f64; FEATURES] {
@@ -365,24 +534,16 @@ impl HistoryEnergyPrediction {
         if self.frozen_at_issue.is_some() {
             return;
         }
-        let p = &mut self.pending[(step % ENERGY_PENDING_LEN as u64) as usize];
-        debug_assert_ne!(p.step, Some(step));
+        let slot = (step % HISTORY_PENDING_LEN as u64) as usize;
+        debug_assert_ne!(self.pending[slot].step, Some(step));
         let x = Self::features(energy, history);
         let next = self.issues + 1;
-        let success = GRAM_SCRATCH.with(|scratch| {
-            let mut scratch = scratch.borrow_mut();
-            scratch.clone_from(&self.gram);
-            if scratch.update(
-                x,
-                next % REFACTOR_INTERVAL == self.phase % REFACTOR_INTERVAL,
-            ) {
-                std::mem::swap(&mut self.gram, &mut scratch);
-                true
-            } else {
-                false
-            }
-        });
+        let success = self.gram.update(
+            x,
+            next % REFACTOR_INTERVAL == self.phase % REFACTOR_INTERVAL,
+        );
         if !success {
+            self.flush_responses();
             self.frozen_at_issue = Some(next);
             self.errors.frozen_at_issue = Some(next);
             self.errors.freeze_count += 1;
@@ -392,7 +553,7 @@ impl HistoryEnergyPrediction {
         self.issues = next;
         #[cfg(test)]
         reference::issue(self.phase, &x);
-        *p = PendingHistory {
+        self.pending[slot] = PendingHistory {
             step: Some(step),
             features: x,
             energy,
@@ -404,16 +565,30 @@ impl HistoryEnergyPrediction {
         energy: [f32; 3],
         history: &AuditoryHistorySnapshot,
     ) -> [[f32; 3]; FORECAST_LEN] {
+        // Materialization changes no observation clock or learning count.
+        self.flush_responses();
+        let responses = self.responses.borrow();
         let x = Self::features(energy, history);
         let projected = self.gram.solve(x);
         let output = std::array::from_fn(|lead| {
-            let mut correction = [0.; 3];
-            for (row, &x) in self.response_cross[lead].iter().zip(&projected) {
-                for band in 0..3 {
-                    correction[band] += row[band].total() * x;
+            let cross = &responses.cross[lead];
+            let mut correction = [0.0; 3];
+            if cross.count == 0 {
+                // Immediately after TwoSum, round(hi + lo) == hi. Avoid the
+                // cold low array without changing any term of the dot product.
+                for (i, x) in projected.into_iter().enumerate() {
+                    for (band, correction) in correction.iter_mut().enumerate() {
+                        *correction += cross.hi[band][i] * x;
+                    }
+                }
+            } else {
+                for (i, x) in projected.into_iter().enumerate() {
+                    for (band, correction) in correction.iter_mut().enumerate() {
+                        *correction += (cross.hi[band][i] + cross.lo[band][i]) * x;
+                    }
                 }
             }
-            std::array::from_fn(|band| (energy[band] as f64 + correction[band]).max(0.) as f32)
+            std::array::from_fn(|band| (energy[band] as f64 + correction[band]).max(0.0) as f32)
         });
         #[cfg(test)]
         reference::forecast(self.phase, &x, energy, &output);
@@ -509,17 +684,17 @@ mod tests {
         predictor.issue(1, [0.1; 3], &history);
         predictor.observe(1, [0.2; 3], |_| {});
         let gram = predictor.gram.clone();
-        let response = predictor.response_cross.clone();
         let prediction = predictor.forecast([0.1; 3], &history);
-        // G[0][0] is already changed in scratch when the next row fails.
+        let response = predictor.responses.borrow().cross.clone();
+        // Reject non-finite features before changing any committed state.
         predictor.issue(2, [f32::NAN, 0.0, 0.0], &history);
         assert_eq!(predictor.frozen_at_issue, Some(2));
         assert_eq!(predictor.gram, gram);
-        assert_eq!(predictor.response_cross, response);
+        assert_eq!(predictor.responses.borrow().cross, response);
         predictor.observe(2, [10.0; 3], |_| {});
         predictor.issue(3, [0.2; 3], &history);
         assert_eq!(predictor.gram, gram);
-        assert_eq!(predictor.response_cross, response);
+        assert_eq!(predictor.responses.borrow().cross, response);
         assert_eq!(predictor.forecast([0.1; 3], &history), prediction);
         let status = predictor.take_errors().unwrap();
         assert_eq!(status.frozen_at_issue, Some(2));
@@ -534,6 +709,173 @@ mod tests {
     }
 
     #[test]
+    fn failed_refactor_discards_partially_written_scratch() {
+        let history = AuditoryHistory::new(HISTORY_AGES_SEC).snapshot();
+        let mut predictor = HistoryEnergyPrediction::new();
+        predictor.issue(1, [0.1; 3], &history);
+        predictor.observe(1, [0.2; 3], |_| {});
+        // Force failure at the final pivot, after all preceding scratch rows.
+        predictor.gram.sum[FEATURES - 1][FEATURES - 1].hi = -1.0;
+        predictor.phase = 2;
+        let gram = predictor.gram.clone();
+        let prediction = predictor.forecast([0.1; 3], &history);
+        let response = predictor.responses.borrow().cross.clone();
+        predictor.issue(2, [0.1; 3], &history);
+        assert_eq!(predictor.frozen_at_issue, Some(2));
+        assert_eq!(predictor.gram, gram);
+        predictor.observe(2, [10.0; 3], |_| {});
+        assert_eq!(predictor.responses.borrow().cross, response);
+        assert_eq!(predictor.forecast([0.1; 3], &history), prediction);
+    }
+
+    #[test]
+    fn rank_one_rotation_stays_finite_at_feature_range_limit() {
+        let mut gram = Gram::new();
+        for _ in 0..REFACTOR_INTERVAL {
+            assert!(gram.update([f32::MAX as f64; FEATURES], false));
+            assert!(gram.upper.iter().flatten().all(|v| v.is_finite()));
+            assert!((0..FEATURES).all(|i| gram.upper[i][i] > 0.0));
+        }
+    }
+
+    #[test]
+    fn response_vectorization_preserves_scalar_updates_and_partial_blocks() {
+        let mut history = AuditoryHistory::new(HISTORY_AGES_SEC);
+        let mut scalar = HistoryEnergyPrediction::new();
+        let mut dispatched = scalar.clone();
+        dispatched.align_refactor_phase(&scalar);
+        for step in 0..450 {
+            let energy = [0.01 * (1.0 + (step as f32 * 0.031).sin()); 3];
+            let mut expected = Vec::new();
+            scalar.observe(step, energy, |m| {
+                expected.push(serde_json::to_value(m).unwrap())
+            });
+            let mut actual = Vec::new();
+            dispatched.observe(step, energy, |m| {
+                actual.push(serde_json::to_value(m).unwrap())
+            });
+            assert_eq!(expected, actual);
+            scalar.flush_responses_scalar();
+            dispatched.flush_responses();
+            assert_eq!(
+                scalar.responses.borrow().cross,
+                dispatched.responses.borrow().cross
+            );
+            if step % 31 == 0 {
+                let snapshot = history.snapshot();
+                let folded = dispatched.forecast(energy, &snapshot);
+                let counts: [u8; FORECAST_LEN] =
+                    std::array::from_fn(|lead| dispatched.responses.borrow().cross[lead].count);
+                for cross in &mut dispatched.responses.get_mut().cross {
+                    cross.count = 1;
+                }
+                assert_eq!(folded, dispatched.forecast(energy, &snapshot));
+                for (cross, count) in dispatched.responses.get_mut().cross.iter_mut().zip(counts) {
+                    cross.count = count;
+                }
+            }
+            history.advance(0.01, Some(energy.map(f32::sqrt)));
+            let snapshot = history.snapshot();
+            for predictor in [&mut scalar, &mut dispatched] {
+                predictor.issue(step + 1, energy, &snapshot);
+                let candidate = predictor.forecast(energy, &snapshot);
+                predictor.issue_comparison(step + 1, [[0.01; 3]; FORECAST_LEN], candidate, None);
+            }
+            if step == 205 {
+                dispatched = dispatched.clone();
+                dispatched.align_refactor_phase(&scalar);
+            }
+        }
+    }
+
+    #[test]
+    fn response_batches_match_eager_updates_across_queries_clone_gap_and_rewind() {
+        let mut eager = HistoryEnergyPrediction::new();
+        eager.phase = 7;
+        let mut batched = eager.clone();
+        batched.align_refactor_phase(&eager);
+        let mut history = AuditoryHistory::new(HISTORY_AGES_SEC);
+        for step in 0..900 {
+            let t = step as f32 * 0.031;
+            let energy = [0.02 * (1.0 + t.sin()), 0.03 * (1.0 + (t * 1.7).cos()), 0.01];
+            let mut expected = Vec::new();
+            eager.observe(step, energy, |m| {
+                expected.push(serde_json::to_value(m).unwrap())
+            });
+            eager.flush_responses();
+            let mut actual = Vec::new();
+            batched.observe(step, energy, |m| {
+                actual.push(serde_json::to_value(m).unwrap())
+            });
+            assert_eq!(actual, expected);
+            history.advance(0.01, Some(energy.map(f32::sqrt)));
+            let snapshot = history.snapshot();
+            eager.issue(step + 1, energy, &snapshot);
+            batched.issue(step + 1, energy, &snapshot);
+            if step % 37 == 0 {
+                let candidate = eager.forecast(energy, &snapshot);
+                assert_eq!(batched.forecast(energy, &snapshot), candidate);
+                assert_eq!(
+                    batched.responses.borrow().cross,
+                    eager.responses.borrow().cross
+                );
+                for predictor in [&mut eager, &mut batched] {
+                    predictor.issue_comparison(
+                        step + 1,
+                        [[0.01; 3]; FORECAST_LEN],
+                        candidate,
+                        None,
+                    );
+                }
+            }
+            if step == 605 {
+                assert!(batched.responses.borrow().len > 0);
+                batched = batched.clone();
+                assert_eq!(batched.responses.borrow().len, 0);
+                batched.align_refactor_phase(&eager);
+            }
+            if step == 645 || step == 745 {
+                for predictor in [&mut eager, &mut batched] {
+                    predictor.clear_pending(step == 745);
+                }
+                assert_eq!(
+                    batched.responses.borrow().cross,
+                    eager.responses.borrow().cross
+                );
+            }
+        }
+        assert_eq!(
+            batched.forecast([0.01; 3], &history.snapshot()),
+            eager.forecast([0.01; 3], &history.snapshot())
+        );
+    }
+
+    #[test]
+    fn freeze_materializes_only_already_observed_queued_responses() {
+        let history = AuditoryHistory::new(HISTORY_AGES_SEC).snapshot();
+        let mut predictor = HistoryEnergyPrediction::new();
+        predictor.phase = 9;
+        predictor.issue(1, [0.1; 3], &history);
+        let mut eager = predictor.clone();
+        predictor.observe(1, [0.2; 3], |_| {});
+        eager.observe(1, [0.2; 3], |_| {});
+        eager.flush_responses();
+        assert_eq!(predictor.responses.borrow().len, 1);
+        predictor.issue(2, [f32::NAN; 3], &history);
+        assert_eq!(predictor.frozen_at_issue, Some(2));
+        assert_eq!(predictor.responses.borrow().len, 0);
+        assert_eq!(
+            predictor.responses.borrow().cross,
+            eager.responses.borrow().cross
+        );
+        assert_eq!(predictor.gram, eager.gram);
+        assert_eq!(
+            predictor.forecast([0.1; 3], &history),
+            eager.forecast([0.1; 3], &history)
+        );
+    }
+
+    #[test]
     fn cloned_factor_waits_for_its_own_phase() {
         let history = AuditoryHistory::new(HISTORY_AGES_SEC).snapshot();
         let mut parent = HistoryEnergyPrediction::new();
@@ -544,7 +886,10 @@ mod tests {
         let mut child = parent.clone();
         child.phase = 9;
         assert_eq!(child.gram, parent.gram);
-        assert_eq!(child.response_cross, parent.response_cross);
+        assert_eq!(
+            child.responses.borrow().cross,
+            parent.responses.borrow().cross
+        );
         let mut expected = parent.gram.clone();
         for step in 10..=19 {
             let x = HistoryEnergyPrediction::features([0.2; 3], &history);
@@ -612,6 +957,8 @@ mod tests {
     fn sparse_comparisons_match_dense_ring_after_clone_wrap_and_clear() {
         let mut sparse = HistoryEnergyPrediction::new();
         let mut dense = sparse.clone();
+        // This control isolates comparison storage, not refactor scheduling.
+        dense.align_refactor_phase(&sparse);
         dense.comparisons.resize(
             ENERGY_PENDING_LEN,
             PendingComparison {
@@ -654,6 +1001,7 @@ mod tests {
             }
             if step == 17 || step == 405 {
                 sparse = sparse.clone();
+                sparse.align_refactor_phase(&dense);
             }
             if step == 510 || step == 610 {
                 sparse.clear_pending(step == 610);

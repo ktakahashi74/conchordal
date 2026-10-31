@@ -118,6 +118,7 @@ pub struct RainPatch {
 
 #[derive(Debug, Clone)]
 pub struct Scenario {
+    pub(crate) observe_tonal_context: bool,
     pub(crate) expression: Option<expression::Expression>,
     pub(crate) expression_cursor: Option<f64>,
     pub seed: u64,
@@ -791,6 +792,36 @@ impl Default for RespawnPeakBiasConfig {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SpawnIds {
+    Assigned(Vec<u64>),
+    Allocate(usize),
+}
+
+impl SpawnIds {
+    pub fn len(&self) -> usize {
+        match self {
+            Self::Assigned(ids) => ids.len(),
+            Self::Allocate(count) => *count,
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    pub(crate) fn assigned(&self) -> &[u64] {
+        match self {
+            Self::Assigned(ids) => ids,
+            Self::Allocate(_) => &[],
+        }
+    }
+}
+
+impl From<Vec<u64>> for SpawnIds {
+    fn from(ids: Vec<u64>) -> Self {
+        Self::Assigned(ids)
+    }
+}
+
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 pub enum Action {
@@ -826,7 +857,7 @@ pub enum Action {
 
     Spawn {
         population_id: u64,
-        ids: Vec<u64>,
+        ids: SpawnIds,
         spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
     },
@@ -865,6 +896,38 @@ pub enum Action {
         value: f32,
     },
     Finish,
+}
+
+impl Action {
+    pub(crate) fn heap_bytes(&self) -> usize {
+        match self {
+            Self::Spawn { ids, spec, .. } => {
+                let ids = match ids {
+                    SpawnIds::Assigned(ids) => ids.capacity() * size_of::<u64>(),
+                    SpawnIds::Allocate(_) => 0,
+                };
+                ids + spec
+                    .control
+                    .body
+                    .modes
+                    .as_ref()
+                    .map_or(0, |m| m.heap_bytes())
+            }
+            Self::PlaceRain { spec, .. } => {
+                spec.object_modes.heap_bytes() + spec.impact_modes.heap_bytes()
+            }
+            _ => 0,
+        }
+    }
+
+    pub(crate) fn set_founder_basin(&mut self, rate: f32) {
+        if let Self::Spawn { spec, .. } = self
+            && let PhonationTiming::Coupled(timing) = &mut spec.control.phonation.spec.timing
+            && timing.relation == RhythmRelation::Synchronized
+        {
+            timing.base_rate_hz = rate;
+        }
+    }
 }
 
 impl fmt::Display for Action {

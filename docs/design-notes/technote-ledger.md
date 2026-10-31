@@ -118,6 +118,7 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.95 Flora growth and seed perception exclude own habitat PCM](#flora-growth-self-exclusion)
   - [§9.3.104 Mechanism evidence tiers and composer controls](#mechanism-evidence-and-composer-controls)
   - [§9.3.109 Known final expression](#known-final-expression)
+  - [§9.3.117 2026-10-31: Incremental evaluation of endless scores](#incremental-endless-scores-20261031)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -11229,3 +11230,43 @@ metabolism. At w = 1 the field score, level and energy, the density mass and the
 eroded views are bit-exact with the previous construction, and `harmonicity01` and
 `roughness01` are unchanged at every w. No default, sample or listener profile
 changed, and no audition was run.
+
+<a id="incremental-endless-scores-20261031"></a>
+
+### 9.3.117 2026-10-31: Incremental evaluation of endless scores
+
+Stage 2 of `2026-10-31-indefinite-performance-design.md` revision 9 applies only
+to `endless()` pieces. A dedicated Rhai thread publishes the header and bounded
+score items. Finite pieces retain eager evaluation and their preloaded Conductor.
+The runtime and compile-only driver share the strict tick watermark predicate,
+consumption-based credit return and the four-condition overflow predicate. Scope
+cleanup at an evaluation bound precedes the duration end request. Runtime closure
+discards queued items, not the runtime-owned release/Finish sequence. A script
+failure after the header drains committed items and leaves the ecology running.
+
+The ring capacity is **C = 131,072 actions**, and
+**B = C × size_of::<Action>() = 77,594,624 bytes** on this build (`Action`: 592 bytes).
+One marker counts as one action. Heap payload is charged by allocated capacity;
+worker-held items retain their charge until applied. One bounded producer item may
+wait outside the ring, giving the design's 2B plus slot-header storage bound.
+
+Calibration ran on blanche at 2026-10-31T18:09:33+09:00 with the release profile
+(opt-level 3, LTO). The ignored `score_patch_capacity_measurement` test applies an
+alternating amplitude `UpdatePopulation` patch to one live Voice through
+`Community::apply_action`. It checks elapsed time after each batch of 64 actions
+against the 48 kHz / 512-sample hop budget (10.666667 ms). **179,328 actions** completed
+within that budget; the following batch crossed it (10.668816 ms). Rounding down
+to a power of two gives C. This is a capacity calibration, not realtime-load
+acceptance. No timing lock was held. External host load averages at job start were
+9.63 / 9.67 / 9.44; MemAvailable was 37,161,692 KiB. The earlier throughput estimate
+(100,000 patches in 6.003367 ms) independently selected the same power of two.
+Raw logs: orchestration unit IP-U5 `capacity.log` and `capacity-final.log`.
+
+Validation covers three-cycle retained-state equality with respawn and Flora (V2),
+77 eligible bundled scenarios against eager evaluation (V3), deterministic pre-synth
+state and reports, bound cleanup, real render/compile-only action and payload
+overflow, and both credit-return interleavings (V4). Report comparison excludes
+only the three wall-clock timing fields (`elapsed_us`, `analysis_wait_us`,
+`listener_wait_us`); the score, state and remaining report fields compare exactly.
+These checks establish implementation behavior. V6b endurance, V7 estimator
+precision, V8 realtime load and author audition are not established by this unit.

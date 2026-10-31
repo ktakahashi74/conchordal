@@ -270,6 +270,10 @@ impl Community {
         }
     }
 
+    pub(crate) fn contains_population(&self, id: u64) -> bool {
+        self.populations.contains_key(&id)
+    }
+
     pub(crate) fn population_count(&self) -> usize {
         self.populations.len()
     }
@@ -1371,7 +1375,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 1,
-                ids: vec![1],
+                ids: vec![1].into(),
                 spec: spawn_spec_with_freq(220.0),
                 strategy: None,
             },
@@ -1382,7 +1386,7 @@ mod tests {
             pop.apply_action(
                 Action::Spawn {
                     population_id: id,
-                    ids: vec![id],
+                    ids: vec![id].into(),
                     spec: spawn_spec_with_freq(330.0),
                     strategy: None,
                 },
@@ -1419,7 +1423,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 7,
-                ids: vec![70],
+                ids: vec![70].into(),
                 spec: spawn_spec_with_freq(220.0),
                 strategy: None,
             },
@@ -1432,7 +1436,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 7,
-                ids: vec![71],
+                ids: vec![71].into(),
                 spec: spawn_spec_with_freq(330.0),
                 strategy: None,
             },
@@ -1451,7 +1455,7 @@ mod tests {
         community.apply_action(
             Action::Spawn {
                 population_id: 7,
-                ids: vec![70],
+                ids: vec![70].into(),
                 spec: spawn_spec_with_freq(330.),
                 strategy: None,
             },
@@ -1511,7 +1515,7 @@ mod tests {
         community.apply_action(
             Action::Spawn {
                 population_id: 7,
-                ids: vec![70],
+                ids: crate::scenario::SpawnIds::Assigned(vec![70]),
                 spec,
                 strategy: None,
             },
@@ -1740,7 +1744,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 66,
-                ids: vec![660, 661, 662],
+                ids: vec![660, 661, 662].into(),
                 spec,
                 strategy: Some(SpawnStrategy::Linear {
                     start_freq: 320.0,
@@ -1791,7 +1795,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 70,
-                ids: vec![700],
+                ids: vec![700].into(),
                 spec: mover_spec,
                 strategy: None,
             },
@@ -1800,7 +1804,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 71,
-                ids: vec![701],
+                ids: vec![701].into(),
                 spec: neighbor_spec,
                 strategy: None,
             },
@@ -1835,7 +1839,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 90,
-                ids: vec![900],
+                ids: vec![900].into(),
                 spec,
                 strategy: None,
             },
@@ -1943,7 +1947,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 2,
-                ids: vec![77],
+                ids: vec![77].into(),
                 spec,
                 strategy: None,
             },
@@ -2019,7 +2023,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 9,
-                ids: vec![501],
+                ids: vec![501].into(),
                 spec,
                 strategy: None,
             },
@@ -2089,7 +2093,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 9,
-                ids: vec![502],
+                ids: vec![502].into(),
                 spec,
                 strategy: None,
             },

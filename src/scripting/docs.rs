@@ -881,6 +881,20 @@ Pairs with peak() (nearest step, sharp) or density (a broader cloud around it)."
 on the PopulationSpec first; the returned Population exposes only live patches and release.",
     },
     FnDoc {
+        name: "observe_tonal_context",
+        evidence: &[EvidenceDoc {
+            en: "Author rule: reserve tonal-context observation from the start of an endless performance.",
+            ja: "作者規則：終わりを定めない演奏で、開始時から調的文脈の観測を予約する。",
+        }],
+        owner: Owner::Global,
+        category: "timeline",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["observe_tonal_context()"],
+        summary: "Reserve tonal-context observation before time advances in an endless scenario.",
+        details: "Required before placing a positive follow_tonal_context weight in endless scenarios. A late declaration or an unreserved positive placement is a positioned script error. Finite scenarios warn and ignore this declaration; their placements still determine observation and table construction.",
+    },
+    FnDoc {
         name: "endless",
         evidence: FORM,
         owner: Owner::Global,
@@ -889,7 +903,7 @@ on the PopulationSpec first; the returned Population exposes only live patches a
         patch: Patch::Na,
         usage: &["endless()"],
         summary: "Declare an open-ended performance before playback events and time advances.",
-        details: "Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Stage 1 evaluates eagerly: unbounded script loops still hang at load.",
+        details: "Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Evaluation runs incrementally on a dedicated thread. Unbounded loops must advance score time with wait(). Declare scene headers before time advances; parallel is unavailable. Release repeated placements or scope them with section/play. Compile-only and render require --duration.",
     },
     FnDoc {
         name: "wait",
@@ -2145,7 +2159,7 @@ ecology; `send(habitat_bus | presentation_bus)` feeds both (the default).",
         patch: Patch::Na,
         usage: &["harmonic_rhythm(N)"],
         summary: "Allow background changes on shared opportunities every N beats; zero is neutral.",
-        details: "Author rule. Nonnegative integer N is a composer quantity. The last valid declaration is an initial premise for the entire scene, even after wait(). All Flora and birth-time Once/WhileAlive/Free stepwise Voices with zero rearticulation threshold participate. Pitch choice remains local. Unknown acoustic beats retain the shared prior clock. Release and support loss take priority. Other Voices retain their own timing; this is not perceptual foreground/background classification. No live N setter, chord table, measure alignment or harmonic cue is added.",
+        details: "Author rule. Nonnegative integer N is a composer quantity. The last valid declaration is an initial premise for the entire finite scene, even after wait(). Endless scenes require it before time first advances. All Flora and birth-time Once/WhileAlive/Free stepwise Voices with zero rearticulation threshold participate. Pitch choice remains local. Unknown acoustic beats retain the shared prior clock. Release and support loss take priority. Other Voices retain their own timing; this is not perceptual foreground/background classification. No live N setter, chord table, measure alignment or harmonic cue is added.",
     },
     FnDoc {
         name: "meter_stability",

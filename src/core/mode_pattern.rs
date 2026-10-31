@@ -42,6 +42,16 @@ pub struct ModePattern {
 }
 
 impl ModePattern {
+    pub(crate) fn heap_bytes(&self) -> usize {
+        match &self.kind {
+            ModePatternKind::Custom { ratios } => ratios.capacity() * size_of::<f32>(),
+            ModePatternKind::ModalTable { name, ratios } => {
+                name.capacity() + ratios.capacity() * size_of::<f32>()
+            }
+            _ => 0,
+        }
+    }
+
     pub fn harmonic_modes() -> Self {
         Self::new(ModePatternKind::Harmonic)
     }

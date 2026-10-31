@@ -60,6 +60,7 @@ pub enum PlaybackState {
 
 #[derive(Clone, Debug, Default)]
 pub struct SimulationMeta {
+    pub script: Option<crate::scripting::ScriptStatus>,
     pub time_sec: f64,
     pub end: Option<f64>,
     pub population_count: usize,

@@ -734,7 +734,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 7,
-                ids: vec![1],
+                ids: vec![1].into(),
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
             },
@@ -759,7 +759,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 8,
-                ids: vec![10],
+                ids: vec![10].into(),
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
             },
@@ -801,7 +801,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 82,
-                ids: vec![820, 821],
+                ids: vec![820, 821].into(),
                 spec: sustain_spawn_spec_with_freq(220.0),
                 strategy: None,
             },
@@ -834,7 +834,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 81,
-                ids: vec![810],
+                ids: vec![810].into(),
                 spec: sustain_spawn_spec_with_freq(220.0),
                 strategy: None,
             },
@@ -874,7 +874,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 9,
-                ids: vec![20],
+                ids: vec![20].into(),
                 spec: decay_spawn_spec_with_freq(330.0, 0.02),
                 strategy: None,
             },
@@ -919,7 +919,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 90,
-                ids: vec![900, 901],
+                ids: vec![900, 901].into(),
                 spec,
                 strategy: None,
             },
@@ -969,7 +969,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 10,
-                ids: vec![30],
+                ids: vec![30].into(),
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
             },
@@ -1026,7 +1026,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 11,
-                ids: vec![40],
+                ids: vec![40].into(),
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
             },
@@ -1086,7 +1086,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 91,
-                ids: vec![910, 911],
+                ids: vec![910, 911].into(),
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
             },
@@ -1137,7 +1137,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 92,
-                ids: vec![920],
+                ids: vec![920].into(),
                 spec: decay_spawn_spec_with_freq(220.0, 0.02),
                 strategy: None,
             },
@@ -1192,7 +1192,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 12,
-                ids: vec![100, 101],
+                ids: vec![100, 101].into(),
                 spec,
                 strategy: Some(SpawnStrategy::Linear {
                     start_freq: 220.0,
@@ -1249,7 +1249,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 13,
-                ids: vec![130, 131],
+                ids: vec![130, 131].into(),
                 spec,
                 strategy: Some(SpawnStrategy::Linear {
                     start_freq: 250.0,
@@ -1347,7 +1347,7 @@ mod tests {
         enabled.apply_action(
             Action::Spawn {
                 population_id: 1,
-                ids: vec![1],
+                ids: vec![1].into(),
                 spec,
                 strategy: None,
             },

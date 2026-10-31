@@ -423,13 +423,23 @@ Create a Population at the current script time. `place()` is the sole Population
 
 **Evidence:** Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 
+#### `observe_tonal_context`
+
+```rhai,ignore
+observe_tonal_context()
+```
+
+Reserve tonal-context observation before time advances in an endless scenario. Required before placing a positive follow_tonal_context weight in endless scenarios. A late declaration or an unreserved positive placement is a positioned script error. Finite scenarios warn and ignore this declaration; their placements still determine observation and table construction.
+
+**Evidence:** Author rule: reserve tonal-context observation from the start of an endless performance.
+
 #### `endless`
 
 ```rhai,ignore
 endless()
 ```
 
-Declare an open-ended performance before playback events and time advances. Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Stage 1 evaluates eagerly: unbounded script loops still hang at load.
+Declare an open-ended performance before playback events and time advances. Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Evaluation runs incrementally on a dedicated thread. Unbounded loops must advance score time with wait(). Declare scene headers before time advances; parallel is unavailable. Release repeated placements or scope them with section/play. Compile-only and render require --duration.
 
 **Evidence:** Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 
@@ -1369,7 +1379,7 @@ Scene-global terrain shaping and research controls. Director verbs are soft prio
 harmonic_rhythm(N)
 ```
 
-Allow background changes on shared opportunities every N beats; zero is neutral. Author rule. Nonnegative integer N is a composer quantity. The last valid declaration is an initial premise for the entire scene, even after wait(). All Flora and birth-time Once/WhileAlive/Free stepwise Voices with zero rearticulation threshold participate. Pitch choice remains local. Unknown acoustic beats retain the shared prior clock. Release and support loss take priority. Other Voices retain their own timing; this is not perceptual foreground/background classification. No live N setter, chord table, measure alignment or harmonic cue is added.
+Allow background changes on shared opportunities every N beats; zero is neutral. Author rule. Nonnegative integer N is a composer quantity. The last valid declaration is an initial premise for the entire finite scene, even after wait(). Endless scenes require it before time first advances. All Flora and birth-time Once/WhileAlive/Free stepwise Voices with zero rearticulation threshold participate. Pitch choice remains local. Unknown acoustic beats retain the shared prior clock. Release and support loss take priority. Other Voices retain their own timing; this is not perceptual foreground/background classification. No live N setter, chord table, measure alignment or harmonic cue is added.
 
 **Evidence:** Author rule: shared opportunities for background changes. Zero is neutral; N is a composer quantity, not an inferred measure or a perceptual constant.
 

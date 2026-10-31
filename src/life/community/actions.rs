@@ -150,7 +150,7 @@ impl Community {
     fn on_spawn_action(
         &mut self,
         population_id: u64,
-        ids: Vec<u64>,
+        ids: crate::scenario::SpawnIds,
         spec: VoiceSpec,
         strategy: Option<SpawnStrategy>,
         landscape: &Landscape,
@@ -161,7 +161,11 @@ impl Community {
         let mut rng = SmallRng::seed_from_u64(seed);
         let mut reserved = Vec::with_capacity(ids.len());
         let total = ids.len().max(1);
-        for (member_idx, id) in ids.iter().copied().enumerate() {
+        for member_idx in 0..ids.len() {
+            let id = match &ids {
+                crate::scenario::SpawnIds::Assigned(ids) => ids[member_idx],
+                crate::scenario::SpawnIds::Allocate(_) => self.allocate_runtime_id(),
+            };
             let freq_hz = strategy
                 .as_ref()
                 .map(|strat| {
@@ -399,13 +403,58 @@ mod tests {
     use crate::scenario::control::{ControlUpdate, PitchMode};
 
     #[test]
+    #[ignore = "release capacity calibration, not an acceptance timing test"]
+    fn score_patch_capacity_measurement() {
+        let mut pop = test_pop();
+        let landscape = Landscape::default();
+        pop.apply_action(
+            Action::Spawn {
+                population_id: 1,
+                ids: vec![1].into(),
+                spec: spawn_spec_with_freq(220.0),
+                strategy: None,
+            },
+            &landscape,
+        );
+        let budget = std::time::Duration::from_secs_f64(512.0 / 48000.0);
+        let mut count = 0usize;
+        let start = std::time::Instant::now();
+        loop {
+            for i in 0..64 {
+                let patch = ControlUpdate {
+                    amp: Some(std::hint::black_box(0.1 + (i % 2) as f32 * 0.01)),
+                    ..Default::default()
+                };
+                pop.apply_action(
+                    std::hint::black_box(Action::UpdatePopulation {
+                        population_id: 1,
+                        patch,
+                    }),
+                    &landscape,
+                );
+            }
+            if start.elapsed() > budget {
+                break;
+            }
+            count += 64;
+        }
+        let elapsed = start.elapsed().as_secs_f64();
+        let capacity = 1usize << count.ilog2();
+        eprintln!(
+            "score capacity: completed_within_hop={count} elapsed_sec={elapsed:.9} C={capacity} action_bytes={} B={}",
+            size_of::<Action>(),
+            capacity * size_of::<Action>()
+        );
+    }
+
+    #[test]
     fn update_applies_to_population_members() {
         let mut pop = test_pop();
         let landscape = Landscape::default();
         pop.apply_action(
             Action::Spawn {
                 population_id: 1,
-                ids: vec![10, 11],
+                ids: vec![10, 11].into(),
                 spec: spawn_spec_with_freq(220.0),
                 strategy: None,
             },
@@ -434,7 +483,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 1,
-                ids: vec![21, 22],
+                ids: vec![21, 22].into(),
                 spec: spawn_spec_with_freq(220.0),
                 strategy: None,
             },
@@ -465,7 +514,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 6,
-                ids: vec![60],
+                ids: vec![60].into(),
                 spec: spawn_spec_with_freq(275.0),
                 strategy: None,
             },
@@ -484,7 +533,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 1,
-                ids: vec![1],
+                ids: vec![1].into(),
                 spec,
                 strategy: Some(SpawnStrategy::Linear {
                     start_freq: 220.0,

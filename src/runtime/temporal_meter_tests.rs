@@ -42,6 +42,7 @@ fn continuous_offline_delivery_is_independent_of_producer_delay() {
             scenario,
             Arc::new(AtomicBool::new(false)),
             WiringOptions {
+                score: None,
                 end_request: Arc::new(AtomicBool::new(false)),
                 duration_sec: None,
                 offline_body_probe: None,
@@ -106,6 +107,7 @@ fn continuous_runtime_rejects_actual_device_rate_before_spawning() {
         8000,
         "invalid raw rate".into(),
         Scenario {
+            observe_tonal_context: false,
             expression: None,
             expression_cursor: None,
             seed: 21,
@@ -124,6 +126,7 @@ fn continuous_runtime_rejects_actual_device_rate_before_spawning() {
         },
         Arc::new(AtomicBool::new(false)),
         WiringOptions {
+            score: None,
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: None,

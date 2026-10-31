@@ -114,9 +114,66 @@ pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
     let path = Path::new(&args.scenario_path);
     crate::life::modal::register_modal();
     validate_scenario_script_extension(path)?;
-    let (scenario, warnings) =
-        ScriptHost::load_script_with_warnings(&path.to_string_lossy(), args.seed)
-            .map_err(|error| error.to_string())?;
+    let stop = AtomicBool::new(false);
+    let (scenario, session, warnings) = ScriptHost::load_incremental(
+        &path.to_string_lossy(),
+        args.seed,
+        args.duration,
+        &stop,
+        &args.end_request,
+    )
+    .map_err(|error| error.to_string())?;
+    if let Some(session) = session {
+        if args.duration.is_none() {
+            return Err("compile-only of an endless scenario requires --duration".into());
+        }
+        let config =
+            AppConfig::load_or_default(args.config.as_deref()).map_err(|e| e.to_string())?;
+        let tb = crate::core::timebase::Timebase {
+            fs: config.audio.sample_rate as f32,
+            hop: config.analysis.hop_size,
+        };
+        let (mut events, mut actions, mut markers) = (0, 0, 0);
+        let result = session.drain(tb, &args.end_request, |item| match item {
+            crate::scripting::score::ScoreItem::Event(event) => {
+                events += 1;
+                actions += event.actions.len();
+                eprint!("event t={:.3} order={}", event.time, event.order);
+                for action in event.actions {
+                    eprint!(" | {action}");
+                }
+                eprintln!();
+            }
+            crate::scripting::score::ScoreItem::Marker(marker) => {
+                markers += 1;
+                eprintln!(
+                    "scene t={:.3} order={} name={}",
+                    marker.time, marker.order, marker.name
+                );
+            }
+        });
+        let status = session.stream.status();
+        eprintln!(
+            "end: open (evaluated through t={:.9})",
+            status.evaluated_through
+        );
+        for warning in &status.warnings {
+            eprintln!(
+                "{}:{:?}: warning: {} ({} occurrences)",
+                path.display(),
+                warning.position,
+                warning.message,
+                warning.count
+            );
+        }
+        result?;
+        eprintln!("Warnings: {}", status.warnings.len());
+        eprintln!(
+            "OK compile-only: {} (events={events}, actions={actions}, markers={markers})",
+            path.display()
+        );
+        return Ok(());
+    }
     validate_scenario(&scenario)?;
     match scenario.end {
         crate::scenario::ScenarioEnd::Open => eprintln!("end: open"),
@@ -173,13 +230,40 @@ pub(super) fn load_scenario(
     path: &Path,
     seed: Option<u64>,
     audio: &crate::config::AudioConfig,
-) -> Result<(String, Scenario, f32), String> {
+    bound: Option<f64>,
+    exiting: &AtomicBool,
+    end_request: &AtomicBool,
+) -> Result<
+    (
+        String,
+        Scenario,
+        f32,
+        Option<crate::scripting::score::ScriptSession>,
+    ),
+    String,
+> {
     let scenario_label = path
         .file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("scenario")
         .to_string();
-    let scenario = compile_scenario_from_script(path, seed)?;
+    crate::life::modal::register_modal();
+    validate_scenario_script_extension(path)?;
+    let (scenario, score, warnings) =
+        ScriptHost::load_incremental(&path.to_string_lossy(), seed, bound, exiting, end_request)
+            .map_err(|error| error.to_string())?;
+    if score.is_none() {
+        validate_scenario(&scenario)?;
+    }
+    for warning in warnings {
+        eprintln!(
+            "{}:{:?}: warning: {} ({} occurrences)",
+            path.display(),
+            warning.position,
+            warning.message,
+            warning.count
+        );
+    }
     if scenario.remember_pitch_set > 0. && audio.sample_rate != 48000 {
         let position = scenario
             .pitch_set_position
@@ -206,7 +290,7 @@ pub(super) fn load_scenario(
         "scenario seed: {} (replay with --seed {})",
         scenario.seed, scenario.seed
     );
-    Ok((scenario_label, scenario, output_gain))
+    Ok((scenario_label, scenario, output_gain, score))
 }
 
 #[allow(clippy::too_many_arguments)]

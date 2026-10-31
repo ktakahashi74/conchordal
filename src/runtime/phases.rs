@@ -17,6 +17,69 @@ pub(super) fn advance_population(
     if cfg.end_request.load(Ordering::SeqCst) {
         state.request_end(now_tick);
     }
+    if let Some(session) = &state.conductor.score {
+        let stream = session.stream.clone();
+        stream.publish_pace(now_tick, state.timebase);
+        if let Err(error) = stream.wait_ready(
+            now_tick,
+            state.timebase,
+            &cfg.exiting,
+            &cfg.end_request,
+            cfg.audio_counters.is_some(),
+        ) {
+            tracing::error!("{error}");
+            state.failures.push(error);
+        }
+        if !state.script_error_reported {
+            let error = match &stream.state.lock().unwrap().terminal {
+                Some(crate::scripting::score::Terminal::Failed(error)) => Some(error.clone()),
+                _ => None,
+            };
+            if let Some(error) = error {
+                eprintln!("script: {:?}: {error}", error.position);
+                state.script_error_reported = true;
+            }
+        }
+        while let Some((item, charge)) = stream.pop_due(now_tick, state.timebase) {
+            match item {
+                crate::scripting::score::ScoreItem::Event(event) => {
+                    for action in event.actions {
+                        info!("[t={:.3}] Event: {action}", event.time);
+                        if let Action::Spawn {
+                            population_id,
+                            spec,
+                            ..
+                        } = &action
+                            && (spec.control.pitch.follow_tonal_context > 0.0
+                                || spec.control.pitch.leave_self_out
+                                || matches!(
+                                    &spec.articulation,
+                                    crate::scenario::ArticulationCoreConfig::Entrain {
+                                        lifecycle:
+                                            crate::scenario::lifecycle::LifecycleConfig::Sustain {
+                                                selection_environment: true,
+                                                ..
+                                            },
+                                        ..
+                                    }
+                                ))
+                            && !state.loo_populations.contains(population_id)
+                        {
+                            state.loo_populations.push(*population_id);
+                        }
+                        state.pop.apply_action(action, &state.current_landscape);
+                    }
+                }
+                crate::scripting::score::ScoreItem::Marker(marker) => {
+                    report_try(&mut state.reporter, "scene marker", |writer| {
+                        writer.write_scene_markers(std::slice::from_ref(&marker))
+                    });
+                    state.conductor.current_scene = Some(marker.name);
+                }
+            }
+            stream.return_credit(charge);
+        }
+    }
     let finish_dispatched =
         state
             .conductor
@@ -316,6 +379,9 @@ pub(super) fn advance_population(
         state.finish_begun,
         &state.current_landscape,
     );
+    state.loo_populations.retain(|id| {
+        state.pop.contains_population(*id) || state.conductor.has_pending_population(*id)
+    });
     phonation_count
 }
 
@@ -587,7 +653,7 @@ pub(super) fn render_and_route_audio(
         runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
     }
     let synthesis_start = state.profile.as_ref().map(|_| Instant::now());
-    if !cfg.loo_populations.is_empty() || state.pop.has_placed_flora {
+    if !state.loo_populations.is_empty() || state.pop.has_placed_flora {
         // Reuse one owned packet. Backpressure is included in the audio deadline.
         state.schedule_renderer.loo_pcm =
             match state.loo_recycle.1.recv_timeout(Duration::from_secs(1)) {
@@ -612,7 +678,9 @@ pub(super) fn render_and_route_audio(
             }
         });
         for voice in &state.pop.voices {
-            if cfg.loo_populations.contains(&voice.metadata.population_id)
+            if state
+                .loo_populations
+                .contains(&voice.metadata.population_id)
                 && !sources.iter().any(|s| {
                     s.kind == crate::core::stream::loo::SourceKind::Voice
                         && s.id == voice.id()

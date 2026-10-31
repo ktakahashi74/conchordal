@@ -180,7 +180,7 @@ mod tests {
         pop.apply_action(
             Action::Spawn {
                 population_id: 1,
-                ids: vec![1, 2, 3],
+                ids: vec![1, 2, 3].into(),
                 spec: spawn_spec_with_freq(220.0),
                 strategy: None,
             },

@@ -633,7 +633,7 @@ mod tests {
                     pop.apply_action(
                         crate::scenario::Action::Spawn {
                             population_id: 1,
-                            ids,
+                            ids: ids.into(),
                             spec,
                             strategy: Some(strategy.clone()),
                         },

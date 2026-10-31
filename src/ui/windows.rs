@@ -331,6 +331,26 @@ fn peak_level_color(ui: &egui::Ui, peak_level: f32) -> Color32 {
 fn draw_system_diagnostics(ui: &mut egui::Ui, frame: &UiFrame) {
     ui.horizontal_wrapped(|ui| {
         ui.heading("System");
+        if let Some(script) = &frame.meta.script {
+            if let Some(error) = &script.error {
+                ui.label(format!("Script error {:?}: {error}", script.error_position));
+            } else if script.stopped {
+                ui.label("Script stopped");
+            } else if script.done {
+                ui.label("Script done");
+            } else {
+                ui.label(format!(
+                    "Script evaluated through {:.3}s",
+                    script.evaluated_through
+                ));
+            }
+            for warning in &script.warnings {
+                ui.label(format!(
+                    "{:?}: {} ({} occurrences)",
+                    warning.position, warning.message, warning.count
+                ));
+            }
+        }
         ui.separator();
         fixed_system_label(ui, format!("listener_t={:07.2}s", frame.listener.time_sec));
         ui.separator();

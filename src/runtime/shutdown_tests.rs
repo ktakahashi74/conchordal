@@ -2,6 +2,7 @@ use super::*;
 
 fn options() -> WiringOptions {
     WiringOptions {
+        score: None,
         end_request: Arc::new(AtomicBool::new(false)),
         duration_sec: None,
         offline_body_probe: None,
@@ -34,8 +35,15 @@ fn tc1b_capture() {
     std::fs::create_dir_all(&directory).unwrap();
     let config = AppConfig::default();
     crate::life::modal::register_modal();
-    let (label, scenario, _) =
-        super::scenario_load::load_scenario(Path::new(&path), Some(21), &config.audio).unwrap();
+    let (label, scenario, _, score) = super::scenario_load::load_scenario(
+        Path::new(&path),
+        Some(21),
+        &config.audio,
+        None,
+        &AtomicBool::new(false),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     // The bounded compatibility case retains the original 106-second prefix.
     let end = std::env::var("TC1B_END")
         .unwrap_or_else(|_| "130".into())
@@ -48,6 +56,7 @@ fn tc1b_capture() {
     let stop = Arc::new(AtomicBool::new(false));
     let stop_at_end = stop.clone();
     let mut opts = options();
+    opts.score = score;
     opts.listener_forced = true;
     opts.offline_body_probe = Some(Box::new(move |state, tick, _, pcm| {
         if tick >= (end as f64 * 48000.) as u64 {
@@ -261,7 +270,15 @@ fn fixture(
     std::fs::create_dir(&dir).unwrap();
     let script = dir.join("input.rhai");
     std::fs::write(&script, source).unwrap();
-    let scenario = compile_scenario_from_script(&script, None).unwrap();
+    let (scenario, score, _) = ScriptHost::load_incremental(
+        script.to_str().unwrap(),
+        None,
+        opts.duration_sec,
+        &AtomicBool::new(false),
+        &opts.end_request,
+    )
+    .unwrap();
+    opts.score = score;
     let mut config = AppConfig::default();
     config.analysis.nfft = 2048;
     config.render_prototype = true;
@@ -899,9 +916,15 @@ fn ph1_offline_acquisition() {
         |path| AppConfig::load_or_default(Some(&path)).unwrap(),
     );
     crate::life::modal::register_modal();
-    let (label, scenario, gain) =
-        super::scenario_load::load_scenario(std::path::Path::new(&path), Some(21), &config.audio)
-            .unwrap();
+    let (label, scenario, gain, score) = super::scenario_load::load_scenario(
+        std::path::Path::new(&path),
+        Some(21),
+        &config.audio,
+        None,
+        &AtomicBool::new(false),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
     let mut reporter =
         JsonlReporter::create(directory.join("report.jsonl").to_str().unwrap()).unwrap();
     reporter.write_meta(scenario.seed).unwrap();
@@ -916,6 +939,7 @@ fn ph1_offline_acquisition() {
         std::io::BufWriter::new(std::fs::File::create(directory.join("load.jsonl")).unwrap())
     });
     let mut opts = options();
+    opts.score = score;
     opts.reporter = Some(reporter);
     opts.listener_forced = true;
     if let Ok(path) = std::env::var("PH1_PROFILE") {
@@ -1413,7 +1437,7 @@ fn open_harmonic_queue_does_not_finish_on_exhaustion() {
     }));
     let (wiring, _, dir) = fixture(
         opts,
-        "endless(); harmonic_rhythm(1); place(sine().sustain().anchor(), at(220));",
+        "endless(); harmonic_rhythm(1); place(sine().sustain().seek_consonance().pitch_apply_mode(\"rearticulate\").rearticulate_above(0), at(220));",
     );
     join(wiring).unwrap();
     assert!(reached.load(Ordering::SeqCst));
@@ -1439,6 +1463,162 @@ fn duration_keeps_existing_rain_release_tail() {
     let (wiring, _, dir) = fixture(
         opts,
         "endless(); let r=place(rain().fade(0.4),random(300,6000)); wait(0.05); release(r);",
+    );
+    join(wiring).unwrap();
+    assert!(reached.load(Ordering::SeqCst));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn incremental_cycle_state_is_bounded_with_respawn_and_flora_v2() {
+    let checkpoints = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let observed = checkpoints.clone();
+    let mut opts = options();
+    let end = opts.end_request.clone();
+    opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+        if [193 * 512, 289 * 512].contains(&tick) {
+            let stream = &state.conductor.score.as_ref().unwrap().stream;
+            let score = stream.state.lock().unwrap();
+            let sizes = (
+                state.pop.population_count(),
+                state.loo_populations.len(),
+                score.ring.len(),
+                score.script_sizes,
+                score.warnings.len(),
+            );
+            eprintln!("V2 tick={tick} sizes={sizes:?}");
+            observed.lock().unwrap().push(sizes);
+            if tick == 289 * 512 {
+                let (births, deaths) = state.pop.take_lifecycle_counts();
+                assert!(
+                    births > 5 && deaths > 0,
+                    "churn must actually occur: {births}/{deaths}"
+                );
+                end.store(true, Ordering::SeqCst);
+            }
+        }
+    }));
+    let (wiring, _, dir) = fixture(
+        opts,
+        r#"
+        seed(21); endless();
+        let base = place(sine().sustain().anchor().leave_self_out(true)
+            .respawn_random().respawn_background_death_rate(5), at(220));
+        loop {
+            section("cycle", || {
+                let p = place(sine().sustain().anchor().leave_self_out(true).adsr(0,0,1,0.01), at(330));
+                let f = place(flora().fade(0.01), random(110,880));
+                wait(0.256); release(p); release(f); flush(); release(p);
+            });
+            wait(0.768);
+        }
+    "#,
+    );
+    join(wiring).unwrap();
+    let checkpoints = checkpoints.lock().unwrap();
+    assert_eq!(checkpoints.len(), 2);
+    assert_eq!(checkpoints[0], checkpoints[1]);
+    assert_eq!(checkpoints[0].3, (1, 0, 0));
+    assert_eq!(checkpoints[0].4, 1);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn incremental_duration_reports_and_presynth_are_repeatable_v4() {
+    let mut results = Vec::new();
+    for _ in 0..2 {
+        let snapshots = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let saved = snapshots.clone();
+        let mut opts = options();
+        opts.duration_sec = Some(0.128);
+        opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+            saved.lock().unwrap().push((
+                tick,
+                state.finish_begun,
+                state
+                    .pop
+                    .voices
+                    .iter()
+                    .map(|voice| {
+                        (
+                            voice.id(),
+                            voice.metadata.population_id,
+                            voice.release.gain.to_bits(),
+                            voice.target_pitch_log2().to_bits(),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            ));
+            if tick == 6144 {
+                assert_eq!(state.playback_state, PlaybackState::Ending);
+                assert!(state.pop.voices.iter().all(|v| v.release.remove_pending));
+                assert_eq!(state.conductor.current_scene.as_deref(), Some("bounded"));
+            }
+        }));
+        let (wiring, _, dir) = fixture(
+            opts,
+            r#"
+            seed(21); endless();
+            section("bounded", || {
+                let p = place(sine().anchor().sustain().adsr(0,0,1,0.01), at(220));
+                loop { p.amp(0.1); wait(0.02); }
+            });
+        "#,
+        );
+        join(wiring).unwrap();
+        let report = std::fs::read_to_string(dir.join("run.jsonl")).unwrap();
+        let report: Vec<serde_json::Value> = report
+            .lines()
+            .map(|line| {
+                let mut row: serde_json::Value = serde_json::from_str(line).unwrap();
+                if row["type"] == "hop_timing" {
+                    for key in ["elapsed_us", "analysis_wait_us", "listener_wait_us"] {
+                        row.as_object_mut().unwrap().remove(key);
+                    }
+                }
+                row
+            })
+            .collect();
+        results.push((snapshots.lock().unwrap().clone(), report));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    assert!(!results[0].0.is_empty());
+    assert!(!results[0].1.is_empty());
+    assert_eq!(results[0].0, results[1].0);
+    assert_eq!(results[0].1.len(), results[1].1.len());
+    for (a, b) in results[0].1.iter().zip(&results[1].1) {
+        assert_eq!(a, b);
+    }
+}
+
+#[test]
+fn endless_onset_history_starts_before_future_consumers() {
+    let reached = Arc::new(AtomicBool::new(false));
+    let observed = reached.clone();
+    let mut opts = options();
+    opts.duration_sec = Some(1.1);
+    opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+        if tick == 20 * 512 {
+            assert!(state.current_landscape.onset_habituation_known);
+            assert!(
+                !state
+                    .current_landscape
+                    .onset_habituation_state_scan
+                    .is_empty()
+            );
+            assert!(
+                state
+                    .pop
+                    .voices
+                    .iter()
+                    .all(|v| v.phonation_engine.span_gap.is_none())
+            );
+            observed.store(true, Ordering::SeqCst);
+        }
+    }));
+    let (wiring, _, dir) = fixture(
+        opts,
+        "endless(); place(sine().sustain(),at(440)); wait(1); place(sine().sustain().metric().rest_on_habituation(0.25),at(330)); wait(1);",
     );
     join(wiring).unwrap();
     assert!(reached.load(Ordering::SeqCst));

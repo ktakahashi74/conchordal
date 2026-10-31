@@ -10,7 +10,7 @@ fn community_steady_hops_reuse_respawn_social_and_sequential_storage() {
     community.apply_action(
         Action::Spawn {
             population_id: 7,
-            ids: vec![70, 71, 72],
+            ids: vec![70, 71, 72].into(),
             spec: spawn_spec_with_freq(330.0),
             strategy: None,
         },
@@ -62,7 +62,7 @@ fn loo_observation_delivery_steady_state_allocates_nothing() {
     community.apply_action(
         Action::Spawn {
             population_id: 7,
-            ids: vec![70, 71, 72],
+            ids: vec![70, 71, 72].into(),
             spec: spawn_spec_with_freq(330.0),
             strategy: None,
         },

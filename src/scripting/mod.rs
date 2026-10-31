@@ -1,4 +1,6 @@
 mod context;
+pub(crate) mod score;
+pub(crate) use score::ScriptStatus;
 pub mod defs_gen;
 pub(crate) mod docs;
 mod engine;
@@ -92,6 +94,8 @@ fn rhai_array_to_f32(
             .lock()
             .expect("lock script warnings")
             .push(ScriptWarning {
+                kind: "nonnumeric_array_element",
+                count: 1,
                 message: format!("{label} expects numeric array elements"),
                 position,
             });
@@ -144,5 +148,7 @@ impl std::fmt::Display for ScriptError {
 
 impl std::error::Error for ScriptError {}
 
+#[cfg(test)]
+mod score_tests;
 #[cfg(test)]
 mod tests;

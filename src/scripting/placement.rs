@@ -53,7 +53,7 @@ impl BusSet {
 
 #[derive(Clone, Debug)]
 pub struct Placement {
-    pub(super) diagnostics: Arc<Mutex<Vec<ScriptWarning>>>,
+    pub(super) diagnostics: ScriptWarnings,
     pub(super) position: Position,
     pub(super) count: i64,
     pub(super) strategy: Option<SpawnStrategy>,
@@ -68,6 +68,8 @@ impl Placement {
             .lock()
             .expect("lock script warnings")
             .push(ScriptWarning {
+                kind: "invalid_or_ignored_placement",
+                count: 1,
                 message,
                 position: self.position,
             });

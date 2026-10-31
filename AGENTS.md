@@ -258,6 +258,12 @@ source-matched versus original computation rule or §9.3.56's five listener laye
 
 ## Coding Style & Naming Conventions
 - **Comments**:  All comments must be in concise English.  Do not use Japanese in code comments.
+- **Incremental score**: Endless scripts own their Engine and action builders on a
+  dedicated thread. The preallocated score outbox accounts for action count and heap
+  capacity; popped items stay charged until dispatch consumes them. The worker does
+  not allocate score queues or copy action payloads; it returns credit and frees
+  consumed items. Runtime action effects, LOO registration and UI/report snapshots
+  retain their separate allocation costs.
 - **DSP Efficiency**: Prefer `f32`. Minimize allocations in `worker_loop` and the
   cpal callback. Reuse scratch or pre-allocated ringbuffers. Audit the actual call path;
   the following is a conditional budget, not an exact allocation census.
@@ -920,3 +926,15 @@ The PS continuous-lag evaluator batches four independent channels with
 `fearless_simd::f64x4`, preserving temporal accumulation and final channel order.
 Its per-level tests compare every coefficient bit against the retained scalar
 evaluator; it does not lower the spline resolution or alter the memory rule.
+
+## Endless observation reservations (author adoption, 2026-11-01 22:5x JST)
+
+Endless scenes reserve shared onset habituation from run start, even without a
+consumer in the initial prefix. Finite scenes retain the positive-consumer pre-scan.
+For TC, `observe_tonal_context()` is an Author-rule header declaration before time
+advances. It reserves mixed/listener TC state and the shared decoder from run start.
+A positive `follow_tonal_context` placement in an undeclared endless scene is a
+positioned script error. In finite scenes the declaration warns and is ignored;
+placement pre-scanning still determines TC costs. V6/V8 must measure integrated
+reservation costs; prior allocation census values do not certify the endless path
+and require reacquisition for that configuration.

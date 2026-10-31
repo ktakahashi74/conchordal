@@ -616,7 +616,8 @@ call `notify_all`.
 
 In an endless piece, these declarations must come before time first advances:
 `seed`, `output_gain`, `temporal_mode`, `scaffold_*`, `control_update_mode`,
-`meter_stability` and `temporal_basin`. `endless` itself comes before any event
+`meter_stability`, `temporal_basin`, `harmonic_rhythm`, and
+`observe_tonal_context()`. `endless` itself comes before any event
 (§4.1). A later declaration is a script error: "… must be declared before time
 advances in an endless scenario". Stage 1 already enforces this for endless pieces
 (§4.1).
@@ -634,6 +635,17 @@ advances in an endless scenario". Stage 1 already enforces this for endless piec
   only on the score.
 - The `temporal_mode` guard tests an `emitted_any_event` flag instead of
   `scenario.events.is_empty()`, in both modes, because streamed items are drained.
+
+Author adoption, 2026-11-01 22:5x JST (IP-INT integration): add
+`observe_tonal_context()` to this header list. An endless scene that declares it
+reserves TC observation and its shared decoder table from run start. A declaration
+after time advances is the existing positioned header-rule script error. Placing a
+positive `follow_tonal_context` weight in an undeclared endless scene is a positioned
+script error: "declare observe_tonal_context() before time advances to use
+follow_tonal_context in an endless scenario". Finite scenes need no declaration;
+if written, it warns and is ignored, and their existing placement pre-scan alone
+determines whether observation and tables are constructed. This reservation word
+is an Author rule, not an additional cognitive mechanism.
 
 ### 5.7 Voice IDs
 
@@ -672,6 +684,15 @@ both modes. The vector is never pruned and is only tested for emptiness
   later placement cannot be foreseen. Cost: one `MeterNetwork` per hop plus resource
   power, measured in V6b. A consequence: non-metric Flora reports in open scenarios
   carry `acoustic_observation`. Finite pieces keep the pre-scan and its test.
+
+Author adoption, 2026-11-01 22:5x JST (IP-INT integration): endless scenes also
+reserve the shared onset-habituation observer unconditionally from run start.
+Its small cost and the impossibility of foreseeing later placements give the same
+reason as shared Flora resource power and the meter. Finite scenes keep their
+existing positive-weight pre-scan. Measure the integrated cost in V6/V8, outside
+IP-INT. TC follows the explicit `observe_tonal_context()` reservation in §5.6;
+positive TC consumers register their self-exclusion history at birth. Undeclared
+endless scenes construct neither TC observer nor decoder table.
 
 ### 5.9 Evaluation bound (compile-only and render)
 

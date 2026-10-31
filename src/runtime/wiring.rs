@@ -138,6 +138,7 @@ pub(super) fn resolve_limiter_mode(config: &AppConfig) -> LimiterMode {
 /// Path-specific wiring knobs. Every field is an actual difference between the
 /// GUI/headless path (`init_runtime`) and the offline render path (`run_render`).
 pub(super) struct WiringOptions {
+    pub(super) score: Option<crate::scripting::score::ScriptSession>,
     pub(super) end_request: Arc<AtomicBool>,
     pub(super) duration_sec: Option<f64>,
     #[cfg(test)]
@@ -182,6 +183,7 @@ pub(super) fn wire_runtime(
     opts: WiringOptions,
 ) -> Result<RuntimeWiring, String> {
     let WiringOptions {
+        score,
         end_request,
         duration_sec,
         #[cfg(test)]
@@ -287,15 +289,16 @@ pub(super) fn wire_runtime(
     } else {
         None
     };
-    let resource_power = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .any(|action| matches!(action, crate::scenario::Action::PlaceFlora { .. }));
+    let resource_power = scenario.end == crate::scenario::ScenarioEnd::Open
+        || scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .any(|action| matches!(action, crate::scenario::Action::PlaceFlora { .. }));
     let display_or_report = ui_tx.is_some() || reporter.is_some();
     let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
         .with_nsgt_power(display_or_report || taps[0].is_some() || resource_power);
-    let tonal_enabled = scenario.events.iter().flat_map(|e| &e.actions).any(
+    let tonal_enabled = scenario.observe_tonal_context || scenario.events.iter().flat_map(|e| &e.actions).any(
         |a| matches!(a, Action::Spawn { spec, .. } if spec.control.pitch.follow_tonal_context > 0.),
     );
     let tonal_decoder = (tonal_enabled && core.fs == 48000.)
@@ -309,8 +312,8 @@ pub(super) fn wire_runtime(
     if tonal_enabled && tonal_decoder.is_none() {
         tracing::warn!("follow_tonal_context requires 48000 Hz; queries remain unknown");
     }
-    let onset_habituation_enabled =
-        scenario
+    let onset_habituation_enabled = scenario.end == crate::scenario::ScenarioEnd::Open
+        || scenario
             .events
             .iter()
             .flat_map(|event| &event.actions)
@@ -411,7 +414,7 @@ pub(super) fn wire_runtime(
         .iter()
         .flat_map(|event| &event.actions)
         .filter_map(|action| match action {
-            Action::Spawn { ids, .. } => ids.iter().copied().max(),
+            Action::Spawn { ids, .. } => ids.assigned().iter().copied().max(),
             _ => None,
         })
         .max()
@@ -463,17 +466,19 @@ pub(super) fn wire_runtime(
         }
     }
     // Accumulate acoustic history from run start, even for a later placement.
-    let has_flora = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .any(|action| matches!(action, Action::PlaceFlora { .. }));
-    let conductor = Conductor::from_scenario(scenario, crate::core::timebase::Timebase { fs, hop });
+    let has_flora = scenario.end == crate::scenario::ScenarioEnd::Open
+        || scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .any(|action| matches!(action, Action::PlaceFlora { .. }));
+    let mut conductor =
+        Conductor::from_scenario(scenario, crate::core::timebase::Timebase { fs, hop });
 
+    conductor.score = score;
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
-        loo_populations,
         has_flora,
         render_prototype: config.render_prototype,
         temporal_meter_t2: config.temporal_meter_t2,
@@ -525,6 +530,7 @@ pub(super) fn wire_runtime(
                 reporter,
                 &cfg,
             );
+            state.loo_populations = loo_populations;
             state.body_snapshot = body_capture.as_ref().map(|c| Box::new(c.snapshot()));
             state.schedule_renderer.body_capture = body_capture;
             state.profile = profile;
@@ -554,11 +560,18 @@ pub(crate) fn init_runtime(
         std::process::exit(1);
     }
     let path = Path::new(&args.scenario_path);
-    let (scenario_label, scenario, output_gain) = load_scenario(path, args.seed, &config.audio)
-        .unwrap_or_else(|err| {
-            eprintln!("{err}");
-            std::process::exit(1);
-        });
+    let (scenario_label, scenario, output_gain, score) = load_scenario(
+        path,
+        args.seed,
+        &config.audio,
+        args.duration,
+        &stop_flag,
+        &args.end_request,
+    )
+    .unwrap_or_else(|err| {
+        eprintln!("{err}");
+        std::process::exit(1);
+    });
     crate::life::modal::register_modal();
     let latency_ms = config.audio.latency_ms;
     let guard_mode = resolve_limiter_mode(&config);
@@ -569,7 +582,7 @@ pub(crate) fn init_runtime(
     };
 
     // Complete the optional probe table before starting device callbacks.
-    let prepare_tonal = scenario.events.iter().flat_map(|e| &e.actions).any(
+    let prepare_tonal = scenario.observe_tonal_context || scenario.events.iter().flat_map(|e| &e.actions).any(
         |a| matches!(a, Action::Spawn { spec, .. } if spec.control.pitch.follow_tonal_context > 0.),
     );
     // Audio
@@ -689,6 +702,7 @@ pub(crate) fn init_runtime(
         scenario,
         stop_flag.clone(),
         WiringOptions {
+            score,
             end_request: args.end_request,
             duration_sec: args.duration,
             #[cfg(test)]
@@ -792,7 +806,14 @@ pub fn run_render(
     let guard_meter = Some(Arc::new(LimiterMeter::default()));
 
     let path = Path::new(scenario_path);
-    let (scenario_label, scenario, output_gain) = load_scenario(path, seed, &config.audio)?;
+    let (scenario_label, scenario, output_gain, score) = load_scenario(
+        path,
+        seed,
+        &config.audio,
+        duration_sec,
+        &stop_flag,
+        &end_request,
+    )?;
     validate_run_bounds(
         &scenario,
         duration_sec,
@@ -829,6 +850,7 @@ pub fn run_render(
         scenario,
         stop_flag,
         WiringOptions {
+            score,
             end_request,
             duration_sec,
             #[cfg(test)]

@@ -453,7 +453,7 @@ fn edge(min_hz: i64, max_hz: f64) -> Placement;
 fn edge(min_hz: i64, max_hz: i64) -> Placement;
 
 /// Declare an open-ended performance before playback events and time advances.
-/// Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Stage 1 evaluates eagerly: unbounded script loops still hang at load.
+/// Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Evaluation runs incrementally on a dedicated thread. Unbounded loops must advance score time with wait(). Declare scene headers before time advances; parallel is unavailable. Release repeated placements or scope them with section/play. Compile-only and render require --duration.
 /// Evidence: Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 fn endless();
 
@@ -633,7 +633,7 @@ fn harmonic() -> PopulationSpec;
 fn harmonic_modes() -> ModePattern;
 
 /// Allow background changes on shared opportunities every N beats; zero is neutral.
-/// Author rule. Nonnegative integer N is a composer quantity. The last valid declaration is an initial premise for the entire scene, even after wait(). All Flora and birth-time Once/WhileAlive/Free stepwise Voices with zero rearticulation threshold participate. Pitch choice remains local. Unknown acoustic beats retain the shared prior clock. Release and support loss take priority. Other Voices retain their own timing; this is not perceptual foreground/background classification. No live N setter, chord table, measure alignment or harmonic cue is added.
+/// Author rule. Nonnegative integer N is a composer quantity. The last valid declaration is an initial premise for the entire finite scene, even after wait(). Endless scenes require it before time first advances. All Flora and birth-time Once/WhileAlive/Free stepwise Voices with zero rearticulation threshold participate. Pitch choice remains local. Unknown acoustic beats retain the shared prior clock. Release and support loss take priority. Other Voices retain their own timing; this is not perceptual foreground/background classification. No live N setter, chord table, measure alignment or harmonic cue is added.
 /// Evidence: Author rule: shared opportunities for background changes. Zero is neutral; N is a composer quantity, not an inferred measure or a perceptual constant.
 fn harmonic_rhythm(N: i64);
 
@@ -871,6 +871,11 @@ fn object_modes(rain_spec: RainSpec, pattern: ModePattern) -> RainSpec;
 /// Evidence: Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).
 /// Evidence: Author rule: objects start on consonance peaks and drift toward consonance with the Voice movement-cost defaults when struck; anchor() holds them.
 fn objects(rain_spec: RainSpec, count: i64) -> RainSpec;
+
+/// Reserve tonal-context observation before time advances in an endless scenario.
+/// Required before placing a positive follow_tonal_context weight in endless scenarios. A late declaration or an unreserved positive placement is a positioned script error. Finite scenarios warn and ignore this declaration; their placements still determine observation and table construction.
+/// Evidence: Author rule: reserve tonal-context observation from the start of an endless performance.
+fn observe_tonal_context();
 
 /// Odd harmonics: f, 3f, 5f, ...
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).

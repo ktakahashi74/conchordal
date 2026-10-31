@@ -56,7 +56,7 @@ pub(super) struct PopulationSpec {
     pub(super) glide_user_set: bool,
     pub(super) viability_scope_user_set: bool,
     pub(super) specified: BTreeMap<&'static str, Position>,
-    pub(super) diagnostics: Arc<Mutex<Vec<ScriptWarning>>>,
+    pub(super) diagnostics: ScriptWarnings,
     pub(super) position: Position,
     pub(super) tie_user_set: bool,
     pub(super) explicit_sustain: bool,
@@ -80,6 +80,8 @@ impl PopulationSpec {
             .lock()
             .expect("lock script warnings")
             .push(ScriptWarning {
+                kind: "invalid_or_ignored_spec",
+                count: 1,
                 message,
                 position: self.position,
             });
@@ -1135,6 +1137,8 @@ pub(super) fn validate_flora_numeric(
                 .lock()
                 .expect("lock script warnings")
                 .push(ScriptWarning {
+                    kind: "flora_parameter",
+                    count: 1,
                     message:
                         "Flora rest_on_habituation expects a finite nonnegative f32 weight; using 0"
                             .into(),
@@ -1157,7 +1161,7 @@ pub(super) fn validate_flora_numeric(
                 .lock()
                 .expect("lock script warnings")
                 .push(ScriptWarning {
-                    message: format!(
+                    kind: "flora_parameter", count: 1, message: format!(
                         "Flora pace {value} clamped to {clamped}; expected a finite f32 value >= {min}"
                     ),
                     position,
@@ -1225,6 +1229,8 @@ pub(super) fn flora_pitch_apply_mode(
                 .lock()
                 .expect("lock script warnings")
                 .push(ScriptWarning {
+                    kind: "flora_parameter",
+                    count: 1,
                     message: format!(
                         "Flora pitch_apply_mode expects glide or rearticulate; '{name}' ignored"
                     ),

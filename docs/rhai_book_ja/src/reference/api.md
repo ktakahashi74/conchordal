@@ -423,13 +423,23 @@ Create a Population at the current script time. `place()` is the sole Population
 
 **根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
+#### `observe_tonal_context`
+
+```rhai,ignore
+observe_tonal_context()
+```
+
+終わりを定めない曲で、時刻を進める前に調的文脈の観測を予約する作者規則。正のfollow_tonal_contextを配置する前に宣言すると、演奏開始時から観測器と共有の表を用意する。遅い宣言と未予約の正の配置は位置付きの脚本エラー。有限の曲では宣言は不要で、書いた場合は警告して無効にする。有限の曲の表の要否は従来どおり配置の先読みで決まる。
+
+**根拠:** 作者規則：終わりを定めない演奏で、開始時から調的文脈の観測を予約する。
+
 #### `endless`
 
 ```rhai,ignore
 endless()
 ```
 
-Declare an open-ended performance before playback events and time advances. Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Stage 1 evaluates eagerly: unbounded script loops still hang at load.
+Declare an open-ended performance before playback events and time advances. Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Evaluation runs incrementally on a dedicated thread. Unbounded loops must advance score time with wait(). Declare scene headers before time advances; parallel is unavailable. Release repeated placements or scope them with section/play. Compile-only and render require --duration.
 
 **根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
@@ -1369,7 +1379,7 @@ scene全体の地形形成と研究用control。director verbはsoft priorであ
 harmonic_rhythm(N)
 ```
 
-背景の変化をN拍ごとの共有機会にまとめる作者規則。Nは作曲者が置く非負整数で、0と省略は中立。最後の有効な指定を場面全体の初期前提とし、wait()後の記述も途中変更にはならない。対象は全Floraと、出生時にOnce／WhileAlive、Free、Rearticulate、閾値0のVoice。準備が整わなければ機会を見送る。解放と支持喪失は優先し、競合する実行中の音高設定はwarningとともに拒否する。調・和音・進行の表や、小節頭への再整列は導入しない。Nは推定小節長ではない。
+背景の変化をN拍ごとの共有機会にまとめる作者規則。Nは作曲者が置く非負整数で、0と省略は中立。最後の有効な指定を場面全体の初期前提とし、有限の曲ではwait()後の記述も途中変更にはならない。endlessでは最初に時刻を進めるwait()より前に宣言する。対象は全Floraと、出生時にOnce／WhileAlive、Free、Rearticulate、閾値0のVoice。準備が整わなければ機会を見送る。解放と支持喪失は優先し、競合する実行中の音高設定はwarningとともに拒否する。調・和音・進行の表や、小節頭への再整列は導入しない。Nは推定小節長ではない。
 
 **根拠:** 作者規則：背景の変化を共有の機会にまとめる。0は中立。Nは作曲者が置く量であり、推定小節長や知覚の定数ではない。
 

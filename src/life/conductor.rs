@@ -27,6 +27,8 @@ struct SceneInfo {
 #[derive(Debug)]
 pub struct Conductor {
     pub(crate) expression: Option<crate::scenario::expression::Expression>,
+    pub(crate) score: Option<crate::scripting::score::ScriptSession>,
+    pub(crate) current_scene: Option<String>,
     event_queue: VecDeque<QueuedEvent>,
     end: Option<f64>,
     scenes: Vec<SceneInfo>,
@@ -69,6 +71,8 @@ impl Conductor {
         let end = s.end.duration_sec();
         Self {
             expression: s.expression,
+            score: None,
+            current_scene: None,
             event_queue: events.into(),
             end,
             scenes,
@@ -110,6 +114,9 @@ impl Conductor {
     }
 
     pub fn discard_pending(&mut self) {
+        if let Some(session) = &self.score {
+            session.stream.close("stopped");
+        }
         self.event_queue.clear();
         self.scenes.retain(|scene| {
             self.dispatched_through
@@ -121,11 +128,23 @@ impl Conductor {
         self.end
     }
 
+    pub(crate) fn has_pending_population(&self, id: u64) -> bool {
+        self.event_queue.iter().any(|event| {
+            event.actions.iter().any(|action|
+            matches!(action, Action::Spawn { population_id, .. } if *population_id == id))
+        })
+    }
+
     pub fn pending_events(&self) -> usize {
-        self.event_queue.len()
+        self.score.as_ref().map_or(self.event_queue.len(), |s| {
+            s.stream.state.lock().unwrap().ring.len()
+        })
     }
 
     pub fn current_scene_name(&self, tick: Tick) -> Option<String> {
+        if self.score.is_some() {
+            return self.current_scene.clone();
+        }
         let mut current: Option<String> = None;
         for scene in &self.scenes {
             if tick >= scene.tick {

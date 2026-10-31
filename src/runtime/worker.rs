@@ -2,7 +2,6 @@ use super::*;
 
 /// Immutable per-run settings and shared control flags for the worker thread.
 pub(super) struct WorkerConfig {
-    pub(super) loo_populations: Vec<u64>,
     pub(super) has_flora: bool,
     pub(super) render_prototype: bool,
     pub(super) temporal_meter_t2: bool,
@@ -48,6 +47,8 @@ pub(super) struct WorkerChannels {
 
 /// Mutable worker state. Built once before the loop; hop phases take it `&mut`.
 pub(super) struct WorkerState {
+    pub(super) script_error_reported: bool,
+    pub(super) loo_populations: Vec<u64>,
     pub(super) loo_recycle: (
         Sender<Vec<crate::core::stream::loo::SourcePcm>>,
         Receiver<Vec<crate::core::stream::loo::SourcePcm>>,
@@ -244,6 +245,8 @@ impl WorkerState {
             offline_body_probe: None,
             pop,
             temporal_frames: Default::default(),
+            script_error_reported: false,
+            loo_populations: Vec::new(),
             conductor,
             current_landscape,
             lparams,
@@ -740,7 +743,7 @@ pub(super) fn process_hop(
         }
     }
     let mut loo_chunk =
-        (!cfg.loo_populations.is_empty() || state.pop.has_placed_flora).then(|| {
+        (!state.loo_populations.is_empty() || state.pop.has_placed_flora).then(|| {
             crate::core::stream::loo::PcmPacket {
                 sources: std::mem::take(&mut state.schedule_renderer.loo_pcm),
                 recycle: state.loo_recycle.0.clone(),

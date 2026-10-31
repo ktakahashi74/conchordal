@@ -369,10 +369,10 @@ fn spawn_order_is_population_id_order() {
     assert_eq!(spawns.len(), 2);
     assert_eq!(spawns[0].0, 0.0);
     assert_eq!(spawns[0].1, 1);
-    assert_eq!(spawns[0].2, vec![1]);
+    assert_eq!(spawns[0].2, vec![1].into());
     assert_eq!(spawns[1].0, 0.0);
     assert_eq!(spawns[1].1, 2);
-    assert_eq!(spawns[1].2, vec![2]);
+    assert_eq!(spawns[1].2, vec![2].into());
 }
 
 #[test]
@@ -1456,7 +1456,7 @@ fn ignored_controls_are_collected_with_their_input_positions() {
         let (_, warnings) = run_script(&format!("\nlet unused = {expression};"));
         let warnings = warnings.lock().unwrap();
         assert_eq!(warnings.len(), 1, "{expression}: {warnings:?}");
-        assert_eq!(warnings[0].position.line(), Some(2));
+        assert_eq!(warnings.iter().next().unwrap().position.line(), Some(2));
     }
     let (_, warnings) = run_script(
         "place(harmonic().sustain().rhythm_reward(1, \"attack_phase_match\"), at(220));",
@@ -2046,7 +2046,7 @@ fn flora_pace_clamps_specs_and_live_patches_with_positioned_warnings() {
                 warnings.len(),
                 usize::from(!(f64::from(FLORA_PACE_MIN)..=f64::from(f32::MAX)).contains(&value))
             );
-            if let Some(warning) = warnings.first() {
+            if let Some(warning) = warnings.iter().next() {
                 assert_eq!(warning.position.line(), Some(2));
                 assert!(warning.message.contains("Flora pace"));
             }
@@ -2132,7 +2132,7 @@ fn flora_rest_on_habituation_is_initial_only_and_uses_cap_one_range() {
         let warnings = ctx.warnings.lock().unwrap();
         assert_eq!(warnings.len(), usize::from(invalid));
         if invalid {
-            assert_eq!(warnings[0].position.line(), Some(2));
+            assert_eq!(warnings.snapshot()[0].position.line(), Some(2));
         }
     }
     let (scene, warnings) = run_script("place(flora().rest_on_habituation(4), random(220,880));");
@@ -2392,7 +2392,7 @@ fn listener_profile_resolves_final_forms_and_explicit_zero_into_voices() {
         if tail.contains("glide") {
             assert_eq!(warnings.len(), 1);
             assert!(
-                warnings[0]
+                warnings.snapshot()[0]
                     .message
                     .starts_with("rearticulate_above() ignored")
             );

@@ -17,8 +17,130 @@ macro_rules! numeric_overloads {
 use super::*;
 
 impl ScriptHost {
+    pub(crate) fn start_source(
+        source: String,
+        seed: Option<u64>,
+        bound: Option<f64>,
+        capacity: usize,
+    ) -> score::ScriptSession {
+        let stream = score::ScoreStream::new(bound, capacity);
+        let producer = stream.clone();
+        let thread = std::thread::Builder::new()
+            .name("score".into())
+            .spawn(move || {
+                producer.register_producer();
+                let mut context =
+                    seed.map_or_else(ScriptContext::default, ScriptContext::with_seed);
+                context.stream = Some(producer.clone());
+                context.warnings = producer.warnings.clone();
+                let ctx = Arc::new(Mutex::new(context));
+                let engine = Self::create_engine(ctx.clone());
+                let result = engine.eval::<Dynamic>(&source);
+                let mut ctx = ctx.lock().unwrap();
+                let bound = producer
+                    .bound_reached
+                    .load(std::sync::atomic::Ordering::Acquire);
+                let error = match result {
+                    Err(error) if !bound => Some(ScriptError::from_eval(error, None)),
+                    Ok(value) if ctx.scenario.end != ScenarioEnd::Open && !value.is_unit() => {
+                        Some(ScriptError::from_eval(
+                            EvalAltResult::ErrorMismatchOutputType(
+                                "()".into(),
+                                engine.map_type_name(value.type_name()).into(),
+                                Position::NONE,
+                            )
+                            .into(),
+                            None,
+                        ))
+                    }
+                    _ => None,
+                };
+                if error.is_none() {
+                    ctx.finish();
+                }
+                let error = ctx.emission_error.clone().or(error).or_else(|| {
+                    (!ctx.emitted_any_event)
+                        .then(|| ScriptError::new("Scenario has no events", None))
+                });
+                if error.is_none() {
+                    producer.set_header(ctx.scenario.clone());
+                }
+                producer.finish(error);
+            })
+            .expect("spawn score thread");
+        score::ScriptSession {
+            stream,
+            thread: Some(thread),
+        }
+    }
+
+    pub(crate) fn load_incremental(
+        path: &str,
+        seed: Option<u64>,
+        bound: Option<f64>,
+        exiting: &std::sync::atomic::AtomicBool,
+        end_request: &std::sync::atomic::AtomicBool,
+    ) -> Result<(Scenario, Option<score::ScriptSession>, Vec<ScriptWarning>), ScriptError> {
+        let source = fs::read_to_string(path)
+            .map_err(|err| ScriptError::new(format!("{path}: {err}"), None))?;
+        let session = Self::start_source(source, seed, bound, score::ACTION_CAPACITY);
+        loop {
+            if exiting.load(std::sync::atomic::Ordering::Acquire)
+                || end_request.load(std::sync::atomic::Ordering::Acquire)
+            {
+                session.stream.close("stopped");
+            }
+            let mut state = session.stream.state.lock().unwrap();
+            if let Some(header) = state.header.take() {
+                // Retain a header sentinel for visibility and the pre-header admission rule.
+                let mut sentinel = header.clone();
+                sentinel.events.clear();
+                sentinel.scene_markers.clear();
+                state.header = Some(sentinel);
+                drop(state);
+                let warnings = session.stream.warnings.lock().unwrap().snapshot();
+                if header.end == ScenarioEnd::Open {
+                    return Ok((header, Some(session), warnings));
+                }
+                return Ok((header, None, warnings));
+            }
+            if let Some(terminal) = &state.terminal {
+                let error = match terminal {
+                    score::Terminal::Failed(error) => error.clone(),
+                    score::Terminal::Closed(reason) => {
+                        ScriptError::new(format!("script load cancelled: {reason}"), None)
+                    }
+                    score::Terminal::Finished => {
+                        ScriptError::new("script finished without header", None)
+                    }
+                };
+                drop(state);
+                return Err(error.with_context(path));
+            }
+            drop(
+                session
+                    .stream
+                    .changed
+                    .wait_timeout(state, std::time::Duration::from_millis(10))
+                    .unwrap(),
+            );
+        }
+    }
+
     pub fn create_engine(ctx: Arc<Mutex<ScriptContext>>) -> Engine {
         let mut engine = Engine::new();
+        if let Some(stream) = ctx.lock().unwrap().stream.clone() {
+            engine.on_progress(move |_| {
+                use std::sync::atomic::Ordering;
+                if stream.script_stop.load(Ordering::Acquire) {
+                    Some("stopped".into())
+                } else if stream.bound_reached.load(Ordering::Acquire) {
+                    Some("score bound reached".into())
+                } else {
+                    None
+                }
+            });
+        }
         engine.disable_symbol("eval");
         engine.set_module_resolver(rhai::module_resolvers::DummyModuleResolver::new());
         let unavailable = |call: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
@@ -46,7 +168,7 @@ impl ScriptHost {
             if ctx.scenario.end == ScenarioEnd::Open
                 || ctx.cursor != 0.0
                 || !ctx.scopes.is_empty()
-                || !ctx.scenario.events.is_empty()
+                || ctx.emitted_any_event
                 || call.call_level() > 1
             {
                 return Err(EvalAltResult::ErrorRuntime(
@@ -55,6 +177,12 @@ impl ScriptHost {
                 ).into());
             }
             ctx.scenario.end = ScenarioEnd::Open;
+            if let Some(stream) = ctx.stream.clone() {
+                for marker in std::mem::take(&mut ctx.scenario.scene_markers) {
+                    stream.push(score::ScoreItem::Marker(marker)).map_err(|error|
+                        Box::new(EvalAltResult::ErrorRuntime(error.message.into(), call.call_position())))?;
+                }
+            }
             Ok(())
         });
         engine.on_print(|msg| println!("[rhai] {msg}"));
@@ -1188,7 +1316,7 @@ impl ScriptHost {
                 if let Some(strategy) = placement.strategy() {
                     population_spec.spec.set_respawn_settle_strategy(strategy);
                 } else {
-                    diagnostics.lock().expect("lock script warnings").push(ScriptWarning {message: "respawn_settle() requires consonance(), dissonance(), edge(), gap(), random(), or line()".to_string(), position: call_ctx.call_position()});
+                    diagnostics.lock().expect("lock script warnings").push(ScriptWarning { kind: "respawn_settle_placement", count: 1, message: "respawn_settle() requires consonance(), dissonance(), edge(), gap(), random(), or line()".to_string(), position: call_ctx.call_position()});
                 }
                 population_spec
             },
@@ -1226,8 +1354,7 @@ impl ScriptHost {
             "wait",
             move |_call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_wait.lock().expect("lock script context");
-                ctx.wait(sec);
-                Ok(())
+                ctx.wait(sec, _call_ctx.call_position())
             },
         );
         let ctx_for_wait_int = ctx.clone();
@@ -1235,8 +1362,7 @@ impl ScriptHost {
             "wait",
             move |_call_ctx: NativeCallContext, sec: INT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_wait_int.lock().expect("lock script context");
-                ctx.wait(sec as f64);
-                Ok(())
+                ctx.wait(sec as f64, _call_ctx.call_position())
             },
         );
 
@@ -1245,7 +1371,21 @@ impl ScriptHost {
             "flush",
             move |_call_ctx: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_flush.lock().expect("lock script context");
-                ctx.flush();
+                ctx.flush(_call_ctx.call_position());
+                ctx.check_emission()
+            },
+        );
+
+        let ctx_for_tonal_observation = ctx.clone();
+        engine.register_fn(
+            "observe_tonal_context",
+            move |call: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_tonal_observation
+                    .lock()
+                    .expect("lock script context");
+                ctx.check_header("observe_tonal_context", call.call_position())?;
+                ctx.scenario.observe_tonal_context = true;
+                ctx.tonal_observation_position = Some(call.call_position());
                 Ok(())
             },
         );
@@ -1259,7 +1399,7 @@ impl ScriptHost {
                 if ctx.temporal_mode_declared
                     || ctx.cursor != 0.0
                     || !ctx.scopes.is_empty()
-                    || !ctx.scenario.events.is_empty()
+                    || ctx.emitted_any_event
                     || call.call_level() > 1
                 {
                     return Err(EvalAltResult::ErrorRuntime(
@@ -1326,7 +1466,7 @@ impl ScriptHost {
                 let mut ctx = ctx_for_profile.lock().expect("lock script context");
                 let position = call.call_position();
                 if ctx.cursor != 0.0
-                    || !ctx.scenario.events.is_empty()
+                    || ctx.emitted_any_event
                     || !ctx.scenario.scene_markers.is_empty()
                     || !ctx.scopes.is_empty()
                 {
@@ -1351,13 +1491,14 @@ impl ScriptHost {
             move |call_ctx: NativeCallContext, name: &str, callback: FnPtr| {
                 let start = {
                     let mut ctx = ctx_for_section.lock().expect("lock script context");
-                    ctx.push_scene_marker(name);
+                    ctx.push_scene_marker(name, call_ctx.call_position());
                     ctx.push_scope();
                     ctx.cursor
                 };
                 let result = callback.call_within_context::<Dynamic>(&call_ctx, ());
                 let mut ctx = ctx_for_section.lock().expect("lock script context");
-                ctx.pop_scope();
+                ctx.pop_scope(call_ctx.call_position());
+                ctx.check_emission()?;
                 if ctx.listener_profile == "tonal" {
                     ctx.profile_section = Some(crate::scenario::expression::Expression {
                         start,
@@ -1383,13 +1524,14 @@ impl ScriptHost {
                 let start = {
                     let mut ctx = ctx_for_expression.lock().expect("lock script context");
                     ctx.explicit_expression = true;
-                    ctx.push_scene_marker(name);
+                    ctx.push_scene_marker(name, call_ctx.call_position());
                     ctx.push_scope();
                     ctx.cursor
                 };
                 let result = callback.call_within_context::<Dynamic>(&call_ctx, ());
                 let mut ctx = ctx_for_expression.lock().expect("lock script context");
-                ctx.pop_scope();
+                ctx.pop_scope(call_ctx.call_position());
+                ctx.check_emission()?;
                 let weight = |value: Dynamic| {
                     value
                         .as_float()
@@ -1401,7 +1543,13 @@ impl ScriptHost {
                 if let Some((arch, ritard)) = weights
                     .filter(|(a, r)| a.is_finite() && r.is_finite() && *a >= 0.0 && *r >= 0.0)
                 {
-                    if arch != 0.0 || ritard != 0.0 {
+                    if (arch != 0.0 || ritard != 0.0) && ctx.scenario.end == ScenarioEnd::Open {
+                        ctx.warn(
+                            "expression_open",
+                            "expressive_section ignored: requires a finite final section".into(),
+                            position,
+                        );
+                    } else if arch != 0.0 || ritard != 0.0 {
                         let end = ctx.cursor;
                         ctx.expression_sections.push((
                             crate::scenario::expression::Expression {
@@ -1420,6 +1568,7 @@ impl ScriptHost {
                     }
                 } else {
                     ctx.warn(
+                        "expression_weights",
                         "expressive_section ignored: weights must be finite and nonnegative".into(),
                         position,
                     );
@@ -1438,7 +1587,8 @@ impl ScriptHost {
                 }
                 let result = callback.call_within_context::<Dynamic>(&call_ctx, ());
                 let mut ctx = ctx_for_play.lock().expect("lock script context");
-                ctx.pop_scope();
+                ctx.pop_scope(call_ctx.call_position());
+                ctx.check_emission()?;
                 result.map(|_| ())
             },
         );
@@ -1452,7 +1602,8 @@ impl ScriptHost {
                 }
                 let result = callback.call_within_context::<Dynamic>(&call_ctx, (arg1,));
                 let mut ctx = ctx_for_play1.lock().expect("lock script context");
-                ctx.pop_scope();
+                ctx.pop_scope(call_ctx.call_position());
+                ctx.check_emission()?;
                 result.map(|_| ())
             },
         );
@@ -1466,7 +1617,8 @@ impl ScriptHost {
                 }
                 let result = callback.call_within_context::<Dynamic>(&call_ctx, (arg1, arg2));
                 let mut ctx = ctx_for_play2.lock().expect("lock script context");
-                ctx.pop_scope();
+                ctx.pop_scope(call_ctx.call_position());
+                ctx.check_emission()?;
                 result.map(|_| ())
             },
         );
@@ -1484,7 +1636,8 @@ impl ScriptHost {
                 }
                 let result = callback.call_within_context::<Dynamic>(&call_ctx, (arg1, arg2, arg3));
                 let mut ctx = ctx_for_play3.lock().expect("lock script context");
-                ctx.pop_scope();
+                ctx.pop_scope(call_ctx.call_position());
+                ctx.check_emission()?;
                 result.map(|_| ())
             },
         );
@@ -1498,7 +1651,8 @@ impl ScriptHost {
                 }
                 let result = callback.call_within_context::<Dynamic>(&call_ctx, args);
                 let mut ctx = ctx_for_play_args.lock().expect("lock script context");
-                ctx.pop_scope();
+                ctx.pop_scope(call_ctx.call_position());
+                ctx.check_emission()?;
                 result.map(|_| ())
             },
         );
@@ -1537,7 +1691,7 @@ impl ScriptHost {
                     let result = fn_ptr.call_within_context::<Dynamic>(&call_ctx, ());
                     let mut ctx = ctx_for_parallel.lock().expect("lock script context");
                     let end_time = ctx.cursor;
-                    ctx.pop_scope();
+                    ctx.pop_scope(call_ctx.call_position());
                     max_end = max_end.max(end_time);
                     let _ = result?;
                 }
@@ -1591,11 +1745,11 @@ impl ScriptHost {
             pattern.with_count((n as usize).max(1))
         });
         let warnings = ctx.lock().unwrap().warnings.clone();
-        numeric_overloads!(engine, "range", |call, pattern: ModePattern; min_mul, max_mul| { if pattern.supports_range() {pattern.with_range(min_mul, max_mul)} else {warnings.lock().unwrap().push(ScriptWarning {message: "range() is only supported for landscape_*_modes(); ignored".into(), position: call.call_position()}); pattern} });
+        numeric_overloads!(engine, "range", |call, pattern: ModePattern; min_mul, max_mul| { if pattern.supports_range() {pattern.with_range(min_mul, max_mul)} else {warnings.lock().unwrap().push(ScriptWarning { kind: "mode_range_ignored", count: 1, message: "range() is only supported for landscape_*_modes(); ignored".into(), position: call.call_position()}); pattern} });
         let warnings = ctx.lock().unwrap().warnings.clone();
-        numeric_overloads!(engine, "spacing", |call, pattern: ModePattern; min_dist| { if pattern.supports_min_dist_erb() {pattern.with_min_dist_erb(min_dist)} else {warnings.lock().unwrap().push(ScriptWarning {message: "spacing() is only supported for landscape_*_modes(); ignored".into(), position: call.call_position()}); pattern} });
+        numeric_overloads!(engine, "spacing", |call, pattern: ModePattern; min_dist| { if pattern.supports_min_dist_erb() {pattern.with_min_dist_erb(min_dist)} else {warnings.lock().unwrap().push(ScriptWarning { kind: "mode_spacing_ignored", count: 1, message: "spacing() is only supported for landscape_*_modes(); ignored".into(), position: call.call_position()}); pattern} });
         let warnings = ctx.lock().unwrap().warnings.clone();
-        numeric_overloads!(engine, "gamma", |call, pattern: ModePattern; gamma| { if pattern.supports_gamma() {pattern.with_gamma(gamma)} else {warnings.lock().unwrap().push(ScriptWarning {message: "gamma() is only supported for landscape_density_modes(); ignored".into(), position: call.call_position()}); pattern} });
+        numeric_overloads!(engine, "gamma", |call, pattern: ModePattern; gamma| { if pattern.supports_gamma() {pattern.with_gamma(gamma)} else {warnings.lock().unwrap().push(ScriptWarning { kind: "mode_gamma_ignored", count: 1, message: "gamma() is only supported for landscape_density_modes(); ignored".into(), position: call.call_position()}); pattern} });
         numeric_overloads!(engine, "jitter", |_call, pattern: ModePattern; cents| { pattern.with_jitter_cents(cents) });
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
@@ -1606,6 +1760,8 @@ impl ScriptHost {
                         .lock()
                         .expect("lock script warnings")
                         .push(ScriptWarning {
+                            kind: "mode_seed_negative",
+                            count: 1,
                             message: "seed() expects >= 0".to_string(),
                             position: call_ctx.call_position(),
                         });
@@ -1717,8 +1873,11 @@ impl ScriptHost {
                         .lock()
                         .expect("lock script warnings")
                         .push(ScriptWarning {
+                            kind: "crowding_target_absent",
+                            count: 1,
                             message: format!(
-                                "crowding_target ignored for unknown population {}",
+                                "crowding_target ignored for {} population {}",
+                                ctx.population_absence(handle.id),
                                 handle.id
                             ),
                             position: call_ctx.call_position(),
@@ -1761,8 +1920,11 @@ impl ScriptHost {
                         .lock()
                         .expect("lock script warnings")
                         .push(ScriptWarning {
+                            kind: "leave_self_out_absent",
+                            count: 1,
                             message: format!(
-                                "leave_self_out ignored for unknown population {}",
+                                "leave_self_out ignored for {} population {}",
+                                ctx.population_absence(handle.id),
                                 handle.id
                             ),
                             position: call_ctx.call_position(),
@@ -1827,8 +1989,11 @@ impl ScriptHost {
                         .lock()
                         .expect("lock script warnings")
                         .push(ScriptWarning {
+                            kind: "global_peaks_absent",
+                            count: 1,
                             message: format!(
-                                "global_peaks ignored for unknown population {}",
+                                "global_peaks ignored for {} population {}",
+                                ctx.population_absence(handle.id),
                                 handle.id
                             ),
                             position: call_ctx.call_position(),
@@ -1867,8 +2032,11 @@ impl ScriptHost {
                         .lock()
                         .expect("lock script warnings")
                         .push(ScriptWarning {
+                            kind: "global_peaks_absent",
+                            count: 1,
                             message: format!(
-                                "global_peaks ignored for unknown population {}",
+                                "global_peaks ignored for {} population {}",
+                                ctx.population_absence(handle.id),
                                 handle.id
                             ),
                             position: call_ctx.call_position(),
@@ -1908,8 +2076,11 @@ impl ScriptHost {
                         .lock()
                         .expect("lock script warnings")
                         .push(ScriptWarning {
+                            kind: "global_peaks_absent",
+                            count: 1,
                             message: format!(
-                                "global_peaks ignored for unknown population {}",
+                                "global_peaks ignored for {} population {}",
+                                ctx.population_absence(handle.id),
                                 handle.id
                             ),
                             position: call_ctx.call_position(),
@@ -1948,8 +2119,11 @@ impl ScriptHost {
                         .lock()
                         .expect("lock script warnings")
                         .push(ScriptWarning {
+                            kind: "ratio_candidates_absent",
+                            count: 1,
                             message: format!(
-                                "ratio_candidates ignored for unknown population {}",
+                                "ratio_candidates ignored for {} population {}",
+                                ctx.population_absence(handle.id),
                                 handle.id
                             ),
                             position: call_ctx.call_position(),
@@ -2008,8 +2182,11 @@ impl ScriptHost {
                         .lock()
                         .expect("lock script warnings")
                         .push(ScriptWarning {
+                            kind: "move_cost_time_scale_absent",
+                            count: 1,
                             message: format!(
-                                "move_cost_time_scale ignored for unknown population {}",
+                                "move_cost_time_scale ignored for {} population {}",
+                                ctx.population_absence(handle.id),
                                 handle.id
                             ),
                             position: call.call_position(),
@@ -2049,20 +2226,17 @@ impl ScriptHost {
                 let mut ctx = ctx_for_population_pitch_apply_mode
                     .lock()
                     .expect("lock script context");
-                let cursor = ctx.cursor;
-                ctx.harmonic_sites.push((
-                    handle.id,
-                    cursor,
-                    "pitch_apply_mode",
-                    call.call_position(),
-                ));
+                ctx.record_harmonic_site(handle.id, "pitch_apply_mode", call.call_position());
                 let Some(population) = ctx.populations.get_mut(&handle.id) else {
                     diagnostics
                         .lock()
                         .expect("lock script warnings")
                         .push(ScriptWarning {
+                            kind: "pitch_apply_mode_absent",
+                            count: 1,
                             message: format!(
-                                "pitch_apply_mode ignored for unknown population {}",
+                                "pitch_apply_mode ignored for {} population {}",
+                                ctx.population_absence(handle.id),
                                 handle.id
                             ),
                             position: call.call_position(),
@@ -2161,19 +2335,18 @@ impl ScriptHost {
         numeric_overloads!(engine, "rearticulate_above", |call, handle: PopulationHandle; value| {
             let mut ctx = ctx_for_boundary.lock().expect("lock script context");
             let position = call.call_position();
-            let cursor = ctx.cursor;
-            ctx.harmonic_sites.push((handle.id, cursor, "rearticulate_above", position));
+            ctx.record_harmonic_site(handle.id, "rearticulate_above", position);
             if let Some(population) = ctx.populations.get_mut(&handle.id) {
                 if population.status != PopulationStatus::Live {
                     ctx.warn_population_inactive(handle.id, "rearticulate_above", position);
                 } else if population.spec.spawn_spec().control.pitch.pitch_apply_mode != PitchApplyMode::Rearticulate {
-                    ctx.warn("rearticulate_above() ignored outside pitch_apply_mode(\"rearticulate\")".into(), position);
+                    ctx.warn("population_patch", "rearticulate_above() ignored outside pitch_apply_mode(\"rearticulate\")".into(), position);
                 } else {
                     population.spec.set_rearticulate_above(value);
                     patch_rearticulate_above(&mut population.pending_patch, value);
                 }
             } else {
-                ctx.warn(format!("rearticulate_above ignored for unknown population {}", handle.id), position);
+                ctx.warn("population_patch", format!("rearticulate_above ignored for {} population {}", ctx.population_absence(handle.id), handle.id), position);
             }
             Ok::<_, Box<EvalAltResult>>(handle)
         });
@@ -2203,7 +2376,7 @@ impl ScriptHost {
             let mut ctx = ctx_for_pitch_set.lock().expect("lock script context");
             let position = call.call_position();
             if ctx.cursor != 0.0
-                || !ctx.scenario.events.is_empty()
+                || ctx.emitted_any_event
                 || !ctx.scenario.scene_markers.is_empty()
                 || !ctx.scopes.is_empty()
             {
@@ -2230,10 +2403,12 @@ impl ScriptHost {
         let ctx_for_harmonic = ctx.clone();
         engine.register_fn(
             "harmonic_rhythm",
-            move |call: NativeCallContext, value: INT| {
+            move |call: NativeCallContext, value: INT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_harmonic.lock().expect("lock script context");
+                ctx.check_header("harmonic_rhythm", call.call_position())?;
                 if value < 0 {
                     ctx.warn(
+                        "harmonic_rhythm_value",
                         "harmonic_rhythm requires a nonnegative integer; previous setting retained"
                             .into(),
                         call.call_position(),
@@ -2242,6 +2417,7 @@ impl ScriptHost {
                     ctx.scenario.harmonic_rhythm = value as u64;
                     ctx.harmonic_position = call.call_position();
                 }
+                Ok(())
             },
         );
         let ctx_for_meter_stability_f = ctx.clone();
@@ -2310,7 +2486,11 @@ impl ScriptHost {
                     pitch_objective_mode: Some(mode),
                     ..Default::default()
                 };
-                ctx.push_event(cursor, vec![Action::UpdateLandscape { update }]);
+                ctx.push_event(
+                    cursor,
+                    vec![Action::UpdateLandscape { update }],
+                    call.call_position(),
+                );
                 Ok(())
             },
         );
@@ -2326,6 +2506,7 @@ impl ScriptHost {
                     vec![Action::SetGlobalCoupling {
                         value: value as f32,
                     }],
+                    _call_ctx.call_position(),
                 );
             },
         );
@@ -2440,6 +2621,7 @@ impl ScriptHost {
                     vec![Action::SetRoughnessAversion {
                         value: value as f32,
                     }],
+                    _call_ctx.call_position(),
                 );
             },
         );
@@ -2455,6 +2637,7 @@ impl ScriptHost {
                     vec![Action::SetHarmonicityPreference {
                         value: value as f32,
                     }],
+                    _call_ctx.call_position(),
                 );
             },
         );
@@ -2504,7 +2687,11 @@ impl ScriptHost {
             ));
         }
         ctx.finish();
-        let warnings = ctx.warnings.lock().expect("lock script warnings").clone();
+        let warnings = ctx
+            .warnings
+            .lock()
+            .expect("lock script warnings")
+            .snapshot();
         Ok((ctx.scenario.clone(), warnings))
     }
 }
@@ -2532,7 +2719,7 @@ fn register_population_spec_numeric_overloads(
         population_spec.spec.record_call(name, call.call_position(), &diagnostics);
         if name == "rest_on_habituation" && (!value.is_finite() || value < 0.0) {
             diagnostics.lock().expect("lock diagnostics").push(ScriptWarning {
-                message: "rest_on_habituation() expects a finite nonnegative f32 weight; ignored".into(), position: call.call_position(),
+                kind: "rest_on_habituation_invalid", count: 1, message: "rest_on_habituation() expects a finite nonnegative f32 weight; ignored".into(), position: call.call_position(),
             });
             setter(&mut population_spec.spec, 0.0);
         } else {
@@ -2588,12 +2775,15 @@ fn apply_population_numeric_patch(
 ) -> Result<PopulationHandle, Box<EvalAltResult>> {
     let mut ctx = ctx_arc.lock().expect("lock script context");
     let diagnostics = ctx.warnings.clone();
-    let cursor = ctx.cursor;
-    ctx.harmonic_sites
-        .push((handle.id, cursor, label, position));
+    ctx.record_harmonic_site(handle.id, label, position);
     let Some(population) = ctx.populations.get_mut(&handle.id) else {
         ctx.warn(
-            format!("{label} ignored for unknown population {}", handle.id),
+            "population_patch",
+            format!(
+                "{label} ignored for {} population {}",
+                ctx.population_absence(handle.id),
+                handle.id
+            ),
             position,
         );
         return Ok(handle);
@@ -2606,6 +2796,7 @@ fn apply_population_numeric_patch(
         }
         PopulationStatus::ReleasePending | PopulationStatus::Released => {
             ctx.warn(
+                "population_patch",
                 format!("{label} ignored for inactive population {}", handle.id),
                 position,
             );
@@ -2647,7 +2838,12 @@ fn apply_population_crowding(
     let mut ctx = ctx_arc.lock().expect("lock script context");
     let Some(population) = ctx.populations.get_mut(&handle.id) else {
         ctx.warn(
-            format!("{label} ignored for unknown population {}", handle.id),
+            "population_patch",
+            format!(
+                "{label} ignored for {} population {}",
+                ctx.population_absence(handle.id),
+                handle.id
+            ),
             position,
         );
         return Ok(handle);

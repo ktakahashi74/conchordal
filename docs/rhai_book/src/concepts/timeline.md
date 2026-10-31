@@ -235,13 +235,40 @@ Three rules apply to every endless scenario:
   capability, but cannot introduce it.
 - `parallel` is unavailable in an endless scenario.
 
-This stage evaluates the whole script at load time. Keep script loops bounded:
-an unbounded loop still prevents loading. When writing repeated placement, each
-Population or Flora must be released explicitly or owned by an enclosing `section`
-or `play` that returns and releases it. This ownership rule also applies to unbounded
-loops when incremental evaluation is available. Natural Voice death alone does not
-retire an unreleased Population. Retaining new placements forever grows retained
-state.
+Endless scripts run on a dedicated thread, just ahead of the performance. An
+unbounded loop must advance score time with `wait()`:
+
+```rhai
+endless();
+loop {
+    section("breath", || {
+        let p = place(sine().sustain(), at(220));
+        wait(4);
+    });
+    wait(2);
+}
+```
+
+The first advancing `wait()` publishes the scene header; a script that returns
+without advancing publishes it on return. Events at time zero remain hidden until
+then, and metric founders use the final declared temporal basin. A header may have
+an empty event prefix, for example `endless(); wait(4); place(sine(), at(220));`.
+A script error after the header stops new score production; committed events still
+run and the ecology continues. System shows evaluation progress, completion, errors
+and coalesced warnings. A performer end request discards pending score items and
+starts the runtime's release sequence.
+
+For repeated placement, release each Population or Flora explicitly, or create it
+inside a `section` or `play` that returns and releases it. Natural Voice death does
+not retire an unreleased Population. Retaining new placements or growing Rhai arrays
+forever grows retained state; those values belong to the composer.
+
+Compile-only and offline render of endless scripts require `--duration`. A wait
+that crosses that bound stops evaluation at the bound and unwinds scopes there,
+so their release actions run before the duration end request. Compile-only prints
+`end: open (evaluated through t=…)`. Finite pieces still evaluate eagerly, including
+`parallel`. The score outbox limits actions and retained payload per dispatch hop;
+exceeding either limit is a deterministic score error in render and compile-only.
 
 ## Scenario capabilities
 
@@ -250,3 +277,17 @@ All scenarios, including finite ones, disable `eval` and filesystem `import`.
 cannot read wall-clock time through `timestamp`/`elapsed` or block evaluation with
 `sleep`. These boundaries keep the score determined by the script and seed.
 `print` and `debug` remain available for diagnostics.
+
+### Reserving tonal context
+
+In an endless piece, call `observe_tonal_context()` before time advances and before
+placing a positive `follow_tonal_context` weight. This Author rule reserves tonal
+observation and its table from the beginning, so later Voices inherit the heard
+history. A late declaration or an unreserved positive placement is a positioned
+script error. Finite pieces need no declaration: writing it warns and has no
+effect; their placements determine observation as before.
+
+Endless pieces always observe shared onset habituation from run start, including
+before a later `rest_on_habituation` placement. Finite pieces reserve this observer
+only when a positive consumer appears in the script. `harmonic_rhythm` also belongs
+before the first advancing `wait()` in endless pieces.

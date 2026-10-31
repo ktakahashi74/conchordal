@@ -46,6 +46,7 @@ pub(super) fn build_initial_ui_frame(
         temporal: Default::default(),
         landscape: current_landscape.clone(),
         meta: SimulationMeta {
+            script: conductor.score.as_ref().map(|s| s.stream.status()),
             time_sec: now_tick as f64 / fs as f64,
             end: conductor.end(),
             population_count: pop.population_count(),
@@ -123,6 +124,7 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
         listener: listener_frame_from_states(input.listener_fast_state, input.listener_state),
         landscape: input.current_landscape.clone(),
         meta: SimulationMeta {
+            script: input.conductor.score.as_ref().map(|s| s.stream.status()),
             time_sec: input.current_time,
             end: input.conductor.end(),
             population_count: input.pop.population_count(),

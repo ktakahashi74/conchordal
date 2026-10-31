@@ -96,7 +96,7 @@ fn population_spawn_and_release_removes_voice() {
     pop.apply_action(
         Action::Spawn {
             population_id: 1,
-            ids: vec![1],
+            ids: vec![1].into(),
             spec: spawn_spec_with_control(control),
             strategy: None,
         },
@@ -129,6 +129,7 @@ fn conductor_returns_finish_for_worker_on_time() {
         actions: vec![Action::Finish],
     };
     let scenario = Scenario {
+        observe_tonal_context: false,
         expression: None,
         expression_cursor: None,
         seed: 0,
@@ -160,6 +161,7 @@ fn conductor_returns_finish_for_worker_on_time() {
 #[test]
 fn conductor_keeps_future_events_queued_in_order() {
     let scenario = Scenario {
+        observe_tonal_context: false,
         expression: None,
         expression_cursor: None,
         seed: 0,
@@ -220,7 +222,7 @@ fn voice_lifecycle_decay_death() {
     pop.apply_action(
         Action::Spawn {
             population_id: 9,
-            ids: vec![9],
+            ids: vec![9].into(),
             spec: spawn_spec_with_control(control),
             strategy: None,
         },
@@ -269,7 +271,7 @@ fn lock_mode_advances_release_gain() {
     pop.apply_action(
         Action::Spawn {
             population_id: 2,
-            ids: vec![2],
+            ids: vec![2].into(),
             spec: spawn_spec_with_control(control),
             strategy: None,
         },
@@ -298,7 +300,7 @@ fn lock_mode_keeps_pitch_and_target() {
     pop.apply_action(
         Action::Spawn {
             population_id: 3,
-            ids: vec![3],
+            ids: vec![3].into(),
             spec: spawn_spec_with_control(control),
             strategy: None,
         },
@@ -341,7 +343,7 @@ fn lock_mode_preserves_placements_outside_analysis_range() {
             pop.apply_action(
                 Action::Spawn {
                     population_id: 1,
-                    ids: vec![1],
+                    ids: vec![1].into(),
                     spec: spawn_spec_with_control(control),
                     strategy: target.map(|target| SpawnStrategy::Field {
                         target,
@@ -380,7 +382,7 @@ fn lock_mode_prevents_snapback() {
     pop.apply_action(
         Action::Spawn {
             population_id: 1,
-            ids: vec![1],
+            ids: vec![1].into(),
             spec: spawn_spec_with_control(control),
             strategy: None,
         },
@@ -1240,6 +1242,7 @@ fn indefinite_conductor_dispatches_tick_boundaries() {
     };
     let a = 1u64 << 40;
     let mut scenario = Scenario {
+        observe_tonal_context: false,
         expression: None,
         expression_cursor: None,
         harmonic_rhythm: 0,

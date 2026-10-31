@@ -4,16 +4,16 @@
 //!
 //! Conventions:
 //! - ```` ```rhai ```` fences are extracted and run (scenario compilation,
-//!   no audio); examples must be self-contained.
+//!   no audio); examples must be self-contained. Endless examples compile
+//!   through 60 seconds using the production incremental driver.
 //! - ```` ```rhai,ignore ```` fences are skipped (signature fragments in the
 //!   generated API reference, deliberately non-runnable snippets).
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use walkdir::WalkDir;
-
-use conchordal::app::compile_scenario_from_script;
 
 struct Fence {
     source: PathBuf,
@@ -80,19 +80,34 @@ fn book_rhai_examples_execute() {
 
     let tmp_dir = std::env::temp_dir().join(format!("rhai_book_examples_{}", std::process::id()));
     fs::create_dir_all(&tmp_dir).expect("create temp dir");
+    let config = tmp_dir.join("config.toml");
+    fs::write(&config, "").expect("write default config");
 
     for (idx, fence) in fences.iter().enumerate() {
         let script_path = tmp_dir.join(format!("fence_{idx}.rhai"));
         fs::write(&script_path, &fence.code)
             .unwrap_or_else(|e| panic!("write {}: {e}", script_path.display()));
-        compile_scenario_from_script(&script_path, None).unwrap_or_else(|e| {
-            panic!(
-                "book example failed ({}:{}):\n{}\n\nerror: {e}",
-                fence.source.display(),
-                fence.start_line,
-                fence.code
-            )
-        });
+        let output = Command::new(env!("CARGO_BIN_EXE_conchordal"))
+            .arg(&script_path)
+            .args([
+                "--compile-only",
+                "--nogui",
+                "--play=false",
+                "--duration",
+                "60",
+            ])
+            .arg("--config")
+            .arg(&config)
+            .output()
+            .expect("compile book example");
+        assert!(
+            output.status.success(),
+            "book example failed ({}:{}):\n{}\n\nerror: {}",
+            fence.source.display(),
+            fence.start_line,
+            fence.code,
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     let _ = fs::remove_dir_all(&tmp_dir);

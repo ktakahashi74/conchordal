@@ -51,7 +51,10 @@ fn open_compile_only_and_cli_bounds_are_explicit() {
         "seed(21); endless(); place(sine().sustain(), at(220));",
     )
     .unwrap();
-    let compiled = instrument(&dir, &["--compile-only"]);
+    let unbounded = instrument(&dir, &["--compile-only"]);
+    assert!(!unbounded.status.success());
+    assert!(String::from_utf8_lossy(&unbounded.stderr).contains("requires --duration"));
+    let compiled = instrument(&dir, &["--compile-only", "--duration", "1"]);
     assert!(compiled.status.success(), "{:?}", compiled);
     assert!(String::from_utf8_lossy(&compiled.stderr).contains("end: open"));
     for (arguments, message) in [
@@ -284,4 +287,107 @@ fn first_ctrl_c_fades_and_second_ctrl_c_exits_immediately() {
                 .contains("ending (fade)…")
         );
     }
+}
+
+#[test]
+fn incremental_render_and_compile_overflow_at_the_same_score_hop() {
+    for source in [
+        "endless(); wait(0.02); loop { set_global_coupling(0.25); }",
+        "endless(); wait(0.02); let name = \"x\"; loop { section(name, || {}); name += name; }",
+    ] {
+        let (dir, _cleanup) = fixture();
+        fs::write(dir.join("input.rhai"), source).unwrap();
+        for output in [
+            instrument(&dir, &["--compile-only", "--duration", "0.04"]),
+            render(&dir, "overflow.wav", &["--duration", "0.04"]),
+        ] {
+            assert!(!output.status.success());
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                stderr.contains(
+                    "score items within one hop exceed the ring capacity at t=0.021333333"
+                ),
+                "{stderr}"
+            );
+        }
+    }
+}
+
+#[test]
+fn looping_endless_render_reports_repeat_at_duration_bound() {
+    let (dir, _cleanup) = fixture();
+    fs::write(
+        dir.join("input.rhai"),
+        r#"
+        seed(21); endless();
+        section("loop", || {
+            let p = place(sine().anchor().sustain().adsr(0,0,1,0.02), at(220));
+            loop { p.amp(0.1); wait(0.02); }
+        });
+    "#,
+    )
+    .unwrap();
+    let mut reports = Vec::new();
+    for name in ["a", "b"] {
+        let report = dir.join(format!("{name}.jsonl"));
+        let output = render(
+            &dir,
+            &format!("{name}.wav"),
+            &["--duration", "0.08", "--report", report.to_str().unwrap()],
+        );
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let rows: Vec<serde_json::Value> = fs::read_to_string(report)
+            .unwrap()
+            .lines()
+            .map(|line| {
+                let mut row: serde_json::Value = serde_json::from_str(line).unwrap();
+                if row["type"] == "hop_timing" {
+                    for key in ["elapsed_us", "analysis_wait_us", "listener_wait_us"] {
+                        row.as_object_mut().unwrap().remove(key);
+                    }
+                }
+                row
+            })
+            .collect();
+        reports.push(rows);
+    }
+    assert_eq!(reports[0].len(), reports[1].len());
+    assert!(reports[0].iter().any(|r| r["type"] == "scene_marker"));
+    for (a, b) in reports[0].iter().zip(&reports[1]) {
+        assert_eq!(a, b);
+    }
+}
+
+#[test]
+fn oversized_item_after_header_is_reported_and_ecology_continues() {
+    let (dir, _cleanup) = fixture();
+    // 128 MiB exceeds the calibrated 77,594,624-byte payload capacity.
+    fs::write(
+        dir.join("input.rhai"),
+        r#"
+        endless(); place(sine().sustain(), at(220)); wait(0.02);
+        let name = "x"; for i in 0..27 { name += name; }
+        section(name, || {});
+    "#,
+    )
+    .unwrap();
+    let compiled = instrument(&dir, &["--compile-only", "--duration", "0.04"]);
+    assert!(!compiled.status.success());
+    assert!(
+        String::from_utf8_lossy(&compiled.stderr).contains("score item exceeds the ring capacity")
+    );
+    let rendered = render(&dir, "failed-script.wav", &["--duration", "0.04"]);
+    assert!(
+        rendered.status.success(),
+        "{}",
+        String::from_utf8_lossy(&rendered.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&rendered.stderr).contains("score item exceeds the ring capacity")
+    );
+    assert!(fs::metadata(dir.join("failed-script.wav")).unwrap().len() > 44);
 }

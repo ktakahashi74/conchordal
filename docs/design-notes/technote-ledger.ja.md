@@ -109,6 +109,7 @@
   - [§9.3.95 Floraの成長と種の知覚から自分のhabitat PCMを除く](#flora-growth-self-exclusion)
   - [§9.3.104 機構の根拠の段と、作曲者の量の統一方針](#mechanism-evidence-and-composer-controls)
   - [§9.3.109 既知の最終区間の表情](#known-final-expression)
+  - [§9.3.117 2026-10-31：endlessな脚本の逐次評価](#incremental-endless-scores-20261031)
 - [§9.4 整合と拡張の順序](#94-整合と拡張の順序)
 
 ---
@@ -8059,3 +8060,38 @@ samplingを楽にするために選ばれた値である。集中の度合いで
 analysis worker、LOOの観測器、body metabolism）を通る。w = 1では場のscore、level、energy、
 密度の質量と、慣れの後の各viewが従来の構成とbit一致する。`harmonicity01`と`roughness01`は
 どのwでも変わらない。既定値、sample、listener profileは変えておらず、試聴もしていない。
+
+<a id="incremental-endless-scores-20261031"></a>
+
+### 9.3.117 2026-10-31：endlessな脚本の逐次評価
+
+設計書`2026-10-31-indefinite-performance-design.md` revision 9の段階2を実装した。
+対象は`endless()`の曲である。専用のRhai threadがheaderと容量制限付きのscore itemを
+公開し、有限曲は従来の一括評価とConductor queueを使う。runtimeとcompile-onlyは、
+watermarkをtickへ丸めた厳密な比較、消費後のcredit返却、四条件のoverflow判定を共有する。
+評価範囲に達したscopeの解放は、同じ時刻の終了要求より先に配る。閉じる操作はqueueを
+破棄するが、runtimeが持つ解放とFinishの手順は保持する。header後の脚本errorでは、
+確定済みitemを配り終えた後も生態系は演奏を続ける。
+
+容量は**C = 131,072 action**、**B = 77,594,624 bytes**とした。このbuildの
+`size_of::<Action>()`は592 bytesであり、BはそのC倍である。markerは1 actionと数える。
+heap payloadは長さでなくcapacityで課金し、workerが取り出したitemも適用終了まで
+creditを保持する。producerが構築・保留する1 itemもB以下に制限するので、scoreの
+保持量は設計どおり2Bとslot headerの合計以下である。
+
+実測はblanche、2026-10-31T18:09:33+09:00、release profile（opt-level 3、LTO）で行った。
+ignored test `score_patch_capacity_measurement`が、1体のlive Voiceへ振幅の交互更新を
+`Community::apply_action`経由で適用する。64 actionごとに経過時間を確認し、48 kHz・
+512 sampleの1 hop予算10.666667 ms以内に完了した**179,328 action**を数えた。
+次のbatchで予算を越え、終了時は10.668816 msだった。2の冪へ切り下げてCを決めた。
+これは容量の校正であり、実時間負荷の受入試験ではない。timing lockは使っていない。
+開始時のload averageは9.63 / 9.67 / 9.44、MemAvailableは37,161,692 KiBだった。
+先行したthroughput換算（100,000 patch、6.003367 ms）でも同じCを得た。
+生logはorchestrationのIP-U5単位に`capacity.log`、`capacity-final.log`として残した。
+
+検証対象は、respawnとFloraを含む3周回の保持量比較（V2）、対象となる同梱77 scenarioの
+一括評価との一致（V3）、pre-synth状態とreportの決定性、範囲到達時の解放、renderと
+compile-onlyのaction数・payload容量超過、二つのcredit競合順序（V4）である。
+report比較から除くのは実時間計時の`elapsed_us`、`analysis_wait_us`、`listener_wait_us`の
+3欄だけであり、譜面、状態、残りのreport欄は厳密に比較する。これらは実装動作の検証であり、
+V6b耐久試験、V7推定器精度、V8実時間負荷、作者の試聴はこの単位の受入に含めない。

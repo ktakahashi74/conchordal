@@ -117,6 +117,30 @@ class ProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "both bus slots"):
             self.parse(data)
 
+    def test_schema5_matches_current_producer_without_retired_fields(self):
+        data = profile_fixture()
+        data.update(schema_version=5, rendering_scope="sequential wall intervals",
+                    background=dict(scope="terminal counters", shared=[None, None], body=None))
+        fields = [key for key in rt.RENDER_FIELDS if key != "observation_us"]
+        for row in data["hops"]:
+            row["rendering"] = dict.fromkeys(fields, 1.0)
+        result = self.parse(data)
+        self.assertEqual(result["background_terminal"], data["background"])
+        self.assertNotIn("observation_us", result["rendering"])
+        self.assertEqual(result["elapsed_p99_us"], self.parse(profile_fixture())["elapsed_p99_us"])
+        for missing in ("setup_us", "capture_delivery_us"):
+            broken = copy.deepcopy(data)
+            del broken["hops"][0]["rendering"][missing]
+            with self.assertRaisesRegex(ValueError, missing):
+                self.parse(broken)
+        broken = copy.deepcopy(data)
+        del broken["background"]["body"]
+        with self.assertRaisesRegex(ValueError, "body"):
+            self.parse(broken)
+        data["schema_version"] = 4
+        with self.assertRaisesRegex(ValueError, "candidate_energy"):
+            self.parse(data)
+
     def test_fixed_population_required_only_during_measurement(self):
         data = profile_fixture()
         data["hops"][0]["alive_voice_count"] = 0
@@ -277,6 +301,52 @@ class ChurnTests(unittest.TestCase):
             self.assertNotIn(".pulse(", script)
             self.assertNotIn("scaffold_", script)
             self.assertNotIn(".respawn_", rt.scenario_text(16, "harmonic", 1, 5, 10, workload=workload))
+
+    def test_endless_preserves_churn_and_continues_placements_releases_and_patches(self):
+        for participation in ("entrained", "flow"):
+            script = rt.scenario_text(16, "harmonic", 1, 5, 30,
+                                      workload=f"endless-{participation}-churn", stress_sec=5)
+            self.assertLess(script.index("endless();"), script.index("place("))
+            self.assertIn(f".{participation}().cycles(1)", script)
+            self.assertIn(".respawn_capacity(16)", script)
+            self.assertIn("release(extra)", script)
+            self.assertIn("voice.respawn_capacity(1)", script)
+            self.assertIn("next_birth += 5.000000000", script)
+            self.assertIn("population.amp(", script)
+            self.assertIn("next_patch += 2.0", script)
+            self.assertIn("wait(next - elapsed)", script)
+            self.assertNotIn("release(population)", script)
+            self.assertNotIn(".pulse(", script)
+
+    def test_single_slow_birth_hop_fails_even_when_p99_is_below_budget(self):
+        data = profile_fixture()
+        data["hops"] = [dict(copy.deepcopy(data["hops"][i % 20]), frame_idx=i, time_sec=i * .25,
+                             underrun_frames_total=0) for i in range(200)]
+        data["hops"][7]["elapsed_us"] = 300000
+        data["summary"].update(hop_count=200, elapsed_max_us=300000, over_budget_hops=1)
+        data["audio"].update(underrun_frames_total=0, callback_frames_total=200)
+        self.path.write_text(json.dumps(data))
+        result = rt.parse_profile(self.path, mode="device", voices=4, seed=1, report_enabled=False,
+                                  dcc=0, warmup_sec=1, duration_sec=40, wall_sec=50, churn=True)
+        self.assertLess(result["elapsed_p99_us"], result["hop_budget_us"])
+        self.assertEqual(result["underrun_frames_delta"], 0)
+        self.assertIs(result["device_rt_pass"], False)
+        self.assertEqual(result["over_budget_hops"], 1)
+
+    def test_endless_watermark_uses_contained_intervals_and_retains_negative_values(self):
+        def payload(margin):
+            return "\n".join(f"telemetry births=2 deaths=1 {field}\nDEBUG [t={time}] Audio stats:"
+                for time, field in ((.75, "watermark_margin_min_sec=-99"),
+                                    (1.75, "watermark_margin_min_sec=0.2"),
+                                    (2.75, margin), (3.75, "watermark_margin_min_sec=-88")))
+        self.path.write_text(payload("watermark_margin_min_sec=-0.01"))
+        result = rt.telemetry_windows(self.path, [(1, 3, 4)], hop_sec=.25, require_watermark=True)[0]
+        self.assertEqual(result["watermark_margin_min_sec"], -.01)
+        self.assertEqual(result["telemetry_interval_count"], 2)
+        for field in ("", "watermark_margin_min_sec=nan", "watermark_margin_min_sec=inf"):
+            self.path.write_text(payload(field))
+            with self.assertRaises(ValueError):
+                rt.telemetry_windows(self.path, [(1, 3, 4)], hop_sec=.25, require_watermark=True)
 
     def test_churn_live_deficits_cannot_last_multiple_hops_and_timing_keeps_birth_hop(self):
         data = profile_fixture()
@@ -447,6 +517,25 @@ class CampaignTests(unittest.TestCase):
             self.assertEqual(case["births_lower_bound"], 4)
             self.assertTrue(case["device_rt_pass"])
             self.assertEqual(case.get("onsets_by_population"), {"7": 2} if report else None)
+
+    def test_endless_campaign_has_duration_and_requires_watermark(self):
+        def execute(command, cwd, log, timeout):
+            self.assertEqual(command[command.index("--duration") + 1], "5.0")
+            profile = Path(command[command.index("--profile") + 1])
+            profile.write_text(json.dumps(profile_fixture()))
+            log.write_text("\n".join(
+                f"telemetry births=2 deaths=1 watermark_margin_min_sec=0.25\nDEBUG [t={t}] Audio stats:"
+                for t in (.75, 1.75, 2.75, 3.75)))
+            return dict(status="ok", returncode=0, wall_sec=5)
+
+        output = self.directory / "endless"
+        with patch.object(rt.beta, "snapshot", side_effect=self.snapshot), \
+                patch.object(rt.subprocess, "check_output", return_value="fixture"), \
+                patch.object(rt.beta, "execute", side_effect=execute):
+            self.assertEqual(rt.main(self.args(output) + ["--workload", "endless-flow-churn",
+                                                         "--reports", "0", "--dcc", "0"]), 0)
+        case = json.loads((output / "summary.json").read_text())["cases"][0]
+        self.assertEqual(case["watermark_margin_min_sec"], .25)
 
     def test_recovery_campaign_checks_three_populations_and_actual_onsets(self):
         output = self.directory / "recovery"

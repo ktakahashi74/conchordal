@@ -48,13 +48,14 @@ POLICY = {
     "allocations": "successful Rust allocation/reallocation requests on the worker thread; excludes other threads and native malloc; bytes are not retained memory",
     "queue_drain": "generated frames minus ring capacity is a lower bound on dequeued frames; it must cover the measurement window end, with callback frames and wall pacing supporting that bound; excludes downstream hardware latency",
     "report": "report on/off also changes listener activation when DCC is zero; not a pure report-I/O comparison",
-    "acceptance": "fixed live Voice count, device callback observed, counters present, allocations instrumented, plausible wall pacing, window underruns zero, callback errors zero and hop p99 within budget; no musical acceptance",
+    "acceptance": "fixed live Voice count (churn permits isolated one-hop deficits), device callback observed, counters present, allocations instrumented, plausible wall pacing, window underruns zero, callback errors zero, zero over-budget hops including births and hop p99 below budget; no musical acceptance",
     "device_identity": "known null/dummy/loopback sinks excluded; backend/device names alone do not independently verify the physical output, especially ALSA default",
     "offline": "offline-check never establishes device RT acceptance; device failure is not silently retried offline",
     "recovery": "temporary added population; require baseline pass, observed overload and post-release pass; allow two simulated seconds for release/queue settling; never claim the overloaded interval passed",
     "dense": "pulse accumulator on the selected theta clock, one-cycle holds and 50 ms release; reject multiple onsets for a Voice in one report hop; adaptive requires all Voices and mean >=4 onsets/Voice/sec; synchronized additionally requires each Voice's 8 Hz count and 125 ms intervals within report-hop precision",
     "participation": "entrained/flow workloads use the actual participation presets with one-cycle holds, intrinsic renewal for flow and acoustic cadence for entrained; report-enabled windows require at least two onsets from every Voice, without imposing a common onset rate or phase; report-off activity is not independently verified",
     "churn": "explicit random respawn, capacity equal to Voice count, background death rate 0.1/s; permit isolated one-hop live-count deficits, require two onsets per spawned population when reporting, and at least Voice-count births in wholly contained telemetry intervals; boundary intervals and initial placement are excluded from the birth lower bound",
+    "endless": "endless churn keeps the base population, releases/replaces a one-Voice population every stress_sec, patches base amplitude every two score seconds, and ends by --duration after a two-second drain interval; record minimum watermark margin over wholly contained telemetry intervals, without a new watermark acceptance threshold",
 }
 SUMMARY_FIELDS = ("case mode voices body seed report_enabled dcc_coupling_strength status listener_enabled "
                   "device_rt_pass assessment_reason sample_rate hop_size hop_budget_us hop_count "
@@ -62,7 +63,7 @@ SUMMARY_FIELDS = ("case mode voices body seed report_enabled dcc_coupling_streng
                   "worker_alloc_count worker_alloc_bytes allocations_per_hop bytes_per_hop "
                   "underrun_frames_delta callback_count callback_frames_total callback_errors_total "
                   "backend device_name device_channels ring_capacity_frames generated_frames minimum_dequeued_frames execution_wall_sec minimum_device_wall_sec physical_output_verification "
-                  "workload timing recovery_pass overload_observed onset_count onsets_per_voice_sec births_lower_bound telemetry_interval_count error").split()
+                  "workload timing recovery_pass overload_observed onset_count onsets_per_voice_sec births_lower_bound telemetry_interval_count watermark_margin_min_sec error").split()
 
 
 def require(record, schema, label):
@@ -89,14 +90,18 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
     data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=beta.strict_object,
                       parse_float=beta.finite_float, parse_constant=beta.finite_float)
     require(data, PROFILE_SCHEMA, "profile")
-    if data["schema_version"] not in (2, 3, 4):
+    if data["schema_version"] not in (2, 3, 4, 5):
         raise ValueError("unsupported profile schema_version")
+    render_fields = [key for key in RENDER_FIELDS if data["schema_version"] < 5 or key != "observation_us"]
     # Keep schema 2 readable for the saved population baseline; it has no nested timings.
     if data["schema_version"] >= 3:
         require(data, {"rendering_scope": "s"}, "profile")
-    if data["schema_version"] == 4:
+    if data["schema_version"] >= 4:
         require(data, {"background": "o"}, "profile")
-        require(data["background"], {"scope": "s", "shared": "l", "body": "?o", "candidate_energy": "?o"}, "background")
+        background_schema = {"scope": "s", "shared": "l", "body": "?o"}
+        if data["schema_version"] == 4:
+            background_schema["candidate_energy"] = "?o"
+        require(data["background"], background_schema, "background")
         if len(data["background"]["shared"]) != 2:
             raise ValueError("background shared must contain both bus slots")
     if (data["seed"] != seed or data["report_enabled"] != report_enabled
@@ -132,8 +137,8 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
             raise ValueError("synthesis duration exceeds render/route duration")
         if data["schema_version"] >= 3:
             require(row, {"rendering": "o"}, f"hop {index}")
-            require(row["rendering"], dict.fromkeys(RENDER_FIELDS, "n"), f"hop {index} rendering")
-            if sum(row["rendering"][key] for key in RENDER_FIELDS) > row["synthesis_us"] + 1e-6:
+            require(row["rendering"], dict.fromkeys(render_fields, "n"), f"hop {index} rendering")
+            if sum(row["rendering"][key] for key in render_fields) > row["synthesis_us"] + 1e-6:
                 raise ValueError("renderer phase durations exceed synthesis time")
         if (row["frame_idx"] != index or not math.isclose(row["time_sec"], index * hop_sec,
                                                          rel_tol=2e-7, abs_tol=2e-6)):
@@ -205,7 +210,9 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
     elif wall_sec < minimum_wall:
         passed, reason = None, "device_pacing_not_demonstrated"
     else:
-        passed = delta == 0 and audio["callback_errors_total"] == 0 and elapsed["p99"] <= data["hop_budget_us"]
+        passed = (delta == 0 and audio["callback_errors_total"] == 0
+                  and elapsed["p99"] < data["hop_budget_us"]
+                  and all(r["elapsed_us"] <= data["hop_budget_us"] for r in selected))
         reason = "device_criteria_met" if passed else "device_criteria_failed"
     return {"device_rt_pass": passed, "assessment_reason": reason,
             "listener_enabled": data["listener_enabled"], "sample_rate": data["sample_rate"],
@@ -231,7 +238,7 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
             "synthesis_us": beta.stats([r["synthesis_us"] for r in selected]),
             "rendering_scope": data.get("rendering_scope"),
             "rendering": {key: beta.stats([r["rendering"][key] for r in selected])
-                          for key in RENDER_FIELDS} if data["schema_version"] >= 3 else None,
+                          for key in render_fields} if data["schema_version"] >= 3 else None,
             "background_terminal": data.get("background"),
             "rendered_tone_count": beta.stats([r["rendered_tone_count"] for r in selected]),
             **{key: audio[key] if audio else None for key in (
@@ -241,7 +248,8 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
 
 def scenario_text(voices, body, seed, warmup_sec, duration_sec, *, workload="sustain", overload_voices=512, stress_sec=5, timing="adaptive"):
     churn = workload.endswith("-churn")
-    participation = workload.removesuffix("-churn")
+    endless = workload.startswith("endless-")
+    participation = workload.removeprefix("endless-").removesuffix("-churn")
     modes = ".modes(harmonic_modes().count(8))" if body == "harmonic" else ""
     accumulator_rate = 32.0 if timing == "synchronized" else 8.0
     phonation = ".sustain()" if workload == "sustain" else (
@@ -261,8 +269,38 @@ def scenario_text(voices, body, seed, warmup_sec, duration_sec, *, workload="sus
     wait(2.0);
     wait({duration_sec:.9f});
 ''' if workload == "recovery" else ""
+    score = f'''let population = place(voice, line(110.0, 880.0).count({voices}));
+wait({warmup_sec:.9f});
+let elapsed = 0.0;
+let next_birth = 0.0;
+let next_patch = 0.0;
+let extra = ();
+loop {{
+    if elapsed >= next_birth {{
+        if next_birth > 0.0 {{ release(extra); }}
+        extra = place(voice.respawn_capacity(1), line(110.0, 880.0).count(1));
+        next_birth += {stress_sec:.9f};
+    }}
+    if elapsed >= next_patch {{
+        population.amp({0.06 / math.sqrt(amplitude_count):.12f});
+        next_patch += 2.0;
+    }}
+    let next = if next_birth < next_patch {{ next_birth }} else {{ next_patch }};
+    wait(next - elapsed);
+    elapsed = next;
+}}
+''' if endless else f'''section("RT workload", || {{
+    let population = place(voice, line(110.0, 880.0).count({voices}));
+    wait({warmup_sec:.9f});
+    wait({duration_sec:.9f});
+{stress}
+    release(population);
+    wait(2.0);
+}});
+'''
     return f'''// Performance assay; no dedicated beat carrier or audio-file output.
 seed({seed});
+{"endless();" if endless else ""}
 {scaffold}\
 let voice = {body}()
     {modes}
@@ -273,14 +311,7 @@ let voice = {body}()
     .amp({0.06 / math.sqrt(amplitude_count):.12f})
     .seek_consonance()
     .adsr({envelope});
-section("RT workload", || {{
-    let population = place(voice, line(110.0, 880.0).count({voices}));
-    wait({warmup_sec:.9f});
-    wait({duration_sec:.9f});
-{stress}
-    release(population);
-    wait(2.0);
-}});
+{score}
 '''
 
 
@@ -349,7 +380,7 @@ def onset_windows(path, windows, *, timing="adaptive", hop_sec=None):
     return result
 
 
-def telemetry_windows(path, windows, *, hop_sec):
+def telemetry_windows(path, windows, *, hop_sec, require_watermark=False):
     """Pair interval counters with the following monitor debug timestamp."""
     intervals, pending, previous = [], None, 0.0
     with path.open(encoding="utf-8", errors="replace") as stream:
@@ -363,6 +394,11 @@ def telemetry_windows(path, windows, *, hop_sec):
                 except (KeyError, ValueError) as error:
                     raise ValueError("telemetry missing valid birth/death counters") from error
                 require(pending, {"births": "i", "deaths": "i"}, "telemetry")
+                if "watermark_margin_min_sec" in fields:
+                    margin = float(fields["watermark_margin_min_sec"])
+                    if not math.isfinite(margin):
+                        raise ValueError("telemetry watermark margin must be finite")
+                    pending["watermark_margin_min_sec"] = margin
             match = re.search(r"\[t=([0-9.]+)\] Audio stats:", line)
             if match and pending is not None:
                 current = float(match[1])
@@ -379,8 +415,12 @@ def telemetry_windows(path, windows, *, hop_sec):
         contained = [row for row in intervals if row["start_sec"] >= start - 1e-9
                      and row["end_sec"] <= end + 1e-9]
         births = sum(row["births"] for row in contained)
+        margins = [row["watermark_margin_min_sec"] for row in contained if "watermark_margin_min_sec" in row]
+        if require_watermark and (not contained or len(margins) != len(contained)):
+            raise ValueError("endless telemetry watermark margin missing in measurement window")
         result.append({"births_lower_bound": births, "telemetry_interval_count": len(contained),
-                       "birth_requirement_met": births >= expected, "telemetry_intervals": contained})
+                       "birth_requirement_met": births >= expected, "telemetry_intervals": contained,
+                       "watermark_margin_min_sec": min(margins) if margins else None})
     return result
 
 
@@ -432,7 +472,8 @@ def main(argv=None):
     parser.add_argument("--mode", choices=("device", "offline-check"), default="device")
     parser.add_argument("--voices", type=int, nargs="+", choices=(4, 16, 64), default=[4, 16, 64])
     parser.add_argument("--bodies", nargs="+", choices=("sine", "harmonic", "modal"), default=["sine", "harmonic", "modal"])
-    parser.add_argument("--workload", choices=("sustain", "dense", "recovery", "entrained", "flow", "entrained-churn", "flow-churn"), default="sustain")
+    parser.add_argument("--workload", choices=("sustain", "dense", "recovery", "entrained", "flow", "entrained-churn", "flow-churn",
+                                             "endless-entrained-churn", "endless-flow-churn"), default="sustain")
     parser.add_argument("--timing", choices=("adaptive", "synchronized"), default="adaptive",
                         help="synchronized uses an explicit 16 Hz theta scaffold for 8 Hz simultaneous-onset load")
     parser.add_argument("--reports", type=int, nargs="+", choices=(0, 1), default=[0, 1])
@@ -569,6 +610,8 @@ def main(argv=None):
             config.write_text(config_text(base_config, dcc), encoding="utf-8")
             command = [saved_binary, script, "--nogui", f"--play={'true' if args.mode == 'device' else 'false'}",
                        "--config", config, "--seed", str(args.seed), "--profile", directory / "profile.json", "--telemetry"]
+            if args.workload.startswith("endless-"):
+                command += ["--duration", str(args.warmup_sec + args.duration_sec + 2)]
             if churn:
                 command = ["env", "RUST_LOG=conchordal::runtime::monitor=debug", *command]
             if report:
@@ -593,7 +636,8 @@ def main(argv=None):
                 windows = [(args.warmup_sec, args.warmup_sec + args.duration_sec, voices)]
                 if churn:
                     case.update(telemetry_windows(directory / "run.log", windows,
-                                                  hop_sec=baseline["hop_size"] / baseline["sample_rate"])[0])
+                                                  hop_sec=baseline["hop_size"] / baseline["sample_rate"],
+                                                  require_watermark=args.workload.startswith("endless-"))[0])
                     if not case["birth_requirement_met"]:
                         raise ValueError("churn window has fewer births than configured Voices")
                 if args.workload == "recovery":

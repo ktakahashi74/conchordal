@@ -95,7 +95,7 @@ section("overlap", || {
 大域的な設定の名前は、いつ適用されるかを表します。`set_`のない
 `meter_stability`、`temporal_basin`、`control_update_mode`、`scaffold_off`、
 `scaffold_shared`、`scaffold_scrambled`、`seed`、`output_gain`はシーン全体の初期条件です。
-`wait()`の後に書いても、最後の指定が全体へ適用されます。`temporal_mode`も
+終わりを定めた曲では、`wait()`の後に書いても、最後の指定が全体へ適用されます。`temporal_mode`も
 初期条件ですが、イベントを置く前に最上位で一度だけ宣言します。
 
 `set_roughness_aversion`、`set_harmonicity_preference`、`set_global_coupling`、
@@ -106,7 +106,7 @@ section("overlap", || {
 ## 曲全体の再生音量
 
 `output_gain(db)`で曲全体の再生音量をdB単位で指定します。整数と小数のどちらも使え、
-省略時は`0` dBです。`seed`と同じく、`wait()`の後の宣言も含めて最後の指定が曲全体に
+省略時は`0` dBです。終わりを定めた曲では、`seed`と同じく、`wait()`の後の宣言も含めて最後の指定が曲全体に
 適用されます。途中の音量変化やフェードを作る操作ではありません。
 
 ```rhai
@@ -176,3 +176,56 @@ Voiceです。Flora、参加型の時計、持続する`metric()`、`follow_own_
 区間名や予定された終端をListenerTwinの終止の知覚の根拠へ渡すことはありません。
 
 Once は出生時に発音する形に限ります。Once の `phonate_when_viable()` は初版の対象外です。
+
+## 終わりを定めずに演奏する
+
+`endless()`を宣言すると、脚本が最後まで進んでも演奏は続きます。イベントが
+尽きた後もVoiceは活動し、世代交代も続きます。すべてを解放した場合も自動終了せず、
+無音のまま演奏者の終了操作を待ちます。`endless()`は最上位に一度だけ、再生イベントを
+置く前、時刻を進める前に書きます。
+
+```rhai
+endless();
+let drone = place(sine().amp(0.04).anchor().sustain(), at(220.0));
+wait(2.0);
+drone.amp(0.025);
+flush();
+```
+
+GUIの **End** または一度目のCtrl-Cで、残っているPopulation、Flora、Rainをそれぞれに
+指定した長さでフェードさせて終了します。すでに始まっているフェードも最後まで待ちます。
+**Exit**、ウィンドウを閉じる操作、二度目のCtrl-Cは即時終了です。
+
+`--duration <sec>`を指定すると、その演奏時刻に終了を要求します。同じ処理区間に
+予定されたイベントを配ってから解放するので、出力には解放後のフェードや余韻も含まれます。
+終わりを定めた曲が指定時刻より先に終わる場合は、そのまま終了します。
+
+終わりを定めない曲を`conchordal-render`でWAVに書く場合、`--duration`が必須です。
+楽器でも、この種の曲に`--report`や`--profile`を付ける場合は`--duration`が必要です。
+計測記録には処理区間数の上限があるので、フェードの余地を残してください。
+WAVは起動時の長さの検査に加え、書き込み中にもRIFF形式の上限を検査します。
+楽器自体には録音機能はありません。
+
+終わりを定めない曲には、次の三つの規則があります。
+
+- `seed`、`output_gain`、`temporal_mode`、`scaffold_*`、
+  `control_update_mode`、`meter_stability`、`temporal_basin`は、最初に時刻を
+  進める`wait()`より前に宣言します。いずれも演奏全体の初期条件です。
+- 自分自身の音を除外するPopulationには、配置前のPopulationSpecで
+  `leave_self_out(true)`を指定します。その能力を後から新たに追加する更新はできません。
+  配置時に指定してあれば、無効にしてから再び有効にする更新はできます。
+- `parallel`は使えません。
+
+現段階では脚本全体を読み込み時に評価します。終わらないループを書くと読み込みも
+終わらないので、ループ回数は有限にします。配置を繰り返す場合、PopulationやFloraは
+明示的に解放するか、処理を終えて解放する`section`や`play`の内側で作ります。
+この所有の規則は、逐次評価で終わらないループが使えるようになった後も同じです。
+Voiceが自然に死んでも、未解放のPopulationの記録は残ります。新しい配置を解放せずに
+増やし続けると、保持する状態も増え続けます。
+
+## 脚本から使える機能
+
+終わりの有無にかかわらず、すべての脚本で`eval`とファイルを読む`import`を禁止します。
+`sleep`と`timestamp`もエラーになります。演奏上の時刻を進めるには`wait()`を使います。
+実時間を`timestamp`や`elapsed`で読み取る経路と、`sleep`で評価を止める経路を閉じることで、
+脚本とseedから演奏予定が定まります。診断用の`print`と`debug`は引き続き使えます。

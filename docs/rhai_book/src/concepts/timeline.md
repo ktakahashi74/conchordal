@@ -104,7 +104,7 @@ particular realization must be replayed.
 
 Global parameter names describe when they apply. Bare names set scene-wide initial
 conditions: `meter_stability`, `temporal_basin`, `control_update_mode`, `scaffold_off`,
-`scaffold_shared`, `scaffold_scrambled`, `seed`, and `output_gain`. Their last declaration wins,
+`scaffold_shared`, `scaffold_scrambled`, `seed`, and `output_gain`. In finite scenarios their last declaration wins,
 even after `wait()`. `temporal_mode` is also a scene setting, but must be declared
 once at top level before events.
 
@@ -118,7 +118,7 @@ scope verbs continue to describe actions rather than parameter settings.
 
 `output_gain(db)` sets one playback gain for the whole scene. It accepts integer
 and floating-point dB values; omission means `0` dB. As with `seed`, the last
-declaration wins, including declarations after `wait()`. It does not schedule a fade.
+declaration wins in finite scenarios, including declarations after `wait()`. It does not schedule a fade.
 
 ```rhai
 output_gain(3.0);
@@ -196,3 +196,57 @@ zero ritard leaves the original clock active. Section names and the known end
 are never evidence for ListenerTwin's perception of closure.
 
 Once voices must start immediately; `phonate_when_viable()` on Once is outside this initial support.
+
+## Open-ended performances
+
+Call `endless()` once at top level, before any playback event and before time
+advances. The script can return while the Community keeps sounding: an empty
+event queue does not stop Voices or respawn. Releasing everything leaves a silent
+performance that still waits for an end request.
+
+```rhai
+endless();
+let drone = place(sine().amp(0.04).anchor().sustain(), at(220.0));
+wait(2.0);
+drone.amp(0.025);
+flush();
+```
+
+Use **End** in the GUI or press Ctrl-C once to release the remaining Populations,
+Flora and Rain with their configured fades. Existing fades finish too. **Exit**, window
+close, or a second Ctrl-C stops immediately. `--duration <sec>` requests the same
+graceful end at a score time; events due in that hop run first. The output can
+continue beyond that time through release fades and renderer tails. A finite
+scenario that finishes earlier still ends normally.
+
+`conchordal-render` requires `--duration` for an open-ended scenario. The instrument
+also requires it when using `--report` or `--profile` with an open-ended scenario.
+Profiles have a fixed hop capacity, so leave room for fades. WAV output is checked
+against the RIFF size limit both at startup for the duration and during writing.
+The instrument never records audio.
+
+Three rules apply to every endless scenario:
+
+- Declare `seed`, `output_gain`, `temporal_mode`, `scaffold_*`,
+  `control_update_mode`, `meter_stability`, and `temporal_basin` before the first
+  advancing `wait()`. These values configure the whole performance.
+- Enable `leave_self_out(true)` on the PopulationSpec before placement if that
+  Population will ever need it. A later patch may disable and re-enable that
+  capability, but cannot introduce it.
+- `parallel` is unavailable in an endless scenario.
+
+This stage evaluates the whole script at load time. Keep script loops bounded:
+an unbounded loop still prevents loading. When writing repeated placement, each
+Population or Flora must be released explicitly or owned by an enclosing `section`
+or `play` that returns and releases it. This ownership rule also applies to unbounded
+loops when incremental evaluation is available. Natural Voice death alone does not
+retire an unreleased Population. Retaining new placements forever grows retained
+state.
+
+## Scenario capabilities
+
+All scenarios, including finite ones, disable `eval` and filesystem `import`.
+`sleep` and `timestamp` raise an error: use `wait()` for score time. A scenario
+cannot read wall-clock time through `timestamp`/`elapsed` or block evaluation with
+`sleep`. These boundaries keep the score determined by the script and seed.
+`print` and `debug` remain available for diagnostics.

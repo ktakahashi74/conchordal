@@ -12,7 +12,7 @@ use crate::scenario::{ControlUpdateMode, RespawnPolicy, SpawnStrategy, VoiceSpec
 use rand::{Rng, RngExt, SeedableRng, rngs::SmallRng};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 const DEFAULT_REPORT_FIRST_K: u32 = 10;
 const DEFAULT_REPORT_PLV_WINDOW: usize = 200;
@@ -1301,23 +1301,26 @@ impl Community {
             keep
         });
         let removed_count = before_count - self.voices.len();
+        self.populations.retain(|id, population| {
+            !population.released
+                || self
+                    .voices
+                    .iter()
+                    .any(|voice| voice.metadata.population_id == *id && voice.is_alive())
+        });
+        self.advance_scratch
+            .population_visibility
+            .retain(|id, _| self.populations.contains_key(id));
         for id in self.dead_id_scratch.drain(..) {
             self.death_observed.remove(&id);
         }
 
         if removed_count > 0 {
             let t = current_frame as f32 * dt_sec;
-            if scenario_finished || self.abort_requested {
-                warn!(
-                    "Event after scenario close: [t={t:.6}] Cleaned up {removed_count} dead voices. Remaining: {} (frame_idx={current_frame})",
-                    self.voices.len(),
-                );
-            } else {
-                info!(
-                    "[t={t:.6}] Cleaned up {removed_count} dead voices. Remaining: {} (frame_idx={current_frame})",
-                    self.voices.len(),
-                );
-            }
+            debug!(
+                "[t={t:.6}] Cleaned up {removed_count} dead voices. Remaining: {} (frame_idx={current_frame})",
+                self.voices.len(),
+            );
         }
     }
 }
@@ -1340,6 +1343,82 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         })
+    }
+
+    #[test]
+    fn released_placements_and_visibility_remain_bounded_by_live_populations() {
+        let mut pop = test_pop();
+        let landscape = runtime_landscape();
+        pop.apply_action(
+            Action::Spawn {
+                population_id: 1,
+                ids: vec![1],
+                spec: spawn_spec_with_freq(220.0),
+                strategy: None,
+            },
+            &landscape,
+        );
+        for id in 2..66 {
+            pop.apply_action(
+                Action::Spawn {
+                    population_id: id,
+                    ids: vec![id],
+                    spec: spawn_spec_with_freq(330.0),
+                    strategy: None,
+                },
+                &landscape,
+            );
+            pop.prepare_substep_snapshot(true);
+            assert_eq!(pop.populations.len(), 2);
+            assert_eq!(pop.advance_scratch.population_visibility.len(), 2);
+            pop.apply_action(
+                Action::ReleasePopulation {
+                    population_id: id,
+                    fade_sec: 0.05,
+                },
+                &landscape,
+            );
+            pop.cleanup_dead(0, 0.01, false, &landscape);
+            assert!(
+                pop.populations.contains_key(&id),
+                "keep a live fading member"
+            );
+            force_dead(&mut pop, id);
+            pop.cleanup_dead(0, 0.01, false, &landscape);
+            assert_eq!(pop.populations.len(), 1);
+            assert_eq!(pop.advance_scratch.population_visibility.len(), 1);
+        }
+    }
+
+    #[test]
+    fn empty_unreleased_population_survives_and_can_be_spawned_again() {
+        let mut pop = test_pop();
+        let landscape = runtime_landscape();
+        pop.apply_action(
+            Action::Spawn {
+                population_id: 7,
+                ids: vec![70],
+                spec: spawn_spec_with_freq(220.0),
+                strategy: None,
+            },
+            &landscape,
+        );
+        force_dead(&mut pop, 70);
+        pop.cleanup_dead(0, 0.01, false, &landscape);
+        assert!(pop.voices.is_empty());
+        assert_eq!(pop.populations.len(), 1);
+        pop.apply_action(
+            Action::Spawn {
+                population_id: 7,
+                ids: vec![71],
+                spec: spawn_spec_with_freq(330.0),
+                strategy: None,
+            },
+            &landscape,
+        );
+        assert_eq!(pop.populations.len(), 1);
+        assert!(pop.voices[0].is_alive());
+        assert_eq!(pop.populations[&7].template.control.pitch.freq, 330.0);
     }
 
     #[test]

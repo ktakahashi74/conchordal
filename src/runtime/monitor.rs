@@ -13,6 +13,7 @@ pub(super) struct AudioMonitor {
     hop_count: u64,
     hop_total: Duration,
     hop_max: Duration,
+    min_watermark_margin_sec: Option<f64>,
     last_rebuilds: u64,
     #[cfg(target_os = "linux")]
     page_size: Option<u64>,
@@ -34,6 +35,7 @@ impl AudioMonitor {
             hop_count: 0,
             hop_total: Duration::ZERO,
             hop_max: Duration::ZERO,
+            min_watermark_margin_sec: None,
             last_rebuilds: 0,
             #[cfg(target_os = "linux")]
             page_size: std::fs::read("/proc/self/auxv").ok().and_then(|bytes| {
@@ -63,6 +65,7 @@ impl AudioMonitor {
         underrun_frames: Option<&AtomicU64>,
         finish_begun: bool,
         telemetry: bool,
+        score: Option<&crate::scripting::score::ScoreStream>,
         pop: &mut Community,
         audio_counters: Option<&crate::audio::output::AudioCallbackCounters>,
     ) {
@@ -76,6 +79,21 @@ impl AudioMonitor {
         self.hop_count += 1;
         self.hop_total += chunk_elapsed;
         self.hop_max = self.hop_max.max(chunk_elapsed);
+        let watermark_margin = if telemetry {
+            score.and_then(|stream| {
+                let score = stream.state.lock().unwrap();
+                score
+                    .terminal
+                    .is_none()
+                    .then_some(score.watermark_sec - current_time)
+            })
+        } else {
+            None
+        };
+        self.min_watermark_margin_sec = watermark_margin.map(|margin| {
+            self.min_watermark_margin_sec
+                .map_or(margin, |minimum| minimum.min(margin))
+        });
 
         if self.last_clip_log.elapsed() > Duration::from_millis(200) {
             if chunk_peak > 0.98 {
@@ -146,6 +164,7 @@ impl AudioMonitor {
                         flora: pop.flora.iter().filter(|f| !f.is_finished()).count(),
                         births,
                         deaths,
+                        min_watermark_margin_sec: self.min_watermark_margin_sec,
                     }
                 );
             }
@@ -175,6 +194,7 @@ impl AudioMonitor {
             self.hop_count = 0;
             self.hop_total = Duration::ZERO;
             self.hop_max = Duration::ZERO;
+            self.min_watermark_margin_sec = None;
             self.last_stats_log = Instant::now();
         }
     }
@@ -192,6 +212,7 @@ struct Telemetry {
     flora: usize,
     births: u64,
     deaths: u64,
+    min_watermark_margin_sec: Option<f64>,
 }
 
 impl std::fmt::Display for Telemetry {
@@ -213,7 +234,11 @@ impl std::fmt::Display for Telemetry {
             self.flora,
             self.births,
             self.deaths,
-        )
+        )?;
+        if let Some(margin) = self.min_watermark_margin_sec {
+            write!(f, " watermark_margin_min_sec={margin:.6}")?;
+        }
+        Ok(())
     }
 }
 
@@ -252,6 +277,7 @@ mod tests {
             flora: 3,
             births: 4,
             deaths: 5,
+            min_watermark_margin_sec: None,
         };
         assert_eq!(
             summary.to_string(),
@@ -260,6 +286,20 @@ mod tests {
         summary.rss_bytes = None;
         assert!(!summary.to_string().contains("rss"));
         assert_eq!(summary.to_string().lines().count(), 1);
+        summary.min_watermark_margin_sec = Some(0.125);
+        assert!(
+            summary
+                .to_string()
+                .ends_with(" watermark_margin_min_sec=0.125000")
+        );
+        summary.min_watermark_margin_sec = Some(-0.25);
+        assert!(
+            summary
+                .to_string()
+                .ends_with(" watermark_margin_min_sec=-0.250000")
+        );
+        summary.min_watermark_margin_sec = None;
+        assert!(!summary.to_string().contains("watermark"));
     }
 
     #[test]
@@ -271,28 +311,61 @@ mod tests {
         });
         let counters = crate::audio::output::AudioCallbackCounters::default();
         counters.rebuilds_total.store(2, Ordering::Relaxed);
+        let mut update =
+            |monitor: &mut AudioMonitor,
+             time,
+             score: Option<&crate::scripting::score::ScoreStream>| {
+                monitor.update(
+                    time,
+                    0,
+                    512,
+                    Duration::from_millis(10),
+                    512,
+                    0,
+                    0.0,
+                    Duration::from_millis(20),
+                    Duration::ZERO,
+                    Duration::ZERO,
+                    None,
+                    false,
+                    true,
+                    score,
+                    &mut pop,
+                    Some(&counters),
+                )
+            };
+        let stream = crate::scripting::score::ScoreStream::new(None, 1);
+        stream.advance(4.0, false);
+        update(&mut monitor, 1.0, Some(&stream));
+        assert_eq!(monitor.min_watermark_margin_sec, Some(3.0));
+        update(&mut monitor, 5.0, Some(&stream));
+        update(&mut monitor, 2.0, Some(&stream));
+        assert_eq!(monitor.min_watermark_margin_sec, Some(-1.0));
         monitor.last_stats_log = Instant::now() - crate::audio::output::STATS_INTERVAL;
-        monitor.update(
-            0.0,
-            0,
-            512,
-            Duration::from_millis(10),
-            512,
-            0,
-            0.0,
-            Duration::from_millis(20),
-            Duration::ZERO,
-            Duration::ZERO,
-            None,
-            false,
-            true,
-            &mut pop,
-            Some(&counters),
-        );
+        update(&mut monitor, 2.0, Some(&stream));
+        assert_eq!(monitor.min_watermark_margin_sec, None);
         assert_eq!(monitor.hop_count, 0);
         assert_eq!(monitor.hop_total, Duration::ZERO);
         assert_eq!(monitor.hop_max, Duration::ZERO);
         assert_eq!(monitor.last_rebuilds, 2);
+        update(&mut monitor, 1.0, Some(&stream));
+        assert_eq!(monitor.min_watermark_margin_sec, Some(3.0));
+        update(&mut monitor, 1.0, None);
+        assert_eq!(monitor.min_watermark_margin_sec, None);
+        for terminal in [
+            crate::scripting::score::Terminal::Finished,
+            crate::scripting::score::Terminal::Failed(crate::scripting::ScriptError::new(
+                "fixture", None,
+            )),
+            crate::scripting::score::Terminal::Closed("stopped".into()),
+        ] {
+            stream.state.lock().unwrap().terminal = None;
+            update(&mut monitor, 1.0, Some(&stream));
+            assert_eq!(monitor.min_watermark_margin_sec, Some(3.0));
+            stream.state.lock().unwrap().terminal = Some(terminal);
+            update(&mut monitor, 1.0, Some(&stream));
+            assert_eq!(monitor.min_watermark_margin_sec, None);
+        }
         assert_eq!(pop.take_lifecycle_counts(), (0, 0));
     }
 }

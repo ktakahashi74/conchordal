@@ -887,6 +887,11 @@ pub(super) fn process_hop(
         cfg.underrun_frames.as_deref(),
         state.finish_begun,
         cfg.telemetry,
+        state
+            .conductor
+            .score
+            .as_ref()
+            .map(|session| session.stream.as_ref()),
         &mut state.pop,
         cfg.audio_counters.as_deref(),
     );

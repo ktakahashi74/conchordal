@@ -17,7 +17,7 @@ pub(crate) struct AllocationCounts {
 #[derive(Debug, Serialize)]
 pub(crate) struct HopProfile {
     pub(crate) frame_idx: u64,
-    pub(crate) time_sec: f32,
+    pub(crate) time_sec: f64,
     pub(crate) alive_voice_count: usize,
     pub(crate) elapsed_us: f64,
     pub(crate) analysis_wait_us: f64,

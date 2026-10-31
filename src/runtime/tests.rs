@@ -384,7 +384,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
     let space = Log2Space::new(200.0, 4_000.0, 12);
     let mut state = WorkerState::new(
         Community::new(timebase),
-        Conductor::from_scenario(scenario),
+        Conductor::from_scenario(scenario, timebase),
         Landscape::new(space.clone()),
         build_test_params(&space),
         DorsalStream::new(fs),
@@ -850,7 +850,7 @@ wait(0.03);
             return;
         };
         let enabled = voice.base_control.pitch.leave_self_out;
-        assert_eq!(enabled, tick as f64 / 48_000.0 >= f64::from(enable_time));
+        assert_eq!(enabled, tick as f64 / 48_000.0 >= enable_time);
         let source = state
             .schedule_renderer
             .loo_pcm
@@ -975,7 +975,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         let space = Log2Space::new(200.0, 4_000.0, 12);
         let state = WorkerState::new(
             Community::new(timebase),
-            Conductor::from_scenario(scenario),
+            Conductor::from_scenario(scenario, timebase),
             Landscape::new(space.clone()),
             build_test_params(&space),
             DorsalStream::new(fs),
@@ -1019,7 +1019,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         };
         let mut control = WorkerState::new(
             Community::new(timebase),
-            Conductor::from_scenario(scenario),
+            Conductor::from_scenario(scenario, timebase),
             Landscape::new(space.clone()),
             build_test_params(&space),
             DorsalStream::new(fs),

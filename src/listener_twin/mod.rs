@@ -4,6 +4,7 @@ use crate::core::log2space::Log2Space;
 use crate::core::meter::{MeterNetwork, MeterState};
 use crate::core::roughness_kernel::erb_grid;
 use crate::core::stream::dorsal::{DorsalMetrics, DorsalStream};
+use crate::core::timebase::Tick;
 
 mod contour;
 pub(crate) use contour::ContourEvent;
@@ -18,7 +19,7 @@ const NEUTRAL_STABILITY_LEVEL: f32 = 0.5;
 pub(crate) struct ListenerState {
     pub(crate) tonal_context: Option<f64>,
     pub(crate) tonal_context_end: Option<u64>,
-    pub(crate) time_sec: f32,
+    pub(crate) time_sec: f64,
     pub(crate) generated_frame_id: u64,
     pub(crate) analysis_frame_id: u64,
     pub(crate) analysis_lag_frames: u64,
@@ -38,7 +39,7 @@ pub(crate) struct ListenerState {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ListenerFastState {
-    pub(crate) time_sec: f32,
+    pub(crate) time_sec: f64,
     pub(crate) generated_frame_id: u64,
     pub(crate) attention_level: f32,
     pub(crate) attention_metrics: DorsalMetrics,
@@ -68,6 +69,8 @@ pub(crate) struct ListenerTwin {
     fast_stream: DorsalStream,
     meter: MeterNetwork,
     fast_state: ListenerFastState,
+    sample_rate: f32,
+    last_tick: Tick,
     erb_grid_key: Option<(u32, u32, u32, usize)>,
     erb_du_scan: Vec<f32>,
     mass_scan: Vec<f32>,
@@ -90,6 +93,8 @@ impl ListenerTwin {
             fast_stream,
             meter: MeterNetwork::new(),
             fast_state: ListenerFastState::default(),
+            sample_rate: fs,
+            last_tick: 0,
             erb_grid_key: None,
             erb_du_scan: Vec::new(),
             mass_scan: Vec::new(),
@@ -118,7 +123,7 @@ impl ListenerTwin {
 
     pub(crate) fn observe_presentation_audio(
         &mut self,
-        time_sec: f32,
+        tick: Tick,
         generated_frame_id: u64,
         audio: &[f32],
     ) -> ListenerFastState {
@@ -126,7 +131,7 @@ impl ListenerTwin {
         let attention_metrics = self.fast_stream.last_metrics();
         let salience_level = bottom_up_salience_level_from_metrics(attention_metrics);
         let dt_sec = if self.fast_state.has_state {
-            (time_sec - self.fast_state.time_sec).max(0.0)
+            tick.saturating_sub(self.last_tick) as f32 / self.sample_rate
         } else {
             0.0
         };
@@ -136,8 +141,9 @@ impl ListenerTwin {
             salience_level
         };
         let meter_state = self.meter.process(dt_sec, salience_level);
+        self.last_tick = tick;
         self.fast_state = ListenerFastState {
-            time_sec,
+            time_sec: tick as f64 / self.sample_rate as f64,
             generated_frame_id,
             attention_level,
             attention_metrics,
@@ -149,7 +155,7 @@ impl ListenerTwin {
 
     pub(crate) fn observe_presentation_landscape(
         &mut self,
-        time_sec: f32,
+        time_sec: f64,
         generated_frame_id: u64,
         analysis_frame_id: u64,
         landscape: &Landscape,
@@ -475,6 +481,33 @@ mod tests {
     use super::*;
     use crate::core::landscape::Landscape;
 
+    #[test]
+    fn indefinite_listener_dt_preserves_one_hop_at_large_tick() {
+        let fs = 48_000.0f32;
+        let offset = 1u64 << 40;
+        let hop = 512;
+        let mut twin = ListenerTwin::with_sample_rate(fs, ListenerTwinConfig::default());
+        let first = twin.observe_presentation_audio(offset, 0, &[0.0; 512]);
+        let mut transient = [0.0; 512];
+        transient[0] = 1.0;
+        let state = twin.observe_presentation_audio(offset + hop, 1, &transient);
+        let target = bottom_up_salience_level_from_metrics(state.attention_metrics);
+        let expected = smooth_attention_level(first.attention_level, target, hop as f32 / fs);
+        let mut reference = MeterNetwork::new();
+        reference.process(
+            0.0,
+            bottom_up_salience_level_from_metrics(first.attention_metrics),
+        );
+        let meter = reference.process(hop as f32 / fs, target);
+        assert_eq!(
+            serde_json::to_value(state.meter_state).unwrap(),
+            serde_json::to_value(meter).unwrap()
+        );
+        assert_eq!(state.time_sec, (offset + hop) as f64 / fs as f64);
+        assert!(expected > 0.0);
+        assert_eq!(state.attention_level, expected);
+    }
+
     fn test_landscape(default_level: f32, active: &[(usize, f32, f32)]) -> Landscape {
         test_landscape_with_space(Log2Space::new(100.0, 400.0, 12), default_level, active)
     }
@@ -773,11 +806,11 @@ mod tests {
     fn presentation_audio_transient_raises_attention() {
         let mut twin = ListenerTwin::with_sample_rate(48_000.0, ListenerTwinConfig::default());
         let quiet = vec![0.0f32; 256];
-        let quiet_state = twin.observe_presentation_audio(0.0, 0, &quiet);
+        let quiet_state = twin.observe_presentation_audio(0, 0, &quiet);
 
         let mut transient = vec![0.0f32; 256];
         transient[0] = 1.0;
-        let active_state = twin.observe_presentation_audio(0.01, 1, &transient);
+        let active_state = twin.observe_presentation_audio(480, 1, &transient);
 
         assert!(quiet_state.attention_level < 0.01);
         assert!(active_state.attention_level > quiet_state.attention_level);
@@ -788,12 +821,12 @@ mod tests {
     fn presentation_attention_decays_smoothly_after_transient() {
         let mut twin = ListenerTwin::with_sample_rate(48_000.0, ListenerTwinConfig::default());
         let quiet = vec![0.0f32; 256];
-        twin.observe_presentation_audio(0.0, 0, &quiet);
+        twin.observe_presentation_audio(0, 0, &quiet);
 
         let mut transient = vec![0.0f32; 256];
         transient[0] = 1.0;
-        let active_state = twin.observe_presentation_audio(0.01, 1, &transient);
-        let decay_state = twin.observe_presentation_audio(0.02, 2, &quiet);
+        let active_state = twin.observe_presentation_audio(480, 1, &transient);
+        let decay_state = twin.observe_presentation_audio(960, 2, &quiet);
 
         assert!(decay_state.attention_level > 0.0);
         assert!(decay_state.attention_level < active_state.attention_level);
@@ -803,7 +836,7 @@ mod tests {
     fn listener_rhythm_uses_internal_attention_vitality() {
         let mut twin = ListenerTwin::with_sample_rate(48_000.0, ListenerTwinConfig::default());
         let quiet = vec![0.0f32; 256];
-        let state = twin.observe_presentation_audio(0.0, 0, &quiet);
+        let state = twin.observe_presentation_audio(0, 0, &quiet);
 
         assert!(state.attention_level < 0.01);
         assert!(state.has_state);

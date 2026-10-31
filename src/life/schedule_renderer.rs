@@ -1077,8 +1077,8 @@ impl ScheduleRenderer {
 }
 
 fn max_phonation_hold_ticks(time: Timebase) -> Tick {
-    let max_sec = 60.0;
-    let ticks = time.sec_to_tick(max_sec);
+    let max_sec: f32 = 60.0;
+    let ticks = time.sec_to_tick(max_sec as f64);
     ticks.max(1)
 }
 

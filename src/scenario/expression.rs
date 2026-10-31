@@ -97,7 +97,7 @@ impl Expression {
         let mut populations = BTreeMap::new();
         for event in events {
             for action in &event.actions {
-                if f64::from(event.time) > self.end && !matches!(action, Action::Finish) {
+                if event.time > self.end && !matches!(action, Action::Finish) {
                     return Err(
                         "requires the final section, with all populations released by its end",
                     );
@@ -123,9 +123,7 @@ impl Expression {
                         patch,
                     } => {
                         if let Some((control, _)) = populations.get_mut(population_id) {
-                            if f64::from(event.time) >= self.start
-                                && patch.pitch_apply_mode.is_some()
-                            {
+                            if event.time >= self.start && patch.pitch_apply_mode.is_some() {
                                 return Err("pitch application cannot change inside the interval");
                             }
                             control.apply_update(patch);
@@ -157,16 +155,8 @@ impl Scenario {
             return;
         };
         let mut reason = expression.validate(self).err();
-        let delivery = |time: f32| {
-            let mut n = (f64::from(time) * f64::from(fs) / hop as f64).ceil() as u64;
-            while n > 0 && ((n - 1) * hop as u64) as f32 / fs >= time {
-                n -= 1;
-            }
-            while (n * hop as u64) as f32 / fs < time {
-                n += 1;
-            }
-            n
-        };
+        let timebase = crate::core::timebase::Timebase { fs, hop };
+        let delivery = |time: f64| timebase.sec_to_tick(time).div_ceil(hop as u64);
         for event in &self.events {
             for action in &event.actions {
                 if let Action::Spawn {
@@ -178,23 +168,22 @@ impl Scenario {
                 {
                     for release in &self.events {
                         if release.actions.iter().any(|a| matches!(a, Action::ReleasePopulation {population_id: id, ..} if id == population_id))
-                            && delivery(expression.performance(f64::from(event.time)) as f32) >= delivery(expression.performance(f64::from(release.time)) as f32)
+                            && delivery(expression.performance(event.time)) >= delivery(expression.performance(release.time))
                         { reason = Some("Once onset and release must occupy distinct delivery hops"); }
                     }
                 }
             }
         }
-        let mut finish = expression.performance(f64::from(self.duration_sec));
+        let mut finish = expression.performance(self.duration_sec);
         // Finish already contains physical release tails. Recover the score
         // cursor saved by the compiler instead of stretching those tails.
         if let Some(cursor) = self.expression_cursor {
-            finish = expression.performance(f64::from(cursor));
+            finish = expression.performance(cursor);
         }
         for event in &self.events {
             for action in &event.actions {
                 if let Action::ReleasePopulation { fade_sec, .. } = action {
-                    finish = finish
-                        .max(expression.performance(f64::from(event.time)) + f64::from(*fade_sec));
+                    finish = finish.max(expression.performance(event.time) + f64::from(*fade_sec));
                 }
             }
         }
@@ -214,15 +203,15 @@ impl Scenario {
         }
         for event in &mut self.events {
             event.time = if event.actions.iter().any(|a| matches!(a, Action::Finish)) {
-                finish as f32
+                finish
             } else {
-                expression.performance(f64::from(event.time)) as f32
+                expression.performance(event.time)
             };
         }
         for marker in &mut self.scene_markers {
-            marker.time = expression.performance(f64::from(marker.time)) as f32;
+            marker.time = expression.performance(marker.time);
         }
-        self.duration_sec = finish as f32;
+        self.duration_sec = finish;
     }
 }
 

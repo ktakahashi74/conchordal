@@ -45,7 +45,7 @@ fn consonance_field_score_axis_bounds(
     (y_min as f64, y_max as f64)
 }
 
-fn format_time(sec: f32) -> String {
+fn format_time(sec: f64) -> String {
     let total_secs = sec.max(0.0).floor() as u64;
     let minutes = total_secs / 60;
     let seconds = total_secs % 60;
@@ -672,7 +672,7 @@ pub fn main_window(
             let bar_width =
                 (ui.available_width() - btn_size - ui.spacing().item_spacing.x).max(50.0);
             ui.add(
-                egui::ProgressBar::new(progress)
+                egui::ProgressBar::new(progress as f32)
                     .text(progress_text)
                     .desired_width(bar_width),
             );
@@ -871,7 +871,7 @@ pub fn main_window(
                     .unwrap_or_else(|| "None".to_string());
                 let next_gate_sec = frame.prediction.next_gate_tick_est.and_then(|tick| {
                     if fs > 0.0 {
-                        Some(tick as f32 / fs)
+                        Some(tick as f64 / fs as f64)
                     } else {
                         None
                     }

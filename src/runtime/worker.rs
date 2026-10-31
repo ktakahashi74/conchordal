@@ -106,7 +106,7 @@ pub(super) struct WorkerState {
 }
 
 impl WorkerState {
-    pub(super) fn current_time(&self) -> f32 {
+    pub(super) fn current_time(&self) -> f64 {
         self.timebase
             .tick_to_sec(self.timebase.frame_start_tick(self.frame_idx))
     }
@@ -264,7 +264,7 @@ pub(super) fn worker_loop(
             &state.conductor,
             &state.pop,
             &state.current_landscape,
-            state.current_time(),
+            state.timebase.frame_start_tick(state.frame_idx),
             state.playback_state,
             cfg.fs,
         );
@@ -586,7 +586,7 @@ pub(super) fn process_hop(
     let analysis_updated = wait_for_analysis(state, &channels.analysis_result_rx, &cfg.exiting);
     let analysis_wait = analysis_wait_start.elapsed();
     let landscape_start = state.profile.as_ref().map(|_| Instant::now());
-    apply_landscape_updates(state, channels, cfg, analysis_updated, now_tick, now_sec);
+    apply_landscape_updates(state, channels, cfg, analysis_updated, now_tick);
     let landscape_update = landscape_start
         .map(|start| start.elapsed())
         .unwrap_or_default();
@@ -651,7 +651,7 @@ pub(super) fn process_hop(
                     != now_tick.saturating_sub(cfg.hop as Tick) / second_ticks
             {
                 report_try(&mut state.reporter, "flora", |writer| {
-                    writer.write_flora(flora, f64::from(now_sec), &state.current_landscape)
+                    writer.write_flora(flora, now_sec, &state.current_landscape)
                 });
             }
         }
@@ -683,7 +683,7 @@ pub(super) fn process_hop(
     }
     drive_production_meter(state, cfg, channels, habitat_chunk.as_ref());
     state.latest_listener_fast_state = Some(state.listener_twin.observe_presentation_audio(
-        now_sec,
+        now_tick,
         state.frame_idx,
         presentation_chunk.as_ref(),
     ));

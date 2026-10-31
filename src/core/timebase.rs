@@ -7,15 +7,15 @@ pub struct Timebase {
 }
 
 impl Timebase {
-    pub fn tick_to_sec(&self, t: Tick) -> f32 {
-        t as f32 / self.fs
+    pub fn tick_to_sec(&self, t: Tick) -> f64 {
+        t as f64 / self.fs as f64
     }
 
-    pub fn sec_to_tick(&self, s: f32) -> Tick {
+    pub fn sec_to_tick(&self, s: f64) -> Tick {
         if s <= 0.0 {
             return 0;
         }
-        let tick = (s as f64 * self.fs as f64).round();
+        let tick = (s * self.fs as f64).round();
         tick as Tick
     }
 
@@ -39,10 +39,14 @@ mod tests {
             fs: 48_000.0,
             hop: 512,
         };
-        let t: Tick = 12_345;
-        let sec = tb.tick_to_sec(t);
-        let round = tb.sec_to_tick(sec);
-        assert_eq!(round, t);
+        for t in [12_345, (1u64 << 40) - 1, 1u64 << 40, (1u64 << 40) + 1] {
+            let sec = tb.tick_to_sec(t);
+            let round: Tick = tb.sec_to_tick(sec);
+            assert_eq!(round, t);
+        }
+        assert_eq!(tb.sec_to_tick(-1.0), 0);
+        assert_eq!(tb.sec_to_tick(0.49 / tb.fs as f64), 0);
+        assert_eq!(tb.sec_to_tick(0.51 / tb.fs as f64), 1);
     }
 
     #[test]

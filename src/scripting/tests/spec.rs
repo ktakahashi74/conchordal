@@ -292,11 +292,11 @@ fn parallel_advances_to_max_child_end() {
         .iter()
         .find(|ev| ev.actions.iter().any(|a| matches!(a, Action::Finish)))
         .map(|ev| ev.time);
-    let mut release_tail: f32 = 0.0;
+    let mut release_tail: f64 = 0.0;
     for event in &scenario.events {
         for action in &event.actions {
             if let Action::ReleasePopulation { fade_sec, .. } = action {
-                release_tail = release_tail.max(event.time + fade_sec);
+                release_tail = release_tail.max(event.time + *fade_sec as f64);
             }
         }
     }

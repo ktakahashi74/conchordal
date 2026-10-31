@@ -5,11 +5,13 @@ use tracing::info;
 
 use super::community::Community;
 use crate::core::landscape::Landscape;
+use crate::core::timebase::{Tick, Timebase};
 use crate::scenario::{Action, Scenario, SceneMarker, TimedEvent};
 
 #[derive(Debug, Clone)]
 pub struct QueuedEvent {
-    pub time: f32,
+    pub time: f64,
+    tick: Tick,
     pub order: u64,
     pub actions: Vec<Action>,
 }
@@ -17,7 +19,8 @@ pub struct QueuedEvent {
 #[derive(Debug, Clone)]
 struct SceneInfo {
     name: String,
-    time: f32,
+    time: f64,
+    tick: Tick,
     order: u64,
 }
 
@@ -25,16 +28,21 @@ struct SceneInfo {
 pub struct Conductor {
     pub(crate) expression: Option<crate::scenario::expression::Expression>,
     event_queue: VecDeque<QueuedEvent>,
-    total_duration: f32,
+    total_duration: f64,
     scenes: Vec<SceneInfo>,
 }
 
 impl Conductor {
-    pub fn from_scenario(s: Scenario) -> Self {
+    pub fn from_scenario(s: Scenario, timebase: Timebase) -> Self {
         let mut scenes: Vec<SceneInfo> = s
             .scene_markers
             .into_iter()
-            .map(|SceneMarker { name, time, order }| SceneInfo { name, time, order })
+            .map(|SceneMarker { name, time, order }| SceneInfo {
+                name,
+                time,
+                tick: timebase.sec_to_tick(time),
+                order,
+            })
             .collect();
         scenes.sort_by(|a, b| cmp_time_order(a.time, a.order, b.time, b.order));
 
@@ -48,6 +56,7 @@ impl Conductor {
                      actions,
                  }| QueuedEvent {
                     time,
+                    tick: timebase.sec_to_tick(time),
                     order,
                     actions,
                 },
@@ -69,16 +78,11 @@ impl Conductor {
     ///
     /// Note: spawn placement rules (e.g. minimum ERB distance between fundamentals) are enforced
     /// inside `Community` when handling spawn actions.
-    pub fn dispatch_until(
-        &mut self,
-        time_sec: f32,
-        landscape: &Landscape,
-        community: &mut Community,
-    ) {
+    pub fn dispatch_until(&mut self, tick: Tick, landscape: &Landscape, community: &mut Community) {
         // Audio thread: pop-then-restore avoids an `expect`, and logging one line per
         // action avoids joining descriptions into a temporary `String`.
         while let Some(ev) = self.event_queue.pop_front() {
-            if ev.time > time_sec {
+            if ev.tick > tick {
                 self.event_queue.push_front(ev);
                 break;
             }
@@ -95,7 +99,7 @@ impl Conductor {
         self.event_queue.is_empty()
     }
 
-    pub fn total_duration(&self) -> f32 {
+    pub fn total_duration(&self) -> f64 {
         self.total_duration
     }
 
@@ -103,10 +107,10 @@ impl Conductor {
         self.event_queue.len()
     }
 
-    pub fn current_scene_name(&self, time_sec: f32) -> Option<String> {
+    pub fn current_scene_name(&self, tick: Tick) -> Option<String> {
         let mut current: Option<String> = None;
         for scene in &self.scenes {
-            if time_sec + f32::EPSILON >= scene.time {
+            if tick >= scene.tick {
                 current = Some(scene.name.clone());
             } else {
                 break;
@@ -117,7 +121,7 @@ impl Conductor {
 }
 
 #[inline]
-fn cmp_time_order(a_time: f32, a_order: u64, b_time: f32, b_order: u64) -> Ordering {
+fn cmp_time_order(a_time: f64, a_order: u64, b_time: f64, b_order: u64) -> Ordering {
     a_time
         .partial_cmp(&b_time)
         .unwrap_or(Ordering::Equal)

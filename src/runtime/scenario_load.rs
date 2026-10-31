@@ -2,9 +2,9 @@ use super::*;
 
 #[inline]
 pub(super) fn cmp_time_order(
-    a_time: f32,
+    a_time: f64,
     a_order: u64,
-    b_time: f32,
+    b_time: f64,
     b_order: u64,
 ) -> std::cmp::Ordering {
     a_time
@@ -83,7 +83,7 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
         .iter()
         .map(|ev| ev.time)
         .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        && scenario.duration_sec + f32::EPSILON < max_time
+        && scenario.duration_sec + f64::EPSILON < max_time
     {
         return Err("Scenario duration_sec is before last event".to_string());
     }

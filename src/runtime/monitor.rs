@@ -48,7 +48,7 @@ impl AudioMonitor {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn update(
         &mut self,
-        current_time: f32,
+        current_time: f64,
         frame_idx: u64,
         hop: usize,
         hop_duration: Duration,
@@ -214,7 +214,7 @@ impl std::fmt::Display for Telemetry {
     }
 }
 
-pub(super) fn log_guard_meter(cfg: &WorkerConfig, last_guard_log: &mut Instant, current_time: f32) {
+pub(super) fn log_guard_meter(cfg: &WorkerConfig, last_guard_log: &mut Instant, current_time: f64) {
     if let Some(meter) = cfg.guard_meter.as_ref()
         && last_guard_log.elapsed() >= Duration::from_millis(200)
         && let Some(stats) = meter.take_snapshot()

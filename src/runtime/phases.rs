@@ -14,11 +14,9 @@ pub(super) fn advance_population(
     if now_tick == 0 && std::env::var_os("HRY_EXECUTION").is_some() {
         state.schedule_renderer.harmonic_execution = Some(Vec::new());
     }
-    state.conductor.dispatch_until(
-        state.current_time(),
-        &state.current_landscape,
-        &mut state.pop,
-    );
+    state
+        .conductor
+        .dispatch_until(now_tick, &state.current_landscape, &mut state.pop);
     for receipt in state.schedule_renderer.phrase_receipts.drain(..) {
         if let Some(voice) = state.pop.voices.iter_mut().find(|v| {
             v.id() == receipt.record.voice_id && v.metadata.generation == receipt.record.generation
@@ -388,7 +386,7 @@ pub(super) fn route_body_footprints(
 pub(super) fn emit_hop_reports(
     state: &mut WorkerState,
     cfg: &WorkerConfig,
-    now_sec: f32,
+    now_sec: f64,
     phonation_count: usize,
     listener_state_update: Option<ListenerState>,
     listener_pressure_update: Option<ListenerPressure>,

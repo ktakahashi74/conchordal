@@ -1076,7 +1076,7 @@ fn sec_to_tick_at_least_one(time: Timebase, sec: f32) -> Tick {
     if !sec.is_finite() || sec <= 0.0 {
         return 1;
     }
-    let ticks = time.sec_to_tick(sec);
+    let ticks = time.sec_to_tick(sec as f64);
     if ticks < 1 { 1 } else { ticks }
 }
 

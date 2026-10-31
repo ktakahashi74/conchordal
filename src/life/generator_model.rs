@@ -33,7 +33,7 @@ impl TerrainPredictor {
     fn theta_period_tick(time: &Timebase, rhythm: &NeuralRhythms) -> Tick {
         let theta_hz = rhythm.theta.freq_hz;
         if theta_hz.is_finite() && theta_hz > 0.0 {
-            time.sec_to_tick(1.0 / theta_hz).max(1)
+            time.sec_to_tick((1.0 / theta_hz) as f64).max(1)
         } else {
             (time.hop as Tick).max(1)
         }

@@ -9,7 +9,7 @@ pub struct LifeRecord {
     pub population_id: u64,
     pub birth_frame: u64,
     pub death_frame: u64,
-    pub lifetime_ticks: u32,
+    pub lifetime_ticks: u64,
     pub configured_endurance_sec: Option<f32>,
     pub energy_depletion_sec: Option<f32>,
     pub c_level_firstk_mean: f32,
@@ -24,8 +24,8 @@ pub struct LifeAccumulator {
     // first-k tracking
     firstk_sum: f32,
     firstk_count: u32,
-    lifetime_count: u32,
-    elapsed_sec: f32,
+    lifetime_count: u64,
+    elapsed_sec: f64,
     configured_endurance_sec: Option<f32>,
     energy_depletion_sec: Option<f32>,
 }
@@ -46,9 +46,9 @@ impl LifeAccumulator {
 
     pub fn accumulate_tick(&mut self, c_level: f32, energy_depleted: bool, dt_sec: f32) {
         self.lifetime_count += 1;
-        self.elapsed_sec += dt_sec.max(0.0);
+        self.elapsed_sec += dt_sec.max(0.0) as f64;
         if energy_depleted && self.energy_depletion_sec.is_none() {
-            self.energy_depletion_sec = Some(self.elapsed_sec);
+            self.energy_depletion_sec = Some(self.elapsed_sec as f32);
         }
         if self.firstk_count < self.first_k {
             self.firstk_sum += c_level;
@@ -106,6 +106,20 @@ mod tests {
         // first-k mean: (1+2+3)/3 = 2.0
         assert!((rec.c_level_firstk_mean - 2.0).abs() < 1e-6);
         assert_eq!(rec.plv_at_death, Some(0.9));
+    }
+
+    #[test]
+    fn indefinite_accumulator_advances_aged_time_and_count() {
+        let mut acc = LifeAccumulator::new(0, 5, None);
+        acc.elapsed_sec = (1u64 << 20) as f64;
+        acc.lifetime_count = u32::MAX as u64;
+        let dt = 512.0 / 48_000.0;
+        acc.accumulate_tick(0.5, false, dt);
+        assert_eq!(acc.elapsed_sec, (1u64 << 20) as f64 + dt as f64);
+        assert_eq!(
+            acc.finalize(1, 1, 0, None, 0).lifetime_ticks,
+            u32::MAX as u64 + 1
+        );
     }
 
     #[test]

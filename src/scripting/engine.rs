@@ -1188,7 +1188,7 @@ impl ScriptHost {
             "wait",
             move |_call_ctx: NativeCallContext, sec: FLOAT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_wait.lock().expect("lock script context");
-                ctx.wait(sec as f32);
+                ctx.wait(sec);
                 Ok(())
             },
         );
@@ -1197,7 +1197,7 @@ impl ScriptHost {
             "wait",
             move |_call_ctx: NativeCallContext, sec: INT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_wait_int.lock().expect("lock script context");
-                ctx.wait(sec as f32);
+                ctx.wait(sec as f64);
                 Ok(())
             },
         );
@@ -1321,8 +1321,8 @@ impl ScriptHost {
                 ctx.pop_scope();
                 if ctx.listener_profile == "tonal" {
                     ctx.profile_section = Some(crate::scenario::expression::Expression {
-                        start: f64::from(start),
-                        end: f64::from(ctx.cursor),
+                        start,
+                        end: ctx.cursor,
                         arch: 1.0,
                         ritard: 1.0,
                         position: (0, 0),
@@ -1366,8 +1366,8 @@ impl ScriptHost {
                         let end = ctx.cursor;
                         ctx.expression_sections.push((
                             crate::scenario::expression::Expression {
-                                start: f64::from(start),
-                                end: f64::from(end),
+                                start,
+                                end,
                                 from_profile: false,
                                 arch: arch.min(1.0),
                                 ritard: ritard.min(1.0),

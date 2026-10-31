@@ -119,7 +119,7 @@ pub struct RainPatch {
 #[derive(Debug, Clone)]
 pub struct Scenario {
     pub(crate) expression: Option<expression::Expression>,
-    pub(crate) expression_cursor: Option<f32>,
+    pub(crate) expression_cursor: Option<f64>,
     pub seed: u64,
     /// Scene playback gain, added to the audio config in dB before output guards.
     pub output_gain_db: f32,
@@ -136,7 +136,7 @@ pub struct Scenario {
     pub meter_shaping: MeterShaping,
     pub scene_markers: Vec<SceneMarker>,
     pub events: Vec<TimedEvent>,
-    pub duration_sec: f32,
+    pub duration_sec: f64,
 }
 
 /// New temporal cognition is opt-in; observation never adds action pressure.
@@ -170,13 +170,13 @@ pub enum ScaffoldConfig {
 #[derive(Debug, Clone)]
 pub struct SceneMarker {
     pub name: String,
-    pub time: f32,
+    pub time: f64,
     pub order: u64,
 }
 
 #[derive(Debug, Clone)]
 pub struct TimedEvent {
-    pub time: f32,
+    pub time: f64,
     pub order: u64,
     pub actions: Vec<Action>,
 }

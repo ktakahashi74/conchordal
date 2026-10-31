@@ -26,7 +26,7 @@ pub struct DorsalFrame {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ListenerFrame {
-    pub time_sec: f32,
+    pub time_sec: f64,
     pub generated_frame_id: u64,
     pub analysis_frame_id: u64,
     pub analysis_lag_frames: u64,
@@ -59,8 +59,8 @@ pub enum PlaybackState {
 
 #[derive(Clone, Debug, Default)]
 pub struct SimulationMeta {
-    pub time_sec: f32,
-    pub duration_sec: f32,
+    pub time_sec: f64,
+    pub duration_sec: f64,
     pub voice_count: usize,
     pub event_queue_len: usize,
     pub audio_xruns: u64,

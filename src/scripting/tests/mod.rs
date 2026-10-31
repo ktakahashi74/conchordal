@@ -36,7 +36,7 @@ fn run_script_with_seed(src: &str, seed: u64) -> (Scenario, ScriptWarnings) {
     (ctx_out.scenario.clone(), ctx_out.warnings.clone())
 }
 
-fn action_times(scenario: &Scenario) -> Vec<(f32, &Action)> {
+fn action_times(scenario: &Scenario) -> Vec<(f64, &Action)> {
     let mut out = Vec::new();
     for ev in &scenario.events {
         for action in &ev.actions {

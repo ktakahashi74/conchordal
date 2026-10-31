@@ -65,8 +65,9 @@ fn replacement_keeps_pre_off_pcm_and_overlaps_independent_release_with_fresh_att
                     let mut onset = batch.clone();
                     onset.cmds.remove(0);
                     // The new Tone's complete attack is the ordinary cold-start path.
-                    let stop =
-                        off + time.sec_to_tick(batch.tones[0].adsr.unwrap().release_sec.max(1.6));
+                    let stop = off
+                        + time
+                            .sec_to_tick(batch.tones[0].adsr.unwrap().release_sec.max(1.6) as f64);
                     let mut tail_peak = 0.0f32;
                     for now in (replacement_hop..stop).step_by(time.hop) {
                         let commands = if now == replacement_hop {

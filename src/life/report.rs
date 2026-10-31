@@ -5,6 +5,7 @@ use std::io::{BufWriter, Write};
 use serde::Serialize;
 
 use crate::core::landscape::Landscape;
+use crate::core::timebase::Tick;
 use crate::dcc_coupler::ListenerPressure;
 use crate::life::community::{PhonationGateOpenEvent, RuntimeEvent, SpawnReason};
 use crate::life::telemetry::LifeRecord;
@@ -17,14 +18,14 @@ pub struct JsonlReporter {
     writer: BufWriter<File>,
     rhythm_onsets: Vec<OnsetSample>,
     rhythm_observations: Vec<RhythmObservation>,
-    listener_beat_confidence: Vec<(f32, f32)>,
+    listener_beat_confidence: Vec<(f64, f32)>,
     rhythm_summary_written: bool,
     pub(crate) failure: Option<String>,
 }
 
 #[derive(Debug, Clone)]
 pub struct OnsetSample {
-    pub time_sec: f32,
+    pub time_sec: f64,
     pub onset_frame: u64,
     pub population_id: u64,
     pub voice_id: u64,
@@ -38,7 +39,7 @@ pub struct OnsetSample {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct PopulationStepSummary {
-    pub time_sec: f32,
+    pub time_sec: f64,
     pub population_id: u64,
     pub alive_count: usize,
     pub mean_freq_hz: f32,
@@ -49,7 +50,7 @@ pub struct PopulationStepSummary {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RhythmObservation {
-    pub time_sec: f32,
+    pub time_sec: f64,
     pub kuramoto_order_r: Option<f32>,
     pub kuramoto_active_count: usize,
     pub onsets_in_hop: usize,
@@ -71,7 +72,7 @@ pub(crate) struct ListenerStateSample {
     pub(crate) tonal_context: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tonal_context_end: Option<u64>,
-    pub(crate) time_sec: f32,
+    pub(crate) time_sec: f64,
     pub(crate) generated_frame_id: u64,
     pub(crate) analysis_frame_id: u64,
     pub(crate) analysis_lag_frames: u64,
@@ -103,7 +104,7 @@ pub(crate) struct TemporalMeterSample {
 #[derive(Debug, Serialize)]
 pub(crate) struct HopTimingSample {
     pub(crate) frame_idx: u64,
-    pub(crate) time_sec: f32,
+    pub(crate) time_sec: f64,
     pub(crate) elapsed_us: f64,
     pub(crate) analysis_wait_us: f64,
     pub(crate) listener_wait_us: f64,
@@ -114,9 +115,9 @@ pub(crate) struct HopTimingSample {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RhythmSummary {
-    pub time_sec: f32,
-    pub window_start_sec: f32,
-    pub window_end_sec: f32,
+    pub time_sec: f64,
+    pub window_start_sec: f64,
+    pub window_end_sec: f64,
     pub population_id: Option<u64>,
     pub onset_count: usize,
     pub onset_density_hz: f32,
@@ -126,7 +127,7 @@ pub struct RhythmSummary {
     pub mean_plv: Option<f32>,
     pub kuramoto_order_mean: Option<f32>,
     pub kuramoto_order_max: Option<f32>,
-    pub sync_emergence_sec: Option<f32>,
+    pub sync_emergence_sec: Option<f64>,
     pub burstiness: Option<f32>,
     pub one_over_f_slope: Option<f32>,
     pub ioi_one_over_f_slope: Option<f32>,
@@ -241,7 +242,7 @@ enum ReportRecord<'a> {
         prototype_assignment: Option<crate::temporal_cognition::body_model::Assignment>,
     },
     TemporalObservation {
-        time_sec: f32,
+        time_sec: f64,
         observation: &'a crate::temporal_cognition::observation::Snapshot,
     },
     Meta {
@@ -249,12 +250,12 @@ enum ReportRecord<'a> {
         hop_timing_scope: &'static str,
     },
     SceneMarker {
-        time_sec: f32,
+        time_sec: f64,
         order: u64,
         name: &'a str,
     },
     Spawn {
-        time_sec: f32,
+        time_sec: f64,
         population_id: u64,
         voice_id: u64,
         generation: u32,
@@ -262,7 +263,7 @@ enum ReportRecord<'a> {
         freq_hz: f32,
     },
     Respawn {
-        time_sec: f32,
+        time_sec: f64,
         population_id: u64,
         voice_id: u64,
         generation: u32,
@@ -271,7 +272,7 @@ enum ReportRecord<'a> {
         parent_id: Option<u64>,
     },
     Death {
-        time_sec: f32,
+        time_sec: f64,
         population_id: u64,
         voice_id: u64,
         generation: u32,
@@ -282,7 +283,7 @@ enum ReportRecord<'a> {
         plv_at_death: Option<f32>,
     },
     Onset {
-        time_sec: f32,
+        time_sec: f64,
         onset_frame: u64,
         population_id: u64,
         voice_id: u64,
@@ -294,7 +295,7 @@ enum ReportRecord<'a> {
         scaffold_phase_0_1: Option<f32>,
     },
     PopulationStep {
-        time_sec: f32,
+        time_sec: f64,
         population_id: u64,
         alive_count: usize,
         mean_freq_hz: f32,
@@ -303,7 +304,7 @@ enum ReportRecord<'a> {
         freq_entropy_log2: f32,
     },
     RhythmObservation {
-        time_sec: f32,
+        time_sec: f64,
         kuramoto_order_r: Option<f32>,
         kuramoto_active_count: usize,
         onsets_in_hop: usize,
@@ -348,7 +349,7 @@ enum ReportRecord<'a> {
         transition: &'a crate::life::span_gap::Transition,
     },
     OnsetHabituationScan {
-        time_sec: f32,
+        time_sec: f64,
         observation_end: u64,
         known: bool,
         fmin_hz: f32,
@@ -390,7 +391,7 @@ enum ReportRecord<'a> {
     },
     HopTiming(&'a HopTimingSample),
     DccPressure {
-        time_sec: f32,
+        time_sec: f64,
         tension_pressure: f32,
         temperature_bonus: f32,
     },
@@ -409,7 +410,7 @@ enum ReportRecord<'a> {
         known_coverage_by_age: [f32; 8],
     },
     Habituation {
-        time_sec: f32,
+        time_sec: f64,
         mean_h: f32,
         max_h: f32,
         mean_erosion: f32,
@@ -419,7 +420,7 @@ enum ReportRecord<'a> {
         tracked_eff_score: f32,
     },
     HabituationScan {
-        time_sec: f32,
+        time_sec: f64,
         fmin_hz: f32,
         bins_per_octave: u32,
         n_bins: usize,
@@ -428,9 +429,9 @@ enum ReportRecord<'a> {
         eff_score_scan: &'a [f32],
     },
     RhythmSummary {
-        time_sec: f32,
-        window_start_sec: f32,
-        window_end_sec: f32,
+        time_sec: f64,
+        window_start_sec: f64,
+        window_end_sec: f64,
         population_id: Option<u64>,
         onset_count: usize,
         onset_density_hz: f32,
@@ -440,20 +441,20 @@ enum ReportRecord<'a> {
         mean_plv: Option<f32>,
         kuramoto_order_mean: Option<f32>,
         kuramoto_order_max: Option<f32>,
-        sync_emergence_sec: Option<f32>,
+        sync_emergence_sec: Option<f64>,
         burstiness: Option<f32>,
         one_over_f_slope: Option<f32>,
         ioi_one_over_f_slope: Option<f32>,
     },
     ListenerConfidenceSummary {
-        window_start_sec: f32,
-        window_end_sec: f32,
+        window_start_sec: f64,
+        window_end_sec: f64,
         sample_count: usize,
         beat_confidence_peak: f32,
         beat_confidence_late_mean: f32,
     },
     PhonationGateOpen {
-        time_sec: f32,
+        time_sec: f64,
         population_id: u64,
         voice_id: u64,
         consonance: f32,
@@ -506,7 +507,7 @@ impl JsonlReporter {
     /// so a report can be matched back to a `--seed` replay.
     pub(crate) fn write_temporal_observation(
         &mut self,
-        time_sec: f32,
+        time_sec: f64,
         observation: &crate::temporal_cognition::observation::Snapshot,
     ) -> Result<(), String> {
         self.write_record(&ReportRecord::TemporalObservation {
@@ -691,7 +692,7 @@ impl JsonlReporter {
         let frame_sec = hop as f32 / fs.max(1.0);
         for record in records {
             self.write_record(&ReportRecord::Death {
-                time_sec: record.death_frame as f32 * frame_sec,
+                time_sec: record.death_frame as f64 * hop as f64 / fs.max(1.0) as f64,
                 population_id: record.population_id,
                 voice_id: record.voice_id,
                 generation: record.generation,
@@ -805,7 +806,7 @@ impl JsonlReporter {
 
     pub(crate) fn write_dcc_pressure(
         &mut self,
-        time_sec: f32,
+        time_sec: f64,
         pressure: ListenerPressure,
     ) -> Result<(), String> {
         self.write_record(&ReportRecord::DccPressure {
@@ -818,7 +819,7 @@ impl JsonlReporter {
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn write_habituation(
         &mut self,
-        time_sec: f32,
+        time_sec: f64,
         mean_h: f32,
         max_h: f32,
         mean_erosion: f32,
@@ -1012,7 +1013,7 @@ impl JsonlReporter {
 
     pub(crate) fn write_habituation_scan(
         &mut self,
-        time_sec: f32,
+        time_sec: f64,
         landscape: &crate::core::landscape::Landscape,
     ) -> Result<(), String> {
         let space = &landscape.space;
@@ -1186,7 +1187,7 @@ pub fn summarize_rhythm(
         })
         .collect();
 
-    let mut times: Vec<f32> = filtered
+    let mut times: Vec<f64> = filtered
         .iter()
         .filter_map(|onset| onset.time_sec.is_finite().then_some(onset.time_sec))
         .collect();
@@ -1196,15 +1197,15 @@ pub fn summarize_rhythm(
     let window_end_sec = times.last().copied().unwrap_or(window_start_sec);
     let window_duration = (window_end_sec - window_start_sec).max(0.0);
     let onset_count = filtered.len();
-    let onset_density_hz = if window_duration > f32::EPSILON {
-        onset_count as f32 / window_duration
+    let onset_density_hz = if window_duration > f64::EPSILON {
+        (onset_count as f64 / window_duration) as f32
     } else {
         0.0
     };
 
     let iois: Vec<f32> = times
         .windows(2)
-        .map(|pair| (pair[1] - pair[0]).max(0.0))
+        .map(|pair| (pair[1] - pair[0]).max(0.0) as f32)
         .collect();
     let (ioi_mean_sec, ioi_std_sec) = mean_and_std(&iois).unwrap_or((0.0, 0.0));
     let has_ioi = !iois.is_empty() && ioi_mean_sec.is_finite() && ioi_mean_sec > f32::EPSILON;
@@ -1264,13 +1265,13 @@ pub fn summarize_rhythm(
 struct RhythmObservationSummary {
     mean: Option<f32>,
     max: Option<f32>,
-    sync_emergence_sec: Option<f32>,
+    sync_emergence_sec: Option<f64>,
 }
 
 fn summarize_rhythm_observations(
     observations: &[RhythmObservation],
 ) -> Option<RhythmObservationSummary> {
-    let mut values: Vec<(f32, f32)> = observations
+    let mut values: Vec<(f64, f32)> = observations
         .iter()
         .filter_map(|observation| {
             let r = observation.kuramoto_order_r?;
@@ -1299,7 +1300,7 @@ fn summarize_rhythm_observations(
     })
 }
 
-fn sync_emergence_sec(values: &[(f32, f32)], threshold: f32, min_duration_sec: f32) -> Option<f32> {
+fn sync_emergence_sec(values: &[(f64, f32)], threshold: f32, min_duration_sec: f64) -> Option<f64> {
     let mut run_start = None;
     for &(time_sec, order) in values {
         if order >= threshold {
@@ -1314,14 +1315,14 @@ fn sync_emergence_sec(values: &[(f32, f32)], threshold: f32, min_duration_sec: f
     None
 }
 
-fn estimate_one_over_f_slope(times: &[f32]) -> Option<f32> {
+fn estimate_one_over_f_slope(times: &[f64]) -> Option<f32> {
     if times.len() < 8 {
         return None;
     }
     let start = *times.first()?;
     let end = *times.last()?;
     let duration = end - start;
-    if !duration.is_finite() || duration <= f32::EPSILON {
+    if !duration.is_finite() || duration <= f64::EPSILON {
         return None;
     }
 
@@ -1332,7 +1333,7 @@ fn estimate_one_over_f_slope(times: &[f32]) -> Option<f32> {
             continue;
         }
         let pos = ((time - start) / duration).clamp(0.0, 1.0);
-        let idx = ((pos * bin_count as f32).floor() as usize).min(bin_count - 1);
+        let idx = ((pos * bin_count as f64).floor() as usize).min(bin_count - 1);
         counts[idx] += 1.0;
     }
     estimate_series_power_slope(&counts)
@@ -1343,7 +1344,7 @@ fn estimate_ioi_one_over_f_slope(iois: &[f32]) -> Option<f32> {
 }
 
 fn estimate_voice_ioi_one_over_f_slope(onsets: &[&OnsetSample]) -> Option<f32> {
-    let mut by_voice: BTreeMap<(u64, u64, u32), Vec<f32>> = BTreeMap::new();
+    let mut by_voice: BTreeMap<(u64, u64, u32), Vec<f64>> = BTreeMap::new();
     for onset in onsets {
         if onset.time_sec.is_finite() {
             by_voice
@@ -1358,7 +1359,7 @@ fn estimate_voice_ioi_one_over_f_slope(onsets: &[&OnsetSample]) -> Option<f32> {
         times.sort_by(|a, b| a.total_cmp(b));
         let iois: Vec<f32> = times
             .windows(2)
-            .map(|pair| (pair[1] - pair[0]).max(0.0))
+            .map(|pair| (pair[1] - pair[0]).max(0.0) as f32)
             .collect();
         if let Some(slope) = estimate_ioi_one_over_f_slope(&iois) {
             slopes.push(slope);
@@ -1448,7 +1449,7 @@ pub fn summarize_populations(
     voices: &[Voice],
     active_population_ids: &[u64],
     landscape: &Landscape,
-    time_sec: f32,
+    time_sec: f64,
 ) -> Vec<PopulationStepSummary> {
     #[derive(Default)]
     struct PopulationAccum {
@@ -1518,10 +1519,17 @@ pub fn scaffold_mode_name(config: ScaffoldConfig) -> &'static str {
     }
 }
 
-pub fn scaffold_phase_0_1(config: ScaffoldConfig, time_sec: f32, frame_idx: u64) -> Option<f32> {
+pub fn scaffold_phase_0_1(
+    config: ScaffoldConfig,
+    tick: Tick,
+    fs: f32,
+    frame_idx: u64,
+) -> Option<f32> {
     match config {
         ScaffoldConfig::Off => None,
-        ScaffoldConfig::Shared { freq_hz } => Some((time_sec * freq_hz.max(0.0)).rem_euclid(1.0)),
+        ScaffoldConfig::Shared { freq_hz } => {
+            Some(((tick as f64) * freq_hz.max(0.0) as f64 / fs as f64).fract() as f32)
+        }
         ScaffoldConfig::Scrambled { seed, .. } => {
             let phase = hash01(seed ^ frame_idx.rotate_left(17));
             Some(phase)
@@ -1562,7 +1570,7 @@ pub fn onset_samples_from_batches(
             } else {
                 freq_hz
             };
-            let time_sec = (onset.onset_tick as f64 / sample_rate as f64) as f32;
+            let time_sec = onset.onset_tick as f64 / sample_rate as f64;
             out.push(OnsetSample {
                 time_sec,
                 onset_frame: onset.onset_tick,
@@ -1573,7 +1581,12 @@ pub fn onset_samples_from_batches(
                 strength: onset.strength,
                 plv,
                 scaffold_mode,
-                scaffold_phase_0_1: scaffold_phase_0_1(scaffold, time_sec, frame_idx),
+                scaffold_phase_0_1: scaffold_phase_0_1(
+                    scaffold,
+                    onset.onset_tick,
+                    sample_rate,
+                    frame_idx,
+                ),
             });
         }
     }
@@ -1593,10 +1606,26 @@ fn hash01(mut x: u64) -> f32 {
 mod tests {
     use super::*;
 
-    fn onset(time_sec: f32, plv: Option<f32>) -> OnsetSample {
+    #[test]
+    fn indefinite_shared_scaffold_preserves_phase_at_large_tick() {
+        let tick = (1u64 << 40) + 512;
+        let fs = 48_000.0f32;
+        let freq = 2.0f32;
+        let phase = scaffold_phase_0_1(
+            ScaffoldConfig::Shared { freq_hz: freq },
+            tick,
+            fs,
+            tick / 512,
+        )
+        .unwrap();
+        let expected = ((tick as f64) * freq as f64 / fs as f64).fract() as f32;
+        assert!((phase - expected).abs() < 1e-6, "{phase} != {expected}");
+    }
+
+    fn onset(time_sec: f64, plv: Option<f32>) -> OnsetSample {
         OnsetSample {
             time_sec,
-            onset_frame: (time_sec as f64 * 48_000.0).round() as u64,
+            onset_frame: (time_sec * 48_000.0).round() as u64,
             population_id: 1,
             voice_id: 1,
             generation: 0,
@@ -1619,7 +1648,7 @@ mod tests {
         assert_eq!(steps[0].mean_freq_hz, 0.0);
     }
 
-    fn rhythm_observation(time_sec: f32, order: Option<f32>) -> RhythmObservation {
+    fn rhythm_observation(time_sec: f64, order: Option<f32>) -> RhythmObservation {
         RhythmObservation {
             time_sec,
             kuramoto_order_r: order,
@@ -1691,8 +1720,9 @@ mod tests {
 
     #[test]
     fn shared_scaffold_phase_wraps_consistently() {
-        let phase = scaffold_phase_0_1(ScaffoldConfig::Shared { freq_hz: 2.0 }, -0.25, 0)
-            .expect("shared scaffold phase");
+        let phase =
+            scaffold_phase_0_1(ScaffoldConfig::Shared { freq_hz: 2.0 }, 36_000, 48_000.0, 0)
+                .expect("shared scaffold phase");
         assert!((phase - 0.5).abs() <= 1e-6);
     }
 
@@ -1702,9 +1732,9 @@ mod tests {
             freq_hz: 3.0,
             seed: 17,
         };
-        let a = scaffold_phase_0_1(config, 0.0, 42).expect("phase");
-        let b = scaffold_phase_0_1(config, 99.0, 42).expect("phase");
-        let c = scaffold_phase_0_1(config, 99.0, 43).expect("phase");
+        let a = scaffold_phase_0_1(config, 0, 48_000.0, 42).expect("phase");
+        let b = scaffold_phase_0_1(config, 99 * 48_000, 48_000.0, 42).expect("phase");
+        let c = scaffold_phase_0_1(config, 99 * 48_000, 48_000.0, 43).expect("phase");
         assert!((a - b).abs() <= f32::EPSILON);
         assert!((a - c).abs() > f32::EPSILON);
     }
@@ -1820,7 +1850,7 @@ mod tests {
     fn one_over_f_slope_estimate_is_finite_for_multiscale_onsets() {
         let mut onsets = Vec::new();
         for block in 0..32 {
-            let base = block as f32;
+            let base = block as f64;
             onsets.push(onset(base, None));
             if block % 2 == 0 {
                 onsets.push(onset(base + 0.08, None));

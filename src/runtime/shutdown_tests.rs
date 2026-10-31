@@ -841,7 +841,7 @@ fn auditory_listener_clocks_and_device_rate_validation() {
                     listener.analysis_lag_frames,
                     listener.generated_frame_id - listener.analysis_frame_id
                 );
-                let expected_time = (listener.analysis_frame_id + 1) as f32 * 512.0 / 48000.0;
+                let expected_time = (listener.analysis_frame_id + 1) as f64 * 512.0 / 48000.0;
                 assert!((listener.time_sec - expected_time).abs() < 1e-6);
                 if deterministic {
                     assert_eq!(listener.generated_frame_id, state.frame_idx);
@@ -1001,7 +1001,7 @@ fn ph1_offline_acquisition() {
     )
     .unwrap();
     join(wiring).unwrap();
-    wav.join().unwrap();
+    wav.join().unwrap().unwrap();
 }
 
 #[test]

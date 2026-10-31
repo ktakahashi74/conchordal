@@ -464,7 +464,7 @@ pub(super) fn wire_runtime(
         .iter()
         .flat_map(|event| &event.actions)
         .any(|action| matches!(action, Action::PlaceFlora { .. }));
-    let conductor = Conductor::from_scenario(scenario);
+    let conductor = Conductor::from_scenario(scenario, crate::core::timebase::Timebase { fs, hop });
 
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 

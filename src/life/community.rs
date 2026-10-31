@@ -179,7 +179,7 @@ pub enum SpawnReason {
 
 #[derive(Debug, Clone)]
 pub struct RuntimeEvent {
-    pub time_sec: f32,
+    pub time_sec: f64,
     pub population_id: u64,
     pub voice_id: u64,
     pub member_idx: usize,
@@ -193,7 +193,7 @@ pub struct RuntimeEvent {
 /// `Voice::update_phonation_gate`). `Immediate`-gated voices never emit this.
 #[derive(Debug, Clone)]
 pub struct PhonationGateOpenEvent {
-    pub time_sec: f32,
+    pub time_sec: f64,
     pub population_id: u64,
     pub voice_id: u64,
     pub consonance: f32,
@@ -333,7 +333,7 @@ impl Community {
         std::mem::take(&mut self.death_records)
     }
 
-    fn current_time_sec(&self) -> f32 {
+    fn current_time_sec(&self) -> f64 {
         let tick = self.time.frame_start_tick(self.current_frame);
         self.time.tick_to_sec(tick)
     }
@@ -1285,7 +1285,7 @@ impl Community {
     pub fn cleanup_dead(
         &mut self,
         current_frame: u64,
-        dt_sec: f32,
+        _dt_sec: f32,
         scenario_finished: bool,
         landscape: &Landscape,
     ) {
@@ -1333,7 +1333,9 @@ impl Community {
         }
 
         if removed_count > 0 {
-            let t = current_frame as f32 * dt_sec;
+            let t = self
+                .time
+                .tick_to_sec(self.time.frame_start_tick(current_frame));
             debug!(
                 "[t={t:.6}] Cleaned up {removed_count} dead voices. Remaining: {} (frame_idx={current_frame})",
                 self.voices.len(),

@@ -109,7 +109,7 @@ impl App {
     fn apply_ui_frame(&mut self, frame: UiFrame) {
         self.last_frame = frame;
 
-        let t = self.last_frame.meta.time_sec as f64;
+        let t = self.last_frame.meta.time_sec;
         if self.last_frame.meta.playback_state != PlaybackState::Finished
             && self.last_frame.listener.has_fast_state
         {

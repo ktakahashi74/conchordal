@@ -56,12 +56,12 @@ pub(super) struct ScopeFrame {
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
     pub(super) harmonic_position: Position,
-    pub(super) harmonic_sites: Vec<(u64, f32, &'static str, Position)>,
+    pub(super) harmonic_sites: Vec<(u64, f64, &'static str, Position)>,
     pub(super) expression_sections: Vec<(crate::scenario::expression::Expression, Position)>,
     pub(super) listener_profile: &'static str,
     pub(super) profile_section: Option<crate::scenario::expression::Expression>,
     pub(super) explicit_expression: bool,
-    pub cursor: f32,
+    pub cursor: f64,
     pub scenario: Scenario,
     pub seed: u64,
     pub next_event_order: u64,
@@ -331,7 +331,7 @@ impl ScriptContext {
         }
     }
 
-    pub(super) fn push_event(&mut self, time_sec: f32, actions: Vec<Action>) {
+    pub(super) fn push_event(&mut self, time_sec: f64, actions: Vec<Action>) {
         if actions.is_empty() {
             return;
         }
@@ -439,7 +439,7 @@ impl ScriptContext {
         }
     }
 
-    pub(super) fn finalize_duration(&mut self) -> f32 {
+    pub(super) fn finalize_duration(&mut self) -> f64 {
         let mut duration = self.cursor.max(0.0);
         if duration <= 0.0 {
             duration = 0.01;
@@ -449,8 +449,8 @@ impl ScriptContext {
         duration
     }
 
-    pub(super) fn max_release_tail(&self) -> f32 {
-        let mut max_end: f32 = 0.0;
+    pub(super) fn max_release_tail(&self) -> f64 {
+        let mut max_end: f64 = 0.0;
         for event in &self.scenario.events {
             for action in &event.actions {
                 if let Action::ReleasePopulation { fade_sec, .. }
@@ -458,7 +458,7 @@ impl ScriptContext {
                 | Action::ReleaseRain { fade_sec, .. } = action
                 {
                     let fade = fade_sec.max(0.0);
-                    max_end = max_end.max(event.time + fade);
+                    max_end = max_end.max(event.time + fade as f64);
                 }
             }
         }
@@ -656,7 +656,7 @@ impl ScriptContext {
             let (expression, position) = self.expression_sections[0];
             let result = if self.expression_sections.len() != 1 {
                 Err("only one nonzero expressive section is supported")
-            } else if f64::from(self.cursor) > expression.end {
+            } else if self.cursor > expression.end {
                 Err("requires the final section, without a later score cursor")
             } else {
                 expression.validate(&self.scenario)
@@ -672,7 +672,7 @@ impl ScriptContext {
         if self.listener_profile == "tonal"
             && !self.explicit_expression
             && let Some(expression) = self.profile_section
-            && expression.end == f64::from(self.cursor)
+            && expression.end == self.cursor
             && expression.validate(&self.scenario).is_ok()
         {
             self.scenario.expression = Some(expression);
@@ -1071,7 +1071,7 @@ impl ScriptContext {
         Ok(())
     }
 
-    pub(super) fn wait(&mut self, sec: f32) {
+    pub(super) fn wait(&mut self, sec: f64) {
         self.emit_pending_actions();
         self.cursor += sec.max(0.0);
     }

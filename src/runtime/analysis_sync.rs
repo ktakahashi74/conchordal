@@ -213,10 +213,11 @@ pub(super) fn observe_listener_analysis_results(
 pub(super) fn apply_scaffold(
     rhythms: &mut crate::core::modulation::NeuralRhythms,
     scaffold: ScaffoldConfig,
-    time_sec: f32,
+    tick: Tick,
+    fs: f32,
     frame_idx: u64,
 ) {
-    let Some(phase_0_1) = scaffold_phase_0_1(scaffold, time_sec, frame_idx) else {
+    let Some(phase_0_1) = scaffold_phase_0_1(scaffold, tick, fs, frame_idx) else {
         return;
     };
     let freq_hz = match scaffold {
@@ -292,7 +293,6 @@ pub(super) fn apply_landscape_updates(
     cfg: &WorkerConfig,
     analysis_updated: bool,
     now_tick: Tick,
-    now_sec: f32,
 ) {
     let landscape_params_updated = apply_pending_landscape_update(
         &mut state.pop,
@@ -321,7 +321,8 @@ pub(super) fn apply_landscape_updates(
     apply_scaffold(
         &mut state.current_landscape.rhythm,
         cfg.scaffold,
-        now_sec,
+        now_tick,
+        cfg.fs,
         state.frame_idx,
     );
     state

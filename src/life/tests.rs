@@ -146,13 +146,13 @@ fn conductor_dispatches_finish_on_time() {
         duration_sec: 2.0,
     };
 
-    let mut conductor = Conductor::from_scenario(scenario);
+    let mut conductor = Conductor::from_scenario(scenario, test_timebase());
     let mut pop = Community::new(test_timebase());
     let landscape = Landscape::default();
-    conductor.dispatch_until(0.5, &landscape, &mut pop);
+    conductor.dispatch_until(test_timebase().sec_to_tick(0.5), &landscape, &mut pop);
     assert!(!pop.abort_requested);
 
-    conductor.dispatch_until(1.1, &landscape, &mut pop);
+    conductor.dispatch_until(test_timebase().sec_to_tick(1.1), &landscape, &mut pop);
     assert!(pop.abort_requested);
 }
 
@@ -190,11 +190,11 @@ fn conductor_keeps_future_events_queued_in_order() {
         duration_sec: 2.0,
     };
 
-    let mut conductor = Conductor::from_scenario(scenario);
+    let mut conductor = Conductor::from_scenario(scenario, test_timebase());
     let mut pop = Community::new(test_timebase());
     let landscape = Landscape::default();
 
-    conductor.dispatch_until(1.0, &landscape, &mut pop);
+    conductor.dispatch_until(test_timebase().sec_to_tick(1.0), &landscape, &mut pop);
     assert_eq!(
         conductor.remaining_events(),
         1,
@@ -202,7 +202,7 @@ fn conductor_keeps_future_events_queued_in_order() {
     );
     assert!(!pop.abort_requested);
 
-    conductor.dispatch_until(2.0, &landscape, &mut pop);
+    conductor.dispatch_until(test_timebase().sec_to_tick(2.0), &landscape, &mut pop);
     assert!(pop.abort_requested);
     assert!(conductor.is_done());
 }
@@ -1226,4 +1226,71 @@ fn articulation_snapshot_kuramoto_decay_signature() {
     assert!(early_active, "expected early attack during decay lifecycle");
     println!("articulation decay signature: {signature:016x}");
     assert_eq!(signature, 0xc1e9_43c6_d8f8_6b6d);
+}
+
+#[test]
+fn indefinite_conductor_dispatches_tick_boundaries() {
+    let tb = Timebase {
+        fs: 48_000.0,
+        hop: 512,
+    };
+    let a = 1u64 << 40;
+    let mut scenario = Scenario {
+        expression: None,
+        expression_cursor: None,
+        harmonic_rhythm: 0,
+        remember_pitch_set: 0.0,
+        pitch_set_position: None,
+        seed: 0,
+        output_gain_db: 0.0,
+        output_gain_position: None,
+        temporal_mode: crate::scenario::TemporalMode::Off,
+        control_update_mode: crate::scenario::ControlUpdateMode::SnapshotPhased,
+        scaffold: crate::scenario::ScaffoldConfig::Off,
+        meter_shaping: crate::core::meter::MeterShaping::default(),
+        scene_markers: vec![],
+        events: vec![],
+        duration_sec: 1.0,
+    };
+    scenario.scene_markers = [a, a + 1]
+        .into_iter()
+        .enumerate()
+        .map(|(i, tick)| crate::scenario::SceneMarker {
+            name: i.to_string(),
+            time: tick as f64 / tb.fs as f64,
+            order: i as u64,
+        })
+        .collect();
+    scenario.events = [(a - 1, 8, 0.1), (a, 2, 0.2), (a, 1, 0.3), (a + 1, 0, 0.4)]
+        .into_iter()
+        .rev()
+        .map(|(tick, order, value)| TimedEvent {
+            time: tick as f64 / tb.fs as f64,
+            order,
+            actions: vec![Action::SetGlobalCoupling { value }],
+        })
+        .collect();
+    let mut conductor = Conductor::from_scenario(scenario.clone(), tb);
+    let mut pop = Community::new(tb);
+    let landscape = Landscape::default();
+    for (tick, remaining, coupling) in [
+        (a - tb.hop as u64, 4, 1.0),
+        (a - 1, 3, 0.1),
+        (a, 1, 0.2),
+        (a + 1, 0, 0.4),
+    ] {
+        conductor.dispatch_until(tick, &landscape, &mut pop);
+        assert_eq!(conductor.remaining_events(), remaining, "tick {tick}");
+        assert_eq!(pop.global_coupling, coupling, "tick {tick}");
+    }
+    assert_eq!(conductor.current_scene_name(a - 1), None);
+    assert_eq!(conductor.current_scene_name(a).as_deref(), Some("0"));
+    assert_eq!(conductor.current_scene_name(a + 1).as_deref(), Some("1"));
+    let mut conductor = Conductor::from_scenario(scenario, tb);
+    conductor.dispatch_until(a, &landscape, &mut pop);
+    assert_eq!(conductor.remaining_events(), 1);
+    assert_eq!(pop.global_coupling, 0.2);
+    conductor.dispatch_until(a + tb.hop as u64, &landscape, &mut pop);
+    assert!(conductor.is_done());
+    assert_eq!(pop.global_coupling, 0.4);
 }

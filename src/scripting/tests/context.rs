@@ -303,7 +303,7 @@ fn scope_emits_pending_patch_before_automatic_release() {
     let actions: Vec<&Action> = scenario
         .events
         .iter()
-        .filter(|event| (event.time - 0.5).abs() <= f32::EPSILON)
+        .filter(|event| (event.time - 0.5).abs() <= f64::EPSILON)
         .flat_map(|event| event.actions.iter())
         .collect();
     let update_idx = actions
@@ -440,7 +440,7 @@ fn flush_events_have_increasing_order_at_same_time() {
     );
     let mut orders = Vec::new();
     for event in &scenario.events {
-        if (event.time - 0.0).abs() <= f32::EPSILON {
+        if (event.time - 0.0).abs() <= f64::EPSILON {
             orders.push(event.order);
         }
     }
@@ -2243,7 +2243,7 @@ fn expressive_section_validates_final_shapes_and_global_release() {
     let tail = scene.duration_sec - 6.0;
     scene.prepare_expression(48000.0, 512);
     assert!(scene.expression.is_some());
-    assert!((scene.duration_sec - (e.performance(6.0) as f32 + tail)).abs() < 1e-6);
+    assert!((scene.duration_sec - (e.performance(6.0) + tail)).abs() < 1e-6);
     assert!(scene.duration_sec > 6.0 + tail);
 }
 
@@ -2291,7 +2291,7 @@ fn expressive_section_maps_parallel_once_events_without_stealing_release_ownersh
         assert_eq!(format!("{:?}", old.actions), format!("{:?}", new.actions));
         assert_eq!(old.order, new.order);
         if !old.actions.iter().any(|a| matches!(a, Action::Finish)) {
-            assert_eq!(new.time, e.performance(f64::from(old.time)) as f32);
+            assert_eq!(new.time, e.performance(old.time));
         }
     }
     let releases: Vec<_> = before
@@ -2690,4 +2690,18 @@ fn rain_patches_wait_for_boundaries_and_release_extends_finish() {
     assert!(actions.iter().any(|(time, action)| *time == 2.0
         && matches!(action, Action::ReleaseRain { rain_id: 1, fade_sec } if *fade_sec == 3.0)));
     assert_eq!(scenario.duration_sec, 5.0);
+}
+
+#[test]
+fn indefinite_script_cursor_retains_f64_wait_precision() {
+    let n = 100_000u32;
+    let scenario = run_script(&format!("for i in 0..{n} {{ wait(60.0/97.0); }}")).0;
+    let expected = n as f64 * 60.0 / 97.0;
+    // The bound is the accumulated f64 rounding error of n additions.
+    let bound = n as f64 * f64::EPSILON * expected;
+    assert!(
+        (scenario.duration_sec - expected).abs() <= bound,
+        "{} != {expected} (bound {bound})",
+        scenario.duration_sec
+    );
 }

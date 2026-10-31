@@ -2729,11 +2729,6 @@ fn endless_declaration_rules_and_pending_actions() {
         "play(|| endless());",
         "section(\"nested\", || endless());",
         "fn declare() { endless(); } declare();",
-        "let nested = true; if nested { endless(); }",
-        "for n in 0..1 { endless(); }",
-        "{ endless(); }",
-        "if true { endless(); }",
-        "let f = Fn(\"endless\"); { f.call(); }",
     ] {
         assert!(
             run_script_err(source)
@@ -2834,22 +2829,17 @@ fn scenario_capabilities_override_standard_package_functions() {
 }
 
 #[test]
-fn scenario_optimization_keeps_global_bus_constants_in_functions() {
+fn scenario_functions_resolve_global_bus_constants() {
     run_script("fn bus() { habitat_bus } place(sine().send(bus()), at(220)); wait(0.01);");
-    assert_eq!(
-        run_script("let declaration = endless(); place(sine(), at(220));")
-            .0
-            .end,
-        ScenarioEnd::Open
-    );
 }
 
 #[test]
-fn top_level_endless_function_pointer_is_allowed() {
-    assert_eq!(
-        run_script("let f = Fn(\"endless\"); f.call(); place(sine(), at(220));")
-            .0
-            .end,
-        ScenarioEnd::Open
-    );
+fn endless_allows_top_level_conditionals_before_events_and_time() {
+    for declaration in [
+        "if true { endless(); }",
+        "let open = true; if open { endless(); }",
+    ] {
+        let scenario = run_script(&format!("{declaration} place(sine(), at(220));")).0;
+        assert_eq!(scenario.end, ScenarioEnd::Open);
+    }
 }

@@ -76,7 +76,6 @@ pub struct ScriptContext {
     pub(super) scopes: Vec<ScopeFrame>,
     pub(super) temporal_mode_declared: bool,
     pub(super) parallel_used: bool,
-    pub(super) top_level_call_positions: Option<Vec<Position>>,
     pub warnings: ScriptWarnings,
 }
 
@@ -134,7 +133,6 @@ impl ScriptContext {
             scopes: Vec::new(),
             temporal_mode_declared: false,
             parallel_used: false,
-            top_level_call_positions: None,
             warnings: Arc::default(),
         }
     }

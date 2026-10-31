@@ -48,8 +48,6 @@ impl ScriptHost {
                 || !ctx.scopes.is_empty()
                 || !ctx.scenario.events.is_empty()
                 || call.call_level() > 1
-                || call.global_runtime_state().scope_level != 0
-                || ctx.top_level_call_positions.as_ref().is_some_and(|positions| !positions.contains(&call.call_position()))
             {
                 return Err(EvalAltResult::ErrorRuntime(
                     "endless must be declared once at top level before playback events and time advances".into(),
@@ -2464,57 +2462,6 @@ impl ScriptHost {
         engine
     }
 
-    pub(super) fn eval_scenario(
-        engine: &mut Engine,
-        ctx: &Arc<Mutex<ScriptContext>>,
-        source: &str,
-    ) -> Result<Dynamic, Box<EvalAltResult>> {
-        // Keep lexical call sites before optimization can flatten blocks.
-        let level = engine.optimization_level();
-        engine.set_optimization_level(rhai::OptimizationLevel::None);
-        let ast = engine.compile(source);
-        engine.set_optimization_level(level);
-        let ast = ast?;
-        let mut positions = Vec::new();
-        let mut path = Vec::new();
-        for statement in ast.statements() {
-            statement.walk(&mut path, &mut |nodes| {
-                use rhai::{ASTNode, Expr, Stmt};
-                let call = matches!(
-                    nodes.last(),
-                    Some(ASTNode::Stmt(Stmt::FnCall(..)))
-                        | Some(ASTNode::Expr(Expr::FnCall(..) | Expr::MethodCall(..)))
-                );
-                let nested = nodes.iter().any(|node| {
-                    matches!(
-                        node,
-                        ASTNode::Stmt(
-                            Stmt::If(..)
-                                | Stmt::Switch(..)
-                                | Stmt::While(..)
-                                | Stmt::Do(..)
-                                | Stmt::For(..)
-                                | Stmt::Block(..)
-                                | Stmt::TryCatch(..)
-                        ) | ASTNode::Expr(Expr::Stmt(..))
-                    )
-                });
-                if call
-                    && !nested
-                    && let Some(node) = nodes.last()
-                {
-                    positions.push(node.position());
-                }
-                true
-            });
-        }
-        ctx.lock()
-            .expect("lock script context")
-            .top_level_call_positions = Some(positions);
-        let ast = engine.optimize_ast(&rhai::Scope::new(), ast, level);
-        engine.eval_ast::<Dynamic>(&ast)
-    }
-
     /// Loads and evaluates a scenario script. `seed`, when given, seeds the
     /// fresh scenario before evaluation; a script-level `seed()` call still
     /// wins, since it runs during evaluation and overwrites it.
@@ -2540,8 +2487,9 @@ impl ScriptHost {
             Some(seed) => ScriptContext::with_seed(seed),
             None => ScriptContext::default(),
         }));
-        let mut engine = Self::create_engine(ctx.clone());
-        let value = Self::eval_scenario(&mut engine, &ctx, &src)
+        let engine = Self::create_engine(ctx.clone());
+        let value = engine
+            .eval::<Dynamic>(&src)
             .map_err(|err| ScriptError::from_eval(err, Some(path)))?;
         let mut ctx = ctx.lock().expect("lock script context");
         if ctx.scenario.end != ScenarioEnd::Open && !value.is_unit() {

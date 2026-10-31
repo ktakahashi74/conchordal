@@ -181,6 +181,20 @@ impl eframe::App for App {
             self.apply_ui_frame(frame);
         }
 
+        if let Some(audio) = self._audio.as_mut() {
+            if let Err(err) = audio.supervise(Duration::from_millis(16)) {
+                self.runtime_error = Some(err);
+                self.runtime_failed.store(true, Ordering::SeqCst);
+                self.exiting.store(true, Ordering::SeqCst);
+            }
+            let counters = audio.counters();
+            self.last_frame.meta.audio_xruns = counters.xruns_total.load(Ordering::Relaxed);
+            self.last_frame.meta.audio_rebuilds = counters.rebuilds_total.load(Ordering::Relaxed);
+            self.last_frame.meta.audio_recovering = matches!(
+                audio.stream_state(),
+                crate::audio::output::StreamState::Recovering { .. }
+            );
+        }
         ctx.request_repaint_after(Duration::from_millis(16));
     }
 

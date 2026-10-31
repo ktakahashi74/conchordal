@@ -147,6 +147,7 @@ wait(0.08);
                 underrun_frames: None,
                 reserve_runtime_ids_through: 0,
                 profile: None,
+                telemetry: false,
                 audio_counters: None,
             },
         )
@@ -249,6 +250,7 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                         underrun_frames: None,
                         reserve_runtime_ids_through: 0,
                         profile: Some(profile),
+                        telemetry: false,
                         audio_counters: None,
                     },
                 )
@@ -349,6 +351,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         meter_shaping: Default::default(),
         guard_meter: None,
         underrun_frames: None,
+        telemetry: false,
         audio_counters: None,
         dcc_coupler: DccCoupler::new(Default::default()),
         hop,
@@ -901,6 +904,7 @@ wait(0.03);
             underrun_frames: None,
             reserve_runtime_ids_through: 0,
             profile: None,
+            telemetry: false,
             audio_counters: None,
         },
     )
@@ -938,6 +942,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             meter_shaping: Default::default(),
             guard_meter: None,
             underrun_frames: None,
+            telemetry: false,
             audio_counters: None,
             dcc_coupler: DccCoupler::new(Default::default()),
             hop,

@@ -101,6 +101,8 @@ pub struct Community {
     spawn_counter: u64,
     social_trace: Option<SocialDensityTrace>,
     populations: BTreeMap<u64, RuntimePopulationState>,
+    births: u64,
+    deaths: u64,
     death_observed: HashSet<u64>,
     next_runtime_id: u64,
     control_update_mode: ControlUpdateMode,
@@ -248,6 +250,8 @@ impl Community {
             spawn_counter: 0,
             social_trace: None,
             populations: BTreeMap::new(),
+            births: 0,
+            deaths: 0,
             death_observed: HashSet::new(),
             next_runtime_id: 1,
             control_update_mode: ControlUpdateMode::SnapshotPhased,
@@ -264,6 +268,17 @@ impl Community {
             dead_id_scratch: Vec::new(),
             population_sway: BTreeMap::new(),
         }
+    }
+
+    pub(crate) fn population_count(&self) -> usize {
+        self.populations.len()
+    }
+
+    pub(crate) fn take_lifecycle_counts(&mut self) -> (u64, u64) {
+        (
+            std::mem::take(&mut self.births),
+            std::mem::take(&mut self.deaths),
+        )
     }
 
     pub(crate) fn active_population_ids(&self) -> Vec<u64> {
@@ -797,6 +812,7 @@ impl Community {
             me.reject_residency();
         }
         self.voices.push(spawned);
+        self.births = self.births.saturating_add(1);
         #[cfg(test)]
         crate::runtime::l1_probe::record_birth();
         self.track_runtime_id(id);
@@ -1301,6 +1317,7 @@ impl Community {
             keep
         });
         let removed_count = before_count - self.voices.len();
+        self.deaths = self.deaths.saturating_add(removed_count as u64);
         self.populations.retain(|id, population| {
             !population.released
                 || self
@@ -1358,6 +1375,7 @@ mod tests {
             },
             &landscape,
         );
+        assert_eq!(pop.take_lifecycle_counts(), (1, 0));
         for id in 2..66 {
             pop.apply_action(
                 Action::Spawn {
@@ -1387,6 +1405,8 @@ mod tests {
             pop.cleanup_dead(0, 0.01, false, &landscape);
             assert_eq!(pop.populations.len(), 1);
             assert_eq!(pop.advance_scratch.population_visibility.len(), 1);
+            assert_eq!(pop.take_lifecycle_counts(), (1, 1));
+            assert_eq!(pop.take_lifecycle_counts(), (0, 0));
         }
     }
 
@@ -1419,6 +1439,7 @@ mod tests {
         assert_eq!(pop.populations.len(), 1);
         assert!(pop.voices[0].is_alive());
         assert_eq!(pop.populations[&7].template.control.pitch.freq, 330.0);
+        assert_eq!(pop.take_lifecycle_counts(), (2, 1));
     }
 
     #[test]

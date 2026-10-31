@@ -158,6 +158,7 @@ pub(super) struct WiringOptions {
     pub(super) underrun_frames: Option<Arc<AtomicU64>>,
     pub(super) reserve_runtime_ids_through: u64,
     pub(super) profile: Option<RunProfile>,
+    pub(super) telemetry: bool,
     pub(super) audio_counters: Option<Arc<crate::audio::output::AudioCallbackCounters>>,
 }
 
@@ -196,6 +197,7 @@ pub(super) fn wire_runtime(
         underrun_frames,
         reserve_runtime_ids_through,
         mut profile,
+        telemetry,
         audio_counters,
     } = opts;
 
@@ -481,6 +483,7 @@ pub(super) fn wire_runtime(
         harmonic_rhythm,
         guard_meter,
         underrun_frames,
+        telemetry,
         audio_counters,
         dcc_coupler,
         hop,
@@ -684,6 +687,7 @@ pub(crate) fn init_runtime(
             underrun_frames: audio_out.as_ref().map(AudioOutput::underrun_frames),
             reserve_runtime_ids_through: 0,
             profile,
+            telemetry: args.telemetry,
             audio_counters: audio_out.as_ref().map(AudioOutput::counters),
         },
     )
@@ -717,9 +721,22 @@ pub(crate) fn init_runtime(
 }
 
 pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<AtomicBool>) {
-    let rt = init_runtime(args, config, stop_flag);
+    let mut rt = init_runtime(args, config, stop_flag.clone());
     rt.start_flag.store(true, Ordering::SeqCst);
-    let _audio = rt.audio_out;
+    while rt
+        .worker_handle
+        .as_ref()
+        .is_some_and(|worker| !worker.is_finished())
+        && !stop_flag.load(Ordering::SeqCst)
+    {
+        if let Some(audio) = rt.audio_out.as_mut()
+            && let Err(err) = audio.supervise(Duration::from_millis(50))
+        {
+            eprintln!("{err}");
+            stop_flag.store(true, Ordering::SeqCst);
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
     if let Err(err) = join_runtime(
         rt.worker_handle,
         [
@@ -796,6 +813,7 @@ pub fn run_render(
             underrun_frames: None,
             reserve_runtime_ids_through,
             profile: None,
+            telemetry: false,
             audio_counters: None,
         },
     )?;

@@ -57,6 +57,7 @@ fn continuous_offline_delivery_is_independent_of_producer_delay() {
                 underrun_frames: None,
                 reserve_runtime_ids_through: 0,
                 profile: None,
+                telemetry: false,
                 audio_counters: None,
             },
         )
@@ -136,6 +137,7 @@ fn continuous_runtime_rejects_actual_device_rate_before_spawning() {
             underrun_frames: None,
             reserve_runtime_ids_through: 0,
             profile: None,
+            telemetry: false,
             audio_counters: None,
         },
     );

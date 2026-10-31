@@ -1,7 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{
     Arc,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use crate::audio::limiter::{Limiter, LimiterMeter, LimiterMode};
@@ -11,6 +11,13 @@ use ringbuf::traits::*;
 use ringbuf::{HeapCons, HeapProd, HeapRb};
 use serde::Serialize;
 use tracing::{debug, info};
+
+#[path = "recovery.rs"]
+mod recovery;
+use crossbeam_channel::{Receiver, Sender, bounded};
+use recovery::{Recovery, stream_lost};
+pub(crate) use recovery::{STATS_INTERVAL, StreamState};
+use std::time::{Duration, Instant};
 
 const PREFERRED_OUTPUT_SAMPLE_RATE: u32 = 48_000;
 
@@ -126,6 +133,9 @@ pub struct AudioOutput {
     pub config: cpal::StreamConfig,
     device_info: AudioDeviceInfo,
     counters: Arc<AudioCallbackCounters>,
+    recycle_tx: Sender<CallbackState>,
+    recycle_rx: Receiver<CallbackState>,
+    recovery: Recovery,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -143,6 +153,75 @@ pub(crate) struct AudioCallbackCounters {
     pub(crate) callback_frames_total: AtomicU64,
     pub(crate) underrun_frames: Arc<AtomicU64>,
     pub(crate) callback_errors_total: AtomicU64,
+    pub(crate) xruns_total: AtomicU64,
+    pub(crate) rebuilds_total: AtomicU64,
+    pub(crate) recovering: AtomicBool,
+    pub(crate) failed: AtomicBool,
+    stream_lost: AtomicBool,
+}
+
+struct CallbackState {
+    consumer: HeapCons<f32>,
+    guard: Limiter,
+}
+
+struct CallbackLease {
+    state: Option<CallbackState>,
+    recycle: Sender<CallbackState>,
+}
+
+impl Drop for CallbackLease {
+    fn drop(&mut self) {
+        if let Some(state) = self.state.take() {
+            let _ = self.recycle.try_send(state);
+        }
+    }
+}
+
+fn build_stream(
+    device: &cpal::Device,
+    config: cpal::StreamConfig,
+    mut lease: CallbackLease,
+    counters: &Arc<AudioCallbackCounters>,
+) -> Result<cpal::Stream, cpal::Error> {
+    let callback_counters = Arc::clone(counters);
+    let error_counters = Arc::clone(counters);
+    let channels = config.channels as usize;
+    device.build_output_stream(
+        config,
+        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+            callback_counters
+                .callback_count
+                .fetch_add(1, Ordering::Relaxed);
+            callback_counters
+                .callback_frames_total
+                .fetch_add((data.len() / channels) as u64, Ordering::Relaxed);
+            let state = lease.state.as_mut().expect("callback state lease");
+            fill_output(
+                &mut state.consumer,
+                data,
+                channels,
+                &callback_counters.underrun_frames,
+            );
+            state.guard.process_interleaved(data, channels);
+        },
+        move |err| {
+            error_counters.record_error(err.kind());
+        },
+        None,
+    )
+}
+
+impl AudioCallbackCounters {
+    fn record_error(&self, kind: cpal::ErrorKind) {
+        self.callback_errors_total.fetch_add(1, Ordering::Relaxed);
+        if kind == cpal::ErrorKind::Xrun {
+            self.xruns_total.fetch_add(1, Ordering::Relaxed);
+        }
+        if stream_lost(kind) {
+            self.stream_lost.store(true, Ordering::Release);
+        }
+    }
 }
 
 impl AudioOutput {
@@ -198,10 +277,8 @@ impl AudioOutput {
         );
         let rb =
             HeapRb::<f32>::try_new(capacity_frames).context("Failed to allocate audio buffer")?;
-        let (prod, mut cons): (HeapProd<f32>, HeapCons<f32>) = rb.split();
+        let (prod, cons): (HeapProd<f32>, HeapCons<f32>) = rb.split();
         let counters = Arc::new(AudioCallbackCounters::default());
-        let callback_counters = Arc::clone(&counters);
-        let error_counters = Arc::clone(&counters);
 
         let mut guard =
             Limiter::new(guard_mode, sample_rate, channels as usize).with_input_gain(output_gain);
@@ -209,32 +286,15 @@ impl AudioOutput {
             guard = guard.with_meter(meter);
         }
 
-        let stream = device
-            .build_output_stream(
-                config,
-                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    callback_counters
-                        .callback_count
-                        .fetch_add(1, Ordering::Relaxed);
-                    callback_counters
-                        .callback_frames_total
-                        .fetch_add((data.len() / channels as usize) as u64, Ordering::Relaxed);
-                    fill_output(
-                        &mut cons,
-                        data,
-                        channels as usize,
-                        &callback_counters.underrun_frames,
-                    );
-                    guard.process_interleaved(data, channels as usize);
-                },
-                move |err| {
-                    error_counters
-                        .callback_errors_total
-                        .fetch_add(1, Ordering::Relaxed);
-                    eprintln!("Stream error: {:?}", err);
-                },
-                None,
-            )
+        let (recycle_tx, recycle_rx) = bounded(1);
+        let lease = CallbackLease {
+            state: Some(CallbackState {
+                consumer: cons,
+                guard,
+            }),
+            recycle: recycle_tx.clone(),
+        };
+        let stream = build_stream(&device, config, lease, &counters)
             .context("Failed to build output stream")?;
         if !defer_start {
             stream.play().context("Failed to start output stream")?;
@@ -252,9 +312,72 @@ impl AudioOutput {
                     ring_capacity_frames: capacity_frames,
                 },
                 counters,
+                recycle_tx,
+                recycle_rx,
+                recovery: Recovery::new(Instant::now()),
             },
             prod,
         ))
+    }
+
+    pub(crate) fn stream_state(&self) -> StreamState {
+        self.recovery.state
+    }
+
+    /// Called by the GUI or headless owner; never opens devices on the worker.
+    pub(crate) fn supervise(&mut self, cadence: Duration) -> Result<(), String> {
+        let now = Instant::now();
+        let frames = self.counters.callback_frames_total.load(Ordering::Relaxed);
+        let lost = self.counters.stream_lost.swap(false, Ordering::AcqRel);
+        let ring_duration = Duration::from_secs_f64(
+            self.device_info.ring_capacity_frames as f64 / self.config.sample_rate as f64,
+        );
+        if self
+            .recovery
+            .observe(now, frames, lost, ring_duration, cadence)
+        {
+            self.counters.recovering.store(true, Ordering::Release);
+            self.stream.take();
+        }
+        if self.recovery.retry_due(now)
+            && let Ok(state) = self.recycle_rx.try_recv()
+        {
+            // Own the lease before any fallible device operation.
+            let lease = CallbackLease {
+                state: Some(state),
+                recycle: self.recycle_tx.clone(),
+            };
+            let result = (|| {
+                let host = cpal::default_host();
+                let device = host
+                    .default_output_device()
+                    .ok_or_else(|| cpal::Error::new(cpal::ErrorKind::DeviceNotAvailable))?;
+                let stream = build_stream(&device, self.config, lease, &self.counters)?;
+                stream.play()?;
+                Ok::<_, cpal::Error>(stream)
+            })();
+            let completed = Instant::now();
+            self.recovery.attempted(
+                completed,
+                result.as_ref().map(|_| ()).map_err(|err| err.kind()),
+                cadence,
+                self.counters.callback_frames_total.load(Ordering::Relaxed),
+            );
+            match result {
+                Ok(stream) => {
+                    self.stream = Some(stream);
+                    self.counters.rebuilds_total.fetch_add(1, Ordering::Relaxed);
+                    self.counters.recovering.store(false, Ordering::Release);
+                }
+                Err(err) if self.recovery.state == StreamState::Failed => {
+                    self.counters.failed.store(true, Ordering::Release);
+                    self.counters.recovering.store(false, Ordering::Release);
+                    return Err(format!("Audio recovery failed: {err}"));
+                }
+                Err(err) => debug!("Audio recovery pending: {err}"),
+            }
+        }
+        Ok(())
     }
 
     pub(crate) fn underrun_frames(&self) -> Arc<AtomicU64> {
@@ -302,6 +425,58 @@ impl Drop for AudioOutput {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failed_build_closure_returns_consumer_and_limiter_for_the_same_producer() {
+        let (mut producer, consumer) = HeapRb::<f32>::new(4).split();
+        producer.push_slice(&[0.25, -0.5]);
+        let (tx, rx) = bounded(1);
+        let mut lease = CallbackLease {
+            state: Some(CallbackState {
+                consumer,
+                guard: Limiter::new(LimiterMode::None, 48_000, 1).with_input_gain(2.0),
+            }),
+            recycle: tx.clone(),
+        };
+        let callback = move |data: &mut [f32]| {
+            let state = lease.state.as_mut().unwrap();
+            fill_output(&mut state.consumer, data, 1, &AtomicU64::new(0));
+            state.guard.process_interleaved(data, 1);
+        };
+        // A failed CPAL build drops its data callback without ever invoking it.
+        drop(Box::new(callback));
+        let mut state = rx.try_recv().expect("state recycled after failed build");
+        let mut data = [0.0; 2];
+        fill_output(&mut state.consumer, &mut data, 1, &AtomicU64::new(0));
+        state.guard.process_interleaved(&mut data, 1);
+        assert_eq!(data, [0.5, -1.0]);
+        assert_eq!(producer.push_slice(&[0.75; 4]), 4);
+        drop(CallbackLease {
+            state: Some(state),
+            recycle: tx,
+        });
+        assert_eq!(rx.try_recv().unwrap().consumer.occupied_len(), 4);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn error_callback_counts_xruns_without_losing_a_live_stream() {
+        let counters = AudioCallbackCounters::default();
+        for kind in [
+            cpal::ErrorKind::Xrun,
+            cpal::ErrorKind::DeviceChanged,
+            cpal::ErrorKind::RealtimeDenied,
+            cpal::ErrorKind::Other,
+        ] {
+            counters.record_error(kind);
+        }
+        assert_eq!(counters.callback_errors_total.load(Ordering::Relaxed), 4);
+        assert_eq!(counters.xruns_total.load(Ordering::Relaxed), 1);
+        assert!(!counters.stream_lost.load(Ordering::Relaxed));
+        counters.record_error(cpal::ErrorKind::StreamInvalidated);
+        assert!(counters.stream_lost.load(Ordering::Relaxed));
+        assert!(!counters.failed.load(Ordering::Relaxed));
+    }
 
     #[test]
     fn output_selection_requires_f32_even_at_the_default_rate() {

@@ -122,6 +122,7 @@ fn check_metric_population(
             underrun_frames: None,
             reserve_runtime_ids_through: 0,
             profile: None,
+            telemetry: false,
             audio_counters: None,
         },
     )

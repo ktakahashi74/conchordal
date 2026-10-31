@@ -339,6 +339,20 @@ fn draw_system_diagnostics(ui: &mut egui::Ui, frame: &UiFrame) {
         );
         ui.separator();
         fixed_system_label(ui, format!("events={:04}", frame.meta.event_queue_len));
+        ui.separator();
+        fixed_system_label(
+            ui,
+            format!(
+                "audio xrun={} rebuild={}{}",
+                frame.meta.audio_xruns,
+                frame.meta.audio_rebuilds,
+                if frame.meta.audio_recovering {
+                    " recovering"
+                } else {
+                    ""
+                },
+            ),
+        );
     });
 }
 

@@ -16,6 +16,7 @@ pub(super) struct WorkerConfig {
     pub(super) meter_shaping: crate::core::meter::MeterShaping,
     pub(super) guard_meter: Option<Arc<LimiterMeter>>,
     pub(super) underrun_frames: Option<Arc<AtomicU64>>,
+    pub(super) telemetry: bool,
     pub(super) audio_counters: Option<Arc<crate::audio::output::AudioCallbackCounters>>,
     pub(super) dcc_coupler: DccCoupler,
     pub(super) hop: usize,
@@ -275,7 +276,7 @@ pub(super) fn worker_loop(
         if cfg
             .audio_counters
             .as_ref()
-            .is_some_and(|counters| counters.callback_errors_total.load(Ordering::Relaxed) > 0)
+            .is_some_and(|counters| counters.failed.load(Ordering::Acquire))
         {
             cfg.exiting.store(true, Ordering::SeqCst);
         }
@@ -360,13 +361,14 @@ pub(super) fn worker_loop(
             thread::sleep(Duration::from_millis(1));
         }
     }
-    if let Some(counters) = &cfg.audio_counters {
-        let errors = counters.callback_errors_total.load(Ordering::Relaxed);
-        if errors > 0 {
-            state
-                .failures
-                .push(format!("audio callback failed: {errors} stream errors"));
-        }
+    if cfg
+        .audio_counters
+        .as_ref()
+        .is_some_and(|counters| counters.failed.load(Ordering::Acquire))
+    {
+        state
+            .failures
+            .push("audio stream configuration unsupported during recovery".into());
     }
     if state.failures.is_empty() {
         Ok(())
@@ -798,6 +800,9 @@ pub(super) fn process_hop(
         listener_wait,
         cfg.underrun_frames.as_deref(),
         state.conductor.is_done(),
+        cfg.telemetry,
+        &mut state.pop,
+        cfg.audio_counters.as_deref(),
     );
 
     if !state.finished {

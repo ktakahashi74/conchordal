@@ -124,6 +124,7 @@ fn n3_offline_body_equivalence() {
             underrun_frames: None,
             reserve_runtime_ids_through: 0,
             profile: Some(profile),
+            telemetry: false,
             audio_counters: None,
         },
     )
@@ -230,6 +231,7 @@ fn render_birth_metabolism_flags(
             underrun_frames: None,
             reserve_runtime_ids_through: 0,
             profile: None,
+            telemetry: false,
             audio_counters: None,
         },
     )
@@ -445,6 +447,7 @@ fn b7_dynamic_etude_render() {
             underrun_frames: None,
             reserve_runtime_ids_through: 0,
             profile: None,
+            telemetry: false,
             audio_counters: None,
         },
     )

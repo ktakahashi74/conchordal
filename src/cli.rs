@@ -39,6 +39,10 @@ pub struct Args {
     #[arg(long, requires = "nogui", conflicts_with = "compile_only")]
     pub profile: Option<String>,
 
+    /// Print one bounded runtime telemetry summary per second (no audio recording)
+    #[arg(long)]
+    pub telemetry: bool,
+
     /// Override the fresh scenario seed (a script-level seed() still wins)
     #[arg(long)]
     pub seed: Option<u64>,
@@ -56,6 +60,21 @@ mod tests {
         cmd.write_long_help(&mut help).expect("write help");
         let help = String::from_utf8(help).expect("utf8 help");
         assert!(help.contains("--config"));
+        assert!(help.contains("--telemetry"));
+    }
+
+    #[test]
+    fn telemetry_is_opt_in() {
+        assert!(
+            !Args::try_parse_from(["conchordal", "sample.rhai"])
+                .unwrap()
+                .telemetry
+        );
+        assert!(
+            Args::try_parse_from(["conchordal", "sample.rhai", "--telemetry"])
+                .unwrap()
+                .telemetry
+        );
     }
     #[test]
     fn wait_user_exit_flag_enables_wait_and_accepts_explicit_false() {

@@ -17,6 +17,7 @@ fn options() -> WiringOptions {
         underrun_frames: None,
         reserve_runtime_ids_through: 0,
         profile: None,
+        telemetry: false,
         audio_counters: None,
     }
 }
@@ -594,7 +595,7 @@ fn private_body_worker_panic_fails_the_run_after_final_report_flush() {
 }
 
 #[test]
-fn audio_callback_error_during_playback_fails_the_worker_result() {
+fn counted_audio_callback_error_during_playback_does_not_fail_the_worker() {
     let counters = Arc::new(crate::audio::output::AudioCallbackCounters::default());
     let counter = Arc::clone(&counters);
     let mut opts = options();
@@ -604,11 +605,7 @@ fn audio_callback_error_during_playback_fails_the_worker_result() {
         counter.callback_errors_total.store(1, Ordering::Relaxed);
     }));
     let (wiring, _, dir) = fixture(opts, "seed(21); wait(0.2);");
-    let result = join(wiring).unwrap_err();
-    assert!(
-        result.contains("audio callback failed: 1 stream errors"),
-        "{result}"
-    );
+    join(wiring).unwrap();
     assert!(
         std::fs::read_to_string(dir.join("run.jsonl"))
             .unwrap()
@@ -618,7 +615,49 @@ fn audio_callback_error_during_playback_fails_the_worker_result() {
 }
 
 #[test]
-fn audio_callback_error_after_finalization_fails_the_worker_result() {
+fn stalled_audio_ring_pauses_and_resumes_the_worker_and_stop_still_works() {
+    use ringbuf::traits::{Consumer, Split};
+    let (producer, mut consumer) = ringbuf::HeapRb::<f32>::new(512).split();
+    let counters = Arc::new(crate::audio::output::AudioCallbackCounters::default());
+    counters.recovering.store(true, Ordering::Release);
+    let hops = Arc::new(AtomicU64::new(0));
+    let observed = Arc::clone(&hops);
+    let mut opts = options();
+    opts.audio_prod = Some(producer);
+    opts.audio_counters = Some(counters);
+    opts.offline_body_probe = Some(Box::new(move |_, _, _, _| {
+        observed.fetch_add(1, Ordering::Relaxed);
+    }));
+    let (wiring, stop, dir) = fixture(opts, "seed(21); wait(10.0);");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while consumer.occupied_len() < 512 {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(1));
+    }
+    let first = hops.load(Ordering::Relaxed);
+    assert_eq!(first, 1);
+    thread::sleep(Duration::from_millis(20));
+    assert_eq!(hops.load(Ordering::Relaxed), first);
+    assert_eq!(consumer.skip(512), 512);
+    while hops.load(Ordering::Relaxed) == first {
+        assert!(Instant::now() < deadline);
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert!(!wiring.worker_handle.is_finished());
+    stop.store(true, Ordering::SeqCst);
+    while !wiring.worker_handle.is_finished() {
+        assert!(
+            Instant::now() < deadline,
+            "stop must end a run blocked on ring vacancy"
+        );
+        thread::sleep(Duration::from_millis(1));
+    }
+    join(wiring).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn unsupported_recovery_after_finalization_fails_the_worker_result() {
     let counters = Arc::new(crate::audio::output::AudioCallbackCounters::default());
     let mut opts = options();
     opts.listener_forced = true;
@@ -634,7 +673,7 @@ fn audio_callback_error_after_finalization_fails_the_worker_result() {
         thread::sleep(Duration::from_millis(5));
     }
     assert!(!wiring.worker_handle.is_finished());
-    counters.callback_errors_total.store(1, Ordering::Relaxed);
+    counters.failed.store(true, Ordering::Release);
     while !wiring.worker_handle.is_finished() && Instant::now() < deadline {
         thread::sleep(Duration::from_millis(5));
     }
@@ -643,7 +682,7 @@ fn audio_callback_error_after_finalization_fails_the_worker_result() {
     let result = join(wiring).unwrap_err();
     assert!(finished_without_user_exit);
     assert!(
-        result.contains("audio callback failed: 1 stream errors"),
+        result.contains("audio stream configuration unsupported during recovery"),
         "{result}"
     );
     std::fs::remove_dir_all(dir).unwrap();

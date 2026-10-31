@@ -267,6 +267,11 @@ impl Clone for HistoryEnergyPrediction {
 
 impl HistoryEnergyPrediction {
     #[cfg(test)]
+    pub(crate) fn reference_identity(&self) -> (u64, u64) {
+        (self.phase, self.issues)
+    }
+
+    #[cfg(test)]
     pub(crate) fn align_refactor_phase(&mut self, other: &Self) {
         self.phase = other.phase;
     }
@@ -557,6 +562,12 @@ impl HistoryEnergyPrediction {
             features: x,
             energy,
         };
+        #[cfg(test)]
+        if reference::checkpoint_due(self.phase) {
+            // Observe the exact issue, even when no musical consumer queries it.
+            let candidate = self.forecast(energy, history);
+            self.preview_comparison([[0.0; 3]; FORECAST_LEN], candidate);
+        }
     }
 
     pub(crate) fn forecast(

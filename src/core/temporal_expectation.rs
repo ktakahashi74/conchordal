@@ -169,6 +169,11 @@ pub(crate) struct BandEnergyHistory {
 
 impl BandEnergyHistory {
     #[cfg(test)]
+    pub(crate) fn reference_identity(&self) -> (u64, u64) {
+        self.history_prediction.reference_identity()
+    }
+
+    #[cfg(test)]
     pub(crate) fn align_refactor_phase(&mut self, other: &Self) {
         self.history_prediction
             .align_refactor_phase(&other.history_prediction);
@@ -805,6 +810,11 @@ impl TemporalForecast {
 }
 
 impl AcousticTemporalExpectation {
+    #[cfg(test)]
+    pub(crate) fn reference_identity(&self) -> (u64, u64) {
+        self.energy.reference_identity()
+    }
+
     /// Rates below 50 Hz cannot resolve the minimum observation window.
     pub(crate) fn new(sample_rate: u32) -> Option<Self> {
         if sample_rate < 50 {

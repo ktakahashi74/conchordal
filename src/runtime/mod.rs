@@ -140,6 +140,9 @@ mod temporal_meter_tests;
 mod shutdown_tests;
 
 #[cfg(test)]
+mod precision_endurance_tests;
+
+#[cfg(test)]
 pub(crate) mod l1_probe;
 
 #[cfg(test)]

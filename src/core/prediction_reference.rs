@@ -353,19 +353,15 @@ impl Counts {
             true
         } else if difference - uncertainty > high {
             self.failed[kind] += 1;
-            if self.failed[kind] <= 4 {
-                eprintln!(
-                    "reference FAIL kind={kind} prod={prod:e} ref={reference:?} d={difference:e} tol={low:e}..{high:e} S={scale:e}"
-                );
-            }
+            eprintln!(
+                "reference FAIL kind={kind} prod={prod:e} ref={reference:?} d={difference:e} tol={low:e}..{high:e} S={scale:e}"
+            );
             true
         } else {
             self.inconclusive[kind] += 1;
-            if self.inconclusive[kind] <= 3 {
-                eprintln!(
-                    "reference INCONCLUSIVE kind={kind} prod={prod:e} ref={reference:?} d={difference:e} tol={low:e}..{high:e} S={scale:e}"
-                );
-            }
+            eprintln!(
+                "reference INCONCLUSIVE kind={kind} prod={prod:e} ref={reference:?} d={difference:e} tol={low:e}..{high:e} S={scale:e}"
+            );
             false
         }
     }
@@ -405,6 +401,9 @@ struct Reference {
     issues: u64,
     last_forecast: Option<u64>,
     last_weights: Option<u64>,
+    checkpoint_start: Counts,
+    checkpoint_counts: Counts,
+    condition_upper: f64,
 }
 impl Reference {
     fn new() -> Self {
@@ -425,6 +424,9 @@ impl Reference {
             issues: 0,
             last_forecast: None,
             last_weights: None,
+            checkpoint_start: Counts::default(),
+            checkpoint_counts: Counts::default(),
+            condition_upper: 0.0,
         }
     }
     fn factor(&self) -> Vec<Vec<Bound>> {
@@ -552,6 +554,7 @@ impl Reference {
 struct Capture {
     histories: BTreeMap<u64, Reference>,
     learning: BTreeMap<u64, Vec<[[Scalar; 2]; 3]>>,
+    learning_issues: BTreeMap<u64, u64>,
     counts: Counts,
     history_limit: usize,
     checkpoints: Vec<u64>,
@@ -589,6 +592,31 @@ impl Capture {
 
 pub(crate) fn counts() -> Counts {
     CAPTURE.with(|c| c.borrow().as_ref().unwrap().counts)
+}
+
+pub(crate) fn select_history(id: u64) {
+    capture(|c| {
+        assert!(c.history(id).is_some());
+    });
+}
+
+pub(crate) fn checkpoint_due(id: u64) -> bool {
+    CAPTURE.with(|c| {
+        c.borrow().as_ref().is_some_and(|c| {
+            !c.checkpoints.is_empty()
+                && c.histories.get(&id).is_some_and(|r| {
+                    c.checkpoints.contains(&r.issues) && r.last_forecast != Some(r.issues)
+                })
+        })
+    })
+}
+
+pub(crate) fn checkpoint_result(id: u64) -> (u64, Option<u64>, Counts) {
+    CAPTURE.with(|c| {
+        let c = c.borrow();
+        let r = &c.as_ref().unwrap().histories[&id];
+        (r.issues, r.last_weights, r.checkpoint_counts)
+    })
 }
 pub(crate) fn stop() {
     CAPTURE.with(|c| *c.borrow_mut() = None);
@@ -675,8 +703,10 @@ pub(crate) fn forecast(
             return;
         }
         r.last_forecast = Some(r.issues);
+        r.checkpoint_start = c.counts;
         let lower = r.factor();
         let (projected, condition) = r.certified_projection(&lower, x);
+        r.condition_upper = condition;
         c.counts.condition_upper = c.counts.condition_upper.max(condition);
         if !c.checkpoints.is_empty() {
             println!(
@@ -731,16 +761,29 @@ pub(crate) fn weights(id: u64, output: &[[f32; 3]; FORECAST_LEN]) {
             return;
         }
         r.last_weights = Some(r.issues);
+        if !c.checkpoints.is_empty() {
+            println!("reference comparison observer={id} issue={}", r.issues);
+        }
         for (row, out) in r.comparison.iter().zip(output) {
             for (sums, &out) in row.iter().zip(out) {
                 c.counts.scalar(1, out, *sums, false);
             }
         }
+        r.checkpoint_counts = Counts {
+            passed: std::array::from_fn(|i| c.counts.passed[i] - r.checkpoint_start.passed[i]),
+            failed: std::array::from_fn(|i| c.counts.failed[i] - r.checkpoint_start.failed[i]),
+            inconclusive: std::array::from_fn(|i| {
+                c.counts.inconclusive[i] - r.checkpoint_start.inconclusive[i]
+            }),
+            dd_inconclusive: c.counts.dd_inconclusive - r.checkpoint_start.dd_inconclusive,
+            condition_upper: r.condition_upper,
+        };
     });
 }
 pub(crate) fn learning_reset(id: u64) {
     capture(|c| {
         c.learning.remove(&id);
+        c.learning_issues.remove(&id);
     });
 }
 pub(crate) fn learning(
@@ -752,6 +795,14 @@ pub(crate) fn learning(
     output: Option<f32>,
 ) {
     capture(|c| {
+        let issues = c.learning_issues.entry(id).or_default();
+        if observed.is_none() && lead == 0 && band == 0 {
+            *issues += 1;
+            if c.checkpoints.contains(issues) {
+                println!("reference learning observer={id} issue={issues}");
+            }
+        }
+        let due = c.checkpoints.is_empty() || c.checkpoints.contains(issues);
         let rows = c
             .learning
             .entry(id)
@@ -760,7 +811,7 @@ pub(crate) fn learning(
         let i = usize::from(observed.is_some());
         let right = [observed.unwrap_or(candidates[0]), candidates[1]];
         sums[i].add_product(candidates, right);
-        if let Some(out) = output {
+        if let Some(out) = output.filter(|_| due) {
             c.counts.scalar(2, out, *sums, true);
         }
     });

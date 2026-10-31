@@ -310,9 +310,10 @@ impl Recurrence {
                 // bounds every timestamp, target and arithmetic result below.
                 // raw timestamp error is <= 4 eps T; a lag costs <= 9 eps T,
                 // target-minus-onset <= 19 eps T, and its window <= 2 eps T.
-                // Comparing two smooth coverage masses costs <= 42 eps T/window;
+                // For fixed assignments, comparing coverage masses costs <= 42 eps T/window;
                 // allow 11 more for confirmation/accept f64 arithmetic: c = 64.
-                // Discrete endpoint membership is handled in coverage, not by c.
+                // This bounds arithmetic, not rounding-sensitive greedy assignments.
+                // Coverage handles endpoint membership and roundoff-zero weights locally.
                 let scale = self.time.abs().max(RECURRENCE_HISTORY_SECONDS) + 2.0 + dt;
                 let roundoff =
                     64.0 * f64::EPSILON * scale / window + (8 * n + 32) as f64 * f64::EPSILON;
@@ -337,6 +338,11 @@ impl Recurrence {
         let endpoint_roundoff = 24.0
             * f64::EPSILON
             * (end.abs().max(start.abs()).max(RECURRENCE_HISTORY_SECONDS) + 2.0);
+        // Distance/window uncertainty costs <= (19 + 2) eps T/window;
+        // division and subtraction add <= 2 eps. Since T >= window, the
+        // same 24 eps T/window bounds a weight indistinguishable from zero.
+        // Such a match must not consume an onset needed by a later target.
+        let weight_roundoff = endpoint_roundoff / window;
         let mut j = self
             .history
             .partition_point(|t| *t < start - endpoint_roundoff);
@@ -350,8 +356,11 @@ impl Recurrence {
                 j += 1;
             }
             if j < self.history.len() && (self.history[j] - target).abs() <= window {
-                mass += (1.0 - (self.history[j] - target).abs() / window).max(0.0);
-                j += 1;
+                let weight = (1.0 - (self.history[j] - target).abs() / window).max(0.0);
+                if weight > weight_roundoff {
+                    mass += weight;
+                    j += 1;
+                }
             }
         }
         // All candidate lags share one observation denominator (autocorrelation).

@@ -422,6 +422,25 @@ fn recurrence_translated_endpoint_patterns_preserve_coverage_and_period_bits() {
 }
 
 #[test]
+fn recurrence_roundoff_zero_weight_does_not_consume_a_later_full_match() {
+    let mut coverages = Vec::new();
+    for origin in [0, 1 << 40] {
+        let mut recurrence = Recurrence::new();
+        for tick in [0, 2880, 26880, 50880] {
+            recurrence.observe(origin + tick, 0, 48000.0, true, 0.0);
+        }
+        let values = [0.5, 0.5 + 2.0_f64.powi(-53)]
+            .map(|period| recurrence.coverage(period, ioi_window(period)));
+        println!("roundoff-zero coverage origin={origin}: {values:?}");
+        for value in values {
+            assert!((value - 0.5).abs() <= 8.0 * f64::EPSILON, "{values:?}");
+        }
+        coverages.push(values.map(f64::to_bits));
+    }
+    assert_eq!(coverages[0], coverages[1]);
+}
+
+#[test]
 fn recurrence_rebases_raw_ticks_through_fractional_onsets_silence_and_restart() {
     let mut near = Recurrence::new();
     let mut far = Recurrence::new();

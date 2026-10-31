@@ -71,21 +71,29 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
         }
     }
 
-    if !has_finish {
-        return Err("Scenario has no Finish action".to_string());
-    }
-
-    if scenario.duration_sec <= 0.0 {
-        return Err("Scenario duration_sec must be > 0".to_string());
-    }
-    if let Some(max_time) = scenario
-        .events
-        .iter()
-        .map(|ev| ev.time)
-        .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-        && scenario.duration_sec + f64::EPSILON < max_time
-    {
-        return Err("Scenario duration_sec is before last event".to_string());
+    match scenario.end {
+        crate::scenario::ScenarioEnd::Open => {
+            if has_finish {
+                return Err("Open scenario must not contain a Finish action".into());
+            }
+        }
+        crate::scenario::ScenarioEnd::Finite { duration_sec } => {
+            if !has_finish {
+                return Err("Scenario has no Finish action".into());
+            }
+            if duration_sec <= 0.0 {
+                return Err("Scenario duration_sec must be > 0".into());
+            }
+            if let Some(max_time) = scenario
+                .events
+                .iter()
+                .map(|ev| ev.time)
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                && duration_sec + f64::EPSILON < max_time
+            {
+                return Err("Scenario duration_sec is before last event".into());
+            }
+        }
     }
 
     let mut prev_order = None;
@@ -110,6 +118,12 @@ pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
         ScriptHost::load_script_with_warnings(&path.to_string_lossy(), args.seed)
             .map_err(|error| error.to_string())?;
     validate_scenario(&scenario)?;
+    match scenario.end {
+        crate::scenario::ScenarioEnd::Open => eprintln!("end: open"),
+        crate::scenario::ScenarioEnd::Finite { duration_sec } => {
+            eprintln!("end: {duration_sec:.3}s")
+        }
+    }
     let mut markers = scenario.scene_markers.clone();
     markers.sort_by(|a, b| cmp_time_order(a.time, a.order, b.time, b.order));
     for marker in &markers {
@@ -193,4 +207,136 @@ pub(super) fn load_scenario(
         scenario.seed, scenario.seed
     );
     Ok((scenario_label, scenario, output_gain))
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn validate_run_bounds(
+    scenario: &Scenario,
+    duration: Option<f64>,
+    sample_rate: u32,
+    hop: usize,
+    render: bool,
+    report: bool,
+    profile: bool,
+) -> Result<(), String> {
+    if scenario.end == crate::scenario::ScenarioEnd::Open && duration.is_none() {
+        if render {
+            return Err("Open scenarios require --duration for render".into());
+        }
+        if report {
+            return Err("--report with an open scenario requires --duration".into());
+        }
+        if profile {
+            return Err("--profile with an open scenario requires --duration".into());
+        }
+    }
+    if let Some(seconds) = duration {
+        let samples = seconds * f64::from(sample_rate);
+        if !seconds.is_finite() || seconds < 0.0 || samples >= u64::MAX as f64 {
+            return Err("--duration must be finite, non-negative and fit the runtime clock".into());
+        }
+        if render && samples.round() * 2.0 + 36.0 > f64::from(u32::MAX) {
+            return Err("--duration alone exceeds the WAV size limit".into());
+        }
+        if profile
+            && (samples.round() as u64).div_ceil(hop as u64)
+                > crate::runtime_profile::PROFILE_HOP_CAPACITY as u64
+        {
+            return Err("--duration exceeds PROFILE_HOP_CAPACITY; leave room for end fades".into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod end_tests {
+    use super::*;
+    use crate::scenario::{ScenarioEnd, TimedEvent};
+
+    #[test]
+    fn open_validation_keeps_nonempty_rule_and_forbids_finish() {
+        let mut scenario = crate::scripting::ScriptContext::default().scenario;
+        scenario.end = ScenarioEnd::Open;
+        assert_eq!(
+            validate_scenario(&scenario).unwrap_err(),
+            "Scenario has no events"
+        );
+        scenario.events.push(TimedEvent {
+            time: 0.0,
+            order: 1,
+            actions: vec![Action::SetGlobalCoupling { value: 0.0 }],
+        });
+        validate_scenario(&scenario).unwrap();
+        scenario.events[0].actions.push(Action::Finish);
+        assert!(
+            validate_scenario(&scenario)
+                .unwrap_err()
+                .contains("must not contain a Finish")
+        );
+        scenario.end = ScenarioEnd::Finite { duration_sec: 0.1 };
+        validate_scenario(&scenario).unwrap();
+        scenario.events[0].actions.pop();
+        assert_eq!(
+            validate_scenario(&scenario).unwrap_err(),
+            "Scenario has no Finish action"
+        );
+    }
+
+    #[test]
+    fn duration_bounds_protect_the_actual_output_consumers() {
+        let mut scenario = crate::scripting::ScriptContext::default().scenario;
+        scenario.end = ScenarioEnd::Open;
+        for (render, report, profile, error) in [
+            (true, false, false, "for render"),
+            (false, true, false, "--report"),
+            (false, false, true, "--profile"),
+        ] {
+            assert!(
+                validate_run_bounds(&scenario, None, 48000, 512, render, report, profile)
+                    .unwrap_err()
+                    .contains(error)
+            );
+            validate_run_bounds(&scenario, Some(1.0), 48000, 512, render, report, profile).unwrap();
+        }
+        validate_run_bounds(&scenario, None, 48000, 512, false, false, false).unwrap();
+        let capacity = crate::runtime_profile::PROFILE_HOP_CAPACITY as f64;
+        let last = capacity * 512.0 / 48000.0;
+        validate_run_bounds(&scenario, Some(last), 48000, 512, false, false, true).unwrap();
+        assert!(
+            validate_run_bounds(
+                &scenario,
+                Some(last + 512.0 / 48000.0),
+                48000,
+                512,
+                false,
+                false,
+                true
+            )
+            .unwrap_err()
+            .contains("PROFILE_HOP_CAPACITY")
+        );
+        let max_wav = f64::from((u32::MAX - 36) / 2) / 48000.0;
+        validate_run_bounds(&scenario, Some(max_wav), 48000, 512, true, false, false).unwrap();
+        assert!(
+            validate_run_bounds(
+                &scenario,
+                Some(max_wav + 1.0 / 48000.0),
+                48000,
+                512,
+                true,
+                false,
+                false
+            )
+            .unwrap_err()
+            .contains("WAV size limit")
+        );
+        for invalid in [f64::NAN, f64::INFINITY, -1.0, f64::MAX] {
+            assert!(
+                validate_run_bounds(&scenario, Some(invalid), 48000, 512, false, false, false)
+                    .is_err()
+            );
+        }
+        scenario.end = ScenarioEnd::Finite { duration_sec: 1.0 };
+        validate_run_bounds(&scenario, None, 48000, 512, true, true, true).unwrap();
+    }
 }

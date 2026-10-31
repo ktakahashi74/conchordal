@@ -423,6 +423,16 @@ Create a Population at the current script time. `place()` is the sole Population
 
 **根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
+#### `endless`
+
+```rhai,ignore
+endless()
+```
+
+Declare an open-ended performance before playback events and time advances. Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Stage 1 evaluates eagerly: unbounded script loops still hang at load.
+
+**根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
+
 #### `wait`
 
 ```rhai,ignore

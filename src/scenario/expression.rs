@@ -85,6 +85,9 @@ impl Expression {
     }
 
     pub(crate) fn validate(self, scenario: &Scenario) -> Result<(), &'static str> {
+        if scenario.end == super::ScenarioEnd::Open {
+            return Err("requires a finite final section");
+        }
         if !self.start.is_finite()
             || !self.end.is_finite()
             || self.start < 0.0
@@ -174,7 +177,7 @@ impl Scenario {
                 }
             }
         }
-        let mut finish = expression.performance(self.duration_sec);
+        let mut finish = expression.performance(self.end.duration_sec().unwrap());
         // Finish already contains physical release tails. Recover the score
         // cursor saved by the compiler instead of stretching those tails.
         if let Some(cursor) = self.expression_cursor {
@@ -211,7 +214,9 @@ impl Scenario {
         for marker in &mut self.scene_markers {
             marker.time = expression.performance(marker.time);
         }
-        self.duration_sec = finish;
+        self.end = super::ScenarioEnd::Finite {
+            duration_sec: finish,
+        };
     }
 }
 

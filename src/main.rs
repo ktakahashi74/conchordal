@@ -34,9 +34,20 @@ fn main() -> eframe::Result<()> {
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_for_ctrlc = stop_flag.clone();
+    let end_request = args.end_request.clone();
 
+    let mut interrupted = false;
+    let headless = args.nogui;
     ctrlc::set_handler(move || {
-        stop_flag_for_ctrlc.store(true, Ordering::SeqCst);
+        if interrupted {
+            stop_flag_for_ctrlc.store(true, Ordering::SeqCst);
+        } else {
+            end_request.store(true, Ordering::SeqCst);
+            if headless {
+                eprintln!("ending (fade)…");
+            }
+            interrupted = true;
+        }
     })
     .expect("Error setting Ctrl-C handler");
 

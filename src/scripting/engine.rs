@@ -19,6 +19,46 @@ use super::*;
 impl ScriptHost {
     pub fn create_engine(ctx: Arc<Mutex<ScriptContext>>) -> Engine {
         let mut engine = Engine::new();
+        engine.disable_symbol("eval");
+        engine.set_module_resolver(rhai::module_resolvers::DummyModuleResolver::new());
+        let unavailable = |call: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
+            Err(EvalAltResult::ErrorRuntime(
+                "not available in scenarios; use wait() for score time".into(),
+                call.call_position(),
+            )
+            .into())
+        };
+        engine.register_fn("timestamp", unavailable);
+        engine.register_fn("sleep", move |call: NativeCallContext, _: FLOAT| {
+            unavailable(call)
+        });
+        engine.register_fn("sleep", move |call: NativeCallContext, _: INT| {
+            unavailable(call)
+        });
+        let ctx_endless = ctx.clone();
+        engine.register_fn("endless", move |call: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
+            let mut ctx = ctx_endless.lock().expect("lock script context");
+            if ctx.parallel_used {
+                return Err(EvalAltResult::ErrorRuntime(
+                    "parallel is not available in an endless scenario".into(), call.call_position(),
+                ).into());
+            }
+            if ctx.scenario.end == ScenarioEnd::Open
+                || ctx.cursor != 0.0
+                || !ctx.scopes.is_empty()
+                || !ctx.scenario.events.is_empty()
+                || call.call_level() > 1
+                || call.global_runtime_state().scope_level != 0
+                || ctx.top_level_call_positions.as_ref().is_some_and(|positions| !positions.contains(&call.call_position()))
+            {
+                return Err(EvalAltResult::ErrorRuntime(
+                    "endless must be declared once at top level before playback events and time advances".into(),
+                    call.call_position(),
+                ).into());
+            }
+            ctx.scenario.end = ScenarioEnd::Open;
+            Ok(())
+        });
         engine.on_print(|msg| println!("[rhai] {msg}"));
 
         engine.register_type_with_name::<PopulationSpecHandle>("PopulationSpec");
@@ -1217,6 +1257,7 @@ impl ScriptHost {
             "temporal_mode",
             move |call: NativeCallContext, name: &str| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_temporal_mode.lock().expect("lock script context");
+                ctx.check_header("temporal_mode", call.call_position())?;
                 if ctx.temporal_mode_declared
                     || ctx.cursor != 0.0
                     || !ctx.scopes.is_empty()
@@ -1471,7 +1512,15 @@ impl ScriptHost {
                   callbacks: Array|
                   -> Result<(), Box<EvalAltResult>> {
                 let start_time = {
-                    let ctx = ctx_for_parallel.lock().expect("lock script context");
+                    let mut ctx = ctx_for_parallel.lock().expect("lock script context");
+                    if ctx.scenario.end == ScenarioEnd::Open {
+                        return Err(EvalAltResult::ErrorRuntime(
+                            "parallel is not available in an endless scenario".into(),
+                            call_ctx.call_position(),
+                        )
+                        .into());
+                    }
+                    ctx.parallel_used = true;
                     ctx.cursor
                 };
                 let mut max_end = start_time;
@@ -1708,6 +1757,7 @@ impl ScriptHost {
                 let mut ctx = ctx_for_population_leave_self_out
                     .lock()
                     .expect("lock script context");
+                let endless = ctx.scenario.end == ScenarioEnd::Open;
                 let Some(population) = ctx.populations.get_mut(&handle.id) else {
                     diagnostics
                         .lock()
@@ -1723,6 +1773,13 @@ impl ScriptHost {
                 };
                 match population.status {
                     PopulationStatus::Live => {
+                        if endless && enabled && !population.loo_at_placement {
+                            return Err(EvalAltResult::ErrorRuntime(
+                                "enable leave_self_out at placement in an endless scenario".into(),
+                                call_ctx.call_position(),
+                            )
+                            .into());
+                        }
                         population.spec.set_leave_self_out(enabled);
                         population.pending_patch.leave_self_out = Some(enabled);
                     }
@@ -2192,21 +2249,25 @@ impl ScriptHost {
         let ctx_for_meter_stability_f = ctx.clone();
         engine.register_fn(
             "meter_stability",
-            move |_call_ctx: NativeCallContext, value: FLOAT| {
+            move |call: NativeCallContext, value: FLOAT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_meter_stability_f
                     .lock()
                     .expect("lock script context");
+                ctx.check_header("meter_stability", call.call_position())?;
                 ctx.scenario.meter_shaping.stability = (value as f32).clamp(0.0, 1.0);
+                Ok(())
             },
         );
         let ctx_for_meter_stability_i = ctx.clone();
         engine.register_fn(
             "meter_stability",
-            move |_call_ctx: NativeCallContext, value: INT| {
+            move |call: NativeCallContext, value: INT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_meter_stability_i
                     .lock()
                     .expect("lock script context");
+                ctx.check_header("meter_stability", call.call_position())?;
                 ctx.scenario.meter_shaping.stability = (value as f32).clamp(0.0, 1.0);
+                Ok(())
             },
         );
         macro_rules! register_temporal_basin {
@@ -2214,9 +2275,14 @@ impl ScriptHost {
                 let ctx_clone = ctx.clone();
                 engine.register_fn(
                     "temporal_basin",
-                    move |_call_ctx: NativeCallContext, min: $min_ty, max: $max_ty| {
+                    move |call: NativeCallContext,
+                          min: $min_ty,
+                          max: $max_ty|
+                          -> Result<(), Box<EvalAltResult>> {
                         let mut ctx = ctx_clone.lock().expect("lock script context");
+                        ctx.check_header("temporal_basin", call.call_position())?;
                         ctx.scenario.meter_shaping.basin_hz = Some((min as f32, max as f32));
+                        Ok(())
                     },
                 );
             }};
@@ -2279,70 +2345,89 @@ impl ScriptHost {
                         ("sequential_rotating", ControlUpdateMode::SequentialRotating),
                     ],
                 )?;
-                ctx_for_set_control_update_mode
+                let mut ctx = ctx_for_set_control_update_mode
                     .lock()
-                    .expect("lock script context")
-                    .scenario
-                    .control_update_mode = mode;
+                    .expect("lock script context");
+                ctx.check_header("control_update_mode", call.call_position())?;
+                ctx.scenario.control_update_mode = mode;
                 Ok(())
             },
         );
 
         let ctx_for_set_scaffold_off = ctx.clone();
-        engine.register_fn("scaffold_off", move |_call_ctx: NativeCallContext| {
-            let mut ctx = ctx_for_set_scaffold_off
-                .lock()
-                .expect("lock script context");
-            ctx.scenario.scaffold = ScaffoldConfig::Off;
-        });
+        engine.register_fn(
+            "scaffold_off",
+            move |call: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_set_scaffold_off
+                    .lock()
+                    .expect("lock script context");
+                ctx.check_header("scaffold_off", call.call_position())?;
+                ctx.scenario.scaffold = ScaffoldConfig::Off;
+                Ok(())
+            },
+        );
         let ctx_for_set_scaffold_shared = ctx.clone();
         engine.register_fn(
             "scaffold_shared",
-            move |_call_ctx: NativeCallContext, freq_hz: FLOAT| {
+            move |call: NativeCallContext, freq_hz: FLOAT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_set_scaffold_shared
                     .lock()
                     .expect("lock script context");
+                ctx.check_header("scaffold_shared", call.call_position())?;
                 ctx.scenario.scaffold = ScaffoldConfig::Shared {
                     freq_hz: (freq_hz as f32).max(0.0),
                 };
+                Ok(())
             },
         );
         let ctx_for_set_scaffold_shared_int = ctx.clone();
         engine.register_fn(
             "scaffold_shared",
-            move |_call_ctx: NativeCallContext, freq_hz: INT| {
+            move |call: NativeCallContext, freq_hz: INT| -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_set_scaffold_shared_int
                     .lock()
                     .expect("lock script context");
+                ctx.check_header("scaffold_shared", call.call_position())?;
                 ctx.scenario.scaffold = ScaffoldConfig::Shared {
                     freq_hz: (freq_hz as f32).max(0.0),
                 };
+                Ok(())
             },
         );
         let ctx_for_set_scaffold_scrambled = ctx.clone();
         engine.register_fn(
             "scaffold_scrambled",
-            move |_call_ctx: NativeCallContext, freq_hz: FLOAT, seed: INT| {
+            move |call: NativeCallContext,
+                  freq_hz: FLOAT,
+                  seed: INT|
+                  -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_set_scaffold_scrambled
                     .lock()
                     .expect("lock script context");
+                ctx.check_header("scaffold_scrambled", call.call_position())?;
                 ctx.scenario.scaffold = ScaffoldConfig::Scrambled {
                     freq_hz: (freq_hz as f32).max(0.0),
                     seed: seed.max(0) as u64,
                 };
+                Ok(())
             },
         );
         let ctx_for_set_scaffold_scrambled_int = ctx.clone();
         engine.register_fn(
             "scaffold_scrambled",
-            move |_call_ctx: NativeCallContext, freq_hz: INT, seed: INT| {
+            move |call: NativeCallContext,
+                  freq_hz: INT,
+                  seed: INT|
+                  -> Result<(), Box<EvalAltResult>> {
                 let mut ctx = ctx_for_set_scaffold_scrambled_int
                     .lock()
                     .expect("lock script context");
+                ctx.check_header("scaffold_scrambled", call.call_position())?;
                 ctx.scenario.scaffold = ScaffoldConfig::Scrambled {
                     freq_hz: (freq_hz as f32).max(0.0),
                     seed: seed.max(0) as u64,
                 };
+                Ok(())
             },
         );
 
@@ -2379,6 +2464,57 @@ impl ScriptHost {
         engine
     }
 
+    pub(super) fn eval_scenario(
+        engine: &mut Engine,
+        ctx: &Arc<Mutex<ScriptContext>>,
+        source: &str,
+    ) -> Result<Dynamic, Box<EvalAltResult>> {
+        // Keep lexical call sites before optimization can flatten blocks.
+        let level = engine.optimization_level();
+        engine.set_optimization_level(rhai::OptimizationLevel::None);
+        let ast = engine.compile(source);
+        engine.set_optimization_level(level);
+        let ast = ast?;
+        let mut positions = Vec::new();
+        let mut path = Vec::new();
+        for statement in ast.statements() {
+            statement.walk(&mut path, &mut |nodes| {
+                use rhai::{ASTNode, Expr, Stmt};
+                let call = matches!(
+                    nodes.last(),
+                    Some(ASTNode::Stmt(Stmt::FnCall(..)))
+                        | Some(ASTNode::Expr(Expr::FnCall(..) | Expr::MethodCall(..)))
+                );
+                let nested = nodes.iter().any(|node| {
+                    matches!(
+                        node,
+                        ASTNode::Stmt(
+                            Stmt::If(..)
+                                | Stmt::Switch(..)
+                                | Stmt::While(..)
+                                | Stmt::Do(..)
+                                | Stmt::For(..)
+                                | Stmt::Block(..)
+                                | Stmt::TryCatch(..)
+                        ) | ASTNode::Expr(Expr::Stmt(..))
+                    )
+                });
+                if call
+                    && !nested
+                    && let Some(node) = nodes.last()
+                {
+                    positions.push(node.position());
+                }
+                true
+            });
+        }
+        ctx.lock()
+            .expect("lock script context")
+            .top_level_call_positions = Some(positions);
+        let ast = engine.optimize_ast(&rhai::Scope::new(), ast, level);
+        engine.eval_ast::<Dynamic>(&ast)
+    }
+
     /// Loads and evaluates a scenario script. `seed`, when given, seeds the
     /// fresh scenario before evaluation; a script-level `seed()` call still
     /// wins, since it runs during evaluation and overwrites it.
@@ -2404,11 +2540,21 @@ impl ScriptHost {
             Some(seed) => ScriptContext::with_seed(seed),
             None => ScriptContext::default(),
         }));
-        let engine = Self::create_engine(ctx.clone());
-        engine
-            .eval::<()>(&src)
+        let mut engine = Self::create_engine(ctx.clone());
+        let value = Self::eval_scenario(&mut engine, &ctx, &src)
             .map_err(|err| ScriptError::from_eval(err, Some(path)))?;
         let mut ctx = ctx.lock().expect("lock script context");
+        if ctx.scenario.end != ScenarioEnd::Open && !value.is_unit() {
+            return Err(ScriptError::from_eval(
+                EvalAltResult::ErrorMismatchOutputType(
+                    "()".into(),
+                    engine.map_type_name(value.type_name()).into(),
+                    Position::NONE,
+                )
+                .into(),
+                Some(path),
+            ));
+        }
         ctx.finish();
         let warnings = ctx.warnings.lock().expect("lock script warnings").clone();
         Ok((ctx.scenario.clone(), warnings))

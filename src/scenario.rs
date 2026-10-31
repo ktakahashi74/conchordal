@@ -136,7 +136,22 @@ pub struct Scenario {
     pub meter_shaping: MeterShaping,
     pub scene_markers: Vec<SceneMarker>,
     pub events: Vec<TimedEvent>,
-    pub duration_sec: f64,
+    pub end: ScenarioEnd,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ScenarioEnd {
+    Finite { duration_sec: f64 },
+    Open,
+}
+
+impl ScenarioEnd {
+    pub(crate) fn duration_sec(self) -> Option<f64> {
+        match self {
+            Self::Finite { duration_sec } => Some(duration_sec),
+            Self::Open => None,
+        }
+    }
 }
 
 /// New temporal cognition is opt-in; observation never adds action pressure.

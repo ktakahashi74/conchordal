@@ -282,6 +282,32 @@ impl Community {
         }
     }
 
+    pub(crate) fn release_for_end(&mut self) {
+        for (&id, population) in &mut self.populations {
+            if population.released {
+                continue;
+            }
+            let mut has_members = false;
+            for voice in self
+                .voices
+                .iter_mut()
+                .filter(|v| v.metadata.population_id == id)
+            {
+                voice.start_remove_fade(population.template.control.body.envelope.release_sec);
+                has_members = true;
+            }
+            if has_members {
+                population.released = true;
+            }
+        }
+        for flora in &mut self.flora {
+            flora.release_at_scenario_end();
+        }
+        for rain in &mut self.rain {
+            rain.release_at_scenario_end();
+        }
+    }
+
     fn on_release_population_action(&mut self, population_id: u64, fade_sec: f32) {
         // Population-wide runtime semantics:
         // release applies to all current members with matching population_id.

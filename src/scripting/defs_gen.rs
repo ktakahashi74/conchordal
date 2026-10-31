@@ -116,7 +116,8 @@ fn collect() -> (Vec<Sig>, Vec<String>) {
     for raw in engine.gen_fn_signatures(false) {
         let name_end = raw.find('(').expect("signature has '('");
         let name = &raw[..name_end];
-        if name == "create" {
+        // Rejected standard capabilities are not part of the scenario API.
+        if matches!(name, "create" | "sleep" | "timestamp") {
             continue;
         }
         if RHAI_RESERVED.contains(&name) || !is_rhai_identifier(name) {

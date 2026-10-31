@@ -617,6 +617,14 @@ impl Flora {
         self.release(self.spec.fade_sec);
     }
 
+    pub(crate) fn remaining_release_ticks(&self) -> u64 {
+        if self.releasing {
+            self.gain.left as u64
+        } else {
+            0
+        }
+    }
+
     pub(crate) fn is_finished(&self) -> bool {
         self.releasing
             && self.gain.value == 0.0

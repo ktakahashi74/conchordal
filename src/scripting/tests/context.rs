@@ -1599,7 +1599,7 @@ fn flora_specs_emit_placement_actions_and_route_buses() {
             .iter()
             .any(|(_, a)| matches!(a, Action::ReleaseFlora { .. }))
     );
-    assert_eq!(scenario.duration_sec, 0.5);
+    assert_eq!(scenario.end.duration_sec().unwrap(), 0.5);
 }
 
 #[test]
@@ -1811,7 +1811,7 @@ fn flora_pending_patch_precedes_release_in_one_event_and_extends_finish() {
             Action::UpdateFlora { flora_id: 1, patch: FloraPatch { amp: Some(amp), .. } },
             Action::ReleaseFlora { flora_id: 1, fade_sec: 3.0 }
         ] if *amp == 0.015));
-        assert_eq!(scenario.duration_sec, 5.0);
+        assert_eq!(scenario.end.duration_sec().unwrap(), 5.0);
         assert!(matches!(
             scenario.events.last().unwrap().actions.as_slice(),
             [Action::Finish]
@@ -1872,7 +1872,7 @@ fn flora_nested_scopes_release_inner_at_inner_end_with_patches_first() {
             }
         ]
     ));
-    assert_eq!(scenario.duration_sec, 2.5);
+    assert_eq!(scenario.end.duration_sec().unwrap(), 2.5);
 }
 
 #[test]
@@ -2240,11 +2240,11 @@ fn expressive_section_validates_final_shapes_and_global_release() {
     );
     assert!(warnings.lock().unwrap().is_empty());
     let e = scene.expression.unwrap();
-    let tail = scene.duration_sec - 6.0;
+    let tail = scene.end.duration_sec().unwrap() - 6.0;
     scene.prepare_expression(48000.0, 512);
     assert!(scene.expression.is_some());
-    assert!((scene.duration_sec - (e.performance(6.0) + tail)).abs() < 1e-6);
-    assert!(scene.duration_sec > 6.0 + tail);
+    assert!((scene.end.duration_sec().unwrap() - (e.performance(6.0) + tail)).abs() < 1e-6);
+    assert!(scene.end.duration_sec().unwrap() > 6.0 + tail);
 }
 
 #[test]
@@ -2499,7 +2499,7 @@ fn listener_profile_section_uses_existing_expression_support_and_explicit_overri
     assert!(e.from_profile);
     scenario.prepare_expression(48000.0, 512);
     assert!(scenario.expression.is_some());
-    assert!(scenario.duration_sec > 6.0);
+    assert!(scenario.end.duration_sec().unwrap() > 6.0);
     for script in [
         "place(sine().metric(),at(220)); wait(2);",
         "section(\"end\", || {place(sine().sustain().metric(),at(220)); wait(2);});",
@@ -2689,7 +2689,7 @@ fn rain_patches_wait_for_boundaries_and_release_extends_finish() {
     );
     assert!(actions.iter().any(|(time, action)| *time == 2.0
         && matches!(action, Action::ReleaseRain { rain_id: 1, fade_sec } if *fade_sec == 3.0)));
-    assert_eq!(scenario.duration_sec, 5.0);
+    assert_eq!(scenario.end.duration_sec().unwrap(), 5.0);
 }
 
 #[test]
@@ -2700,8 +2700,156 @@ fn indefinite_script_cursor_retains_f64_wait_precision() {
     // The bound is the accumulated f64 rounding error of n additions.
     let bound = n as f64 * f64::EPSILON * expected;
     assert!(
-        (scenario.duration_sec - expected).abs() <= bound,
+        (scenario.end.duration_sec().unwrap() - expected).abs() <= bound,
         "{} != {expected} (bound {bound})",
-        scenario.duration_sec
+        scenario.end.duration_sec().unwrap()
+    );
+}
+
+#[test]
+fn endless_declaration_rules_and_pending_actions() {
+    let scenario = run_script("seed(21); endless(); let p = place(sine(), at(220)); p.amp(0.2);").0;
+    assert_eq!(scenario.end, ScenarioEnd::Open);
+    assert!(matches!(
+        scenario.events.last().unwrap().actions[0],
+        Action::UpdatePopulation { .. }
+    ));
+    assert!(
+        !scenario
+            .events
+            .iter()
+            .flat_map(|e| &e.actions)
+            .any(|a| matches!(a, Action::Finish))
+    );
+    for source in [
+        "endless(); endless();",
+        "wait(0.1); endless();",
+        "place(sine(), at(220)); endless();",
+        "set_global_coupling(0); endless();",
+        "play(|| endless());",
+        "section(\"nested\", || endless());",
+        "fn declare() { endless(); } declare();",
+        "let nested = true; if nested { endless(); }",
+        "for n in 0..1 { endless(); }",
+        "{ endless(); }",
+        "if true { endless(); }",
+        "let f = Fn(\"endless\"); { f.call(); }",
+    ] {
+        assert!(
+            run_script_err(source)
+                .to_string()
+                .contains("endless must be declared"),
+            "{source}"
+        );
+    }
+}
+
+#[test]
+fn endless_headers_precede_time_and_parallel_is_rejected() {
+    for declaration in [
+        "seed(21)",
+        "output_gain(0)",
+        "output_gain(0.5)",
+        "temporal_mode(\"off\")",
+        "scaffold_off()",
+        "scaffold_shared(2)",
+        "scaffold_shared(2.5)",
+        "scaffold_scrambled(2, 21)",
+        "scaffold_scrambled(2.5, 21)",
+        "control_update_mode(\"snapshot_phased\")",
+        "meter_stability(1)",
+        "meter_stability(0.5)",
+        "temporal_basin(1, 2)",
+        "temporal_basin(1.0, 2)",
+        "temporal_basin(1, 2.0)",
+        "temporal_basin(1.0, 2.0)",
+    ] {
+        run_script(&format!(
+            "endless(); {declaration}; place(sine(), at(220));"
+        ));
+        let error = run_script_err(&format!("endless(); wait(1); {declaration};"));
+        for source in ["parallel([]); endless();", "parallel([|| endless()]);"] {
+            assert!(
+                run_script_err(source)
+                    .to_string()
+                    .contains("parallel is not available")
+            );
+        }
+        assert!(
+            error
+                .to_string()
+                .contains("must be declared before time advances in an endless scenario"),
+            "{declaration}: {error}"
+        );
+    }
+    assert!(
+        run_script_err("endless(); parallel([]);")
+            .to_string()
+            .contains("parallel is not available")
+    );
+}
+
+#[test]
+fn endless_loo_capability_is_fixed_at_placement() {
+    let error =
+        run_script_err("endless(); let p = place(sine(), at(220)); p.leave_self_out(true);");
+    assert!(
+        error
+            .to_string()
+            .contains("enable leave_self_out at placement in an endless scenario")
+    );
+    run_script(
+        "endless(); let p = place(sine().leave_self_out(true), at(220)); p.leave_self_out(false); wait(1); p.leave_self_out(true);",
+    );
+    run_script("let p = place(sine(), at(220)); wait(1); p.leave_self_out(true);");
+}
+
+#[test]
+fn scenario_capabilities_override_standard_package_functions() {
+    let standard = Engine::new();
+    let _ = standard
+        .eval::<Dynamic>("sleep(0); sleep(0.0); timestamp();")
+        .unwrap();
+    for source in ["sleep(0);", "sleep(0.0);", "timestamp();"] {
+        let error = run_script_err(source);
+        assert!(
+            error
+                .to_string()
+                .contains("not available in scenarios; use wait() for score time"),
+            "{source}: {error}"
+        );
+    }
+    assert!(
+        run_script_err("eval(\"wait(1);\");")
+            .to_string()
+            .contains("eval")
+    );
+    let path = std::env::temp_dir().join(format!("conchordal-import-{}.rhai", std::process::id()));
+    std::fs::write(&path, "const value = 1;").unwrap();
+    let source = format!("import \"{}\" as external;", path.display());
+    let _ = standard.eval::<Dynamic>(&source).unwrap();
+    let error = run_script_err(&source);
+    assert!(error.to_string().contains("Module not found"), "{error}");
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn scenario_optimization_keeps_global_bus_constants_in_functions() {
+    run_script("fn bus() { habitat_bus } place(sine().send(bus()), at(220)); wait(0.01);");
+    assert_eq!(
+        run_script("let declaration = endless(); place(sine(), at(220));")
+            .0
+            .end,
+        ScenarioEnd::Open
+    );
+}
+
+#[test]
+fn top_level_endless_function_pointer_is_allowed() {
+    assert_eq!(
+        run_script("let f = Fn(\"endless\"); f.call(); place(sine(), at(220));")
+            .0
+            .end,
+        ScenarioEnd::Open
     );
 }

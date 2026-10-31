@@ -47,9 +47,11 @@ pub(super) fn build_initial_ui_frame(
         landscape: current_landscape.clone(),
         meta: SimulationMeta {
             time_sec: now_tick as f64 / fs as f64,
-            duration_sec: conductor.total_duration(),
+            end: conductor.end(),
+            population_count: pop.population_count(),
+            slow_hops: 0,
             voice_count: pop.voices.len(),
-            event_queue_len: conductor.remaining_events(),
+            event_queue_len: conductor.pending_events(),
             audio_xruns: 0,
             audio_rebuilds: 0,
             audio_recovering: false,
@@ -122,9 +124,11 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
         landscape: input.current_landscape.clone(),
         meta: SimulationMeta {
             time_sec: input.current_time,
-            duration_sec: input.conductor.total_duration(),
+            end: input.conductor.end(),
+            population_count: input.pop.population_count(),
+            slow_hops: 0,
             voice_count: input.pop.voices.len(),
-            event_queue_len: input.conductor.remaining_events(),
+            event_queue_len: input.conductor.pending_events(),
             audio_xruns: 0,
             audio_rebuilds: 0,
             audio_recovering: false,
@@ -212,7 +216,7 @@ pub(super) fn send_runtime_ui_frame(
     let Some(tx) = &channels.ui_tx else {
         return;
     };
-    let frame = build_runtime_ui_frame(RuntimeUiFrameInput {
+    let mut frame = build_runtime_ui_frame(RuntimeUiFrameInput {
         body: state.body_snapshot.as_deref(),
         temporal: &state.temporal_frames,
         scenario_name: &cfg.scenario_name,
@@ -232,6 +236,12 @@ pub(super) fn send_runtime_ui_frame(
         hop: cfg.hop,
         fs: cfg.fs,
     });
+    frame.meta.slow_hops = state.monitor.slow_hops_total;
+    if let Some(counters) = &cfg.audio_counters {
+        frame.meta.audio_xruns = counters.xruns_total.load(Ordering::Relaxed);
+        frame.meta.audio_rebuilds = counters.rebuilds_total.load(Ordering::Relaxed);
+        frame.meta.audio_recovering = counters.recovering.load(Ordering::Acquire);
+    }
     // A newer terminal snapshot supersedes an undelivered one from the last hop.
     state.pending_final_ui_frame = None;
     if let Err(crossbeam_channel::TrySendError::Full(frame)) = tx.try_send(frame)

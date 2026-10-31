@@ -38,7 +38,8 @@ use crate::scenario::{
     EnvelopeConfig, FieldDurationSpec, FieldSampling, FieldTarget, FloraPatch, FloraSeeding,
     FloraSpec, FloraTone, MetabolismRhythmReward, PhonationSpec, RainPatch, RainSpec,
     RespawnPeakBiasConfig, RespawnPolicy, RhythmCouplingMode, RhythmRelation, RhythmRewardMetric,
-    RhythmRole, ScaffoldConfig, Scenario, SceneMarker, SpawnStrategy, TimedEvent, VoiceSpec,
+    RhythmRole, ScaffoldConfig, Scenario, ScenarioEnd, SceneMarker, SpawnStrategy, TimedEvent,
+    VoiceSpec,
 };
 
 fn parse_enum<T: Copy>(

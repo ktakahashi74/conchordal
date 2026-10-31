@@ -138,6 +138,8 @@ pub(super) fn resolve_limiter_mode(config: &AppConfig) -> LimiterMode {
 /// Path-specific wiring knobs. Every field is an actual difference between the
 /// GUI/headless path (`init_runtime`) and the offline render path (`run_render`).
 pub(super) struct WiringOptions {
+    pub(super) end_request: Arc<AtomicBool>,
+    pub(super) duration_sec: Option<f64>,
     #[cfg(test)]
     pub(super) offline_body_probe: Option<OfflineBodyProbe>,
     #[cfg(test)]
@@ -180,6 +182,8 @@ pub(super) fn wire_runtime(
     opts: WiringOptions,
 ) -> Result<RuntimeWiring, String> {
     let WiringOptions {
+        end_request,
+        duration_sec,
         #[cfg(test)]
         offline_body_probe,
         #[cfg(test)]
@@ -478,6 +482,9 @@ pub(super) fn wire_runtime(
         wait_user_exit,
         start_flag: start_flag.clone(),
         exiting: stop_flag,
+        end_request,
+        duration_tick: duration_sec
+            .map(|sec| crate::core::timebase::Timebase { fs, hop }.sec_to_tick(sec)),
         scaffold,
         meter_shaping,
         harmonic_rhythm,
@@ -612,6 +619,18 @@ pub(crate) fn init_runtime(
         (Some(tx), Some(rx))
     };
 
+    if let Err(err) = validate_run_bounds(
+        &scenario,
+        args.duration,
+        runtime_sample_rate,
+        config.analysis.hop_size,
+        false,
+        args.report.is_some(),
+        args.profile.is_some(),
+    ) {
+        eprintln!("{err}");
+        std::process::exit(1);
+    }
     let mut reporter = args
         .report
         .as_deref()
@@ -670,6 +689,8 @@ pub(crate) fn init_runtime(
         scenario,
         stop_flag.clone(),
         WiringOptions {
+            end_request: args.end_request,
+            duration_sec: args.duration,
             #[cfg(test)]
             offline_body_probe: None,
             #[cfg(test)]
@@ -749,6 +770,7 @@ pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<At
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_render(
     scenario_path: &str,
     wav_path: String,
@@ -757,6 +779,8 @@ pub fn run_render(
     seed: Option<u64>,
     report_path: Option<&str>,
     reserve_runtime_ids_through: u64,
+    duration_sec: Option<f64>,
+    end_request: Arc<AtomicBool>,
 ) -> Result<(), String> {
     if reserve_runtime_ids_through == u64::MAX {
         return Err("reserve-runtime-ids-through must be less than u64::MAX".to_string());
@@ -769,6 +793,15 @@ pub fn run_render(
 
     let path = Path::new(scenario_path);
     let (scenario_label, scenario, output_gain) = load_scenario(path, seed, &config.audio)?;
+    validate_run_bounds(
+        &scenario,
+        duration_sec,
+        config.audio.sample_rate,
+        config.analysis.hop_size,
+        true,
+        report_path.is_some(),
+        false,
+    )?;
     let mut reporter = report_path.map(JsonlReporter::create).transpose()?;
     if let Some(writer) = reporter.as_mut() {
         writer.write_meta(scenario.seed)?;
@@ -796,6 +829,8 @@ pub fn run_render(
         scenario,
         stop_flag,
         WiringOptions {
+            end_request,
+            duration_sec,
             #[cfg(test)]
             offline_body_probe: None,
             #[cfg(test)]

@@ -30,6 +30,10 @@ struct Args {
     #[arg(long)]
     seed: Option<u64>,
 
+    /// Request a graceful end at this score time, followed by release fades
+    #[arg(long, value_name = "SEC", value_parser = conchordal::cli::parse_duration)]
+    duration: Option<f64>,
+
     /// Write JSONL telemetry alongside this render's WAV
     #[arg(long, value_name = "PATH")]
     report: Option<String>,
@@ -59,8 +63,16 @@ fn main() {
 
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_ctrlc = stop_flag.clone();
+    let end_request = Arc::new(AtomicBool::new(false));
+    let end_ctrlc = end_request.clone();
+    let mut interrupted = false;
     ctrlc::set_handler(move || {
-        stop_flag_ctrlc.store(true, std::sync::atomic::Ordering::SeqCst);
+        if interrupted {
+            stop_flag_ctrlc.store(true, std::sync::atomic::Ordering::SeqCst);
+        } else {
+            end_ctrlc.store(true, std::sync::atomic::Ordering::SeqCst);
+            interrupted = true;
+        }
     })
     .expect("Error setting Ctrl-C handler");
 
@@ -72,6 +84,8 @@ fn main() {
         args.seed,
         args.report.as_deref(),
         args.reserve_runtime_ids_through,
+        args.duration,
+        end_request,
     ) {
         eprintln!("{err}");
         std::process::exit(1);

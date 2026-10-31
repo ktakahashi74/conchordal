@@ -2,6 +2,8 @@ use super::*;
 
 fn options() -> WiringOptions {
     WiringOptions {
+        end_request: Arc::new(AtomicBool::new(false)),
+        duration_sec: None,
         offline_body_probe: None,
         raw_t2_delay: Duration::ZERO,
         ui_tx: None,
@@ -514,6 +516,8 @@ fn render_compile_errors_are_returned_before_opening_output() {
         None,
         None,
         0,
+        None,
+        Arc::new(AtomicBool::new(false)),
     );
     assert!(result.unwrap_err().contains(".rhai"));
 }
@@ -1205,4 +1209,238 @@ fn dwell_proposals_are_reported_before_an_early_stop() {
         .collect();
     assert!(records.iter().any(|r| r["event"] == "proposal"));
     assert_eq!(records.iter().filter(|r| r["event"] == "end").count(), 1);
+}
+
+#[test]
+fn open_queue_exhaustion_keeps_voices_and_respawn_running() {
+    for respawn in [false, true] {
+        let reached = Arc::new(AtomicBool::new(false));
+        let observed = reached.clone();
+        let mut opts = options();
+        opts.duration_sec = Some(0.15);
+        opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+            if tick == 10 * 512 {
+                assert!(!state.finish_begun);
+                assert_eq!(state.playback_state, PlaybackState::Playing);
+                assert!(!state.pop.voices.is_empty());
+                if respawn {
+                    let (births, deaths) = state.pop.take_lifecycle_counts();
+                    assert!(births > 1 && deaths > 0, "births={births} deaths={deaths}");
+                }
+                observed.store(true, Ordering::SeqCst);
+            }
+        }));
+        let source = format!(
+            "seed(21); endless(); place(sine().sustain().anchor(){}, at(220));",
+            if respawn {
+                ".respawn_random().respawn_background_death_rate(10000)"
+            } else {
+                ""
+            }
+        );
+        let (wiring, _, dir) = fixture(opts, &source);
+        join(wiring).unwrap();
+        assert!(reached.load(Ordering::SeqCst));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+fn duration_dispatches_due_events_then_releases_and_keeps_old_fades() {
+    let reached = Arc::new(AtomicBool::new(false));
+    let observed = reached.clone();
+    let mut opts = options();
+    opts.duration_sec = Some(1024.0 / 48000.0);
+    opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+        if tick == 1024 {
+            assert_eq!(state.playback_state, PlaybackState::Ending);
+            assert_eq!(
+                state.pop.global_coupling, 0.25,
+                "bound-hop event must run first"
+            );
+            let finish = state.end_sequence.as_ref().unwrap().finish_tick;
+            assert!(finish >= 48000 / 5, "older 0.2s Flora fade must finish");
+            assert!(state.pop.voices.iter().all(|v| v.release.remove_pending));
+            assert!(state.pop.voices.iter().any(|v| v.release.sec == 0.1));
+            assert!(state.pop.voices.iter().any(|v| v.release.sec == 0.02));
+            observed.store(true, Ordering::SeqCst);
+        }
+        if let Some(end) = &state.end_sequence {
+            if tick < end.finish_tick {
+                assert!(!state.finish_begun);
+                // A fading Voice must survive until its gain reaches zero.
+                if tick < 4096 {
+                    assert!(
+                        state
+                            .pop
+                            .voices
+                            .iter()
+                            .any(|v| v.release.sec == 0.1 && v.release_gain() > 0.0)
+                    );
+                }
+            } else {
+                assert!(state.finish_begun);
+                assert!(
+                    state
+                        .pop
+                        .flora
+                        .iter()
+                        .all(|f| f.remaining_release_ticks() == 0)
+                );
+            }
+        }
+    }));
+    let (wiring, _, dir) = fixture(
+        opts,
+        r#"
+        seed(21); endless();
+        let old = place(sine().anchor().sustain().adsr(0, 0, 1, 0.1), at(220));
+        let moss = place(flora().fade(0.2), random(220, 880));
+        wait(512.0 / 48000.0);
+        release(old); release(moss); flush();
+        wait(512.0 / 48000.0);
+        place(sine().anchor().sustain().adsr(0, 0, 1, 0.02), at(330));
+        set_global_coupling(0.25);
+        wait(10); set_global_coupling(0.9);
+    "#,
+    );
+    join(wiring).unwrap();
+    assert!(reached.load(Ordering::SeqCst));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn human_end_discards_due_events_and_pending_scripted_finish() {
+    let end_request = Arc::new(AtomicBool::new(false));
+    let request = end_request.clone();
+    let reached = Arc::new(AtomicBool::new(false));
+    let observed = reached.clone();
+    let mut opts = options();
+    opts.end_request = end_request;
+    opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+        if tick == 0 {
+            request.store(true, Ordering::SeqCst);
+        }
+        if tick == 512 {
+            assert_eq!(
+                state.pop.global_coupling, 1.0,
+                "human end discards undispatched events"
+            );
+            assert_eq!(state.playback_state, PlaybackState::Ending);
+            assert!(!state.finish_begun);
+            assert_eq!(
+                state.conductor.current_scene_name(tick).as_deref(),
+                Some("active")
+            );
+            observed.store(true, Ordering::SeqCst);
+        }
+    }));
+    let (wiring, _, dir) = fixture(
+        opts,
+        "seed(21); section(\"active\", || {}); place(sine().anchor().sustain().adsr(0,0,1,0.05), at(220)); wait(512.0/48000.0); section(\"cancelled\", || {}); set_global_coupling(0.25); wait(100);",
+    );
+    join(wiring).unwrap();
+    assert!(reached.load(Ordering::SeqCst));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn end_during_recovery_exits_even_when_ring_is_full() {
+    use ringbuf::traits::{Producer, Split};
+    for during_fade in [false, true] {
+        let (mut producer, _consumer) = ringbuf::HeapRb::<f32>::new(512).split();
+        if !during_fade {
+            assert_eq!(producer.push_slice(&[0.0; 512]), 512);
+        }
+        let end_request = Arc::new(AtomicBool::new(false));
+        let counters = Arc::new(crate::audio::output::AudioCallbackCounters::default());
+        let request = end_request.clone();
+        let recovering = counters.clone();
+        let mut opts = options();
+        opts.end_request = end_request.clone();
+        opts.audio_prod = Some(producer);
+        opts.audio_counters = Some(counters.clone());
+        if during_fade {
+            opts.duration_sec = Some(0.0);
+            opts.offline_body_probe = Some(Box::new(move |state, _, _, _| {
+                assert!(state.end_sequence.is_some());
+                assert!(!state.finish_begun);
+                recovering.recovering.store(true, Ordering::Release);
+            }));
+        } else {
+            counters.recovering.store(true, Ordering::Release);
+        }
+        let (wiring, stop, dir) = fixture(
+            opts,
+            "seed(21); endless(); place(sine().sustain().adsr(0,0,1,10), at(220));",
+        );
+        if !during_fade {
+            request.store(true, Ordering::SeqCst);
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !wiring.worker_handle.is_finished() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
+        let completed = wiring.worker_handle.is_finished();
+        stop.store(true, Ordering::SeqCst);
+        join(wiring).unwrap();
+        assert!(
+            completed,
+            "end request must not wait for ring vacancy during recovery"
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+fn open_harmonic_queue_does_not_finish_on_exhaustion() {
+    let reached = Arc::new(AtomicBool::new(false));
+    let observed = reached.clone();
+    let mut opts = options();
+    opts.duration_sec = Some(0.15);
+    opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+        if tick == 10 * 512 {
+            assert!(!state.finish_begun);
+            assert!(
+                state
+                    .pop
+                    .voices
+                    .iter()
+                    .any(|v| v.harmonic_member && !v.release.remove_pending)
+            );
+            observed.store(true, Ordering::SeqCst);
+        }
+    }));
+    let (wiring, _, dir) = fixture(
+        opts,
+        "endless(); harmonic_rhythm(1); place(sine().sustain().anchor(), at(220));",
+    );
+    join(wiring).unwrap();
+    assert!(reached.load(Ordering::SeqCst));
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn duration_keeps_existing_rain_release_tail() {
+    let reached = Arc::new(AtomicBool::new(false));
+    let observed = reached.clone();
+    let mut opts = options();
+    opts.duration_sec = Some(0.1);
+    opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+        if let Some(end) = &state.end_sequence {
+            assert!(end.finish_tick >= 21_600);
+            if tick < 20_000 {
+                assert!(!state.finish_begun);
+                assert!(!state.pop.rain.is_empty());
+                observed.store(true, Ordering::SeqCst);
+            }
+        }
+    }));
+    let (wiring, _, dir) = fixture(
+        opts,
+        "endless(); let r=place(rain().fade(0.4),random(300,6000)); wait(0.05); release(r);",
+    );
+    join(wiring).unwrap();
+    assert!(reached.load(Ordering::SeqCst));
+    std::fs::remove_dir_all(dir).unwrap();
 }

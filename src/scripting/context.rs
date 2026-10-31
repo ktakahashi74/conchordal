@@ -15,6 +15,7 @@ pub(super) struct PopulationState {
     pub(super) id: u64,
     pub(super) spec: PopulationSpec,
     pub(super) respawn_policy: RespawnPolicy,
+    pub(super) loo_at_placement: bool,
     pub(super) crowding_target_same: bool,
     pub(super) crowding_target_other: bool,
     pub(super) status: PopulationStatus,
@@ -74,6 +75,8 @@ pub struct ScriptContext {
     pub(super) populations: BTreeMap<u64, PopulationState>,
     pub(super) scopes: Vec<ScopeFrame>,
     pub(super) temporal_mode_declared: bool,
+    pub(super) parallel_used: bool,
+    pub(super) top_level_call_positions: Option<Vec<Position>>,
     pub warnings: ScriptWarnings,
 }
 
@@ -117,7 +120,7 @@ impl ScriptContext {
                 meter_shaping: MeterShaping::default(),
                 scene_markers: Vec::new(),
                 events: Vec::new(),
-                duration_sec: 0.0,
+                end: ScenarioEnd::Finite { duration_sec: 0.0 },
             },
             seed,
             next_event_order: 1,
@@ -130,6 +133,8 @@ impl ScriptContext {
             populations: BTreeMap::new(),
             scopes: Vec::new(),
             temporal_mode_declared: false,
+            parallel_used: false,
+            top_level_call_positions: None,
             warnings: Arc::default(),
         }
     }
@@ -445,7 +450,9 @@ impl ScriptContext {
             duration = 0.01;
             self.cursor = duration;
         }
-        self.scenario.duration_sec = duration;
+        self.scenario.end = ScenarioEnd::Finite {
+            duration_sec: duration,
+        };
         duration
     }
 
@@ -651,6 +658,15 @@ impl ScriptContext {
                 }
             }
         }
+        if self.scenario.end == ScenarioEnd::Open {
+            if let Some((_, position)) = self.expression_sections.first() {
+                self.warn(
+                    "expressive_section ignored: requires a finite final section".into(),
+                    *position,
+                );
+            }
+            return;
+        }
         let mut end_time = self.finalize_duration();
         if !self.expression_sections.is_empty() {
             let (expression, position) = self.expression_sections[0];
@@ -681,7 +697,9 @@ impl ScriptContext {
         let release_tail = self.max_release_tail();
         if release_tail > end_time {
             end_time = release_tail;
-            self.scenario.duration_sec = end_time;
+            self.scenario.end = ScenarioEnd::Finite {
+                duration_sec: end_time,
+            };
             self.cursor = end_time;
         }
         self.push_event(end_time, vec![Action::Finish]);
@@ -967,6 +985,7 @@ impl ScriptContext {
         let population = PopulationState {
             id,
             respawn_policy: population_spec.spec.respawn_policy,
+            loo_at_placement: population_spec.spec.control.pitch.leave_self_out,
             crowding_target_same: population_spec.spec.crowding_target_same,
             crowding_target_other: population_spec.spec.crowding_target_other,
             spec: population_spec.spec,
@@ -1036,11 +1055,28 @@ impl ScriptContext {
         )
     }
 
+    pub(super) fn check_header(
+        &self,
+        name: &str,
+        position: Position,
+    ) -> Result<(), Box<EvalAltResult>> {
+        if self.scenario.end == ScenarioEnd::Open && self.cursor > 0.0 {
+            return Err(EvalAltResult::ErrorRuntime(
+                format!("{name} must be declared before time advances in an endless scenario")
+                    .into(),
+                position,
+            )
+            .into());
+        }
+        Ok(())
+    }
+
     pub(super) fn set_output_gain(
         &mut self,
         db: f64,
         position: Position,
     ) -> Result<(), Box<EvalAltResult>> {
+        self.check_header("output_gain", position)?;
         let db_f32 = db as f32;
         let gain = 10.0f32.powf(db_f32 / 20.0);
         if !db.is_finite() || !db_f32.is_finite() || !gain.is_finite() || gain <= 0.0 {
@@ -1059,6 +1095,7 @@ impl ScriptContext {
         seed: i64,
         position: Position,
     ) -> Result<(), Box<EvalAltResult>> {
+        self.check_header("seed", position)?;
         if seed < 0 {
             return Err(Box::new(EvalAltResult::ErrorRuntime(
                 "seed must be >= 0".into(),

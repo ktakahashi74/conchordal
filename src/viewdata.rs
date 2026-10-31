@@ -54,13 +54,16 @@ pub enum PlaybackState {
     #[default]
     NotStarted,
     Playing,
+    Ending,
     Finished,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct SimulationMeta {
     pub time_sec: f64,
-    pub duration_sec: f64,
+    pub end: Option<f64>,
+    pub population_count: usize,
+    pub slow_hops: u64,
     pub voice_count: usize,
     pub event_queue_len: usize,
     pub audio_xruns: u64,

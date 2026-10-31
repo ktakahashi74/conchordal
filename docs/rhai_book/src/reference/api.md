@@ -423,6 +423,16 @@ Create a Population at the current script time. `place()` is the sole Population
 
 **Evidence:** Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 
+#### `endless`
+
+```rhai,ignore
+endless()
+```
+
+Declare an open-ended performance before playback events and time advances. Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Stage 1 evaluates eagerly: unbounded script loops still hang at load.
+
+**Evidence:** Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
+
 #### `wait`
 
 ```rhai,ignore

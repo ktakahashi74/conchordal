@@ -452,6 +452,11 @@ fn edge(min_hz: i64, max_hz: f64) -> Placement;
 /// Evidence: Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
 fn edge(min_hz: i64, max_hz: i64) -> Placement;
 
+/// Declare an open-ended performance before playback events and time advances.
+/// Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Stage 1 evaluates eagerly: unbounded script loops still hang at load.
+/// Evidence: Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
+fn endless();
+
 /// Nominal survival time at zero field fit, excluding the release tail.
 /// Energy is normalized to 0-1. The runtime drain rate is derived at spawn; actual lifetime varies with field fit, attacks, recovery, and release time.
 /// Evidence: Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57).

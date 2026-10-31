@@ -131,6 +131,8 @@ wait(0.08);
             scenario,
             Arc::new(AtomicBool::new(false)),
             WiringOptions {
+                end_request: Arc::new(AtomicBool::new(false)),
+                duration_sec: None,
                 offline_body_probe: Some(probe),
                 #[cfg(test)]
                 raw_t2_delay: Duration::ZERO,
@@ -234,6 +236,8 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                     scenario,
                     Arc::clone(&stop),
                     WiringOptions {
+                        end_request: Arc::new(AtomicBool::new(false)),
+                        duration_sec: None,
                         offline_body_probe: Some(probe),
                         #[cfg(test)]
                         raw_t2_delay: Duration::ZERO,
@@ -337,6 +341,8 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
     let hop = 512;
     let timebase = Timebase { fs, hop };
     let cfg = WorkerConfig {
+        end_request: Arc::new(AtomicBool::new(false)),
+        duration_tick: None,
         loo_populations: Vec::new(),
         has_flora: false,
         render_prototype: false,
@@ -379,7 +385,9 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
             order: 0,
             actions: vec![Action::Finish],
         }],
-        duration_sec: 605.0,
+        end: crate::scenario::ScenarioEnd::Finite {
+            duration_sec: 605.0,
+        },
     };
     let space = Log2Space::new(200.0, 4_000.0, 12);
     let mut state = WorkerState::new(
@@ -397,6 +405,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         state.generator_model.advance_to(now_tick);
         advance_population(&mut state, &cfg, now_tick, ListenerPressure::default());
         assert_eq!(state.pop.abort_requested, frame == 56_719);
+        assert_eq!(state.finish_begun, frame == 56_719);
     }
 }
 
@@ -889,6 +898,8 @@ wait(0.03);
         scenario,
         Arc::new(AtomicBool::new(false)),
         WiringOptions {
+            end_request: Arc::new(AtomicBool::new(false)),
+            duration_sec: None,
             offline_body_probe: Some(probe),
             raw_t2_delay: Duration::ZERO,
             ui_tx: None,
@@ -928,6 +939,8 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         let hop = 512;
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
+            end_request: Arc::new(AtomicBool::new(false)),
+            duration_tick: None,
             loo_populations: Vec::new(),
             has_flora: true,
             render_prototype: false,
@@ -970,7 +983,9 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
                 order: 0,
                 actions: vec![Action::Finish],
             }],
-            duration_sec: 605.0,
+            end: crate::scenario::ScenarioEnd::Finite {
+                duration_sec: 605.0,
+            },
         };
         let space = Log2Space::new(200.0, 4_000.0, 12);
         let state = WorkerState::new(
@@ -1015,7 +1030,9 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
                 order: 0,
                 actions: vec![Action::Finish],
             }],
-            duration_sec: 605.0,
+            end: crate::scenario::ScenarioEnd::Finite {
+                duration_sec: 605.0,
+            },
         };
         let mut control = WorkerState::new(
             Community::new(timebase),

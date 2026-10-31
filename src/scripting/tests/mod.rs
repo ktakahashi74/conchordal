@@ -11,8 +11,8 @@ use rand::SeedableRng;
 
 fn run_script(src: &str) -> (Scenario, ScriptWarnings) {
     let ctx = Arc::new(Mutex::new(ScriptContext::default()));
-    let engine = ScriptHost::create_engine(ctx.clone());
-    let _ = engine.eval::<Dynamic>(src).expect("script runs");
+    let mut engine = ScriptHost::create_engine(ctx.clone());
+    let _ = ScriptHost::eval_scenario(&mut engine, &ctx, src).expect("script runs");
     let mut ctx_out = ctx.lock().expect("lock script context");
     ctx_out.finish();
     (ctx_out.scenario.clone(), ctx_out.warnings.clone())
@@ -20,8 +20,11 @@ fn run_script(src: &str) -> (Scenario, ScriptWarnings) {
 
 fn run_script_err(src: &str) -> ScriptError {
     let ctx = Arc::new(Mutex::new(ScriptContext::default()));
-    let engine = ScriptHost::create_engine(ctx);
-    let err = engine.eval::<Dynamic>(src).expect_err("script should fail");
+    let mut engine = ScriptHost::create_engine(ctx.clone());
+    let err = match ScriptHost::eval_scenario(&mut engine, &ctx, src) {
+        Ok(value) => panic!("script should fail: {src}: {value:?}"),
+        Err(err) => err,
+    };
     ScriptError::from_eval(err, None)
 }
 
@@ -29,8 +32,8 @@ fn run_script_err(src: &str) -> ScriptError {
 /// does: `ScriptContext::with_seed` instead of a fresh random draw.
 fn run_script_with_seed(src: &str, seed: u64) -> (Scenario, ScriptWarnings) {
     let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(seed)));
-    let engine = ScriptHost::create_engine(ctx.clone());
-    let _ = engine.eval::<Dynamic>(src).expect("script runs");
+    let mut engine = ScriptHost::create_engine(ctx.clone());
+    let _ = ScriptHost::eval_scenario(&mut engine, &ctx, src).expect("script runs");
     let mut ctx_out = ctx.lock().expect("lock script context");
     ctx_out.finish();
     (ctx_out.scenario.clone(), ctx_out.warnings.clone())

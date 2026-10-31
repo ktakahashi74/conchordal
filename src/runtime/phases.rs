@@ -14,9 +14,21 @@ pub(super) fn advance_population(
     if now_tick == 0 && std::env::var_os("HRY_EXECUTION").is_some() {
         state.schedule_renderer.harmonic_execution = Some(Vec::new());
     }
-    state
-        .conductor
-        .dispatch_until(now_tick, &state.current_landscape, &mut state.pop);
+    if cfg.end_request.load(Ordering::SeqCst) {
+        state.request_end(now_tick);
+    }
+    let finish_dispatched =
+        state
+            .conductor
+            .dispatch_until(now_tick, &state.current_landscape, &mut state.pop);
+    if !finish_dispatched && cfg.duration_tick.is_some_and(|end| now_tick >= end) {
+        state.request_end(now_tick);
+    }
+    let finish_due = finish_dispatched
+        || state
+            .end_sequence
+            .as_ref()
+            .is_some_and(|end| now_tick >= end.finish_tick);
     for receipt in state.schedule_renderer.phrase_receipts.drain(..) {
         if let Some(voice) = state.pop.voices.iter_mut().find(|v| {
             v.id() == receipt.record.voice_id && v.metadata.generation == receipt.record.generation
@@ -45,7 +57,7 @@ pub(super) fn advance_population(
         );
         for voice in &mut state.pop.voices {
             voice.harmonic_temperature_bonus = listener_pressure.temperature_bonus;
-            if voice.harmonic_member && state.conductor.is_done() {
+            if voice.harmonic_member && finish_due {
                 // Terminal shutdown must veto proposals before collection.
                 voice.start_remove_fade(0.0);
             }
@@ -168,7 +180,7 @@ pub(super) fn advance_population(
             }
         }
     }
-    let phonation_count = if state.scenario_end_tick.is_none() {
+    let phonation_count = if !state.finish_begun {
         state.pop.collect_phonation_batches_into(
             &mut state.generator_model,
             &state.current_landscape,
@@ -230,7 +242,7 @@ pub(super) fn advance_population(
                 });
             }
             if state.scenario_end_tick.is_none()
-                && state.conductor.is_done()
+                && finish_due
                 && let Some(mut record) = voice.pitch_ctl.dwell_state
             {
                 record.event = "end";
@@ -241,7 +253,7 @@ pub(super) fn advance_population(
                 });
             }
             if let Some(gap) = &mut voice.phonation_engine.span_gap {
-                if state.scenario_end_tick.is_none() && state.conductor.is_done() {
+                if state.scenario_end_tick.is_none() && finish_due {
                     gap.finish(now_tick);
                 }
                 for transition in gap.trace.drain(..) {
@@ -270,16 +282,13 @@ pub(super) fn advance_population(
         }
     }
 
-    if state.scenario_end_tick.is_none() && state.conductor.is_done() {
-        state.scenario_end_tick = Some(now_tick);
-        state.pop.voices.clear();
-        for flora in &mut state.pop.flora {
-            flora.release_at_scenario_end();
-        }
-        for rain in &mut state.pop.rain {
-            rain.release_at_scenario_end();
-        }
-        state.schedule_renderer.shutdown_at(now_tick);
+    if finish_dispatched
+        || state
+            .end_sequence
+            .as_ref()
+            .is_some_and(|end| now_tick >= end.finish_tick)
+    {
+        state.begin_finish(now_tick);
     }
 
     state.pop.advance_with_listener_pressure(
@@ -304,7 +313,7 @@ pub(super) fn advance_population(
     state.pop.cleanup_dead(
         state.frame_idx,
         cfg.hop_duration.as_secs_f32(),
-        state.conductor.is_done(),
+        state.finish_begun,
         &state.current_landscape,
     );
     phonation_count

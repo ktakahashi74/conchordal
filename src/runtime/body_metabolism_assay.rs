@@ -109,6 +109,8 @@ fn n3_offline_body_equivalence() {
         scenario,
         Arc::new(AtomicBool::new(false)),
         WiringOptions {
+            end_request: Arc::new(AtomicBool::new(false)),
+            duration_sec: None,
             offline_body_probe: Some(probe),
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
@@ -216,6 +218,8 @@ fn render_birth_metabolism_flags(
         scenario,
         Arc::new(AtomicBool::new(false)),
         WiringOptions {
+            end_request: Arc::new(AtomicBool::new(false)),
+            duration_sec: None,
             offline_body_probe: Some(probe),
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
@@ -432,6 +436,8 @@ fn b7_dynamic_etude_render() {
         scenario,
         Arc::new(AtomicBool::new(false)),
         WiringOptions {
+            end_request: Arc::new(AtomicBool::new(false)),
+            duration_sec: None,
             offline_body_probe: Some(probe),
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,

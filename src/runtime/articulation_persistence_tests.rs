@@ -125,6 +125,8 @@ fn render_case(
         scenario,
         Arc::new(AtomicBool::new(false)),
         WiringOptions {
+            end_request: Arc::new(AtomicBool::new(false)),
+            duration_sec: None,
             offline_body_probe: Some(probe),
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,

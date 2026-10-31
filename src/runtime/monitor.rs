@@ -4,6 +4,7 @@ pub(super) struct AudioMonitor {
     pub(super) min_occupancy: Option<usize>,
     pub(super) max_peak: f32,
     pub(super) slow_chunks: u32,
+    pub(super) slow_hops_total: u64,
     pub(super) max_analysis_wait: Duration,
     pub(super) max_listener_wait: Duration,
     pub(super) last_underrun_frames: u64,
@@ -24,6 +25,7 @@ impl AudioMonitor {
             min_occupancy: None,
             max_peak: 0.0,
             slow_chunks: 0,
+            slow_hops_total: 0,
             max_analysis_wait: Duration::ZERO,
             max_listener_wait: Duration::ZERO,
             last_underrun_frames: 0,
@@ -59,7 +61,7 @@ impl AudioMonitor {
         analysis_wait: Duration,
         listener_wait: Duration,
         underrun_frames: Option<&AtomicU64>,
-        conductor_done: bool,
+        finish_begun: bool,
         telemetry: bool,
         pop: &mut Community,
         audio_counters: Option<&crate::audio::output::AudioCallbackCounters>,
@@ -88,7 +90,7 @@ impl AudioMonitor {
                     current_time, chunk_peak, frame_idx
                 );
                 self.last_clip_log = Instant::now();
-            } else if conductor_done && chunk_peak > 1e-4 {
+            } else if finish_begun && chunk_peak > 1e-4 {
                 warn!(
                     "[t={:.6}] Scenario done but audio active: peak={:.4}",
                     current_time, chunk_peak
@@ -99,6 +101,7 @@ impl AudioMonitor {
 
         if chunk_elapsed > hop_duration {
             self.slow_chunks += 1;
+            self.slow_hops_total += 1;
         }
 
         if self.last_stats_log.elapsed() >= crate::audio::output::STATS_INTERVAL {

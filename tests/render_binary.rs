@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::{Arc, atomic::AtomicBool};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[path = "support/test_output_directory.rs"]
@@ -659,6 +660,8 @@ fn conchordal_render_rejects_exhausted_runtime_id_reservation() {
         None,
         None,
         u64::MAX,
+        None,
+        Arc::new(AtomicBool::new(false)),
     )
     .unwrap_err();
     assert!(error.contains("reserve-runtime-ids-through"));

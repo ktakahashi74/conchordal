@@ -39,6 +39,13 @@ pub struct Args {
     #[arg(long, requires = "nogui", conflicts_with = "compile_only")]
     pub profile: Option<String>,
 
+    /// Request a graceful end at this score time, followed by the release fades
+    #[arg(long, value_name = "SEC", value_parser = parse_duration)]
+    pub duration: Option<f64>,
+
+    #[arg(skip)]
+    pub end_request: std::sync::Arc<std::sync::atomic::AtomicBool>,
+
     /// Print one bounded runtime telemetry summary per second (no audio recording)
     #[arg(long)]
     pub telemetry: bool,
@@ -46,6 +53,16 @@ pub struct Args {
     /// Override the fresh scenario seed (a script-level seed() still wins)
     #[arg(long)]
     pub seed: Option<u64>,
+}
+
+pub fn parse_duration(value: &str) -> Result<f64, String> {
+    let duration: f64 = value
+        .parse()
+        .map_err(|_| "duration must be finite and non-negative")?;
+    if !duration.is_finite() || duration < 0.0 {
+        return Err("duration must be finite and non-negative".into());
+    }
+    Ok(duration)
 }
 
 #[cfg(test)]

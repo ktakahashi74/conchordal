@@ -11,6 +11,8 @@ pub(super) struct WorkerConfig {
     pub(super) wait_user_exit: bool,
     pub(super) start_flag: Arc<AtomicBool>,
     pub(super) exiting: Arc<AtomicBool>,
+    pub(super) end_request: Arc<AtomicBool>,
+    pub(super) duration_tick: Option<Tick>,
     pub(super) scaffold: ScaffoldConfig,
     pub(super) harmonic_rhythm: u64,
     pub(super) meter_shaping: crate::core::meter::MeterShaping,
@@ -64,6 +66,8 @@ pub(super) struct WorkerState {
     pub(super) profile: Option<RunProfile>,
     pub(super) timebase: crate::core::timebase::Timebase,
     pub(super) playback_state: PlaybackState,
+    pub(super) finish_begun: bool,
+    pub(super) end_sequence: Option<EndSequence>,
     pub(super) finish_logged: bool,
     pub(super) finished: bool,
     pub(super) finalized: bool,
@@ -105,7 +109,76 @@ pub(super) struct WorkerState {
     pub(super) phonation_batches_buf: Vec<PhonationBatch>,
 }
 
+pub(super) struct EndSequence {
+    pub(super) finish_tick: Tick,
+}
+
 impl WorkerState {
+    pub(super) fn begin_finish(&mut self, now_tick: Tick) {
+        if self.finish_begun {
+            return;
+        }
+        self.finish_begun = true;
+        self.pop
+            .apply_action(Action::Finish, &self.current_landscape);
+        self.scenario_end_tick = Some(now_tick);
+        self.pop.voices.clear();
+        for flora in &mut self.pop.flora {
+            flora.release_at_scenario_end();
+        }
+        for rain in &mut self.pop.rain {
+            rain.release_at_scenario_end();
+        }
+        self.schedule_renderer.shutdown_at(now_tick);
+    }
+
+    pub(super) fn request_end(&mut self, now_tick: Tick) {
+        if self.finish_begun || self.end_sequence.is_some() {
+            return;
+        }
+        self.conductor.discard_pending();
+        self.pop.release_for_end();
+        let voice_ticks = self
+            .pop
+            .voices
+            .iter()
+            .filter(|v| v.release.remove_pending)
+            .map(|v| {
+                (f64::from(v.release.gain) * f64::from(v.release.sec) * f64::from(self.timebase.fs))
+                    .ceil() as Tick
+            })
+            .max()
+            .unwrap_or(0);
+        let flora_ticks = self
+            .pop
+            .flora
+            .iter()
+            .map(|f| f.remaining_release_ticks())
+            .max()
+            .unwrap_or(0);
+        let rain_ticks = self
+            .pop
+            .rain
+            .iter()
+            .map(|r| r.remaining_release_ticks())
+            .max()
+            .unwrap_or(0);
+        let hop = self.timebase.hop as Tick;
+        let finish_tick = now_tick
+            .saturating_add(voice_ticks.max(flora_ticks).max(rain_ticks))
+            .div_ceil(hop)
+            .saturating_mul(hop);
+        self.end_sequence = Some(EndSequence { finish_tick });
+        self.playback_state = PlaybackState::Ending;
+    }
+
+    fn exit_during_recovery(&self, cfg: &WorkerConfig) -> bool {
+        cfg.audio_counters
+            .as_ref()
+            .is_some_and(|c| c.recovering.load(Ordering::Acquire))
+            && (cfg.end_request.load(Ordering::SeqCst) || self.end_sequence.is_some())
+    }
+
     pub(super) fn current_time(&self) -> f64 {
         self.timebase
             .tick_to_sec(self.timebase.frame_start_tick(self.frame_idx))
@@ -179,6 +252,8 @@ impl WorkerState {
             profile: None,
             timebase,
             playback_state: PlaybackState::NotStarted,
+            finish_begun: false,
+            end_sequence: None,
             finish_logged: false,
             finished: false,
             finalized: false,
@@ -273,6 +348,9 @@ pub(super) fn worker_loop(
     }
 
     loop {
+        if state.exit_during_recovery(&cfg) {
+            cfg.exiting.store(true, Ordering::SeqCst);
+        }
         if cfg
             .audio_counters
             .as_ref()
@@ -289,6 +367,10 @@ pub(super) fn worker_loop(
             }
         }
 
+        if cfg.end_request.load(Ordering::SeqCst) && !state.finish_begun {
+            let now = state.timebase.frame_start_tick(state.frame_idx);
+            state.request_end(now);
+        }
         if state.playback_state == PlaybackState::NotStarted
             && !cfg.start_flag.load(Ordering::SeqCst)
         {
@@ -322,6 +404,7 @@ pub(super) fn worker_loop(
                 .is_some_and(|prod| prod.vacant_len() >= cfg.hop)
                 && !cfg.exiting.load(Ordering::SeqCst)
                 && !state.finished
+                && !state.exit_during_recovery(&cfg)
             {
                 process_hop(&cfg, &mut channels, &mut state);
                 produced_any = true;
@@ -799,7 +882,7 @@ pub(super) fn process_hop(
         analysis_wait,
         listener_wait,
         cfg.underrun_frames.as_deref(),
-        state.conductor.is_done(),
+        state.finish_begun,
         cfg.telemetry,
         &mut state.pop,
         cfg.audio_counters.as_deref(),

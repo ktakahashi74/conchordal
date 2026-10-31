@@ -42,6 +42,8 @@ fn continuous_offline_delivery_is_independent_of_producer_delay() {
             scenario,
             Arc::new(AtomicBool::new(false)),
             WiringOptions {
+                end_request: Arc::new(AtomicBool::new(false)),
+                duration_sec: None,
                 offline_body_probe: None,
                 raw_t2_delay: delay,
                 ui_tx: None,
@@ -118,10 +120,12 @@ fn continuous_runtime_rejects_actual_device_rate_before_spawning() {
             meter_shaping: Default::default(),
             scene_markers: Vec::new(),
             events: Vec::new(),
-            duration_sec: 0.0,
+            end: crate::scenario::ScenarioEnd::Finite { duration_sec: 0.0 },
         },
         Arc::new(AtomicBool::new(false)),
         WiringOptions {
+            end_request: Arc::new(AtomicBool::new(false)),
+            duration_sec: None,
             offline_body_probe: None,
             raw_t2_delay: Duration::ZERO,
             ui_tx: None,

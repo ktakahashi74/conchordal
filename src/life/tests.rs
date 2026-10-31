@@ -122,7 +122,7 @@ fn population_spawn_and_release_removes_voice() {
 }
 
 #[test]
-fn conductor_dispatches_finish_on_time() {
+fn conductor_returns_finish_for_worker_on_time() {
     let event = TimedEvent {
         time: 1.0,
         order: 1,
@@ -143,17 +143,18 @@ fn conductor_dispatches_finish_on_time() {
         meter_shaping: crate::core::meter::MeterShaping::default(),
         scene_markers: Vec::new(),
         events: vec![event],
-        duration_sec: 2.0,
+        end: crate::scenario::ScenarioEnd::Finite { duration_sec: 2.0 },
     };
 
     let mut conductor = Conductor::from_scenario(scenario, test_timebase());
     let mut pop = Community::new(test_timebase());
     let landscape = Landscape::default();
-    conductor.dispatch_until(test_timebase().sec_to_tick(0.5), &landscape, &mut pop);
+    assert!(!conductor.dispatch_until(test_timebase().sec_to_tick(0.5), &landscape, &mut pop));
     assert!(!pop.abort_requested);
 
-    conductor.dispatch_until(test_timebase().sec_to_tick(1.1), &landscape, &mut pop);
-    assert!(pop.abort_requested);
+    assert!(conductor.dispatch_until(test_timebase().sec_to_tick(1.1), &landscape, &mut pop));
+    assert!(!pop.abort_requested, "only the worker begins finishing");
+    assert!(!conductor.dispatch_until(test_timebase().sec_to_tick(1.2), &landscape, &mut pop));
 }
 
 #[test]
@@ -187,7 +188,7 @@ fn conductor_keeps_future_events_queued_in_order() {
                 }],
             },
         ],
-        duration_sec: 2.0,
+        end: crate::scenario::ScenarioEnd::Finite { duration_sec: 2.0 },
     };
 
     let mut conductor = Conductor::from_scenario(scenario, test_timebase());
@@ -196,15 +197,18 @@ fn conductor_keeps_future_events_queued_in_order() {
 
     conductor.dispatch_until(test_timebase().sec_to_tick(1.0), &landscape, &mut pop);
     assert_eq!(
-        conductor.remaining_events(),
+        conductor.pending_events(),
         1,
         "the t=1.5 event must stay queued"
     );
     assert!(!pop.abort_requested);
 
-    conductor.dispatch_until(test_timebase().sec_to_tick(2.0), &landscape, &mut pop);
-    assert!(pop.abort_requested);
-    assert!(conductor.is_done());
+    assert!(conductor.dispatch_until(test_timebase().sec_to_tick(2.0), &landscape, &mut pop));
+    assert!(
+        !pop.abort_requested,
+        "Finish is applied by WorkerState::begin_finish"
+    );
+    assert_eq!(conductor.pending_events(), 0);
 }
 
 #[test]
@@ -1250,7 +1254,7 @@ fn indefinite_conductor_dispatches_tick_boundaries() {
         meter_shaping: crate::core::meter::MeterShaping::default(),
         scene_markers: vec![],
         events: vec![],
-        duration_sec: 1.0,
+        end: crate::scenario::ScenarioEnd::Finite { duration_sec: 1.0 },
     };
     scenario.scene_markers = [a, a + 1]
         .into_iter()
@@ -1280,7 +1284,7 @@ fn indefinite_conductor_dispatches_tick_boundaries() {
         (a + 1, 0, 0.4),
     ] {
         conductor.dispatch_until(tick, &landscape, &mut pop);
-        assert_eq!(conductor.remaining_events(), remaining, "tick {tick}");
+        assert_eq!(conductor.pending_events(), remaining, "tick {tick}");
         assert_eq!(pop.global_coupling, coupling, "tick {tick}");
     }
     assert_eq!(conductor.current_scene_name(a - 1), None);
@@ -1288,9 +1292,9 @@ fn indefinite_conductor_dispatches_tick_boundaries() {
     assert_eq!(conductor.current_scene_name(a + 1).as_deref(), Some("1"));
     let mut conductor = Conductor::from_scenario(scenario, tb);
     conductor.dispatch_until(a, &landscape, &mut pop);
-    assert_eq!(conductor.remaining_events(), 1);
+    assert_eq!(conductor.pending_events(), 1);
     assert_eq!(pop.global_coupling, 0.2);
     conductor.dispatch_until(a + tb.hop as u64, &landscape, &mut pop);
-    assert!(conductor.is_done());
+    assert_eq!(conductor.pending_events(), 0);
     assert_eq!(pop.global_coupling, 0.4);
 }

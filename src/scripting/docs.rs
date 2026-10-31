@@ -881,6 +881,17 @@ Pairs with peak() (nearest step, sharp) or density (a broader cloud around it)."
 on the PopulationSpec first; the returned Population exposes only live patches and release.",
     },
     FnDoc {
+        name: "endless",
+        evidence: FORM,
+        owner: Owner::Global,
+        category: "timeline",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["endless()"],
+        summary: "Declare an open-ended performance before playback events and time advances.",
+        details: "Call once at top level. After the script returns, the ecology keeps sounding, even with no queued events. End with the GUI End button, the first Ctrl-C, or --duration; Exit and the second Ctrl-C stop immediately. Stage 1 evaluates eagerly: unbounded script loops still hang at load.",
+    },
+    FnDoc {
         name: "wait",
         evidence: FORM,
         owner: Owner::Global,

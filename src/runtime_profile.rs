@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::audio::output::{AudioCallbackCounters, AudioDeviceInfo};
 
-const PROFILE_HOP_CAPACITY: usize = 100_000;
+pub(crate) const PROFILE_HOP_CAPACITY: usize = 100_000;
 
 #[derive(Clone, Copy, Debug, Default, Serialize)]
 pub(crate) struct AllocationCounts {

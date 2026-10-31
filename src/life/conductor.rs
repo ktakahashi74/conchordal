@@ -28,8 +28,9 @@ struct SceneInfo {
 pub struct Conductor {
     pub(crate) expression: Option<crate::scenario::expression::Expression>,
     event_queue: VecDeque<QueuedEvent>,
-    total_duration: f64,
+    end: Option<f64>,
     scenes: Vec<SceneInfo>,
+    dispatched_through: Option<Tick>,
 }
 
 impl Conductor {
@@ -65,12 +66,13 @@ impl Conductor {
 
         events.sort_by(|a, b| cmp_time_order(a.time, a.order, b.time, b.order));
 
-        let total_duration = s.duration_sec;
+        let end = s.end.duration_sec();
         Self {
             expression: s.expression,
             event_queue: events.into(),
-            total_duration,
+            end,
             scenes,
+            dispatched_through: None,
         }
     }
 
@@ -78,7 +80,13 @@ impl Conductor {
     ///
     /// Note: spawn placement rules (e.g. minimum ERB distance between fundamentals) are enforced
     /// inside `Community` when handling spawn actions.
-    pub fn dispatch_until(&mut self, tick: Tick, landscape: &Landscape, community: &mut Community) {
+    pub fn dispatch_until(
+        &mut self,
+        tick: Tick,
+        landscape: &Landscape,
+        community: &mut Community,
+    ) -> bool {
+        let mut finish = false;
         // Audio thread: pop-then-restore avoids an `expect`, and logging one line per
         // action avoids joining descriptions into a temporary `String`.
         while let Some(ev) = self.event_queue.pop_front() {
@@ -90,20 +98,30 @@ impl Conductor {
             let time = ev.time;
             for action in ev.actions {
                 info!("[t={time:.3}] Event: {action}");
-                community.apply_action(action, landscape);
+                if matches!(action, Action::Finish) {
+                    finish = true;
+                } else {
+                    community.apply_action(action, landscape);
+                }
             }
         }
+        self.dispatched_through = Some(tick);
+        finish
     }
 
-    pub fn is_done(&self) -> bool {
-        self.event_queue.is_empty()
+    pub fn discard_pending(&mut self) {
+        self.event_queue.clear();
+        self.scenes.retain(|scene| {
+            self.dispatched_through
+                .is_some_and(|tick| scene.tick <= tick)
+        });
     }
 
-    pub fn total_duration(&self) -> f64 {
-        self.total_duration
+    pub fn end(&self) -> Option<f64> {
+        self.end
     }
 
-    pub fn remaining_events(&self) -> usize {
+    pub fn pending_events(&self) -> usize {
         self.event_queue.len()
     }
 

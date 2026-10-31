@@ -41,6 +41,8 @@ fn flora_pace_uses_the_last_scene_basin_before_or_after_placement() {
                 Some(21),
                 Some(report.to_str().unwrap()),
                 0,
+                None,
+                Arc::new(AtomicBool::new(false)),
             )
             .unwrap();
             let rows: Vec<serde_json::Value> = fs::read_to_string(report)
@@ -121,6 +123,8 @@ fn flora_finishes_with_its_fade_in_both_renderers() {
                 Some(21),
                 Some(report.to_str().unwrap()),
                 0,
+                None,
+                Arc::new(AtomicBool::new(false)),
             )
             .unwrap();
             let mut reader = hound::WavReader::open(&wav).unwrap();
@@ -220,6 +224,8 @@ fn flora_alone_starts_shared_habituation_before_late_placement_and_reports_finis
             Some(21),
             Some(report.to_str().unwrap()),
             0,
+            None,
+            Arc::new(AtomicBool::new(false)),
         )
         .unwrap();
         let rows: Vec<serde_json::Value> = fs::read_to_string(report)

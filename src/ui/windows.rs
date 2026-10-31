@@ -47,9 +47,15 @@ fn consonance_field_score_axis_bounds(
 
 fn format_time(sec: f64) -> String {
     let total_secs = sec.max(0.0).floor() as u64;
-    let minutes = total_secs / 60;
+    let days = total_secs / 86_400;
+    let hours = total_secs / 3600 % 24;
+    let minutes = total_secs / 60 % 60;
     let seconds = total_secs % 60;
-    format!("{minutes:02}:{seconds:02}")
+    if days > 0 {
+        format!("{days}d {hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    }
 }
 
 fn draw_level_meters(
@@ -338,7 +344,13 @@ fn draw_system_diagnostics(ui: &mut egui::Ui, frame: &UiFrame) {
             ),
         );
         ui.separator();
-        fixed_system_label(ui, format!("events={:04}", frame.meta.event_queue_len));
+        fixed_system_label(
+            ui,
+            format!(
+                "events={:04} populations={} slow_hops={}",
+                frame.meta.event_queue_len, frame.meta.population_count, frame.meta.slow_hops
+            ),
+        );
         ui.separator();
         fixed_system_label(
             ui,
@@ -634,6 +646,7 @@ pub fn main_window(
     runtime_error: Option<&str>,
     exit_flag: &Arc<AtomicBool>,
     start_flag: &Arc<AtomicBool>,
+    end_request: &Arc<AtomicBool>,
     show_raw_nsgt_power: &mut bool,
 ) {
     let ctx = root_ui.ctx().clone();
@@ -656,71 +669,46 @@ pub fn main_window(
             ui.label(format!("Scene: {scene}"));
         });
 
-        let progress = if frame.meta.duration_sec > 0.0 {
-            (frame.meta.time_sec / frame.meta.duration_sec).clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        let progress_text = format!(
-            "{} / {}",
-            format_time(frame.meta.time_sec),
-            format_time(frame.meta.duration_sec)
-        );
-
         ui.horizontal(|ui| {
-            let btn_size = 18.0;
-            let bar_width =
-                (ui.available_width() - btn_size - ui.spacing().item_spacing.x).max(50.0);
-            ui.add(
-                egui::ProgressBar::new(progress as f32)
-                    .text(progress_text)
-                    .desired_width(bar_width),
-            );
-
-            let (rect, resp) = ui.allocate_exact_size(Vec2::splat(btn_size), egui::Sense::click());
-            let painter = ui.painter_at(rect);
-            let tooltip = match frame.meta.playback_state {
+            let controls_width = 180.0;
+            if let Some(end) = frame.meta.end {
+                let progress = if end > 0.0 {
+                    (frame.meta.time_sec / end).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                ui.add(
+                    egui::ProgressBar::new(progress as f32)
+                        .text(format!(
+                            "{} / {}",
+                            format_time(frame.meta.time_sec),
+                            format_time(end)
+                        ))
+                        .desired_width((ui.available_width() - controls_width).max(50.0)),
+                );
+            } else {
+                ui.label(format!("{} · open end", format_time(frame.meta.time_sec)));
+            }
+            match frame.meta.playback_state {
                 PlaybackState::NotStarted => {
-                    let points = vec![
-                        rect.left_top(),
-                        egui::pos2(rect.right(), rect.center().y),
-                        rect.left_bottom(),
-                    ];
-                    painter.add(egui::Shape::convex_polygon(
-                        points,
-                        egui::Color32::GREEN,
-                        egui::Stroke::NONE,
-                    ));
-                    "Start (Space)"
-                }
-                PlaybackState::Playing => {
-                    painter.add(egui::Shape::circle_filled(
-                        rect.center(),
-                        rect.width() * 0.45,
-                        egui::Color32::GREEN,
-                    ));
-                    "Exit"
-                }
-                PlaybackState::Finished => {
-                    painter.add(egui::Shape::line_segment(
-                        [rect.left_top(), rect.right_bottom()],
-                        egui::Stroke::new(2.0_f32, egui::Color32::RED),
-                    ));
-                    painter.add(egui::Shape::line_segment(
-                        [rect.right_top(), rect.left_bottom()],
-                        egui::Stroke::new(2.0_f32, egui::Color32::RED),
-                    ));
-                    "Exit"
-                }
-            };
-            let resp = resp.on_hover_text(tooltip);
-            if resp.clicked() {
-                match frame.meta.playback_state {
-                    PlaybackState::NotStarted => start_flag.store(true, Ordering::SeqCst),
-                    PlaybackState::Playing | PlaybackState::Finished => {
-                        exit_flag.store(true, Ordering::SeqCst)
+                    if ui.button("Start").on_hover_text("Start (Space)").clicked() {
+                        start_flag.store(true, Ordering::SeqCst);
                     }
                 }
+                PlaybackState::Playing => {
+                    if ui.button("End").clicked() {
+                        end_request.store(true, Ordering::SeqCst);
+                    }
+                }
+                PlaybackState::Ending => {
+                    ui.label("Ending (fade)…");
+                }
+                PlaybackState::Finished => {
+                    ui.label("Finished");
+                }
+            }
+            if ui.button("Exit").clicked() {
+                exit_flag.store(true, Ordering::SeqCst);
             }
         });
 
@@ -1030,4 +1018,24 @@ pub fn main_window(
                 ui.label(format!("pred_sync_mean={pred_sync}"));
             });
     });
+}
+
+#[cfg(test)]
+mod time_tests {
+    use super::format_time;
+
+    #[test]
+    fn elapsed_time_includes_hours_and_days() {
+        for (seconds, expected) in [
+            (-1.0, "0:00:00"),
+            (59.9, "0:00:59"),
+            (60.0, "0:01:00"),
+            (3600.0, "1:00:00"),
+            (86399.0, "23:59:59"),
+            (86400.0, "1d 0:00:00"),
+            (176461.0, "2d 1:01:01"),
+        ] {
+            assert_eq!(format_time(seconds), expected);
+        }
+    }
 }

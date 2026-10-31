@@ -24,6 +24,7 @@ pub struct App {
     shutdown_handle: Option<std::thread::JoinHandle<()>>,
     runtime_result_rx: Receiver<Result<(), String>>,
     exiting: Arc<AtomicBool>,
+    end_request: Arc<AtomicBool>,
     drop_started: Arc<AtomicBool>,
     runtime_failed: Arc<AtomicBool>,
     listener_rhythm_history: VecDeque<(f64, crate::core::meter::MeterState)>,
@@ -41,6 +42,7 @@ impl App {
         stop_flag: Arc<AtomicBool>,
         runtime_failed: Arc<AtomicBool>,
     ) -> Self {
+        let end_request = args.end_request.clone();
         let drop_started = Arc::new(AtomicBool::new(false));
         let rt = crate::runtime::init_runtime(args, config, stop_flag.clone());
         let (runtime_result_tx, runtime_result_rx) = crossbeam_channel::bounded(1);
@@ -96,6 +98,7 @@ impl App {
             shutdown_handle: Some(shutdown_handle),
             runtime_result_rx,
             exiting: stop_flag,
+            end_request,
             drop_started,
             runtime_failed,
             listener_rhythm_history: VecDeque::with_capacity(4096),
@@ -207,6 +210,7 @@ impl eframe::App for App {
             self.runtime_error.as_deref(),
             &self.exiting,
             &self.start_flag,
+            &self.end_request,
             &mut self.show_raw_nsgt_power,
         );
     }
@@ -324,6 +328,7 @@ mod tests {
             shutdown_handle: Some(shutdown),
             runtime_result_rx,
             exiting: stop,
+            end_request: Arc::new(AtomicBool::new(false)),
             drop_started: dropping,
             runtime_failed: Arc::clone(&failed),
             listener_rhythm_history: VecDeque::new(),

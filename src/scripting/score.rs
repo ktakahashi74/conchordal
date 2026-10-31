@@ -12,6 +12,11 @@ pub(crate) const LEAD_HOPS: u64 = 64;
 // Calibrated by score_patch_capacity_measurement in a release build.
 pub(crate) const ACTION_CAPACITY: usize = 131072;
 
+#[cfg(test)]
+thread_local! {
+    pub(super) static RETAINED_ACTION_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Credit {
     pub actions: usize,
@@ -42,7 +47,14 @@ impl ScoreItem {
         match self {
             Self::Event(e) => {
                 e.actions.capacity() * size_of::<Action>()
-                    + e.actions.iter().map(Action::heap_bytes).sum::<usize>()
+                    + e.actions
+                        .iter()
+                        .map(|action| {
+                            #[cfg(test)]
+                            RETAINED_ACTION_VISITS.with(|visits| visits.set(visits.get() + 1));
+                            action.heap_bytes()
+                        })
+                        .sum::<usize>()
             }
             Self::Marker(m) => m.name.capacity(),
         }
@@ -135,7 +147,7 @@ pub(crate) struct ScoreOutbox {
     #[cfg(test)]
     pub script_sizes: (usize, usize, usize),
     pub header: Option<Scenario>,
-    pub ring: VecDeque<ScoreItem>,
+    pub ring: VecDeque<(ScoreItem, Credit)>,
     pub watermark_sec: f64,
     pub credit: Credit,
     pub unreturned: Credit,
@@ -230,7 +242,7 @@ impl ScoreStream {
             if charge.fits(state.credit) {
                 state.credit.actions -= charge.actions;
                 state.credit.bytes -= charge.bytes;
-                state.ring.push_back(item);
+                state.ring.push_back((item, charge));
                 state.pending = None;
                 state.script_parked_full = false;
                 self.changed.notify_all();
@@ -259,7 +271,7 @@ impl ScoreStream {
             // Pre-header events are still invisible and owned by the producer.
             if let Some((a, b)) = header.meter_shaping.basin_hz {
                 let (lo, hi) = crate::core::meter::sane_basin(a, b);
-                for item in &mut state.ring {
+                for (item, _) in &mut state.ring {
                     if let ScoreItem::Event(event) = item {
                         for action in &mut event.actions {
                             action.set_founder_basin(0.5 * (lo + hi));
@@ -270,7 +282,7 @@ impl ScoreStream {
             if header.harmonic_rhythm > 0 {
                 let mut members = BTreeMap::new();
                 let mut warnings = Vec::new();
-                for item in &mut state.ring {
+                for (item, _) in &mut state.ring {
                     if let ScoreItem::Event(event) = item {
                         for action in &mut event.actions {
                             match action {
@@ -427,12 +439,11 @@ impl ScoreStream {
         if state
             .ring
             .front()
-            .is_none_or(|item| tb.sec_to_tick(item.time()) > tick)
+            .is_none_or(|(item, _)| tb.sec_to_tick(item.time()) > tick)
         {
             return None;
         }
-        let item = state.ring.pop_front().unwrap();
-        let charge = item.charge();
+        let (item, charge) = state.ring.pop_front().unwrap();
         state.unreturned.actions += charge.actions;
         state.unreturned.bytes += charge.bytes;
         Some((item, charge))

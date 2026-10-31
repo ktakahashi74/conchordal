@@ -191,6 +191,37 @@ fn pop_retry_consume_and_return_readiness_retry_keep_credit() {
 }
 
 #[test]
+fn worker_transfers_credit_without_visiting_actions() {
+    for count in [1, ACTION_CAPACITY] {
+        let stream = ScoreStream::new(None, ACTION_CAPACITY);
+        stream.set_header(ScriptContext::with_seed(1).scenario);
+        RETAINED_ACTION_VISITS.with(|visits| visits.set(0));
+        stream
+            .push(ScoreItem::Event(TimedEvent {
+                time: 0.0,
+                order: 0,
+                actions: vec![Action::Finish; count],
+            }))
+            .unwrap();
+        assert_eq!(RETAINED_ACTION_VISITS.with(|visits| visits.get()), count);
+        stream.advance(1.0, false);
+        RETAINED_ACTION_VISITS.with(|visits| visits.set(0));
+        let (item, charge) = stream.pop_due(0, timebase()).unwrap();
+        assert_eq!(charge.actions, count);
+        assert_eq!(charge.bytes, count * size_of::<Action>());
+        assert_eq!(stream.state.lock().unwrap().unreturned, charge);
+        drop(item);
+        stream.return_credit(charge);
+        assert_eq!(stream.state.lock().unwrap().credit, stream.capacity);
+        assert_eq!(
+            RETAINED_ACTION_VISITS.with(|visits| visits.get()),
+            0,
+            "worker must not scan even a full-capacity item"
+        );
+    }
+}
+
+#[test]
 fn capacity_charges_allocation_capacity_and_close_discards() {
     let mut name = String::with_capacity(64);
     name.push('x');

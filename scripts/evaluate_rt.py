@@ -54,14 +54,15 @@ POLICY = {
     "recovery": "temporary added population; require baseline pass, observed overload and post-release pass; allow two simulated seconds for release/queue settling; never claim the overloaded interval passed",
     "dense": "pulse accumulator on the selected theta clock, one-cycle holds and 50 ms release; reject multiple onsets for a Voice in one report hop; adaptive requires all Voices and mean >=4 onsets/Voice/sec; synchronized additionally requires each Voice's 8 Hz count and 125 ms intervals within report-hop precision",
     "participation": "entrained/flow workloads use the actual participation presets with one-cycle holds, intrinsic renewal for flow and acoustic cadence for entrained; report-enabled windows require at least two onsets from every Voice, without imposing a common onset rate or phase; report-off activity is not independently verified",
+    "churn": "explicit random respawn, capacity equal to Voice count, background death rate 0.1/s; permit isolated one-hop live-count deficits, require two onsets per spawned population when reporting, and at least Voice-count births in wholly contained telemetry intervals; boundary intervals and initial placement are excluded from the birth lower bound",
 }
 SUMMARY_FIELDS = ("case mode voices body seed report_enabled dcc_coupling_strength status listener_enabled "
                   "device_rt_pass assessment_reason sample_rate hop_size hop_budget_us hop_count "
-                  "window_start_sec window_end_sec alive_voice_count_min alive_voice_count_max elapsed_p95_us elapsed_p99_us elapsed_max_us over_budget_hops "
+                  "window_start_sec window_end_sec alive_voice_count_min alive_voice_count_max elapsed_p50_us elapsed_p95_us elapsed_p99_us elapsed_max_us over_budget_hops "
                   "worker_alloc_count worker_alloc_bytes allocations_per_hop bytes_per_hop "
                   "underrun_frames_delta callback_count callback_frames_total callback_errors_total "
                   "backend device_name device_channels ring_capacity_frames generated_frames minimum_dequeued_frames execution_wall_sec minimum_device_wall_sec physical_output_verification "
-                  "workload timing recovery_pass overload_observed onset_count onsets_per_voice_sec error").split()
+                  "workload timing recovery_pass overload_observed onset_count onsets_per_voice_sec births_lower_bound telemetry_interval_count error").split()
 
 
 def require(record, schema, label):
@@ -84,7 +85,7 @@ def require(record, schema, label):
             raise ValueError(f"{label}: invalid {key}={value!r}")
 
 
-def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, duration_sec, wall_sec=None):
+def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, duration_sec, wall_sec=None, churn=False):
     data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=beta.strict_object,
                       parse_float=beta.finite_float, parse_constant=beta.finite_float)
     require(data, PROFILE_SCHEMA, "profile")
@@ -165,7 +166,15 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
                 and (r["frame_idx"] + 1) * hop_sec <= end_sec + 1e-9]
     if not selected:
         raise ValueError("measurement window contains no complete hops")
-    if any(r["alive_voice_count"] != voices for r in selected):
+    if churn:
+        for row in selected:
+            index = row["frame_idx"]
+            if row["alive_voice_count"] < voices and (
+                    index == 0 or index + 1 == len(hops)
+                    or hops[index - 1]["alive_voice_count"] < voices
+                    or hops[index + 1]["alive_voice_count"] < voices):
+                raise ValueError("churn live Voice deficit exceeds one hop")
+    elif any(r["alive_voice_count"] != voices for r in selected):
         raise ValueError("live Voice count differs from requested fixed population in measurement window")
     first, last = selected[0]["frame_idx"], selected[-1]["frame_idx"]
     underrun_start = (hops[first - 1]["underrun_frames_total"] if first else 0) if audio else None
@@ -205,6 +214,7 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
             "requested_window_start_sec": warmup_sec, "requested_window_end_sec": end_sec,
             "alive_voice_count_min": min(r["alive_voice_count"] for r in selected),
             "alive_voice_count_max": max(r["alive_voice_count"] for r in selected),
+            "elapsed_p50_us": beta.percentile([r["elapsed_us"] for r in selected], .5),
             "elapsed_p95_us": elapsed["p95"], "elapsed_p99_us": elapsed["p99"], "elapsed_max_us": elapsed["max"],
             "over_budget_hops": sum(r["elapsed_us"] > data["hop_budget_us"] for r in selected),
             "worker_alloc_count": count, "worker_alloc_bytes": size,
@@ -230,13 +240,17 @@ def parse_profile(path, *, mode, voices, seed, report_enabled, dcc, warmup_sec, 
 
 
 def scenario_text(voices, body, seed, warmup_sec, duration_sec, *, workload="sustain", overload_voices=512, stress_sec=5, timing="adaptive"):
+    churn = workload.endswith("-churn")
+    participation = workload.removesuffix("-churn")
     modes = ".modes(harmonic_modes().count(8))" if body == "harmonic" else ""
     accumulator_rate = 32.0 if timing == "synchronized" else 8.0
     phonation = ".sustain()" if workload == "sustain" else (
         f".pulse({accumulator_rate:.1f}).pulse_lock(0.0).social(0.0).cycles(1)\n"
         "    .attack_cost_fraction(0.0).rhythm_coupling_vitality(0.0, 1.0)")
-    if workload in ("entrained", "flow"):
-        phonation = f".{workload}().cycles(1).attack_cost_fraction(0.0)"
+    if participation in ("entrained", "flow"):
+        phonation = f".{participation}().cycles(1).attack_cost_fraction(0.0)"
+    respawn = (f".respawn_random().respawn_capacity({voices}).respawn_background_death_rate(0.1)"
+               if churn else "")
     envelope = "0.02, 0.10, 0.85, 0.25" if workload == "sustain" else "0.003, 0.025, 0.30, 0.05"
     amplitude_count = overload_voices if workload == "recovery" else voices
     scaffold = "scaffold_shared(16.0); // Explicit synchronization performance assay.\n" if timing == "synchronized" else ""
@@ -247,12 +261,13 @@ def scenario_text(voices, body, seed, warmup_sec, duration_sec, *, workload="sus
     wait(2.0);
     wait({duration_sec:.9f});
 ''' if workload == "recovery" else ""
-    return f'''// Performance assay; no respawn, dedicated beat carrier or audio-file output.
+    return f'''// Performance assay; no dedicated beat carrier or audio-file output.
 seed({seed});
 {scaffold}\
 let voice = {body}()
     {modes}
     {phonation}
+    {respawn}
     .endurance(1000000.0)
     .sustain_drive(0.002)
     .amp({0.06 / math.sqrt(amplitude_count):.12f})
@@ -275,12 +290,20 @@ def onset_windows(path, windows, *, timing="adaptive", hop_sec=None):
     voice_counts = [{} for _ in windows]
     last_onset_times = [{} for _ in windows]
     intervals = [[] for _ in windows]
+    population_counts = [{} for _ in windows]
+    spawned = [set() for _ in windows]
+    churn = timing.endswith("-churn")
     with path.open(encoding="utf-8") as stream:
         for line in stream:
             row = json.loads(line, object_pairs_hook=beta.strict_object,
                              parse_float=beta.finite_float, parse_constant=beta.finite_float)
             if not isinstance(row, dict):
                 raise ValueError("report record must be an object")
+            if churn and row.get("type") in ("spawn", "respawn"):
+                require(row, {"time_sec": "n", "population_id": "i"}, "spawn")
+                for index, (_, end, _) in enumerate(windows):
+                    if row["time_sec"] < end:
+                        spawned[index].add(row["population_id"])
             if row.get("type") != "onset":
                 continue
             require(row, {"time_sec": "n", "voice_id": "i"}, "onset")
@@ -295,12 +318,20 @@ def onset_windows(path, windows, *, timing="adaptive", hop_sec=None):
                         intervals[index].append(row["time_sec"] - previous)
                     last_onset_times[index][row["voice_id"]] = row["time_sec"]
                     counts[index] += 1
+                    if churn:
+                        require(row, {"population_id": "i"}, "onset")
+                        population = row["population_id"]
+                        population_counts[index][population] = population_counts[index].get(population, 0) + 1
                     voices[index].add(row["voice_id"])
                     voice_counts[index][row["voice_id"]] = voice_counts[index].get(row["voice_id"], 0) + 1
     result = []
-    for (start, end, expected_voices), count, observed, gaps, per_voice in zip(windows, counts, voices, intervals, voice_counts):
+    for index, ((start, end, expected_voices), count, observed, gaps, per_voice) in enumerate(zip(windows, counts, voices, intervals, voice_counts)):
         rate = count / ((end - start) * expected_voices)
-        if timing in ("entrained", "flow"):
+        if churn:
+            populations = population_counts[index]
+            if not spawned[index] or any(populations.get(p, 0) < 2 for p in spawned[index]):
+                raise ValueError("churn workload did not demonstrate two onsets per population")
+        elif timing in ("entrained", "flow"):
             if len(observed) != expected_voices or min(per_voice.values(), default=0) < 2:
                 raise ValueError("participation workload did not demonstrate repeated onsets from every Voice")
         elif len(observed) != expected_voices or rate < 4.0:
@@ -313,7 +344,43 @@ def onset_windows(path, windows, *, timing="adaptive", hop_sec=None):
                 raise ValueError("synchronized workload did not maintain 8 Hz onset count and intervals")
         result.append({"onset_count": count, "onsets_per_voice_sec": rate,
                        "onset_voice_count": len(observed), "one_onset_per_voice_per_hop": True,
-                       "onset_interval_sec": beta.stats(gaps) if gaps else None})
+                       "onset_interval_sec": beta.stats(gaps) if gaps else None,
+                       **({"onsets_by_population": population_counts[index]} if churn else {})})
+    return result
+
+
+def telemetry_windows(path, windows, *, hop_sec):
+    """Pair interval counters with the following monitor debug timestamp."""
+    intervals, pending, previous = [], None, 0.0
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            if line.startswith("telemetry "):
+                if pending is not None:
+                    raise ValueError("telemetry interval has no simulation timestamp")
+                fields = dict(re.findall(r"(\w+)=(\S+)", line))
+                try:
+                    pending = {key: int(fields[key]) for key in ("births", "deaths")}
+                except (KeyError, ValueError) as error:
+                    raise ValueError("telemetry missing valid birth/death counters") from error
+                require(pending, {"births": "i", "deaths": "i"}, "telemetry")
+            match = re.search(r"\[t=([0-9.]+)\] Audio stats:", line)
+            if match and pending is not None:
+                current = float(match[1])
+                if not math.isfinite(current) or current <= previous:
+                    raise ValueError("telemetry timestamps are unordered")
+                # The counter includes the current hop; the previous interval owns its hop.
+                end = (round(current / hop_sec) + 1) * hop_sec
+                intervals.append(dict(start_sec=previous, end_sec=end, **pending))
+                previous, pending = end, None
+    if pending is not None or not intervals:
+        raise ValueError("telemetry simulation timestamps missing")
+    result = []
+    for start, end, expected in windows:
+        contained = [row for row in intervals if row["start_sec"] >= start - 1e-9
+                     and row["end_sec"] <= end + 1e-9]
+        births = sum(row["births"] for row in contained)
+        result.append({"births_lower_bound": births, "telemetry_interval_count": len(contained),
+                       "birth_requirement_met": births >= expected, "telemetry_intervals": contained})
     return result
 
 
@@ -365,7 +432,7 @@ def main(argv=None):
     parser.add_argument("--mode", choices=("device", "offline-check"), default="device")
     parser.add_argument("--voices", type=int, nargs="+", choices=(4, 16, 64), default=[4, 16, 64])
     parser.add_argument("--bodies", nargs="+", choices=("sine", "harmonic", "modal"), default=["sine", "harmonic", "modal"])
-    parser.add_argument("--workload", choices=("sustain", "dense", "recovery", "entrained", "flow"), default="sustain")
+    parser.add_argument("--workload", choices=("sustain", "dense", "recovery", "entrained", "flow", "entrained-churn", "flow-churn"), default="sustain")
     parser.add_argument("--timing", choices=("adaptive", "synchronized"), default="adaptive",
                         help="synchronized uses an explicit 16 Hz theta scaffold for 8 Hz simultaneous-onset load")
     parser.add_argument("--reports", type=int, nargs="+", choices=(0, 1), default=[0, 1])
@@ -381,6 +448,7 @@ def main(argv=None):
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--binary", type=Path, help="existing release profile-alloc instrument; requires --skip-build")
     args = parser.parse_args(argv)
+    churn = args.workload.endswith("-churn")
     if args.binary and not args.skip_build:
         parser.error("--binary requires --skip-build")
     if args.timing == "synchronized" and (args.workload not in ("dense", "recovery") or args.reports != [1]):
@@ -481,6 +549,8 @@ def main(argv=None):
             stream.write(f"\ntimingは`{args.timing}`。synchronizedは同期が目的の性能アッセイ。16 Hzの共有θ scaffold、蓄積率32、既存の2ゲート間隔制限で8回/秒を駆動し、各Voiceの回数・間隔を検査する。音楽的な創発の合否には使わない。\n")
             if args.workload in ("entrained", "flow"):
                 stream.write("\nentrained/flowでは対応する参加プリセットを使い、拍送りを追加しない。上記のpulse用4回/秒基準は適用せず、report有効時は全Voiceが窓内で2回以上発音したことを要求する。共通の間隔や位相を強制する試験ではない。report無効時の発音の継続は未検証。\n")
+            if churn:
+                stream.write("\nchurnでは1 hopだけの生存数低下を許容し、report有効時は配置されたpopulationごとに2 onset以上を要求する。report無効時のonsetは独立には検証しない。毎秒telemetry直後のmonitor debug行からsimulation時刻を取得し、全区間が窓に含まれるカウンターだけでbirth下限を計数する。初期配置と境界をまたぐ区間はbirth下限に含めない。\n")
         for voices, body, report, dcc in itertools.product(args.voices, args.bodies, map(bool, args.reports), args.dcc):
             slug = f"v{voices:02d}_{body}_report-{int(report)}_dcc-{dcc:.2f}"
             case = {"case": slug, "mode": args.mode, "voices": voices, "body": body, "seed": args.seed,
@@ -498,7 +568,9 @@ def main(argv=None):
                                            stress_sec=args.stress_sec, timing=args.timing), encoding="utf-8")
             config.write_text(config_text(base_config, dcc), encoding="utf-8")
             command = [saved_binary, script, "--nogui", f"--play={'true' if args.mode == 'device' else 'false'}",
-                       "--config", config, "--seed", str(args.seed), "--profile", directory / "profile.json"]
+                       "--config", config, "--seed", str(args.seed), "--profile", directory / "profile.json", "--telemetry"]
+            if churn:
+                command = ["env", "RUST_LOG=conchordal::runtime::monitor=debug", *command]
             if report:
                 command += ["--report", directory / "report.jsonl"]
             print(f"start {slug} ({args.workload})", flush=True)
@@ -514,11 +586,16 @@ def main(argv=None):
                     raise ValueError(f"instrument {run['status']} (exit {run['returncode']}); see run.log")
                 baseline = parse_profile(directory / "profile.json", mode=args.mode, voices=voices, seed=args.seed,
                                          report_enabled=report, dcc=dcc, warmup_sec=args.warmup_sec,
-                                         duration_sec=args.duration_sec, wall_sec=run.get("wall_sec"))
+                                         duration_sec=args.duration_sec, wall_sec=run.get("wall_sec"), churn=churn)
                 case.update(baseline)
                 if report and (not (directory / "report.jsonl").is_file() or not (directory / "report.jsonl").stat().st_size):
                     raise ValueError("requested report missing or empty")
                 windows = [(args.warmup_sec, args.warmup_sec + args.duration_sec, voices)]
+                if churn:
+                    case.update(telemetry_windows(directory / "run.log", windows,
+                                                  hop_sec=baseline["hop_size"] / baseline["sample_rate"])[0])
+                    if not case["birth_requirement_met"]:
+                        raise ValueError("churn window has fewer births than configured Voices")
                 if args.workload == "recovery":
                     stress_start = args.warmup_sec + args.duration_sec
                     recovery_start = stress_start + args.stress_sec + 2
@@ -532,7 +609,7 @@ def main(argv=None):
                     case.update(recovery_assessment(phases["baseline"], phases["overloaded"], phases["recovered"]))
                     case.update(device_rt_pass=None, phases=phases)
                 if args.workload != "sustain" and report:
-                    onset_timing = args.workload if args.workload in ("entrained", "flow") else args.timing
+                    onset_timing = args.workload if args.workload in ("entrained", "flow") or churn else args.timing
                     onsets = onset_windows(directory / "report.jsonl", windows, timing=onset_timing,
                                            hop_sec=baseline["hop_size"] / baseline["sample_rate"])
                     case.update(onsets[0])

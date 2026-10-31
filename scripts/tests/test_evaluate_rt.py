@@ -263,6 +263,74 @@ class ProfileTests(unittest.TestCase):
                 self.parse(data)
 
 
+class ChurnTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.path = Path(self.temp.name) / "artifact"
+
+    def test_churn_preserves_participation_and_explicitly_enables_respawn(self):
+        for workload in ("entrained", "flow"):
+            script = rt.scenario_text(16, "harmonic", 1, 5, 10, workload=workload + "-churn")
+            self.assertIn(f".{workload}().cycles(1)", script)
+            self.assertIn(".respawn_random().respawn_capacity(16).respawn_background_death_rate(0.1)", script)
+            self.assertNotIn(".pulse(", script)
+            self.assertNotIn("scaffold_", script)
+            self.assertNotIn(".respawn_", rt.scenario_text(16, "harmonic", 1, 5, 10, workload=workload))
+
+    def test_churn_live_deficits_cannot_last_multiple_hops_and_timing_keeps_birth_hop(self):
+        data = profile_fixture()
+        data["hops"][7]["alive_voice_count"] = 3
+        data["hops"][8]["alive_voice_count"] = 5
+        data["hops"][7]["elapsed_us"] = 300000.0
+        data["summary"].update(elapsed_max_us=300000.0, over_budget_hops=1)
+
+        def parse(churn):
+            self.path.write_text(json.dumps(data))
+            return rt.parse_profile(self.path, mode="device", voices=4, seed=1, report_enabled=False,
+                                    dcc=0, warmup_sec=1, duration_sec=2, wall_sec=5, churn=churn)
+
+        result = parse(True)
+        self.assertEqual(result["over_budget_hops"], 1)
+        self.assertEqual(result["elapsed_max_us"], 300000)
+        self.assertEqual(result["elapsed_p50_us"], 108.5)
+        with self.assertRaisesRegex(ValueError, "fixed population"):
+            parse(False)
+        data["hops"][8]["alive_voice_count"] = 3
+        with self.assertRaisesRegex(ValueError, "exceeds one hop"):
+            parse(True)
+
+    def test_churn_checks_all_populations_including_silent_ones_without_fixed_ids(self):
+        rows = [dict(type="spawn", time_sec=0, population_id=p) for p in (1, 2)]
+        rows += [dict(type="onset", time_sec=t, voice_id=v, population_id=p)
+                 for p, v, t in ((1, 10, 1.2), (1, 11, 1.8), (2, 20, 1.3), (2, 21, 2.0))]
+        self.path.write_text("\n".join(map(json.dumps, rows)))
+        self.assertEqual(rt.onset_windows(self.path, [(1, 3, 16)], timing="flow-churn")[0]["onset_count"], 4)
+        self.path.write_text("\n".join(map(json.dumps, rows[:-2])))
+        with self.assertRaisesRegex(ValueError, "two onsets per population"):
+            rt.onset_windows(self.path, [(1, 3, 16)], timing="flow-churn")
+
+    def test_telemetry_counts_only_contained_intervals_excluding_initial_births(self):
+        self.path.write_text("\n".join(
+            f"telemetry births={births} deaths=1\nDEBUG [t={time:.6f}] Audio stats: min_occ=0"
+            for time, births in ((.75, 100), (1.75, 2), (2.75, 3), (3.75, 99))))
+        result = rt.telemetry_windows(self.path, [(1, 3, 5)], hop_sec=.25)[0]
+        self.assertEqual(result["births_lower_bound"], 5)
+        self.assertEqual(result["telemetry_interval_count"], 2)
+        self.assertTrue(result["birth_requirement_met"])
+        self.assertFalse(rt.telemetry_windows(self.path, [(1, 3, 6)], hop_sec=.25)[0]["birth_requirement_met"])
+        self.assertEqual(rt.telemetry_windows(self.path, [(1.01, 2.99, 1)], hop_sec=.25)[0]["births_lower_bound"], 0)
+
+    def test_missing_or_unordered_telemetry_cannot_prove_churn(self):
+        for payload in ("", "telemetry births=4 deaths=1", "telemetry births=-1 deaths=0\n",
+                        "telemetry deaths=1\n", "telemetry births=1 deaths=1\n" * 2,
+                        "telemetry births=1 deaths=1\nDEBUG [t=1.0] Audio stats:\n"
+                        "telemetry births=1 deaths=1\nDEBUG [t=.5] Audio stats:\n"):
+            self.path.write_text(payload)
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                rt.telemetry_windows(self.path, [(0, 3, 4)], hop_sec=.25)
+
+
 class CampaignTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -351,6 +419,34 @@ class CampaignTests(unittest.TestCase):
         self.assertTrue(all(c["device_rt_pass"] is None and c["status"] == "ok" for c in cases))
         self.assertEqual([c["listener_enabled"] for c in cases], [False, True, True, True])
         self.assertFalse(list(output.rglob("*.wav")))
+
+    def test_churn_campaign_requires_telemetry_births_and_population_onsets(self):
+        def execute(command, cwd, log, timeout):
+            self.assertIn("--telemetry", command)
+            self.assertEqual(command[:2], ["env", "RUST_LOG=conchordal::runtime::monitor=debug"])
+            report = "--report" in command
+            profile = Path(command[command.index("--profile") + 1])
+            profile.write_text(json.dumps(profile_fixture(report=report)))
+            if report:
+                events = [dict(type="spawn", time_sec=0, population_id=7)]
+                events += [dict(type="onset", time_sec=t, voice_id=v, population_id=7)
+                           for t, v in ((1.2, 10), (2.2, 11))]
+                Path(command[command.index("--report") + 1]).write_text("\n".join(map(json.dumps, events)))
+            log.write_text("\n".join(f"telemetry births=2 deaths=2\nDEBUG [t={t}] Audio stats: min_occ=0"
+                                     for t in (.75, 1.75, 2.75, 3.75)))
+            return dict(status="ok", returncode=0, wall_sec=5)
+
+        for report in (0, 1):
+            output = self.directory / f"churn-{report}"
+            with patch.object(rt.beta, "snapshot", side_effect=self.snapshot), \
+                    patch.object(rt.subprocess, "check_output", return_value="fixture"), \
+                    patch.object(rt.beta, "execute", side_effect=execute):
+                self.assertEqual(rt.main(self.args(output) + ["--workload", "flow-churn",
+                    "--reports", str(report), "--dcc", "0"]), 0)
+            case = json.loads((output / "summary.json").read_text())["cases"][0]
+            self.assertEqual(case["births_lower_bound"], 4)
+            self.assertTrue(case["device_rt_pass"])
+            self.assertEqual(case.get("onsets_by_population"), {"7": 2} if report else None)
 
     def test_recovery_campaign_checks_three_populations_and_actual_onsets(self):
         output = self.directory / "recovery"

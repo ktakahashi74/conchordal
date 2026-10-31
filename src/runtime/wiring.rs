@@ -800,14 +800,19 @@ pub fn run_render(
         },
     )?;
 
-    join_runtime(
+    let runtime_result = join_runtime(
         Some(wiring.worker_handle),
         [
-            ("wav", Some(wav_handle)),
             ("analysis", Some(wiring.analysis_handle)),
             ("listener-analysis", wiring.listener_analysis_handle),
         ],
-    )
+    );
+    let wav_result = join_thread("wav", wav_handle).and_then(|result| result);
+    match (runtime_result, wav_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(err), Ok(())) | (Ok(()), Err(err)) => Err(err),
+        (Err(runtime), Err(wav)) => Err(format!("{runtime}; {wav}")),
+    }
 }
 
 pub(crate) fn join_runtime(

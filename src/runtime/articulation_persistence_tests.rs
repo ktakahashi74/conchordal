@@ -147,7 +147,7 @@ fn render_case(
     join_thread("worker", wiring.worker_handle)
         .unwrap()
         .unwrap();
-    join_thread("wav", wav_handle).unwrap();
+    join_thread("wav", wav_handle).unwrap().unwrap();
     join_thread("analysis", wiring.analysis_handle).unwrap();
     if let Some(handle) = wiring.listener_analysis_handle {
         join_thread("listener", handle).unwrap();

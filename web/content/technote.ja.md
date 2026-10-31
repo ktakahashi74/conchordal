@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "89341622"
+source_commit = "e6b6a527"
 author = "Koichi Takahashi"
 last_updated = "2026-11-01"
 source_version = "0.5.0"
-source_snapshot = "89341622"
-revision_scope = "Floraの自己除外・拍・休止・条件付きNSGTを保持し、開いた終端、脚本の逐次評価、音声の復旧、推定器の数値実装に同期（2026-11-01）"
+source_snapshot = "e6b6a527"
+revision_scope = "Floraの自己除外・拍・休止・条件付きNSGTを保持し、開いた終端、脚本の逐次評価、音声の復旧、推定器の数値実装、Recurrence・scalarの精度修正に同期（2026-11-01）"
 +++
 
 # 1. 導入：バイオアコースティック・パラダイム
@@ -1132,13 +1132,28 @@ rank-1更新し、10発行ごとに再分解する。その位相はobserverご�
 
 応答和は高位・低位を保持し、2項ごとにTwoSumで畳む。観測済みの応答更新を最大10件
 まとめ、各成分の加算順を保ちながら同じ行を続けて処理する。照会・clone・gap・凍結の前には
-確定する。scalarの学習和と比較和も補償する。学習重みの補数は、丸めた比を1から引かず、
-補償項を含む`(square - cross) / square`から求めて範囲内へ収める。
+確定する。
+
+比較の重みと`EnergyForecastLearning`は、生のf32 operandから積を作り、double-doubleへ
+累積する。誤差のない差でoperandの引き算の低位を保ち、FMAで積の残差を求め、累積のたびに
+正規化する。二つの差に必要なbit幅の上界の和が53以下なら、差も積もf64で厳密に収まる。
+その場合は差と積の残差計算を省き、double-doubleへの累積だけを行う。範囲外では差と積の
+全経路を使う。学習重みの補数は、丸めた比を1から引かず、保持した両成分を含む
+`(square - cross) / square`から求めて範囲内へ収める。Gramの補償と応答和の2項ごとの
+畳み込みは、このscalarの和とは別に保つ。
 
 因子の更新に失敗した推定器は、最後に確定したGram行列と因子、その時点までに観測した
 応答を凍結する。その後の観測では更新せず、reportとSystem欄に状態を示す。
 cloneは累積統計を継ぎ、独自の再分解位相を持つ。rewindは推定器を初期化する。
 これらの機構は累積モデルの定義を保つ。
+
+eventのRecurrenceは、保持中の最古のonsetの整数sample tickを原点にf64の相対時刻を作る。
+履歴が空ならhopの開始tickを使う。整数で差を取ってから変換し、原点が動くと保持時刻と
+保留中のechoを元のtickから作り直す。丸めた秒を繰り返し引く処理はしない。端点の所属には
+局所の幅`24 * f64::EPSILON * T`を使う。Tは相対座標で
+`max(abs(end), abs(start), history_duration) + 2`とする。重みがこの幅を一致窓で割った値以下なら、
+massへ加えず、onsetも使用済みにしない。比較に使う許容幅の係数c = 64は、
+割り当てを固定した後の算術の丸めを覆う。
 
 # 7. ケーススタディ：創発的挙動の分析
 

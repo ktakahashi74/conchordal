@@ -8111,7 +8111,8 @@ revision 9に沿って、Manifestoが掲げる終端のない生態系と、temp
 Astraによる設計reviewは9回行い、第8回で軽微な補足3件を残してPASS、
 第9回でrevision 9の補足を確認し、指摘なしでPASSとなった。
 
-**統合した実装。** `1b5db013`にはIP-U1〜U5が入っている。
+**統合した実装。** IP-U1〜U5は`1b5db013`で統合した。以下は、`87c6dc4c`までに入った
+U2のreview修正を含む（2026-11-01更新）。
 
 - **IP-U1（§3）**：eventの配布とsceneの選択はtickで比較する。脚本のcursor、IR、
   UIとreportの秒はf64、局所の間隔・年齢・位相はf32を保つ。Listenerの間隔は、
@@ -8124,9 +8125,10 @@ Astraによる設計reviewは9回行い、第8回で軽微な補足3件を残し
   Endと最初のCtrl-CはPopulation、Flora、Rainを解放し、進行中のfadeの残りも待つ。
   二度目のCtrl-Cは即時停止する。`--duration`では、そのhopで配るitemを適用してから
   終了を要求する。Openのrender、compile-only、report、profileには期間の指定が要る。
-- **IP-U2（§6.1、§6.2、§6.6、§7.1）**：beat cyclesを12で折り返し、再来の時刻は
-  tickから直接求め、SlidingPlvは保存窓から和を更新し直す。固定ridgeの推定器はGram行列と
-  scalarの補償和、Choleskyのrank-1更新、10発行ごとの再分解を使い、observerごとに位相を
+- **IP-U2（§6.1、§6.2、§6.6、§7.1）**：beat cyclesを12で折り返す。Recurrenceの時刻は、
+  保持中の最古のonsetの整数tick（空ならhop開始tick）との差を整数で取ってから相対値にする。
+  SlidingPlvは保存窓から和を更新し直す。固定ridgeの推定器はGram行列の補償和、scalarの
+  double-doubleの積・累積、Choleskyのrank-1更新、10発行ごとの再分解を使い、observerごとに位相を
   ずらす。統合した軽量化では応答和をK=2項ごとにTwoSumで畳み、観測済み応答を最大10件
   まとめて処理する。照会・clone・gap・凍結の前には確定する。入力を検査したrank-1更新は
   連続した`U=Lᵀ`の行で行い、再分解だけが再利用scratchを使う。失敗時は整合した確定状態を
@@ -8135,6 +8137,26 @@ Astraによる設計reviewは9回行い、第8回で軽微な補足3件を残し
   に記録した。実装review後はproducerが求めたcreditを保持し、workerのpopと返却をaction数に
   対してO(1)にした。watermarkの余裕も区間の最小値を出す。IP-R1の第1回で求められた
   この2件の修正は、第2回の静的reviewで`b1aaf91c`に対してPASSとなった。
+
+**U2のreview修正と根拠（2026-11-01）。** Recurrenceは原点が動くと、元のtickから
+保持時刻と保留中のechoを作り直す。開始tickが0と2^40の試験で判定はbitまで一致する。
+端点の所属には局所の丸め幅24εT（εはf64::EPSILON）を使う。重みがこの幅を一致窓で
+割った値以下なら、massへ加えず、onsetも使用済みにしない。c = 64の許容幅が覆うのは、
+**割り当てを固定した後**の算術の丸めであり、割り当て先の変化ではない。
+
+比較の重みと`EnergyForecastLearning`は、生のf32 operandから誤差のない差とFMAの
+積の残差を求め、正規化したdouble-doubleへ累積する。二つの差とその積がf64に厳密に
+収まる場合はbit幅の検査で近道を選ぶが、累積はdouble-doubleを保つ。生のoperandから
+別々に組み立てたDD・quad参照が、丸めた積を累積する旧方式の判定可能な不合格を見つけ、
+その反例に応じて修理した。Gramの補償と応答のK=2は変えていない。最終の数値受入は
+**2,102,479件合格、不合格0、inconclusive 0**である。fixtureと短いruntimeでの結果であり、
+V7の長時間checkpointではない。IP-R2の第3回はworker commit `4a7cad83`に対してPASS、
+その内容は`87c6dc4c`として統合した。
+
+scalarの最終軽量化は、64 Voiceのofflineの対比較8条件すべてで、`1b5db013`に対する
+費用の目標内に収まった。この計測は最後のRecurrence修正より前であり、`87c6dc4c`の
+正式V8ではない。出典は機械内のIP-U2 `report.md`の「修正 2」「費用の確認 3」「修正 3」と、
+IP-R2の`review-r2.md`・`review-r3.md`である。
 
 **採用した制約と理由。** 以下は判断待ちでなく、実装済みの規則である。
 
@@ -8162,9 +8184,15 @@ Astraによる設計reviewは9回行い、第8回で軽微な補足3件を残し
 [I10契約](#i10-sensorimotor-contract)の「Memory and continuing operation」の義務の下に
 temporal DCCの設計単位として残し、ここでは忘却の定数を採らない。
 
-**まだ取っていない受入（[設計§9](../superpowers/specs/2026-10-31-indefinite-performance-design.md#9-validation)）。**
-単体試験、静的review、短い数値比較、容量の校正、U2のofflineの費用見積もりでは、
-次の受入を満たしたとはしない。
+**meterの設計に残る課題。** Recurrenceのcoverageは、時刻順に手前から一致を決め、
+後のtargetを見て取り消さない貪欲な割り当てである。競合するonsetがあると、丸めの微小差で
+割り当て先が変わり、後続の一致massに不連続が生じる一般の問題が残る。c = 64はこの選択の
+頑健さを保証しない。今回除いたのは窓の端のゼロ相当の重みによる欠陥であり、一般の割り当て
+問題ではない。演奏時間の増加による劣化とは別のmeterの設計課題として残す。
+
+**受入の記録と残る作業（[設計§9](../superpowers/specs/2026-10-31-indefinite-performance-design.md#9-validation)、2026-11-01更新）。**
+この節ではV5〜V7を未取得として残す。単体試験、静的review、短い数値比較、容量の校正、
+U2のofflineの費用見積もりは、これらの受入の代わりにはならない。
 
 - **V5・実機の復旧**：blancheでPipeWireを再起動・停止し、停止中にGUIのEndとheadlessの
   Ctrl-Cを使う。対象機で復旧と終了の経路が動くかを決める。
@@ -8172,12 +8200,16 @@ temporal DCCの設計単位として残し、ここでは忘却の定数を採�
   watermarkの余裕も記録する。検査した時間を添えてtechnoteに継続運転の対応を記せるか、
   leakの修正が要るか、64 hopの先行幅を増やすかを決める。
 - **V7・推定器の長時間精度**：共有observerと長寿命Voiceのobserverを10⁶、10⁷、3·10⁷発行で
-  登録済みの高精度参照と比べる。判定できる不合格が出た経路に応じ、行列側はdouble-doubleの
-  残差による反復改良、scalar側はdouble-doubleの累積へ進む。修正後は同じcheckpointを通し、
-  V8も取り直す。
-- **V8・実機の負荷**：登録したVoice・body・report・DCCの行列で、出生と動作中のendless脚本を
-  含めて基準と統合版を比べる。推定器と段階2の費用が既存の対応負荷に収まるかを決め、
-  退行があれば実装を直す。U2のoffline比較は工学上の見積もりであり、この受入ではない。
+  登録済みの高精度参照と比べる。判定できる不合格は該当経路を修理し、行列側はdouble-doubleの
+  残差による反復改良へ進む。scalarの累積は上記の短い生入力の反例ですでにdouble-doubleへ
+  直したが、それで長時間の検査を済ませたとはしない。修正後は同じcheckpointを通し、V8も取り直す。
+- **V8・実機の負荷**：IP-V8bは`1b5db013`で登録した実機の行列を取得した。
+  最終の実行条件は**負荷の下の合格349、未決11**。保存した全391試行で測定窓のunderrunは0、
+  最終試行のp99最大は**8.598154 ms（約8.6 ms）**だった。外乱下で予算超過hopを繰り返した
+  11条件は未決のまま、静かな時間に取り直し、実装修正が要る退行かを決める。
+  行列の取得と全条件のV8受入は分ける。取得のsource pinはU2のreview修正より前であり、
+  この実機結果も、その後の8条件のoffline比較も、`87c6dc4c`の正式V8の受入ではない。
+  出典は機械内のIP-V8b `report.md`である。
 
 technoteには実装した機構を記し、終端のない運転の約束は部分とする。
 継続運転への対応が受け入れられたとは、まだ書かない。

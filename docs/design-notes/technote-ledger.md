@@ -11286,7 +11286,8 @@ for runtime comparisons and `f64` seconds for script/IR time; **A4**, adoption o
 remaining recommendations. Astra reviewed the design nine times: round 8 passed
 with three minor clarifications, and round 9 confirmed revision 9 with no findings.
 
-**Integrated implementation.** At `1b5db013`, IP-U1–U5 are present:
+**Integrated implementation.** IP-U1–U5 were integrated at `1b5db013`. The account
+below includes the U2 review repairs integrated at `87c6dc4c` (updated 2026-11-01):
 
 - **IP-U1 (§3):** absolute dispatch and scene selection use ticks; script cursors,
   IR, UI and report seconds use f64. Local intervals, ages and phases remain f32.
@@ -11300,10 +11301,12 @@ with three minor clarifications, and round 9 confirmed revision 9 with no findin
   End and the first Ctrl-C release Population, Flora and Rain, preserving remaining fades;
   the second Ctrl-C exits immediately. `--duration` dispatches due items before
   requesting the end. Open render, compile-only, report and profile require a bound.
-- **IP-U2 (§6.1, §6.2, §6.6, §7.1):** beat cycles wrap modulo 12, recurrence timestamps
-  derive from ticks, and SlidingPlv refreshes its saved-window sums. The fixed-ridge
-  estimator uses compensated Gram/scalar sums, Cholesky rank-1 updates and refactorization
-  every 10 issues, with observer phases staggered. The integrated optimization folds
+- **IP-U2 (§6.1, §6.2, §6.6, §7.1):** beat cycles wrap modulo 12; Recurrence constructs
+  relative times after integer subtraction from the oldest retained onset tick, or
+  the hop start tick when empty. SlidingPlv refreshes its saved-window sums. The
+  fixed-ridge estimator uses compensated Gram sums, double-double scalar products/sums,
+  Cholesky rank-1 updates and refactorization every 10 issues, with observer phases
+  staggered. The integrated optimization folds
   response sums with TwoSum every K=2 terms and batches at most 10 observed responses,
   materialized before query, clone, gap or freeze. Rank-1 updates use contiguous
   `U=Lᵀ` rows after input checks; refactorization alone uses reusable scratch. Failed
@@ -11314,6 +11317,31 @@ with three minor clarifications, and round 9 confirmed revision 9 with no findin
   retain producer-computed credit, making worker pop/return O(1) in action count, and
   report the interval's minimum watermark margin. IP-R1 round 1 requested these
   repairs; round 2 passed at `b1aaf91c` by static inspection.
+
+**U2 review repairs and evidence (2026-11-01).** Recurrence rebuilds retained times
+and pending echoes from raw ticks when its origin moves. Translation tests at start
+ticks 0 and 2^40 agree bit for bit. Endpoint membership uses a local width 24εT,
+where ε is f64::EPSILON. A match whose weight is at most this width divided by the
+matching window contributes no mass and does not consume the onset. The c = 64
+tolerance covers arithmetic rounding **after assignments are fixed**; it is not a
+bound on changes of assignment.
+
+The comparison weight and `EnergyForecastLearning` now accumulate from raw f32
+operands: error-free differences, FMA product residuals and normalized double-double
+sums. When both differences and their product fit exactly in f64, a width check
+selects that shortcut while retaining double-double accumulation. The independently
+constructed DD and quad references found decidable failures in the old accumulation
+of rounded products; the raw-operand repair follows those counterexamples. Gram
+compensation and the K=2 response folds are unchanged. The final numerical acceptance
+contains **2,102,479 passes, 0 failures and 0 inconclusive** results; these are fixture
+and short-runtime results, not V7 long-run checkpoints. IP-R2 round 3 passed the
+repairs at worker commit `4a7cad83`, integrated as `87c6dc4c`.
+
+For the final scalar optimization, all eight 64-Voice offline paired conditions
+met the engineering cost target against `1b5db013`. That measurement predates the
+last Recurrence fix and is not a formal V8 result for `87c6dc4c`. The machine-local
+sources are IP-U2 `report.md`, sections "修正 2", "費用の確認 3" and "修正 3",
+and IP-R2 `review-r2.md` / `review-r3.md`.
 
 **Adopted constraints and their reasons.** These are implemented rules, not author
 choices awaiting a decision:
@@ -11345,9 +11373,17 @@ resolve this behavioural retention question. It remains a temporal-DCC design un
 under the [I10 contract's](#i10-sensorimotor-contract) "Memory and continuing operation"
 obligation; no forgetting constant is adopted here.
 
-**Acceptance still unacquired ([§9](../superpowers/specs/2026-10-31-indefinite-performance-design.md#9-validation)).**
-Unit tests, static review, short numerical comparisons, capacity calibration and U2's
-offline cost estimates do not establish these results:
+**Open meter design issue.** Recurrence coverage assigns matches greedily in time
+order and does not reconsider them for later targets. With competing onsets, small
+rounding changes can still change the assignment and cause a discontinuity in later
+matching mass. The c = 64 bound does not guarantee robustness to this choice. The
+roundoff-zero fix removes the reported endpoint defect, not this general assignment
+problem. This remains a meter design issue, separate from degradation with elapsed
+performance time.
+
+**Acceptance record and remaining work ([§9](../superpowers/specs/2026-10-31-indefinite-performance-design.md#9-validation), updated 2026-11-01).**
+V5–V7 remain unacquired in this entry. Unit tests, static review, short numerical
+comparisons, capacity calibration and U2's offline cost estimates do not replace them:
 
 - **V5 — hardware recovery:** restart/stop PipeWire on blanche and exercise GUI End
   and headless Ctrl-C during an outage. The result decides whether the implemented
@@ -11358,14 +11394,20 @@ offline cost estimates do not establish these results:
   needs repair and whether the 64-hop lead must grow.
 - **V7 — long-run estimator precision:** check shared and long-lived Voice observers
   at 10⁶, 10⁷ and 3·10⁷ issues against the registered high-precision reference. A
-  decidable failure selects double-double-residual iterative refinement for the
-  matrix path or double-double accumulation for scalar sums; checkpoints must then
-  pass again, followed by V8.
-- **V8 — realtime load:** compare the reference and integrated implementation on the
-  registered Voice/body/report/DCC matrix, including observed births and an active
-  endless script. The result decides whether estimator and stage-2 costs fit the
-  existing supported load; a regression requires revision. U2's offline comparisons
-  are engineering estimates, not this acceptance.
+  decidable failure requires repair of its path; the matrix repair is iterative
+  refinement with double-double residuals. Scalar accumulation already uses
+  double-double after the short raw-input counterexamples above, which does not
+  discharge these long-run checks. After repair, checkpoints must pass again,
+  followed by V8.
+- **V8 — realtime load:** IP-V8b acquired the registered hardware matrix for
+  `1b5db013`: **349 final executions passed under load, 11 remained unresolved**.
+  All 391 saved attempts had zero measurement-window underruns; the largest final
+  p99 was **8.598154 ms (about 8.6 ms)**. Repeated over-budget hops under external
+  load leave those 11 conditions unresolved; rerun them in a quiet window to decide
+  whether a regression needs repair. The matrix is acquired, but full V8 acceptance
+  is not established. Its source pin predates the U2 review repairs: neither those
+  hardware results nor the later eight-condition offline comparison establish formal
+  V8 acceptance for `87c6dc4c`. Source: machine-local IP-V8b `report.md`.
 
 The technote records the implemented mechanisms and marks the open-ended commitment
 partial. It does not yet claim supported continuing operation.

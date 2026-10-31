@@ -3,12 +3,12 @@ title = "Technical Note: The Physics of Conchordal"
 description = "A deep dive into the psychoacoustic algorithms, logarithmic signal processing, and artificial life strategies powering the Conchordal ecosystem."
 template = "page.html"
 [extra]
-source_commit = "89341622"
+source_commit = "e6b6a527"
 author = "Koichi Takahashi"
 last_updated = "2026-11-01"
 source_version = "0.5.0"
-source_snapshot = "89341622"
-revision_scope = "Retains Flora self-exclusion, beat/rest controls and conditional NSGT; open-ended performances, incremental scores, audio recovery and estimator numerics (2026-11-01)"
+source_snapshot = "e6b6a527"
+revision_scope = "Retains Flora self-exclusion, beat/rest controls and conditional NSGT; open-ended performances, incremental scores, audio recovery and estimator numerics, Recurrence and scalar precision repairs (2026-11-01)"
 +++
 
 # 1. Introduction: The Bio-Acoustic Paradigm
@@ -1403,15 +1403,33 @@ thread-local scratch and commits only on success.
 Response sums retain high and low parts, folding every two terms with TwoSum.
 At most 10 observed response updates are batched for locality without changing
 per-component addition order; queries, clone, gap and freeze materialize them first.
-Scalar learning and comparison sums use compensated accumulation. The learning
-complement is formed from `(square - cross) / square` with retained compensation
-before clamping, avoiding subtraction of a rounded ratio from 1.
+
+Scalar statistics for comparison weights and `EnergyForecastLearning` accumulate
+products directly from raw f32 operands in double-double precision. Error-free differences retain the
+low parts of operand subtraction; FMA supplies the product residual, and each sum
+is renormalized. If the sum of conservative bit-width bounds for the two differences
+is at most 53, the differences and product are exact in f64: that path omits their
+residual calculation while retaining double-double accumulation. Wider inputs use
+the full difference/product path. The learning complement is formed from
+`(square - cross) / square` with both retained parts before clamping, avoiding
+subtraction of a rounded ratio from 1. Gram compensation and the two-term response
+folds remain separate from these scalar sums.
 
 A failed factor update freezes the last committed Gram/factor pair and responses
 observed by that point. Further observations do not update the frozen estimator;
 reports and the System panel expose its status. Clones inherit accumulated statistics
 with their own refactorization phase; rewind resets the estimator. These mechanisms
 preserve the cumulative model's definition.
+
+Event Recurrence constructs f64 times relative to the oldest retained onset's
+integer sample tick, or the hop start tick when the history is empty. Integer
+subtraction precedes conversion; a moving origin rebuilds retained times and pending
+echoes from raw ticks rather than repeatedly subtracting rounded seconds. Endpoint
+membership uses a local width `24 * f64::EPSILON * T`, where
+`T = max(abs(end), abs(start), history_duration) + 2` in these relative coordinates.
+A match whose weight is no greater than that width divided by the matching window
+adds no mass and does not consume the onset. The separate comparison tolerance
+coefficient c = 64 covers arithmetic rounding for fixed assignments.
 
 # 7. Case Studies: Analysis of Emergent Behavior
 

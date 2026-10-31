@@ -8,6 +8,8 @@ fn indefinite_estimator_precision_v7() {
     let debug_build = cfg!(debug_assertions);
     assert!(!debug_build, "run V7 with --release");
     let output = std::env::var("IP_V7_OUTPUT").expect("IP_V7_OUTPUT checkpoint JSONL path");
+    let snapshots = std::env::var("IP_V7_SNAPSHOTS").expect("IP_V7_SNAPSHOTS directory");
+    std::fs::create_dir(&snapshots).expect("use a new snapshot directory for each acquisition");
     let mut journal = std::fs::OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -129,6 +131,9 @@ fn indefinite_estimator_precision_v7() {
             serde_json::json!({
                 "passed": c.passed, "failed": c.failed, "inconclusive": c.inconclusive,
                 "dd_inconclusive": c.dd_inconclusive, "kappa2_upper": c.condition_upper,
+                "scaled_kappa2_upper": c.scaled_condition_upper,
+                "uncertified_attempts": c.uncertified,
+                "inconclusive_reason": "nonfinite certificate or interval overlaps tolerance; see reference log and saved values",
             })
         };
         let delta = reference::Counts {
@@ -138,6 +143,10 @@ fn indefinite_estimator_precision_v7() {
                 counts.inconclusive[i] - previous.inconclusive[i]
             }),
             dd_inconclusive: counts.dd_inconclusive - previous.dd_inconclusive,
+            uncertified: std::array::from_fn(|i| counts.uncertified[i] - previous.uncertified[i]),
+            scaled_condition_upper: shared_counts
+                .scaled_condition_upper
+                .max(own_counts.scaled_condition_upper),
             condition_upper: shared_counts
                 .condition_upper
                 .max(own_counts.condition_upper),

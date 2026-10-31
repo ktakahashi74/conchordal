@@ -2,6 +2,7 @@
 //! Hooks receive raw operands, never production sufficient statistics or factors.
 
 use super::{FEATURES, FORECAST_LEN, RIDGE};
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ops::{Add, Div, Mul, Neg, Sub};
@@ -15,7 +16,7 @@ fn upper(value: f64) -> f64 {
     (value * (1.0 + 16.0 * f64::EPSILON)).next_up()
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 struct Dd(f64, f64);
 
 fn two_sum(a: f64, b: f64) -> Dd {
@@ -65,7 +66,7 @@ impl Div for Dd {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 struct Bound {
     v: Dd,
     u: f64,
@@ -85,10 +86,12 @@ impl Bound {
     }
     fn sqrt(self) -> Self {
         let x = self.center().sqrt();
-        assert!(
-            x > 0.0 && self.center() > self.u,
-            "uncertified reference pivot"
-        );
+        if !(x > 0.0 && self.center() > self.u) {
+            return Self {
+                v: Dd(f64::NAN, 0.0),
+                u: f64::INFINITY,
+            };
+        }
         let v = Dd(x, 0.0) + (self.v - Dd(x, 0.0) * Dd(x, 0.0)) / Dd(2.0 * x, 0.0);
         Self {
             v,
@@ -156,7 +159,12 @@ impl Div for Bound {
     type Output = Self;
     fn div(self, b: Self) -> Self {
         let denominator = (b.center().abs().next_down() - b.u).next_down();
-        assert!(denominator > 0.0, "uncertified reference denominator");
+        if denominator <= 0.0 || !denominator.is_finite() {
+            return Self {
+                v: Dd(f64::NAN, 0.0),
+                u: f64::INFINITY,
+            };
+        }
         let v = self.v / b.v;
         Self {
             v,
@@ -168,9 +176,9 @@ impl Div for Bound {
     }
 }
 
-// Four-component expansion, retained only for scalar inconclusive fallback.
+// Four-component expansion for independent residual and scalar certification.
 // Cascaded TwoSum and FMA products expose every discarded term explicitly.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 struct Quad {
     parts: [f64; 4],
     u: f64,
@@ -183,7 +191,7 @@ impl Quad {
         }
     }
     fn magnitude(self) -> f64 {
-        self.parts.iter().map(|x| x.abs()).sum::<f64>().next_up()
+        upper(self.parts.iter().map(|x| x.abs()).sum::<f64>())
     }
     fn add_term(&mut self, mut value: f64) {
         for part in &mut self.parts {
@@ -195,13 +203,30 @@ impl Quad {
             self.u = (self.u + value.abs()).next_up();
         }
     }
+    fn normalized(mut self) -> Self {
+        // TwoSum preserves the exact expansion sum, including cancellation
+        // between leading components. Four sweeps move any surviving term up.
+        for _ in 0..4 {
+            for i in (1..4).rev() {
+                let sum = two_sum(self.parts[i - 1], self.parts[i]);
+                self.parts[i - 1] = sum.0;
+                self.parts[i] = sum.1;
+            }
+        }
+        self
+    }
     fn sqrt(self) -> Self {
         let bound = self.bound();
         let lower = (bound.center().next_down() - bound.u)
             .next_down()
             .sqrt()
             .next_down();
-        assert!(lower > 0.0, "uncertified quad reference pivot");
+        if lower <= 0.0 || !lower.is_finite() {
+            return Self {
+                parts: [f64::NAN; 4],
+                u: f64::INFINITY,
+            };
+        }
         let mut root = Self::exact(bound.center().sqrt());
         for _ in 0..2 {
             root = (root + self / root) * Self::exact(0.5);
@@ -230,7 +255,7 @@ impl Quad {
 impl Add for Quad {
     type Output = Self;
     fn add(mut self, b: Self) -> Self {
-        for value in b.parts {
+        for value in b.parts.into_iter().filter(|value| *value != 0.0) {
             self.add_term(value);
         }
         if b.u != 0.0 {
@@ -258,8 +283,8 @@ impl Mul for Quad {
     type Output = Self;
     fn mul(self, b: Self) -> Self {
         let mut result = Self::default();
-        for a in self.parts {
-            for b in b.parts {
+        for a in self.parts.into_iter().filter(|value| *value != 0.0) {
+            for b in b.parts.into_iter().filter(|value| *value != 0.0) {
                 let product = a * b;
                 result.add_term(product);
                 result.add_term(a.mul_add(b, -product));
@@ -267,7 +292,7 @@ impl Mul for Quad {
         }
         let propagated = self.u * b.magnitude() + b.u * self.magnitude() + self.u * b.u;
         if propagated != 0.0 {
-            result.u = (result.u + propagated).next_up();
+            result.u = upper(result.u + upper(propagated));
         }
         result
     }
@@ -276,23 +301,31 @@ impl Div for Quad {
     type Output = Self;
     fn div(self, b: Self) -> Self {
         let mut result = Self::default();
+        let b = b.normalized();
         let mut residual = self;
         for _ in 0..5 {
+            residual = residual.normalized();
             let quotient = residual.parts[0] / b.parts[0];
             result.add_term(quotient);
             residual = residual - b * Self::exact(quotient);
         }
-        let denominator = b.bound().center().abs() - b.u;
-        assert!(denominator > 0.0);
-        let remainder = residual.magnitude() + residual.u;
+        let bound = b.bound();
+        let denominator = (bound.center().abs().next_down() - bound.u).next_down();
+        if denominator <= 0.0 || !denominator.is_finite() {
+            return Self {
+                parts: [f64::NAN; 4],
+                u: f64::INFINITY,
+            };
+        }
+        let remainder = residual.normalized().magnitude() + residual.u;
         if remainder != 0.0 {
-            result.u = (result.u + remainder / denominator).next_up();
+            result.u = upper(result.u + upper(remainder) / denominator);
         }
         result
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 struct Scalar {
     dd: Bound,
     quad: Quad,
@@ -317,7 +350,9 @@ pub(crate) struct Counts {
     pub failed: [u64; 3],
     pub inconclusive: [u64; 3],
     pub condition_upper: f64,
+    pub scaled_condition_upper: f64,
     pub dd_inconclusive: u64,
+    pub uncertified: [u64; 3],
 }
 impl Counts {
     pub(crate) fn assert_passed(self) {
@@ -332,6 +367,15 @@ impl Counts {
         );
     }
     fn check(&mut self, kind: usize, prod: f32, reference: Bound, scale: f64) -> bool {
+        assert!(prod.is_finite(), "nonfinite production output kind={kind}");
+        if !reference.center().is_finite() || !reference.u.is_finite() || !scale.is_finite() {
+            self.inconclusive[kind] += 1;
+            self.uncertified[kind] += 1;
+            eprintln!(
+                "reference INCONCLUSIVE kind={kind} reason=nonfinite_certificate prod={prod:e}"
+            );
+            return false;
+        }
         // Subtract in DD, so an f64-rounded reference cannot conceal cancellation.
         let difference = (Dd(prod as f64, 0.0) - reference.v).0.abs();
         let uncertainty = reference.u + f64::EPSILON * difference;
@@ -348,6 +392,31 @@ impl Counts {
         };
         let low = ulp((magnitude - uncertainty).max(0.0)) + 2.0 * f64::EPSILON * scale;
         let high = ulp(magnitude + uncertainty) + 2.0 * f64::EPSILON * scale;
+        if let Ok(path) = std::env::var("IP_V7_VALUES") {
+            use std::io::Write;
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .unwrap();
+            let decision = if difference + uncertainty <= low {
+                "pass"
+            } else if difference - uncertainty > high {
+                "fail"
+            } else {
+                "inconclusive"
+            };
+            serde_json::to_writer(
+                &mut file,
+                &serde_json::json!({
+                    "kind": kind, "prod": prod, "v_ref": reference.v, "u_ref": reference.u,
+                    "d": difference, "tol_min": low, "tol_max": high, "scale": scale,
+                    "decision": decision,
+                }),
+            )
+            .unwrap();
+            writeln!(file).unwrap();
+        }
         if difference + uncertainty <= low {
             self.passed[kind] += 1;
             true
@@ -404,6 +473,7 @@ struct Reference {
     checkpoint_start: Counts,
     checkpoint_counts: Counts,
     condition_upper: f64,
+    scaled_condition_upper: f64,
 }
 impl Reference {
     fn new() -> Self {
@@ -427,6 +497,7 @@ impl Reference {
             checkpoint_start: Counts::default(),
             checkpoint_counts: Counts::default(),
             condition_upper: 0.0,
+            scaled_condition_upper: 0.0,
         }
     }
     fn factor(&self) -> Vec<Vec<Bound>> {
@@ -437,6 +508,7 @@ impl Reference {
                 v.u = 0.0;
                 for k in 0..j {
                     v = v - lower[i][k] * lower[j][k];
+                    v.u = 0.0;
                 }
                 lower[i][j] = if i == j { v.sqrt() } else { v / lower[j][j] };
                 // Certify the computed factor a posteriori, avoiding interval dependency inflation.
@@ -464,34 +536,143 @@ impl Reference {
         result
     }
     fn quad_projection(&self, x: &[f64; FEATURES]) -> [Quad; FEATURES] {
+        // The factor and solves supply candidates only. Discard their interval
+        // widths; the independent residual below certifies the final candidate.
         let mut lower = vec![vec![Quad::default(); FEATURES]; FEATURES];
         for i in 0..FEATURES {
             for j in 0..=i {
                 let mut value = self.quad_gram[i][j];
+                value.u = 0.0;
                 for k in 0..j {
                     value = value - lower[i][k] * lower[j][k];
+                    value.u = 0.0;
                 }
                 lower[i][j] = if i == j {
                     value.sqrt()
                 } else {
                     value / lower[j][j]
                 };
+                lower[i][j].u = 0.0;
             }
         }
-        let mut result = x.map(Quad::exact);
+        let solve = |mut result: [Quad; FEATURES]| {
+            for i in 0..FEATURES {
+                for j in 0..i {
+                    result[i] = result[i] - lower[i][j] * result[j];
+                    result[i].u = 0.0;
+                }
+                result[i] = result[i] / lower[i][i];
+                result[i].u = 0.0;
+            }
+            for i in (0..FEATURES).rev() {
+                for j in i + 1..FEATURES {
+                    result[i] = result[i] - lower[j][i] * result[j];
+                    result[i].u = 0.0;
+                }
+                result[i] = result[i] / lower[i][i];
+                result[i].u = 0.0;
+            }
+            result
+        };
+        let residual = |p: &[Quad; FEATURES]| -> [Quad; FEATURES] {
+            std::array::from_fn(|i| {
+                let mut r = Quad::exact(x[i]);
+                for (j, &p) in p.iter().enumerate() {
+                    r = r - self.quad_gram[i.max(j)][i.min(j)] * p;
+                }
+                r
+            })
+        };
+        let mut projected = solve(x.map(Quad::exact));
+        // Two corrections recover the candidate's accuracy after cancellation;
+        // their success is not assumed by the a posteriori certificate.
+        for _ in 0..2 {
+            let correction = solve(residual(&projected).map(|mut r| {
+                r.u = 0.0;
+                r
+            }));
+            for (p, correction) in projected.iter_mut().zip(correction) {
+                *p = *p + correction;
+                p.u = 0.0;
+            }
+        }
+        let mut norm = 0.0;
+        for r in residual(&projected) {
+            let magnitude = upper(r.normalized().magnitude() + r.u);
+            norm = upper(norm + upper(magnitude * magnitude));
+        }
+        // Exact raw G = RIDGE I + sum xx^T: ||G^-1||2 <= 1/RIDGE.
+        // Quad interval residual includes both accumulation and arithmetic error.
+        let error = upper(norm.sqrt() / RIDGE.next_down());
+        for p in &mut projected {
+            p.u = error;
+        }
+        projected
+    }
+
+    fn scaled_condition(&self) -> f64 {
+        // D is an exact diagonal of the chosen f64 scale factors. Certify the
+        // inverse of D G D by its residual; failure means unknown, not a gate.
+        let d: [f64; FEATURES] = std::array::from_fn(|i| 1.0 / self.gram[i][i].center().sqrt());
+        let a: Vec<Vec<Bound>> = (0..FEATURES)
+            .map(|i| {
+                (0..FEATURES)
+                    .map(|j| {
+                        self.gram[i.max(j)][i.min(j)] * Bound::exact(d[i]) * Bound::exact(d[j])
+                    })
+                    .collect()
+            })
+            .collect();
+        let mut lower = vec![vec![Bound::default(); FEATURES]; FEATURES];
         for i in 0..FEATURES {
-            for j in 0..i {
-                result[i] = result[i] - lower[i][j] * result[j];
+            for j in 0..=i {
+                let mut v = a[i][j];
+                v.u = 0.0;
+                for k in 0..j {
+                    v = v - lower[i][k] * lower[j][k];
+                    v.u = 0.0;
+                }
+                lower[i][j] = if i == j { v.sqrt() } else { v / lower[j][j] };
+                lower[i][j].u = 0.0;
             }
-            result[i] = result[i] / lower[i][i];
         }
-        for i in (0..FEATURES).rev() {
-            for j in i + 1..FEATURES {
-                result[i] = result[i] - lower[j][i] * result[j];
+        let mut inverse = vec![[Bound::default(); FEATURES]; FEATURES];
+        for j in 0..FEATURES {
+            let mut unit = [0.0; FEATURES];
+            unit[j] = 1.0;
+            let column = Self::solve(&lower, &unit);
+            for i in 0..FEATURES {
+                inverse[i][j] = column[i];
             }
-            result[i] = result[i] / lower[i][i];
         }
-        result
+        let mut defect: f64 = 0.0;
+        let mut matrix_norm: f64 = 0.0;
+        let mut inverse_norm: f64 = 0.0;
+        for i in 0..FEATURES {
+            let mut erow = 0.0;
+            let mut arow = 0.0;
+            let mut zrow = 0.0;
+            for j in 0..FEATURES {
+                let mut e = Bound::exact(f64::from(i == j));
+                for k in 0..FEATURES {
+                    e = e - a[i][k] * inverse[k][j];
+                }
+                if !e.center().is_finite() || !e.u.is_finite() {
+                    return f64::INFINITY;
+                }
+                erow = upper(erow + e.magnitude() + e.u);
+                arow = upper(arow + a[i][j].magnitude() + a[i][j].u);
+                zrow = upper(zrow + inverse[i][j].magnitude());
+            }
+            defect = defect.max(erow);
+            matrix_norm = matrix_norm.max(arow);
+            inverse_norm = inverse_norm.max(zrow);
+        }
+        if defect < 1.0 {
+            upper(matrix_norm * inverse_norm / (1.0 - defect).next_down())
+        } else {
+            f64::INFINITY
+        }
     }
 
     fn certified_projection(
@@ -499,55 +680,203 @@ impl Reference {
         lower: &[Vec<Bound>],
         x: &[f64; FEATURES],
     ) -> ([Bound; FEATURES], f64) {
-        let mut inverse = vec![[Bound::default(); FEATURES]; FEATURES];
-        for i in 0..FEATURES {
-            let mut unit = [0.0; FEATURES];
-            unit[i] = 1.0;
-            let column = Self::solve(lower, &unit);
-            for j in 0..FEATURES {
-                inverse[j][i] = column[j];
-            }
-        }
-        let mut defect_norm: f64 = 0.0;
-        let mut inverse_norm: f64 = 0.0;
-        let mut gram_norm: f64 = 0.0;
-        for i in 0..FEATURES {
-            let mut defect_row = 0.0;
-            let mut inverse_row = 0.0;
-            let mut gram_row = 0.0;
-            for j in 0..FEATURES {
-                let mut defect = Bound::exact(f64::from(i == j));
-                for (k, row) in inverse.iter().enumerate() {
-                    defect = defect - self.gram[i.max(k)][i.min(k)] * row[j];
-                }
-                defect_row = (defect_row + defect.magnitude() + defect.u).next_up();
-                inverse_row = (inverse_row + inverse[i][j].magnitude()).next_up();
-                let g = self.gram[i.max(j)][i.min(j)];
-                gram_row = (gram_row + g.magnitude() + g.u).next_up();
-            }
-            defect_norm = defect_norm.max(defect_row);
-            inverse_norm = inverse_norm.max(inverse_row);
-            gram_norm = gram_norm.max(gram_row);
-        }
-        // E = I-GZ: ||E||inf < 1 certifies invertibility and
-        // ||G^-1||inf <= ||Z||inf/(1-||E||inf), including accumulated G error.
-        assert!(defect_norm < 1.0, "reference inverse uncertified");
-        let inverse_bound = (inverse_norm / (1.0 - defect_norm).next_down()).next_up();
         let mut projected = Self::solve(lower, x);
-        let mut residual_norm: f64 = 0.0;
+        let mut residual_norm = 0.0;
+        let mut gram_norm: f64 = 0.0;
         for (i, &x) in x.iter().enumerate() {
             let mut residual = Bound::exact(x);
+            let mut row_norm = 0.0;
             for (j, &p) in projected.iter().enumerate() {
-                residual = residual - self.gram[i.max(j)][i.min(j)] * p;
+                let g = self.gram[i.max(j)][i.min(j)];
+                residual = residual - g * p;
+                row_norm = upper(row_norm + g.magnitude() + g.u);
             }
-            residual_norm = residual_norm.max((residual.magnitude() + residual.u).next_up());
+            let magnitude = upper(residual.magnitude() + residual.u);
+            residual_norm = upper(residual_norm + upper(magnitude * magnitude));
+            gram_norm = gram_norm.max(row_norm);
         }
         for p in &mut projected {
-            p.u = (inverse_bound * residual_norm).next_up();
+            p.u = upper(residual_norm.sqrt() / RIDGE.next_down());
         }
-        // Symmetric G: the infinity-norm condition product bounds kappa_2.
-        (projected, (gram_norm * inverse_bound).next_up())
+        (projected, upper(gram_norm / RIDGE.next_down()))
     }
+}
+
+impl Reference {
+    fn evaluate(
+        &mut self,
+        id: u64,
+        x: &[f64; FEATURES],
+        energy: [f32; 3],
+        output: &[[f32; 3]; FORECAST_LEN],
+        counts: &mut Counts,
+    ) {
+        let lower = self.factor();
+        let (projected, condition) = self.certified_projection(&lower, x);
+        self.condition_upper = condition;
+        self.scaled_condition_upper = self.scaled_condition();
+        counts.scaled_condition_upper = counts
+            .scaled_condition_upper
+            .max(self.scaled_condition_upper);
+        counts.condition_upper = counts.condition_upper.max(condition);
+        {
+            println!(
+                "reference observer={id} issue={} kappa2_upper={condition:e} scaled_kappa2_upper={:e}",
+                self.issues, self.scaled_condition_upper
+            );
+        }
+        let mut quad_projected = None;
+        for (lead, out) in output.iter().enumerate() {
+            for band in 0..3 {
+                let mut correction = Bound::default();
+                for (row, p) in self.response[lead].iter().zip(projected) {
+                    correction = correction + row[band] * p;
+                }
+                let value = Bound::exact(energy[band] as f64) + correction;
+                if !counts.check(
+                    0,
+                    out[band],
+                    value.clamp(0.0, f64::INFINITY),
+                    energy[band].abs() as f64 + correction.magnitude() + correction.u,
+                ) {
+                    counts.dd_inconclusive += 1;
+                    counts.inconclusive[0] -= 1;
+                    let projected = quad_projected.get_or_insert_with(|| self.quad_projection(x));
+                    let mut correction = Quad::default();
+                    for (row, &p) in self.quad_response[lead].iter().zip(projected.iter()) {
+                        correction = correction + row[band] * p;
+                    }
+                    let value = (Quad::exact(energy[band] as f64) + correction).bound();
+                    counts.check(
+                        0,
+                        out[band],
+                        value.clamp(0.0, f64::INFINITY),
+                        energy[band].abs() as f64 + correction.magnitude() + correction.u,
+                    );
+                }
+            }
+        }
+    }
+}
+
+// Numeric JSON round-trips every f64 component (serde_json/float_roundtrip).
+// Rows are flushed before certification so a failed certificate loses no input.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind")]
+enum Snapshot {
+    Matrix {
+        observer: u64,
+        issue: u64,
+        gram: Vec<Vec<Bound>>,
+        quad_gram: Vec<Vec<Quad>>,
+        response: Vec<Vec<[Bound; 3]>>,
+        quad_response: Vec<Vec<[Quad; 3]>>,
+        x: Vec<f64>,
+        energy: [f32; 3],
+        output: Vec<[f32; 3]>,
+    },
+    Scalar {
+        observer: u64,
+        issue: u64,
+        lead: usize,
+        band: usize,
+        output_kind: usize,
+        sums: [Scalar; 2],
+        output: f32,
+    },
+}
+
+fn save_snapshot(snapshot: &Snapshot) {
+    use std::io::Write;
+    let Ok(directory) = std::env::var("IP_V7_SNAPSHOTS") else {
+        return;
+    };
+    let issue = match snapshot {
+        Snapshot::Matrix { issue, .. } | Snapshot::Scalar { issue, .. } => issue,
+    };
+    let path = std::path::Path::new(&directory).join(format!("checkpoint-{issue}.jsonl"));
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .unwrap();
+    serde_json::to_writer(&mut file, snapshot).unwrap();
+    writeln!(file).unwrap();
+    file.sync_data().unwrap();
+}
+
+#[test]
+#[ignore = "offline rejudgment of IP_V7_SNAPSHOT; no renderer or audio device"]
+fn rejudge_precision_snapshot() {
+    use std::io::BufRead;
+    let file = std::fs::File::open(std::env::var("IP_V7_SNAPSHOT").unwrap()).unwrap();
+    let mut counts = Counts::default();
+    let mut identities = std::collections::BTreeSet::new();
+    let mut checkpoint = None;
+    for line in std::io::BufReader::new(file).lines() {
+        let snapshot: Snapshot = serde_json::from_str(&line.unwrap()).unwrap();
+        let (issue, key) = match &snapshot {
+            Snapshot::Matrix {
+                observer, issue, ..
+            } => (*issue, (0, *observer, 0, 0)),
+            Snapshot::Scalar {
+                observer,
+                issue,
+                lead,
+                band,
+                output_kind,
+                ..
+            } => (*issue, (*output_kind, *observer, *lead, *band)),
+        };
+        assert_eq!(*checkpoint.get_or_insert(issue), issue, "mixed checkpoints");
+        assert!(identities.insert(key), "duplicate checkpoint output");
+        match snapshot {
+            Snapshot::Matrix {
+                observer,
+                issue,
+                gram,
+                quad_gram,
+                response,
+                quad_response,
+                x,
+                energy,
+                output,
+            } => {
+                let mut reference = Reference::new();
+                reference.gram = gram;
+                reference.quad_gram = quad_gram;
+                reference.response = response
+                    .into_iter()
+                    .map(|row| row.try_into().unwrap())
+                    .collect();
+                reference.quad_response = quad_response
+                    .into_iter()
+                    .map(|row| row.try_into().unwrap())
+                    .collect();
+                reference.issues = issue;
+                let x = x.try_into().unwrap();
+                let output = output.try_into().unwrap();
+                reference.evaluate(observer, &x, energy, &output, &mut counts);
+            }
+            Snapshot::Scalar {
+                sums,
+                output,
+                output_kind,
+                ..
+            } => {
+                counts.scalar(output_kind, output, sums, output_kind == 2);
+            }
+        }
+    }
+    println!("rejudgment {counts:?}");
+    assert_eq!(
+        std::array::from_fn::<_, 3, _>(|i| counts.passed[i]
+            + counts.failed[i]
+            + counts.inconclusive[i]),
+        [1206, 1206, 603],
+        "incomplete checkpoint snapshot"
+    );
+    counts.assert_passed();
 }
 
 #[derive(Default)]
@@ -704,47 +1033,20 @@ pub(crate) fn forecast(
         }
         r.last_forecast = Some(r.issues);
         r.checkpoint_start = c.counts;
-        let lower = r.factor();
-        let (projected, condition) = r.certified_projection(&lower, x);
-        r.condition_upper = condition;
-        c.counts.condition_upper = c.counts.condition_upper.max(condition);
         if !c.checkpoints.is_empty() {
-            println!(
-                "reference observer={id} issue={} kappa2_upper={condition:e}",
-                r.issues
-            );
+            save_snapshot(&Snapshot::Matrix {
+                observer: id,
+                issue: r.issues,
+                gram: r.gram.clone(),
+                quad_gram: r.quad_gram.clone(),
+                response: r.response.iter().map(|row| row.to_vec()).collect(),
+                quad_response: r.quad_response.iter().map(|row| row.to_vec()).collect(),
+                x: x.to_vec(),
+                energy,
+                output: output.to_vec(),
+            });
         }
-        let mut quad_projected = None;
-        for (lead, out) in output.iter().enumerate() {
-            for band in 0..3 {
-                let mut correction = Bound::default();
-                for (row, p) in r.response[lead].iter().zip(projected) {
-                    correction = correction + row[band] * p;
-                }
-                let value = Bound::exact(energy[band] as f64) + correction;
-                if !c.counts.check(
-                    0,
-                    out[band],
-                    value.clamp(0.0, f64::INFINITY),
-                    energy[band].abs() as f64 + correction.magnitude() + correction.u,
-                ) {
-                    c.counts.dd_inconclusive += 1;
-                    c.counts.inconclusive[0] -= 1;
-                    let projected = quad_projected.get_or_insert_with(|| r.quad_projection(x));
-                    let mut correction = Quad::default();
-                    for (row, &p) in r.quad_response[lead].iter().zip(projected.iter()) {
-                        correction = correction + row[band] * p;
-                    }
-                    let value = (Quad::exact(energy[band] as f64) + correction).bound();
-                    c.counts.check(
-                        0,
-                        out[band],
-                        value.clamp(0.0, f64::INFINITY),
-                        energy[band].abs() as f64 + correction.magnitude() + correction.u,
-                    );
-                }
-            }
-        }
+        r.evaluate(id, x, energy, output, &mut c.counts);
     });
 }
 pub(crate) fn weights(id: u64, output: &[[f32; 3]; FORECAST_LEN]) {
@@ -764,8 +1066,19 @@ pub(crate) fn weights(id: u64, output: &[[f32; 3]; FORECAST_LEN]) {
         if !c.checkpoints.is_empty() {
             println!("reference comparison observer={id} issue={}", r.issues);
         }
-        for (row, out) in r.comparison.iter().zip(output) {
-            for (sums, &out) in row.iter().zip(out) {
+        for (lead, (row, out)) in r.comparison.iter().zip(output).enumerate() {
+            for (band, (sums, &out)) in row.iter().zip(out).enumerate() {
+                if !c.checkpoints.is_empty() {
+                    save_snapshot(&Snapshot::Scalar {
+                        observer: id,
+                        issue: r.issues,
+                        lead,
+                        band,
+                        output_kind: 1,
+                        sums: *sums,
+                        output: out,
+                    });
+                }
                 c.counts.scalar(1, out, *sums, false);
             }
         }
@@ -776,7 +1089,11 @@ pub(crate) fn weights(id: u64, output: &[[f32; 3]; FORECAST_LEN]) {
                 c.counts.inconclusive[i] - r.checkpoint_start.inconclusive[i]
             }),
             dd_inconclusive: c.counts.dd_inconclusive - r.checkpoint_start.dd_inconclusive,
+            uncertified: std::array::from_fn(|i| {
+                c.counts.uncertified[i] - r.checkpoint_start.uncertified[i]
+            }),
             condition_upper: r.condition_upper,
+            scaled_condition_upper: r.scaled_condition_upper,
         };
     });
 }
@@ -812,6 +1129,17 @@ pub(crate) fn learning(
         let right = [observed.unwrap_or(candidates[0]), candidates[1]];
         sums[i].add_product(candidates, right);
         if let Some(out) = output.filter(|_| due) {
+            if !c.checkpoints.is_empty() {
+                save_snapshot(&Snapshot::Scalar {
+                    observer: id,
+                    issue: *issues,
+                    lead,
+                    band,
+                    output_kind: 2,
+                    sums: *sums,
+                    output: out,
+                });
+            }
             c.counts.scalar(2, out, *sums, true);
         }
     });
@@ -953,4 +1281,129 @@ fn matrix_inconclusive_is_recomputed_from_raw_quad_statistics() {
     assert_eq!(result.passed[0], (3 * FORECAST_LEN) as u64);
     assert_eq!(result.failed, [0; 3]);
     assert_eq!(result.inconclusive, [0; 3]);
+}
+
+#[test]
+fn ridge_residual_certifies_collinear_million_issue_scale() {
+    let mut reference = Reference::new();
+    let mut x = [1.0; FEATURES];
+    x[1..28].fill(20_000.0);
+    // A repeated, exactly represented raw row has an analytic Sherman-Morrison
+    // solution. Large energy and constant/coverage collinearity reproduce V7's scale.
+    for i in 0..FEATURES {
+        for j in 0..=i {
+            let term = Quad::exact(1_000_000.0) * Quad::exact(x[i]) * Quad::exact(x[j]);
+            reference.quad_gram[i][j] = reference.quad_gram[i][j] + term;
+            reference.gram[i][j] = reference.quad_gram[i][j].bound();
+        }
+    }
+    // A conservative, valid input enclosure at the constant-feature entry.
+    // It is far below the ridge, but factor interval dependency amplifies it
+    // by the square of the large feature. The residual uses its actual action
+    // on the candidate instead of amplifying it through every pivot.
+    reference.quad_gram[0][0].u = 1e-10;
+    let mut old_lower = vec![vec![Quad::default(); FEATURES]; FEATURES];
+    let mut old_certified = true;
+    'factor: for i in 0..FEATURES {
+        for j in 0..=i {
+            let mut value = reference.quad_gram[i][j];
+            for k in 0..j {
+                value = value - old_lower[i][k] * old_lower[j][k];
+            }
+            old_lower[i][j] = if i == j {
+                value.sqrt()
+            } else {
+                value / old_lower[j][j]
+            };
+            if !old_lower[i][j].u.is_finite() {
+                old_certified = false;
+                break 'factor;
+            }
+        }
+    }
+    assert!(!old_certified, "old interval pivot unexpectedly certified");
+    let projected = reference.quad_projection(&x);
+    let mut result = Quad::default();
+    for (p, x) in projected.into_iter().zip(x) {
+        result = result + p * Quad::exact(x);
+    }
+    let norm: f64 = x.iter().map(|x| x * x).sum();
+    let exact = norm / (RIDGE + 1_000_000.0 * norm);
+    let mut counts = Counts::default();
+    counts.check(0, exact as f32, result.bound(), exact);
+    counts.check(0, (exact * 1.001) as f32, result.bound(), exact);
+    assert_eq!(counts.passed[0], 1);
+    assert_eq!(counts.failed[0], 1);
+    assert_eq!(counts.inconclusive[0], 0);
+}
+
+#[test]
+fn uncertifiable_reference_counts_and_continues_but_nonfinite_product_fails() {
+    let mut r = Reference::new();
+    r.gram[0][0] = Bound::exact(-1.0);
+    r.quad_gram[0][0] = Quad::exact(-1.0);
+    let mut counts = Counts::default();
+    let mut x = [0.0; FEATURES];
+    x[0] = 1.0;
+    r.evaluate(0, &x, [1.0; 3], &[[1.0; 3]; FORECAST_LEN], &mut counts);
+    assert_eq!(counts.inconclusive[0], (3 * FORECAST_LEN) as u64);
+    assert_eq!(counts.passed[0], 0);
+    assert!(counts.uncertified[0] > 0);
+    // The following checkpoint still runs and is decidable.
+    Reference::new().evaluate(0, &x, [1.0; 3], &[[1.0; 3]; FORECAST_LEN], &mut counts);
+    assert_eq!(counts.passed[0], (3 * FORECAST_LEN) as u64);
+    assert!(
+        std::panic::catch_unwind(|| {
+            Counts::default().check(0, f32::NAN, Bound::exact(0.0), 0.0);
+        })
+        .is_err()
+    );
+}
+
+#[test]
+fn snapshot_roundtrip_preserves_expansions_and_rejudgment() {
+    let mut reference = Reference::new();
+    reference.gram[1][0] = Bound {
+        v: Dd(1.0, 2.0_f64.powi(-80)),
+        u: 1e-31,
+    };
+    reference.quad_response[7][5][2] = Quad {
+        parts: [1e20, -0.125, 2.0_f64.powi(-100), -2.0_f64.powi(-180)],
+        u: 1e-80,
+    };
+    let snapshot = Snapshot::Matrix {
+        observer: 3,
+        issue: 1000000,
+        gram: reference.gram.clone(),
+        quad_gram: reference.quad_gram.clone(),
+        response: reference.response.iter().map(|row| row.to_vec()).collect(),
+        quad_response: reference
+            .quad_response
+            .iter()
+            .map(|row| row.to_vec())
+            .collect(),
+        x: vec![0.0; FEATURES],
+        energy: [1.0; 3],
+        output: vec![[1.0; 3]; FORECAST_LEN],
+    };
+    let bytes = serde_json::to_vec(&snapshot).unwrap();
+    let decoded: Snapshot = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(serde_json::to_vec(&decoded).unwrap(), bytes);
+    let Snapshot::Matrix {
+        gram,
+        quad_response,
+        ..
+    } = decoded
+    else {
+        unreachable!()
+    };
+    assert_eq!(gram[1][0].v.1.to_bits(), reference.gram[1][0].v.1.to_bits());
+    for (a, b) in quad_response[7][5][2]
+        .parts
+        .into_iter()
+        .zip(reference.quad_response[7][5][2].parts)
+    {
+        assert_eq!(a.to_bits(), b.to_bits());
+    }
+    println!("snapshot zero-dominated matrix bytes={}", bytes.len());
 }

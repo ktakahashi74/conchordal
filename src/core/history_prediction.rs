@@ -136,13 +136,61 @@ impl Gram {
         }
         x
     }
+
+    fn refined_solve(&self, x: [f64; FEATURES]) -> [f64; FEATURES] {
+        SOLVE_SCRATCH.with(|scratch| {
+            let mut scratch = scratch.borrow_mut();
+            let (projected, residual) = &mut *scratch;
+            *projected = self.solve(x);
+            // Cap the registered-horizon refinement at twelve corrections.
+            // Exact stagnation skips only iterations that would repeat unchanged.
+            for _ in 0..12 {
+                for i in 0..FEATURES {
+                    let mut r = Sum { hi: x[i], lo: 0.0 };
+                    for (j, &p) in projected.iter().enumerate() {
+                        let g = self.sum[i.max(j)][i.min(j)];
+                        // Independent TwoSum/FMA residual of the retained (hi, lo)
+                        // Gram, rather than a rounded f64 reconstruction of G.
+                        let two_sum = |a: f64, b: f64| {
+                            let hi = a + b;
+                            let tail = hi - a;
+                            Sum {
+                                hi,
+                                lo: (a - (hi - tail)) + (b - tail),
+                            }
+                        };
+                        let product = g.hi * -p;
+                        let low = g.hi.mul_add(-p, -product) + g.lo * -p;
+                        let a = two_sum(r.hi, product);
+                        let b = two_sum(r.lo, low);
+                        let c = two_sum(a.hi, a.lo + b.hi);
+                        r = two_sum(c.hi, c.lo + b.lo);
+                    }
+                    residual[i] = r.total();
+                }
+                let correction = self.solve(*residual);
+                let mut changed = false;
+                for (p, delta) in projected.iter_mut().zip(correction) {
+                    let next = *p + delta;
+                    changed |= next.to_bits() != p.to_bits();
+                    *p = next;
+                }
+                if !changed {
+                    break;
+                }
+            }
+            *projected
+        })
+    }
 }
 
 thread_local! {
     static NEXT_OBSERVER: Cell<u64> = const { Cell::new(0) };
     // Each runtime owns its estimator thread and its cumulative failure telemetry.
     static FREEZE_STATUS: Cell<(u64, u64)> = const { Cell::new((0, 0)) };
-    // Only refactorization uses scratch; commit exchanges pointers, not matrices.
+    static SOLVE_SCRATCH: RefCell<([f64; FEATURES], [f64; FEATURES])> =
+        const { RefCell::new(([0.0; FEATURES], [0.0; FEATURES])) };
+    // Refactorization commits by exchanging pointers, not matrices.
     static FACTOR_SCRATCH: RefCell<Box<[[f64; FEATURES]; FEATURES]>> =
         RefCell::new(Box::new([[0.0; FEATURES]; FEATURES]));
 }
@@ -279,6 +327,7 @@ impl HistoryEnergyPrediction {
     pub(crate) fn new() -> Self {
         // Allocate the thread scratch at birth, outside steady-state updates.
         FACTOR_SCRATCH.with(|_| {});
+        SOLVE_SCRATCH.with(|_| {});
         Self {
             gram: Gram::new(),
             issues: 0,
@@ -579,7 +628,7 @@ impl HistoryEnergyPrediction {
         self.flush_responses();
         let responses = self.responses.borrow();
         let x = Self::features(energy, history);
-        let projected = self.gram.solve(x);
+        let projected = self.gram.refined_solve(x);
         let output = std::array::from_fn(|lead| {
             let cross = &responses.cross[lead];
             let mut correction = [0.0; 3];
@@ -601,7 +650,13 @@ impl HistoryEnergyPrediction {
             std::array::from_fn(|band| (energy[band] as f64 + correction[band]).max(0.0) as f32)
         });
         #[cfg(test)]
-        reference::forecast(self.phase, &x, energy, &output);
+        reference::forecast(
+            self.phase,
+            &x,
+            energy,
+            &output,
+            Some((&self.gram, &responses.cross, &projected)),
+        );
         output
     }
 
@@ -686,6 +741,27 @@ impl HistoryEnergyPrediction {
 mod tests {
     use super::*;
     use crate::core::temporal_history::{AuditoryHistory, HISTORY_AGES_SEC};
+
+    #[test]
+    fn refinement_uses_retained_gram_low_parts_and_reuses_factors() {
+        let mut gram = Gram::new();
+        for (i, j) in [(0, 0), (1, 0), (1, 1)] {
+            gram.sum[i][j] = Sum {
+                hi: 1e12,
+                lo: if i == j { RIDGE } else { 0.0 },
+            };
+        }
+        assert!(gram.update([0.0; FEATURES], true));
+        let before = gram.clone();
+        let mut x = [0.0; FEATURES];
+        x[0] = 1.0;
+        // Analytically (a+r)/(r*(2a+r)); it rounds to 50 at f32.
+        let expected = ((1e12 + RIDGE) / (RIDGE * (2e12 + RIDGE))) as f32;
+        assert_ne!(gram.solve(x)[0] as f32, expected);
+        assert_eq!(gram.refined_solve(x)[0] as f32, expected);
+        assert_eq!(gram, before);
+        assert_eq!(gram.clone().refined_solve(x), gram.refined_solve(x));
+    }
 
     #[test]
     fn partial_update_failure_freezes_committed_pair_and_rewind_recovers() {

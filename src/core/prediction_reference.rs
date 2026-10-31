@@ -759,6 +759,17 @@ impl Reference {
     }
 }
 
+// Kept separately from the raw-input oracle: diagnostics must not feed
+// production accumulators or factors back into the reference certificate.
+#[derive(Serialize, Deserialize)]
+struct ProductionState {
+    gram: Vec<Vec<[f64; 2]>>,
+    upper: Vec<Vec<f64>>,
+    response: Vec<Vec<[[f64; 2]; 3]>>,
+    response_count: Vec<u8>,
+    projected: Vec<f64>,
+}
+
 // Numeric JSON round-trips every f64 component (serde_json/float_roundtrip).
 // Rows are flushed before certification so a failed certificate loses no input.
 #[derive(Serialize, Deserialize)]
@@ -774,6 +785,8 @@ enum Snapshot {
         x: Vec<f64>,
         energy: [f32; 3],
         output: Vec<[f32; 3]>,
+        #[serde(default)]
+        production: Option<ProductionState>,
     },
     Scalar {
         observer: u64,
@@ -808,6 +821,16 @@ fn save_snapshot(snapshot: &Snapshot) {
 #[test]
 #[ignore = "offline rejudgment of IP_V7_SNAPSHOT; no renderer or audio device"]
 fn rejudge_precision_snapshot() {
+    rejudge_snapshot(false);
+}
+
+#[test]
+#[ignore = "re-evaluate saved sufficient statistics with the repaired production solver"]
+fn rejudge_repaired_precision_snapshot() {
+    rejudge_snapshot(true);
+}
+
+fn rejudge_snapshot(repair: bool) {
     use std::io::BufRead;
     let file = std::fs::File::open(std::env::var("IP_V7_SNAPSHOT").unwrap()).unwrap();
     let mut counts = Counts::default();
@@ -841,6 +864,7 @@ fn rejudge_precision_snapshot() {
                 x,
                 energy,
                 output,
+                production,
             } => {
                 let mut reference = Reference::new();
                 reference.gram = gram;
@@ -854,8 +878,74 @@ fn rejudge_precision_snapshot() {
                     .map(|row| row.try_into().unwrap())
                     .collect();
                 reference.issues = issue;
-                let x = x.try_into().unwrap();
-                let output = output.try_into().unwrap();
+                let x: [f64; FEATURES] = x.try_into().unwrap();
+                let output = if repair {
+                    use super::HistoryEnergyPrediction;
+                    use crate::core::compensated::Sum;
+                    use crate::core::temporal_history::{
+                        AuditoryHistorySnapshot, HISTORY_AGES_SEC,
+                    };
+                    let mut predictor = HistoryEnergyPrediction::new();
+                    for i in 0..FEATURES {
+                        for j in 0..=i {
+                            let pair = production.as_ref().map_or_else(
+                                || {
+                                    let v = reference.quad_gram[i][j].bound().v;
+                                    [v.0, v.1]
+                                },
+                                |state| state.gram[i][j],
+                            );
+                            predictor.gram.sum[i][j] = Sum {
+                                hi: pair[0],
+                                lo: pair[1],
+                            };
+                        }
+                    }
+                    if let Some(state) = &production {
+                        for (row, saved) in predictor.gram.upper.iter_mut().zip(&state.upper) {
+                            row.copy_from_slice(saved);
+                        }
+                    } else {
+                        // Old snapshots contain independent reference statistics,
+                        // not the original production accumulation/factor history.
+                        assert!(predictor.gram.update([0.0; FEATURES], true));
+                    }
+                    for (lead, cross) in predictor.responses.get_mut().cross.iter_mut().enumerate()
+                    {
+                        cross.count = production
+                            .as_ref()
+                            .map_or(0, |state| state.response_count[lead]);
+                        for i in 0..FEATURES {
+                            for band in 0..3 {
+                                let pair = production.as_ref().map_or_else(
+                                    || {
+                                        let v = reference.quad_response[lead][i][band].bound().v;
+                                        [v.0, v.1]
+                                    },
+                                    |state| state.response[lead][i][band],
+                                );
+                                cross.hi[band][i] = pair[0];
+                                cross.lo[band][i] = pair[1];
+                            }
+                        }
+                    }
+                    let history = AuditoryHistorySnapshot {
+                        ages_sec: HISTORY_AGES_SEC,
+                        post_order: 12,
+                        known_band_rms_by_age: std::array::from_fn(|a| {
+                            std::array::from_fn(|b| x[4 + 3 * a + b] as f32)
+                        }),
+                        known_coverage_by_age: std::array::from_fn(|a| x[28 + a] as f32),
+                    };
+                    assert_eq!(HistoryEnergyPrediction::features(energy, &history), x);
+                    println!(
+                        "repair observer={observer} issue={issue} actual_production_state={}",
+                        production.is_some()
+                    );
+                    predictor.forecast(energy, &history)
+                } else {
+                    output.try_into().unwrap()
+                };
                 reference.evaluate(observer, &x, energy, &output, &mut counts);
             }
             Snapshot::Scalar {
@@ -1013,11 +1103,12 @@ pub(crate) fn comparison(id: u64, lead: usize, band: usize, operands: [f32; 3]) 
         sums[1].add_product([history, recurrence], [observed, recurrence]);
     });
 }
-pub(crate) fn forecast(
+pub(super) fn forecast(
     id: u64,
     x: &[f64; FEATURES],
     energy: [f32; 3],
     output: &[[f32; 3]; FORECAST_LEN],
+    production: Option<(&super::Gram, &[super::ResponseCross], &[f64; FEATURES])>,
 ) {
     capture(|c| {
         let Some(r) = c.histories.get_mut(&id) else {
@@ -1044,6 +1135,26 @@ pub(crate) fn forecast(
                 x: x.to_vec(),
                 energy,
                 output: output.to_vec(),
+                production: production.map(|(gram, responses, projected)| ProductionState {
+                    gram: gram
+                        .sum
+                        .iter()
+                        .map(|row| row.iter().map(|v| [v.hi, v.lo]).collect())
+                        .collect(),
+                    upper: gram.upper.iter().map(|row| row.to_vec()).collect(),
+                    response: responses
+                        .iter()
+                        .map(|row| {
+                            (0..FEATURES)
+                                .map(|i| {
+                                    std::array::from_fn(|band| [row.hi[band][i], row.lo[band][i]])
+                                })
+                                .collect()
+                        })
+                        .collect(),
+                    response_count: responses.iter().map(|row| row.count).collect(),
+                    projected: projected.to_vec(),
+                }),
             });
         }
         r.evaluate(id, x, energy, output, &mut c.counts);
@@ -1274,7 +1385,7 @@ fn matrix_inconclusive_is_recomputed_from_raw_quad_statistics() {
     });
     let mut output = [[0.0; 3]; FORECAST_LEN];
     output[0] = [(0.1 / 1.01) as f32; 3];
-    forecast(0, &x, [0.0; 3], &output);
+    forecast(0, &x, [0.0; 3], &output, None);
     let result = counts();
     stop();
     assert_eq!(result.dd_inconclusive, 1);
@@ -1385,6 +1496,7 @@ fn snapshot_roundtrip_preserves_expansions_and_rejudgment() {
         x: vec![0.0; FEATURES],
         energy: [1.0; 3],
         output: vec![[1.0; 3]; FORECAST_LEN],
+        production: None,
     };
     let bytes = serde_json::to_vec(&snapshot).unwrap();
     let decoded: Snapshot = serde_json::from_slice(&bytes).unwrap();

@@ -767,6 +767,53 @@ pub(crate) fn learning(
 }
 
 #[test]
+fn exact_f32_product_ranges_preserve_scalar_weight_acceptance() {
+    use crate::core::compensated::Sum;
+    let mut counts = Counts::default();
+    // Exercise the 53-bit boundary, its wider fallback, signs, zero, and
+    // both ends of the finite f32 range against independent raw statistics.
+    for [candidate, baseline, observed] in [
+        [1.0_f32.next_up(), 0.25, 0.5],
+        [1.0_f32.next_up(), 0.125, 0.5],
+        [1.0_f32.next_up(), 0.0625, 0.5],
+        [1.0_f32.next_up(), -0.25, 0.125],
+        [1.0, 0.0, 0.5],
+        [0.0, 0.0, 0.0],
+        [
+            f32::MIN_POSITIVE,
+            f32::from_bits(1),
+            f32::MIN_POSITIVE / 2.0,
+        ],
+        [f32::MAX, f32::MAX / 4.0, f32::MAX / 2.0],
+    ] {
+        let mut raw = [Scalar::default(); 2];
+        let mut production = [Sum::ZERO; 2];
+        for _ in 0..64 {
+            let delta = [candidate, baseline];
+            production[0].add_product(delta, delta);
+            production[1].add_product(delta, [observed, baseline]);
+            raw[0].add_product(delta, delta);
+            raw[1].add_product(delta, [observed, baseline]);
+            let square = production[0].total();
+            let (weight, complement) = if square > 0.0 {
+                (
+                    (production[1].total() / square).clamp(0.0, 1.0) as f32,
+                    (production[0].difference(production[1]) / square).clamp(0.0, 1.0) as f32,
+                )
+            } else {
+                (0.0, 1.0)
+            };
+            counts.scalar(1, weight, raw, false);
+            counts.scalar(2, complement, raw, true);
+        }
+    }
+    println!("numerical exact product ranges {counts:?}");
+    assert_eq!(counts.passed, [0, 512, 512]);
+    assert_eq!(counts.failed, [0; 3]);
+    assert_eq!(counts.inconclusive, [0; 3]);
+}
+
+#[test]
 fn raw_scalar_products_distinguish_rounded_products_at_zero_complement() {
     let mut raw = [Scalar::default(); 2];
     let mut rounded = [crate::core::compensated::Sum::ZERO; 2];

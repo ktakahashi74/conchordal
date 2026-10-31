@@ -33,6 +33,39 @@ impl Sum {
                 lo: (a - (hi - tail)) + (b - tail),
             }
         };
+        // Scalar products retain normalized DD pairs. After the leading
+        // error-free sum, FastTwoSum renormalizes its accumulated low part.
+        let quick_two_sum = |a: f64, b: f64| {
+            let hi = a + b;
+            Self {
+                hi,
+                lo: b - (hi - a),
+            }
+        };
+        // A finite f32 difference needs at most 24 + exponent span bits,
+        // plus one for opposite signs. Zero and subnormals need no more.
+        // If the two widths total <= 53, both differences and their product
+        // are exact f64 values. Only the DD sum then needs rounding repair.
+        let width = |[a, b]: [f32; 2]| {
+            let a = a.to_bits();
+            let b = b.to_bits();
+            let ea = (a >> 23) & 255;
+            let eb = (b >> 23) & 255;
+            if ea == 255 || eb == 255 {
+                return 512;
+            }
+            if a & 0x7fff_ffff == 0 || b & 0x7fff_ffff == 0 {
+                return 24;
+            }
+            24 + ea.max(1).abs_diff(eb.max(1)) + ((a ^ b) >> 31)
+        };
+        if width(left) + width(right) <= 53 {
+            let a = left[0] as f64 - left[1] as f64;
+            let b = right[0] as f64 - right[1] as f64;
+            let sum = two_sum(self.hi, a * b);
+            *self = quick_two_sum(sum.hi, sum.lo + self.lo);
+            return;
+        }
         let a = two_sum(left[0] as f64, -(left[1] as f64));
         let b = two_sum(right[0] as f64, -(right[1] as f64));
         let product = a.hi * b.hi;
@@ -42,8 +75,8 @@ impl Sum {
         // Renormalize both retained parts at every step, not just their total.
         let s = two_sum(self.hi, p.hi);
         let t = two_sum(self.lo, p.lo);
-        let u = two_sum(s.hi, s.lo + t.hi);
-        *self = two_sum(u.hi, u.lo + t.lo);
+        let u = quick_two_sum(s.hi, s.lo + t.hi);
+        *self = quick_two_sum(u.hi, u.lo + t.lo);
     }
 
     pub(crate) fn difference(self, other: Self) -> f64 {

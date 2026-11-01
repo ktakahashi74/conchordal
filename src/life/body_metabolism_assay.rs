@@ -330,6 +330,62 @@ fn newborn_unknown_hold_and_exact_density_invalidation() {
 }
 
 #[test]
+fn harmonicity_preference_revalues_body_metabolism_without_reanalyzing_sensation() {
+    let (nsgt, mut params) = crate::runtime::body_metabolism_test_core();
+    let mut runtime = BodyMetabolism::new(nsgt, &params, settings(8));
+    let voices = [voice(2, 0, BodyMethod::Sine)];
+    let hop = runtime.time.hop;
+    for frame in 0..8 {
+        let now = (frame * hop) as Tick;
+        runtime.prepare(&voices, now, &params);
+        let pcm: Vec<_> = (0..hop)
+            .map(|i| {
+                0.03 * (std::f32::consts::TAU * 440.0 * (frame * hop + i) as f32 / params.fs).sin()
+            })
+            .collect();
+        runtime.observe(now, &pcm, &params);
+    }
+    let now = runtime.next_sample;
+    runtime.prepare(&voices, now, &params);
+    let shared = runtime.shared.landscape.clone();
+    let (source, current_params) = runtime.source(2, 0).unwrap();
+    let before = source
+        .score(440_f32.log2(), current_params, &shared)
+        .unwrap();
+    let h_before = source.environment.landscape.harmonicity01.clone();
+    let r_before = source.environment.landscape.roughness01.clone();
+    let density_builds = source.density_builds;
+    params.set_harmonicity_preference(0.0);
+    runtime.prepare(&voices, now, &params);
+    let (source, current_params) = runtime.source(2, 0).unwrap();
+    // Revalue the same observed environment independently of the hop scheduler's hold.
+    source.epoch += 1;
+    let after = source
+        .score(440_f32.log2(), current_params, &shared)
+        .unwrap();
+    assert!(after.score < before.score);
+    assert_eq!(source.density_builds, density_builds);
+    assert!(
+        source
+            .environment
+            .landscape
+            .harmonicity01
+            .iter()
+            .zip(h_before)
+            .all(|(a, b)| a.to_bits() == b.to_bits())
+    );
+    assert!(
+        source
+            .environment
+            .landscape
+            .roughness01
+            .iter()
+            .zip(r_before)
+            .all(|(a, b)| a.to_bits() == b.to_bits())
+    );
+}
+
+#[test]
 fn numbered_slots_match_the_registered_cursor_for_eighteen_voices() {
     let (nsgt, params) = crate::runtime::body_metabolism_test_core();
     let mut runtime = BodyMetabolism::new(nsgt, &params, settings(1));

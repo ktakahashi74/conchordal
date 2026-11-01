@@ -65,7 +65,8 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 | Action::SetPopulationCrowdingTarget { .. } => {}
                 Action::UpdateLandscape { .. }
                 | Action::SetGlobalCoupling { .. }
-                | Action::SetRoughnessAversion { .. } => {}
+                | Action::SetRoughnessAversion { .. }
+                | Action::SetHarmonicityPreference { .. } => {}
             }
         }
     }

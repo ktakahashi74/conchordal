@@ -287,6 +287,7 @@ impl BodyMetabolism {
         self.params.consonance_representation = params.consonance_representation;
         self.params.consonance_density_roughness_gain = params.consonance_density_roughness_gain;
         self.params.roughness_aversion = params.roughness_aversion;
+        self.params.harmonicity_preference = params.harmonicity_preference;
         self.params.habituation = params.habituation;
         self.params.loudness_exp = params.loudness_exp;
         self.params.ref_power = params.ref_power;

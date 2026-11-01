@@ -285,7 +285,7 @@ consonance(min_hz, max_hz) -> Placement
 
 Target consonance maxima. Density cloud by default; `.peak()` for the extremum. `consonance(root)` takes a harmonic window around a root (default 1x-4x, set multiples with `range()`); `consonance(min, max)` takes an absolute range. Default spacing is 1.0 ERB.
 
-**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
+**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion, set_harmonicity_preference and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
 
 #### `dissonance`
 
@@ -295,7 +295,7 @@ dissonance(min_hz, max_hz) -> Placement
 
 Target consonance minima (tension, clusters). Density cloud by default; `.peak()` for the most dissonant point.
 
-**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
+**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion, set_harmonicity_preference and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
 
 #### `edge`
 
@@ -305,7 +305,7 @@ edge(min_hz, max_hz) -> Placement
 
 Target the consonance/dissonance boundary (C near its midpoint). The metastable region between fusion and beating. Density band by default; `.peak()` for the point closest to the boundary.
 
-**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
+**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion, set_harmonicity_preference and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
 
 #### `gap`
 
@@ -315,7 +315,7 @@ gap(min_hz, max_hz) -> Placement
 
 Target empty registers (low subjective intensity); fill the room. Density cloud by default; `.peak()` for the emptiest position.
 
-**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
+**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion, set_harmonicity_preference and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
 
 #### `peak`
 
@@ -327,7 +327,7 @@ Applies to: `Placement`.
 
 Realize a field target as its deterministic extremum.
 
-**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
+**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion, set_harmonicity_preference and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
 
 #### `density`
 
@@ -339,7 +339,7 @@ Applies to: `Placement`.
 
 Realize a field target as a stochastic cloud (the default).
 
-**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
+**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion, set_harmonicity_preference and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
 
 #### `tension`
 
@@ -351,7 +351,7 @@ Applies to: `Placement`.
 
 Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1). Consonance placement only. 0 leaves ordinary Consonance placement unchanged: `peak()` selects the strongest peak, while the default density remains the ordinary Consonance cloud. Higher values target a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).
 
-**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
+**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion, set_harmonicity_preference and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
 
 #### `random`
 
@@ -407,7 +407,7 @@ Applies to: `Placement`.
 
 Minimum ERB distance between placed voices; valid on field placements.
 
-**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
+**Evidence:** Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion, set_harmonicity_preference and set_pitch_objective.<br>Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
 
 ### Timeline & Populations
 
@@ -1392,6 +1392,16 @@ set_roughness_aversion(weight)
 How much the modeled listener minds roughness (default 1.0). Cursor event: changes roughness valuation from this script time onward. Dimensionless, nonnegative; zero removes aversion. Does not change raw roughness sensation.
 
 **Evidence:** Author rule: consonance evaluation, sign or roughness preference; does not alter H/R sensation (§9.3.56). Existing valuation defaults remain active.
+
+#### `set_harmonicity_preference`
+
+```rhai,ignore
+set_harmonicity_preference(weight)
+```
+
+How much the modeled listener values harmonic support (default 1.0). Cursor event: changes harmonicity valuation from this script time onward. Dimensionless, nonnegative; finite weights are clamped to [0,100] and non-finite values are ignored. Zero removes the field's harmonicity term and makes spawn density independent of harmonicity. The interaction term remains controlled by set_roughness_aversion. Does not change harmonicity sensation.
+
+**Evidence:** Author rule: multiply the field's a coefficient by the weight and use it as the exponent of density H01. H/R sensation is unchanged (§9.3.56).<br>Principle: Western consonance preference tracks harmonicity and grows with musical experience (McDermott, Lehr & Oxenham 2010); Tsimane listeners show no consonance preference (McDermott et al. 2016). This motivates a layer-3 valuation weight, not its mathematical form.
 
 #### `set_pitch_objective`
 

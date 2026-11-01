@@ -138,6 +138,12 @@ impl Community {
             Action::SetRoughnessAversion { value } => {
                 self.on_set_roughness_aversion(value);
             }
+            Action::SetHarmonicityPreference { value } => {
+                self.merge_landscape_update(LandscapeUpdate {
+                    harmonicity_preference: Some(value),
+                    ..LandscapeUpdate::default()
+                });
+            }
         }
     }
 
@@ -348,6 +354,9 @@ impl Community {
         let mut merged = self.pending_update.unwrap_or_default();
         if update.roughness_aversion.is_some() {
             merged.roughness_aversion = update.roughness_aversion;
+        }
+        if update.harmonicity_preference.is_some() {
+            merged.harmonicity_preference = update.harmonicity_preference;
         }
         if update.pitch_objective_mode.is_some() {
             merged.pitch_objective_mode = update.pitch_objective_mode;

@@ -1,6 +1,75 @@
 use super::*;
 
 #[test]
+fn harmonicity_preference_is_a_cursor_event_with_integer_and_float_overloads() {
+    let scenario = run_script(
+        "wait(0.25); set_harmonicity_preference(0); wait(0.5); set_harmonicity_preference(2.5);",
+    )
+    .0;
+    let controls: Vec<_> = action_times(&scenario)
+        .into_iter()
+        .filter_map(|(time, action)| {
+            if let Action::SetHarmonicityPreference { value } = action {
+                Some((time, *value))
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(controls, vec![(0.25, 0.0), (0.75, 2.5)]);
+}
+
+#[test]
+fn harmonicity_preference_script_weights_are_validated_at_dispatch() {
+    use crate::core::landscape::HARMONICITY_PREFERENCE_MAX;
+    for (value, expected) in [
+        (f64::NAN, 1.0),
+        (f64::INFINITY, 1.0),
+        (f64::NEG_INFINITY, 1.0),
+        (f64::MAX, 1.0),
+        (-3.0, 0.0),
+        (0.0, 0.0),
+        (2.5, 2.5),
+        (1e9, HARMONICITY_PREFERENCE_MAX),
+    ] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let mut scope = rhai::Scope::new();
+        scope.push("weight", value);
+        let _ = engine
+            .eval_with_scope::<Dynamic>(
+                &mut scope,
+                "wait(0.25); set_harmonicity_preference(weight);",
+            )
+            .unwrap();
+        let scenario = ctx.lock().unwrap().scenario.clone();
+        let (_, mut params) = crate::runtime::body_metabolism_test_core();
+        let landscape = Landscape::new(crate::core::log2space::Log2Space::new(100.0, 400.0, 12));
+        let mut community = Community::new(Timebase {
+            fs: 48_000.0,
+            hop: 256,
+        });
+        let event = scenario
+            .events
+            .iter()
+            .find(|event| {
+                event
+                    .actions
+                    .iter()
+                    .any(|a| matches!(a, Action::SetHarmonicityPreference { .. }))
+            })
+            .unwrap();
+        assert_eq!(event.time, 0.25);
+        for action in &event.actions {
+            community.apply_action(action.clone(), &landscape);
+        }
+        let update = community.take_pending_update().unwrap();
+        params.set_harmonicity_preference(update.harmonicity_preference.unwrap());
+        assert_eq!(params.harmonicity_preference.to_bits(), expected.to_bits());
+    }
+}
+
+#[test]
 fn output_gain_is_scene_global_and_last_declaration_wins() {
     assert_eq!(run_script("").0.output_gain_db, 0.0);
     assert_eq!(run_script("output_gain(6);").0.output_gain_db, 6.0);

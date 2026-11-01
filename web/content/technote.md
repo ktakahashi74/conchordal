@@ -253,20 +253,22 @@ Default coefficients: $a = 1.0$, $b = -1.35$, $c = 1.0$, $d = 0.0$. Because $b <
 
 The director's `set_roughness_aversion(w)` multiplies the roughness terms $b$ and $c$, and the density $\rho$ below, by $w$ (default 1, which leaves the configured values bit-exact). $w$ is clamped to $[0, 100]$ and non-finite values are ignored. $w = 0$ makes valuation ignore roughness. Larger $w$ penalizes roughness more when the configured kernel penalizes it at every harmonicity ($b \le 0$ and $b + c \le 0$, true for the defaults). $R_{01}$ itself, as sensed and displayed, does not change.
 
+The paired `set_harmonicity_preference(w_H)` multiplies only the field coefficient $a$ by $w_H$ and uses $H_{01}^{w_H}$ in density mass: $\max(0, H_{01}^{w_H}(1-\rho_{eff}R_{01}))$, where $\rho_{eff}=\rho w$ from roughness aversion. It is a cursor event with default 1 and the same finite $[0,100]$ clamp; non-finite updates are ignored. At 1 the original evaluation remains bit-exact. At 0 the field's $aH_{01}$ term vanishes and density becomes independent of harmonicity, including $0^0=1$. The interaction coefficient $c$ stays under roughness aversion. Neither control changes sensed $H_{01}$ or $R_{01}$. These weighting forms are author rules. Western consonance preference tracks harmonicity and grows with musical experience (McDermott, Lehr & Oxenham 2010), and Tsimane listeners show no consonance preference (McDermott et al. 2016). This motivates a separate valuation weight, not this choice of formula.
+
 **Layer 2 — Representations:**
 
 | Name | Formula | Range | Meaning |
 | :--- | :--- | :--- | :--- |
 | $C_{score}$ | $aH + bR + cHR + d$ | $(-\infty,+\infty)$ | raw fitness from the kernel |
 | $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | base sigmoid level; habituation drive and un-eroded view |
-| $C_{density\_mass}$ | $\max(0,\;H_{01}(1 - \rho R_{01}))$ | $[0,+\infty)$ | base density mass before erosion |
+| $C_{density\_mass}$ | $\max(0,\;H_{01}^{w_H}(1 - \rho_{eff} R_{01}))$ | $[0,+\infty)$ | base density mass before erosion |
 | $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass}^{eff})$ | $[0,1],\;\Sigma=1$ | normalized global view retained in `Landscape` |
 | $C_{energy}$ | $-C_{score}$ | $(-\infty,+\infty)$ | energy for minimization |
 | $C_{score}^{eff}$ | $\theta+(C_{score}-\theta)(1-h)$ | $(-\infty,+\infty)$ | habituation-eroded score read by movement and prediction |
 | $C_{level01}^{eff}$ | $\sigma(\beta(C_{score}^{eff}-\theta))$ | $[0,1]$ | habituation-eroded level read by behavior and the listener |
 | $C_{density\_mass}^{eff}$ | $(1-h)C_{density\_mass}$ | $[0,+\infty)$ | habituation-eroded mass read by density placement |
 
-where $\sigma(x) = 1/(1+e^{-x})$, $\beta$ controls sigmoid steepness (default 2.0), and $\theta$ is the sigmoid threshold (default 0.0). The density mass uses a separate $\rho$-kernel with coefficients $a{=}1, b{=}0, c{=}{-}\rho, d{=}0$; $\rho$ (`consonance_density_roughness_gain`, default 1.0) controls how strongly roughness suppresses density placement.
+where $\sigma(x) = 1/(1+e^{-x})$, $\beta$ controls sigmoid steepness (default 2.0), and $\theta$ is the sigmoid threshold (default 0.0). The density mass feeds $H_{01}^{w_H}$ into a separate kernel with coefficients $a{=}1, b{=}0, c{=}{-}\rho_{eff}, d{=}0$; the configured $\rho$ (`consonance_density_roughness_gain`, default 1.0) controls how strongly roughness suppresses density placement.
 
 Spawn samples a range-local distribution. By default, a `SpawnStrategy::Field` slices the requested frequency range, derives target-specific local mass from the effective views, masks occupied bins, and normalizes only that local vector. A zero-mass range falls back to an unoccupied-uniform distribution and then to full-range uniform if every bin is occupied. Peak placement chooses the target extremum deterministically, or the nearest field-score target when tension is specified. The global $C_{density\_pmf}$ remains a normalized Landscape representation exercised by core tests.
 
@@ -1273,7 +1275,7 @@ Placements determine the founder Voices' initial frequency allocation when a Pop
 
 Scene-global terrain shaping, on both axes:
 
-*   **Harmonic terrain**: `set_roughness_aversion(w)`, `set_pitch_objective("consonance"|"dissonance")`. Both change valuation, not the sensed $R_{01}$ / $H_{01}$.
+*   **Harmonic terrain**: `set_roughness_aversion(w)`, `set_harmonicity_preference(w_H)`, `set_pitch_objective("consonance"|"dissonance")`. These change valuation, not the sensed $R_{01}$ / $H_{01}$.
 *   **Temporal terrain**: `meter_stability(v)`, `temporal_basin(min_hz, max_hz)` (Section 4.4).
 *   **Interaction**: `set_global_coupling(v)` scales agent interaction strength.
 
@@ -1340,7 +1342,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Generation without symbolic intermediaries | `Log2Space` + landscape; no note names, scales, or time signatures anywhere in the engine | §2–4 | Implemented |
 | Frequency-axis terrain (cochlea/brainstem models) | Roughness, Harmonicity, Consonance kernels | §3 | Implemented |
 | Temporal-axis terrain (neural oscillation) | Emergent meter: forced limit cycle, default onset recurrence or optional continuous T2 recurrence for tempo adaptation; fast input updates phase and intensity, and confidence does not certify phase-origin accuracy. `metric` keeps explicit synchronization; `entrained`, `steady` and `flow` use a bounded acoustic observer and a bodily participation policy; steady fixes due and chooses sound or skip | §4, §5.4 | Partial. Persistence of temporal relations across all conditions is open; measure-accent coupling is opt-in |
-| Landscape variability (culture, individual, unknown principles) | consonance kernel coefficients, `set_roughness_aversion`, default-enabled habituation erosion | §3.4–3.5, §6.3.6 | Partial. Cultural tuning systems are not yet absorbed |
+| Landscape variability (culture, individual, unknown principles) | consonance kernel coefficients, `set_roughness_aversion`, `set_harmonicity_preference`, default-enabled habituation erosion | §3.4–3.5, §6.3.6 | Partial. Cultural tuning systems are not yet absorbed |
 | Adaptation and expectation | Per-Voice `AdaptationContext`, ecology/listener `HabituationField`, short-term recurrence and energy forecasts feeding habitat participation | §3.5, §5 | Partial. Relational memory, phrase/scene expectation and action-value learning are open |
 | Acoustic life: perception, metabolism, autonomy | The Voice: articulation-life cores, normalized energy, time-domain endurance/recovery, viability | §5 | Implemented |
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
@@ -1376,6 +1378,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | `kernel.a` | `ConsonanceKernel` | Float | Harmonicity coefficient (default 1.0). |
 | `kernel.b` | `ConsonanceKernel` | Float | Roughness coefficient (default -1.35; negative penalizes roughness). |
 | `roughness_aversion` | `LandscapeParams` | Float | Valuation weight on the roughness terms $b$, $c$ and density $\rho$; set by `set_roughness_aversion`. Default 1.0. |
+| `harmonicity_preference` | `LandscapeParams` | Float | Valuation weight on field coefficient $a$ and exponent of density $H_{01}$; set by `set_harmonicity_preference`. Default 1.0. |
 | `kernel.c` | `ConsonanceKernel` | Float | Interaction coefficient (default 1.0; positive attenuates roughness penalty at high harmonicity). |
 | `kernel.d` | `ConsonanceKernel` | Float | Bias term (default 0.0). |
 | `beta` | `ConsonanceRepresentationParams` | Float | Sigmoid steepness for $C_{level01}$ (default 2.0). |

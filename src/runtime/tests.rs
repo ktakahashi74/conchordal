@@ -316,6 +316,7 @@ fn build_test_params(space: &Log2Space) -> LandscapeParams {
         consonance_representation: ConsonanceRepresentationParams::default(),
         consonance_density_roughness_gain: 1.0,
         roughness_aversion: 1.0,
+        harmonicity_preference: 1.0,
         habituation: crate::core::habituation::HabituationParams::default(),
         loudness_exp: 1.0,
         ref_power: 1.0,
@@ -630,7 +631,7 @@ fn pending_update_does_not_panic_when_analysis_channel_is_disconnected() {
         Action::UpdateLandscape {
             update: LandscapeUpdate {
                 roughness_aversion: Some(2.0),
-                pitch_objective_mode: None,
+                ..Default::default()
             },
         },
         &landscape,
@@ -670,7 +671,7 @@ fn roughness_aversion_update_reaches_kernel_and_fields_without_touching_sensatio
         Action::UpdateLandscape {
             update: LandscapeUpdate {
                 roughness_aversion: Some(0.0),
-                pitch_objective_mode: None,
+                ..Default::default()
             },
         },
         &landscape,
@@ -696,6 +697,93 @@ fn roughness_aversion_update_reaches_kernel_and_fields_without_touching_sensatio
     assert_eq!(landscape.roughness01, r01_before);
     assert_eq!(landscape.harmonicity01, h01_before);
     assert_ne!(landscape.consonance_field_score[0], score_before);
+}
+
+#[test]
+fn harmonicity_preference_update_reaches_kernel_and_fields_without_touching_sensation() {
+    let space = Log2Space::new(80.0, 2_000.0, 96);
+    let mut params = build_test_params(&space);
+    let mut landscape = Landscape::new(space);
+    landscape.harmonicity.fill(0.6);
+    landscape.roughness01.fill(0.2);
+    landscape.recompute_consonance(&params);
+    let h_before = landscape.harmonicity01.clone();
+    let r_before = landscape.roughness01.clone();
+    let score_before = landscape.consonance_field_score[0];
+    let mut pop = Community::new(Timebase {
+        fs: 48_000.0,
+        hop: 256,
+    });
+    let (tx, rx) = bounded::<LandscapeUpdate>(4);
+    let (listener_tx, listener_rx) = bounded::<LandscapeUpdate>(4);
+    // Both setters at one cursor must survive merging and both must be applied.
+    pop.apply_action(Action::SetHarmonicityPreference { value: 0.0 }, &landscape);
+    pop.apply_action(Action::SetRoughnessAversion { value: 2.0 }, &landscape);
+    assert!(apply_pending_landscape_update(
+        &mut pop,
+        &mut params,
+        &mut landscape,
+        &tx,
+        Some(&listener_tx),
+    ));
+    assert_eq!(params.harmonicity_preference, 0.0);
+    assert_eq!(params.roughness_aversion, 2.0);
+    for update in [rx.try_recv().unwrap(), listener_rx.try_recv().unwrap()] {
+        assert_eq!(update.harmonicity_preference, Some(0.0));
+        assert_eq!(update.roughness_aversion, Some(2.0));
+    }
+    let kernel = params.consonance_field_kernel();
+    assert_eq!(landscape.consonance_kernel.a.to_bits(), kernel.a.to_bits());
+    assert_eq!(
+        landscape.consonance_field_score[0].to_bits(),
+        kernel.score(0.6, 0.2).to_bits()
+    );
+    assert_eq!(
+        landscape.consonance_field_level[0].to_bits(),
+        params
+            .consonance_representation
+            .level(kernel.score(0.6, 0.2))
+            .to_bits()
+    );
+    assert_eq!(
+        landscape.consonance_density_mass[0].to_bits(),
+        0.6_f32.to_bits()
+    );
+    assert_ne!(landscape.consonance_field_score[0], score_before);
+    assert!(
+        landscape
+            .harmonicity01
+            .iter()
+            .zip(h_before)
+            .all(|(a, b)| a.to_bits() == b.to_bits())
+    );
+    assert!(
+        landscape
+            .roughness01
+            .iter()
+            .zip(r_before)
+            .all(|(a, b)| a.to_bits() == b.to_bits())
+    );
+
+    // A harmonicity-only UpdateLandscape must also trigger revaluation.
+    pop.apply_action(
+        Action::UpdateLandscape {
+            update: LandscapeUpdate {
+                harmonicity_preference: Some(2.0),
+                ..Default::default()
+            },
+        },
+        &landscape,
+    );
+    assert!(apply_pending_landscape_update(
+        &mut pop,
+        &mut params,
+        &mut landscape,
+        &tx,
+        None,
+    ));
+    assert_eq!(landscape.consonance_kernel.a, 2.0);
+    assert_eq!(rx.try_recv().unwrap().harmonicity_preference, Some(2.0));
 }
 
 #[test]

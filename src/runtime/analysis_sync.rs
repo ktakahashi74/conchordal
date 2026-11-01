@@ -395,9 +395,13 @@ pub(super) fn apply_pending_landscape_update(
     listener_analysis_update_tx: Option<&Sender<LandscapeUpdate>>,
 ) -> bool {
     if let Some(update) = pop.take_pending_update() {
-        let valuation_changed = update
+        let roughness_changed = update
             .roughness_aversion
             .is_some_and(|w| params.set_roughness_aversion(w));
+        let harmonicity_changed = update
+            .harmonicity_preference
+            .is_some_and(|w| params.set_harmonicity_preference(w));
+        let valuation_changed = roughness_changed || harmonicity_changed;
         if let Some(mode) = update.pitch_objective_mode {
             current_landscape.pitch_objective_mode = mode;
         }

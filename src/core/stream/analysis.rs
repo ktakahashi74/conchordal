@@ -235,6 +235,9 @@ impl AnalysisStream {
         if let Some(w) = upd.roughness_aversion {
             self.params.set_roughness_aversion(w);
         }
+        if let Some(w) = upd.harmonicity_preference {
+            self.params.set_harmonicity_preference(w);
+        }
         if let Some(mode) = upd.pitch_objective_mode {
             self.analysis.landscape.pitch_objective_mode = mode;
         }
@@ -389,6 +392,68 @@ mod tests {
             assert_eq!(actual.harmonicity, expected.harmonicity);
             assert_eq!(actual.roughness01, expected.roughness01);
         }
+    }
+
+    #[test]
+    fn harmonicity_preference_live_update_reaches_analysis_and_loo_without_changing_sensation() {
+        use crate::core::stream::loo::Observer;
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let mut original = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
+        let audio: Vec<_> = (0..original.hop_samples())
+            .map(|i| 0.03 * (i as f32 * 0.11).sin())
+            .collect();
+        for _ in 0..4 {
+            original.process(&audio);
+        }
+        let mut updated = original.clone();
+        let mut observer = Observer::new(7, 0, &original);
+        let update = LandscapeUpdate {
+            harmonicity_preference: Some(0.0),
+            ..Default::default()
+        };
+        updated.apply_update(update);
+        observer.update(update);
+        let mut changed_params = params.clone();
+        changed_params.set_harmonicity_preference(0.0);
+        for _ in 0..4 {
+            let mut reference = original.process(&audio).clone();
+            let mut actual = updated.process(&audio).clone();
+            reference.recompute_consonance(&params);
+            actual.recompute_consonance(&changed_params);
+            observer.process(&audio, &vec![0.0; audio.len()]);
+            let excluded = observer.snapshot();
+            assert_eq!(actual.consonance_kernel.a, 0.0);
+            assert_eq!(
+                actual.consonance_kernel.b.to_bits(),
+                reference.consonance_kernel.b.to_bits()
+            );
+            assert_eq!(
+                actual.consonance_kernel.c.to_bits(),
+                reference.consonance_kernel.c.to_bits()
+            );
+            for (a, b) in [
+                (&actual.harmonicity, &reference.harmonicity),
+                (&actual.harmonicity01, &reference.harmonicity01),
+                (&actual.roughness01, &reference.roughness01),
+                (&excluded.h_scan, &reference.harmonicity01),
+                (&excluded.r_scan, &reference.roughness01),
+            ] {
+                assert!(a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits()));
+            }
+            let kernel = changed_params.consonance_field_kernel();
+            for i in 0..excluded.score_scan.len() {
+                assert_eq!(
+                    excluded.score_scan[i].to_bits(),
+                    kernel
+                        .score(excluded.h_scan[i], excluded.r_scan[i])
+                        .to_bits()
+                );
+            }
+        }
+        // New observers inherit the updated valuation; reset retains it as well.
+        let mut born_after = updated.voice_observer();
+        born_after.reset();
+        assert_eq!(born_after.process(&audio).consonance_kernel.a, 0.0);
     }
 
     #[test]

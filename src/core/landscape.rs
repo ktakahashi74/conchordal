@@ -21,6 +21,9 @@ pub struct LandscapeParams {
     /// (`b`, `c`) and the density `rho`. 1.0 keeps the configured valuation; 0.0
     /// makes valuation ignore roughness. `roughness01` (the sensation) is untouched.
     pub roughness_aversion: f32,
+    /// Valuation weight on the field's `a` term and exponent of density H01.
+    /// Leaves the interaction term and H/R sensation unchanged.
+    pub harmonicity_preference: f32,
     pub habituation: crate::core::habituation::HabituationParams,
 
     /// Exponent for subjective intensity (≈ specific loudness). Typical: 0.23
@@ -47,6 +50,8 @@ pub struct LandscapeParams {
 
 /// Upper bound on the roughness-aversion weight; keeps scaled coefficients finite.
 pub const ROUGHNESS_AVERSION_MAX: f32 = 100.0;
+/// Upper bound on the harmonicity-preference weight, matching roughness valuation.
+pub const HARMONICITY_PREFERENCE_MAX: f32 = 100.0;
 
 impl LandscapeParams {
     /// Every entry point applies aversion through here. Non-finite updates are
@@ -62,9 +67,21 @@ impl LandscapeParams {
         changed
     }
 
+    /// Ignores non-finite updates and clamps finite weights; returns whether changed.
+    pub fn set_harmonicity_preference(&mut self, w: f32) -> bool {
+        if !w.is_finite() {
+            return false;
+        }
+        let w = w.clamp(0.0, HARMONICITY_PREFERENCE_MAX);
+        let changed = w != self.harmonicity_preference;
+        self.harmonicity_preference = w;
+        changed
+    }
+
     pub fn consonance_field_kernel(&self) -> ConsonanceKernel {
         let w = self.roughness_aversion;
         ConsonanceKernel {
+            a: self.consonance_kernel.a * self.harmonicity_preference,
             b: self.consonance_kernel.b * w,
             c: self.consonance_kernel.c * w,
             ..self.consonance_kernel
@@ -81,6 +98,7 @@ impl LandscapeParams {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LandscapeUpdate {
     pub roughness_aversion: Option<f32>,
+    pub harmonicity_preference: Option<f32>,
     pub pitch_objective_mode: Option<PitchObjectiveMode>,
 }
 
@@ -126,7 +144,7 @@ pub struct Landscape {
     /// Layer 2: normalized level in [0, 1].
     pub consonance_field_level: Vec<f32>,
     /// Density axis: spawn mass before occupancy/mask.
-    /// Computed as max(0, H01 * (1 - rho * R01)) via ConsonanceKernel::density_with_rho.
+    /// Computed as max(0, H01^w_H * (1 - rho * R01)); w_H=1 retains the bilinear path.
     pub consonance_density_mass: Vec<f32>,
     /// Density axis: normalized PMF for no-mask/default view.
     pub consonance_density: Vec<f32>,
@@ -415,8 +433,14 @@ impl Landscape {
         for i in 0..n {
             let h01 = sanitize01(self.harmonicity01[i]);
             let r01 = sanitize01(self.roughness01[i]);
+            // Preserve the original arithmetic at the neutral weight, including H01=0.
+            let weighted_h = if params.harmonicity_preference == 1.0 {
+                h01
+            } else {
+                h01.powf(params.harmonicity_preference)
+            };
             self.consonance_density_mass[i] =
-                sanitize_nonnegative_finite(density_kernel.score(h01, r01));
+                sanitize_nonnegative_finite(density_kernel.score(weighted_h, r01));
         }
     }
 
@@ -533,6 +557,7 @@ mod tests {
             consonance_representation: ConsonanceRepresentationParams::default(),
             consonance_density_roughness_gain: 1.0,
             roughness_aversion: 1.0,
+            harmonicity_preference: 1.0,
             habituation: crate::core::habituation::HabituationParams::default(),
             loudness_exp: 1.0,
             ref_power: 1.0,
@@ -732,6 +757,175 @@ mod tests {
         let doubled = k.a * h + 2.0 * (k.b * 0.5 + k.c * h * 0.5) + k.d;
         assert!((landscape.consonance_field_score[0] - doubled).abs() < 1e-6);
         assert!((landscape.consonance_density_mass[0] - h * (1.0 - 1.6 * 0.5)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn harmonicity_preference_neutral_preserves_all_valuation_views_bit_exact() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        let grid = [0.0, f32::MIN_POSITIVE, 0.01, 0.25, 0.4, 0.8, 1.0];
+        for configured in [
+            params.consonance_kernel,
+            ConsonanceKernel {
+                a: 0.73,
+                b: -0.6,
+                c: 0.4,
+                d: -0.1,
+            },
+        ] {
+            params.consonance_kernel = configured;
+            for aversion in [0.0, 0.3, 1.0, 100.0] {
+                params.set_roughness_aversion(aversion);
+                // The pre-HV-1 field and density construction, without the new control.
+                let old_field = ConsonanceKernel {
+                    b: configured.b * aversion,
+                    c: configured.c * aversion,
+                    ..configured
+                };
+                let old_density = ConsonanceKernel::density_with_rho(
+                    params.consonance_density_roughness_gain * aversion,
+                );
+                for h in grid {
+                    for r in grid {
+                        landscape.harmonicity.fill(h);
+                        landscape.roughness01.fill(r);
+                        landscape.recompute_consonance(&params);
+                        let score = old_field.score(h, r);
+                        let level = params.consonance_representation.level(score);
+                        let mass = sanitize_nonnegative_finite(old_density.score(h, r));
+                        for (actual, expected) in [
+                            (landscape.consonance_field_score[0], score),
+                            (landscape.consonance_field_level[0], level),
+                            (
+                                landscape.consonance_field_energy[0],
+                                params.consonance_representation.energy(score),
+                            ),
+                            (landscape.consonance_density_mass[0], mass),
+                            (landscape.consonance_field_score_eff[0], score),
+                            (landscape.consonance_field_level_eff[0], level),
+                            (landscape.consonance_density_mass_eff[0], mass),
+                        ] {
+                            assert_eq!(
+                                actual.to_bits(),
+                                expected.to_bits(),
+                                "H={h} R={r} aversion={aversion}"
+                            );
+                        }
+                        for habituation in [0.0, 0.25, 1.0] {
+                            landscape.apply_habituation(
+                                &vec![habituation; landscape.space.n_bins()],
+                                params.consonance_representation.theta,
+                                &params.consonance_representation,
+                            );
+                            let old_score_eff = crate::core::habituation::erode_score(
+                                score,
+                                habituation,
+                                params.consonance_representation.theta,
+                            );
+                            for (actual, expected) in [
+                                (landscape.consonance_field_score_eff[0], old_score_eff),
+                                (
+                                    landscape.consonance_field_level_eff[0],
+                                    params.consonance_representation.level(old_score_eff),
+                                ),
+                                (
+                                    landscape.consonance_density_mass_eff[0],
+                                    crate::core::habituation::erode_mass(mass, habituation),
+                                ),
+                            ] {
+                                assert_eq!(actual.to_bits(), expected.to_bits());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn harmonicity_preference_zero_retains_interaction_and_removes_density_h_dependence() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        params.set_roughness_aversion(0.5);
+        params.set_harmonicity_preference(0.0);
+        let mut landscape = Landscape::new(space);
+        let k = params.consonance_kernel;
+        for r in [0.0, 0.2, 0.8, 1.0] {
+            let expected_mass = 1.0 - 0.5 * r;
+            for h in [0.0, 0.4, 0.8, 1.0] {
+                landscape.harmonicity.fill(h);
+                landscape.roughness01.fill(r);
+                landscape.recompute_consonance(&params);
+                let expected_score = k.b * 0.5 * r + k.c * 0.5 * h * r + k.d;
+                assert_eq!(
+                    landscape.consonance_field_score[0].to_bits(),
+                    expected_score.to_bits()
+                );
+                assert_eq!(
+                    landscape.consonance_density_mass[0].to_bits(),
+                    expected_mass.to_bits()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn harmonicity_preference_concentrates_density_without_changing_sensation() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        let mut landscape = Landscape::new(space);
+        landscape.harmonicity.fill(0.4);
+        landscape.harmonicity[0] = 0.8;
+        landscape.roughness01.fill(0.2);
+        landscape.recompute_consonance(&params);
+        let h_before = landscape.harmonicity01.clone();
+        let r_before = landscape.roughness01.clone();
+        let mut previous_ratio = 0.0;
+        for weight in [0.0, 0.5, 1.0, 2.0, HARMONICITY_PREFERENCE_MAX] {
+            params.set_harmonicity_preference(weight);
+            landscape.recompute_consonance(&params);
+            let ratio = landscape.consonance_density_mass[0] / landscape.consonance_density_mass[1];
+            assert!(ratio > previous_ratio, "weight={weight}, ratio={ratio}");
+            previous_ratio = ratio;
+            assert!(
+                landscape
+                    .harmonicity01
+                    .iter()
+                    .zip(&h_before)
+                    .all(|(a, b)| a.to_bits() == b.to_bits())
+            );
+            assert!(
+                landscape
+                    .roughness01
+                    .iter()
+                    .zip(&r_before)
+                    .all(|(a, b)| a.to_bits() == b.to_bits())
+            );
+            assert!(
+                landscape
+                    .consonance_density_mass
+                    .iter()
+                    .all(|x| x.is_finite() && *x >= 0.0)
+            );
+        }
+    }
+
+    #[test]
+    fn set_harmonicity_preference_validates_and_reports_changes() {
+        let space = Log2Space::new(100.0, 400.0, 12);
+        let mut params = build_params(&space);
+        assert!(!params.set_harmonicity_preference(1.0));
+        for w in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert!(!params.set_harmonicity_preference(w));
+            assert_eq!(params.harmonicity_preference, 1.0);
+        }
+        assert!(params.set_harmonicity_preference(1.0 + 1.0e-6));
+        assert!(params.set_harmonicity_preference(-3.0));
+        assert_eq!(params.harmonicity_preference, 0.0);
+        assert!(params.set_harmonicity_preference(f32::MAX));
+        assert_eq!(params.harmonicity_preference, HARMONICITY_PREFERENCE_MAX);
+        assert!(params.consonance_field_kernel().a.is_finite());
     }
 
     #[test]

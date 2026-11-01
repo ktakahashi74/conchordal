@@ -23,8 +23,8 @@ pub const PLACEMENT: &[EvidenceDoc] = &[EvidenceDoc {
 
 pub const FIELD_PLACEMENT: &[EvidenceDoc] = &[
     EvidenceDoc {
-        en: "Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion and set_pitch_objective.",
-        ja: "該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。",
+        en: "Not a mechanism (placement): reads H/R and the authored Consonance Field valuation; see set_roughness_aversion, set_harmonicity_preference and set_pitch_objective.",
+        ja: "該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_harmonicity_preference、set_pitch_objectiveを参照。",
     },
     EvidenceDoc {
         en: "Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).",
@@ -231,6 +231,17 @@ pub const VALUATION: &[EvidenceDoc] = &[EvidenceDoc {
     en: "Author rule: consonance evaluation, sign or roughness preference; does not alter H/R sensation (§9.3.56). Existing valuation defaults remain active.",
     ja: "作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。",
 }];
+
+pub const HARMONICITY_VALUATION: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Author rule: multiply the field's a coefficient by the weight and use it as the exponent of density H01. H/R sensation is unchanged (§9.3.56).",
+        ja: "作者規則：重みを場の係数aに掛け、密度ではH01の指数に用いる。H/Rの感覚は変更しない（§9.3.56）。",
+    },
+    EvidenceDoc {
+        en: "Principle: Western consonance preference tracks harmonicity and grows with musical experience (McDermott, Lehr & Oxenham 2010); Tsimane listeners show no consonance preference (McDermott et al. 2016). This motivates a layer-3 valuation weight, not its mathematical form.",
+        ja: "原理：西洋の聴き手の協和の好みは調和性の好みに従い、音楽経験とともに強まる（McDermott, Lehr & Oxenham 2010）。Tsimaneの聴き手には協和の好みが見られない（McDermott et al. 2016）。第3層に評価の重みを置く根拠であり、重みの式を導く根拠ではない。",
+    },
+];
 
 pub const COUPLING: &[EvidenceDoc] = &[EvidenceDoc {
     en: "Author rule: coupling weight; Voice social coupling and listener DCC feedback are distinct paths (§9.3.57).",

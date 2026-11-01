@@ -846,6 +846,9 @@ pub enum Action {
     SetRoughnessAversion {
         value: f32,
     },
+    SetHarmonicityPreference {
+        value: f32,
+    },
     Finish,
 }
 
@@ -904,14 +907,19 @@ impl fmt::Display for Action {
             ),
             Action::UpdateLandscape { update } => write!(
                 f,
-                "UpdateLandscape roughness_aversion={:?} pitch_objective={:?}",
-                update.roughness_aversion, update.pitch_objective_mode
+                "UpdateLandscape roughness_aversion={:?} harmonicity_preference={:?} pitch_objective={:?}",
+                update.roughness_aversion,
+                update.harmonicity_preference,
+                update.pitch_objective_mode
             ),
             Action::SetGlobalCoupling { value } => {
                 write!(f, "SetGlobalCoupling value={:.3}", value)
             }
             Action::SetRoughnessAversion { value } => {
                 write!(f, "SetRoughnessAversion value={:.3}", value)
+            }
+            Action::SetHarmonicityPreference { value } => {
+                write!(f, "SetHarmonicityPreference value={:.3}", value)
             }
             Action::Finish => write!(f, "Finish"),
         }

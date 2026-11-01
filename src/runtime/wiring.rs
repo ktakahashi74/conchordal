@@ -42,6 +42,7 @@ pub(super) fn build_analysis_runtime_core(
         },
         consonance_density_roughness_gain: config.psychoacoustics.consonance.density.roughness_gain,
         roughness_aversion: 1.0,
+        harmonicity_preference: 1.0,
         habituation: crate::core::habituation::HabituationParams {
             enabled: config.psychoacoustics.habituation.enabled,
             satiation_sec: config.psychoacoustics.habituation.satiation_sec,

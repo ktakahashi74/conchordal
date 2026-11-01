@@ -285,7 +285,7 @@ consonance(min_hz, max_hz) -> Placement
 
 Target consonance maxima. Density cloud by default; `.peak()` for the extremum. `consonance(root)` takes a harmonic window around a root (default 1x-4x, set multiples with `range()`); `consonance(min, max)` takes an absolute range. Default spacing is 1.0 ERB.
 
-**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_harmonicity_preference、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 #### `dissonance`
 
@@ -295,7 +295,7 @@ dissonance(min_hz, max_hz) -> Placement
 
 Target consonance minima (tension, clusters). Density cloud by default; `.peak()` for the most dissonant point.
 
-**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_harmonicity_preference、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 #### `edge`
 
@@ -305,7 +305,7 @@ edge(min_hz, max_hz) -> Placement
 
 Target the consonance/dissonance boundary (C near its midpoint). The metastable region between fusion and beating. Density band by default; `.peak()` for the point closest to the boundary.
 
-**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_harmonicity_preference、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 #### `gap`
 
@@ -315,7 +315,7 @@ gap(min_hz, max_hz) -> Placement
 
 Target empty registers (low subjective intensity); fill the room. Density cloud by default; `.peak()` for the emptiest position.
 
-**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_harmonicity_preference、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 #### `peak`
 
@@ -327,7 +327,7 @@ peak()
 
 Realize a field target as its deterministic extremum.
 
-**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_harmonicity_preference、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 #### `density`
 
@@ -339,7 +339,7 @@ density()
 
 Realize a field target as a stochastic cloud (the default).
 
-**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_harmonicity_preference、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 #### `tension`
 
@@ -351,7 +351,7 @@ tension(degree)
 
 Bias Consonance placement toward a field-score step below the in-range maximum (degree 0..1). Consonance placement only. 0 leaves ordinary Consonance placement unchanged: `peak()` selects the strongest peak, while the default density remains the ordinary Consonance cloud. Higher values target a weaker, more tense step (target = L_max - degree*(L_max - L_min) over the range, in field_score). Pairs with peak() (nearest step, sharp) or density (a broader cloud around it).
 
-**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_harmonicity_preference、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 #### `random`
 
@@ -407,7 +407,7 @@ spacing(min_erb)
 
 Minimum ERB distance between placed voices; valid on field placements.
 
-**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
+**根拠:** 該当なし（配置）：H/Rと作者が定めたConsonance Fieldの評価を入力とする。set_roughness_aversion、set_harmonicity_preference、set_pitch_objectiveを参照。<br>原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：極値・密度・間隔・緊張に基づく選択（§9.3.56）。
 
 ### TimelineとPopulation
 
@@ -1392,6 +1392,16 @@ set_roughness_aversion(weight)
 How much the modeled listener minds roughness (default 1.0). Cursor event: changes roughness valuation from this script time onward. Dimensionless, nonnegative; zero removes aversion. Does not change raw roughness sensation.
 
 **根拠:** 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。
+
+#### `set_harmonicity_preference`
+
+```rhai,ignore
+set_harmonicity_preference(weight)
+```
+
+How much the modeled listener values harmonic support (default 1.0). Cursor event: changes harmonicity valuation from this script time onward. Dimensionless, nonnegative; finite weights are clamped to [0,100] and non-finite values are ignored. Zero removes the field's harmonicity term and makes spawn density independent of harmonicity. The interaction term remains controlled by set_roughness_aversion. Does not change harmonicity sensation.
+
+**根拠:** 作者規則：重みを場の係数aに掛け、密度ではH01の指数に用いる。H/Rの感覚は変更しない（§9.3.56）。<br>原理：西洋の聴き手の協和の好みは調和性の好みに従い、音楽経験とともに強まる（McDermott, Lehr & Oxenham 2010）。Tsimaneの聴き手には協和の好みが見られない（McDermott et al. 2016）。第3層に評価の重みを置く根拠であり、重みの式を導く根拠ではない。
 
 #### `set_pitch_objective`
 

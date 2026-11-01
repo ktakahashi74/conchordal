@@ -248,20 +248,22 @@ $$ C_{score} = a \cdot H_{01} + b \cdot R_{01} + c \cdot H_{01} R_{01} + d $$
 
 ディレクター操作 `set_roughness_aversion(w)` は、粗さの項 $b$、$c$ と後述の密度の $\rho$ に $w$ を掛ける（既定値1では設定値がビット単位でそのまま使われる）。$w$ は $[0, 100]$ に制限され、有限でない値は無視される。$w = 0$ では評価が粗さを無視する。設定されたカーネルがどの調波性でも粗さを罰する場合（$b \le 0$ かつ $b + c \le 0$。既定値はこれを満たす）、$w$ が大きいほど粗さをより強く嫌う。感覚され表示される $R_{01}$ 自体は変わらない。
 
+対になる `set_harmonicity_preference(w_H)` は、場の係数 $a$ だけに $w_H$ を掛け、密度では $H_{01}$ の指数に用いる。密度の正規化前の重みは $\max(0, H_{01}^{w_H}(1-\rho_{eff}R_{01}))$ となり、$\rho_{eff}=\rho w$ は粗さへの嫌悪で決まる。指定したスクリプト時刻から効く操作で、既定値は1。有限値は $[0,100]$ に制限し、有限でない値は無視する。1では従来の計算結果とビット単位で一致する。0では場の $aH_{01}$ の項が消え、密度の重みは調波性に依存しなくなる。$H_{01}=0$ でも $0^0=1$ として扱う。交互作用の係数 $c$ は引き続き粗さへの嫌悪に属する。どちらの操作も、感覚としての $H_{01}$ と $R_{01}$ は変えない。重みの式は作者の規則である。西洋の聴き手の協和の好みは調波性の好みに従い、音楽経験とともに強まる（McDermott, Lehr & Oxenham 2010）。Tsimaneの聴き手には協和の好みが見られない（McDermott et al. 2016）。これらは評価の重みを独立に置く根拠であり、この式を導く根拠ではない。
+
 **第2層 — 表現：**
 
 | 名前 | 式 | 範囲 | 意味 |
 | :--- | :--- | :--- | :--- |
 | $C_{score}$ | $aH + bR + cHR + d$ | $(-\infty,+\infty)$ | カーネルからの生の適応度 |
 | $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | 馴化のdriveと非浸食viewに使うbase level |
-| $C_{density\_mass}$ | $\max(0,\;H_{01}(1 - \rho R_{01}))$ | $[0,+\infty)$ | 浸食前のbase density mass |
+| $C_{density\_mass}$ | $\max(0,\;H_{01}^{w_H}(1 - \rho_{eff} R_{01}))$ | $[0,+\infty)$ | 浸食前のbase density mass |
 | $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass}^{eff})$ | $[0,1],\;\Sigma=1$ | `Landscape`に残る全域正規化view |
 | $C_{energy}$ | $-C_{score}$ | $(-\infty,+\infty)$ | 最小化用エネルギー |
 | $C_{score}^{eff}$ | $\theta+(C_{score}-\theta)(1-h)$ | $(-\infty,+\infty)$ | 移動と予測が読む馴化浸食後のscore |
 | $C_{level01}^{eff}$ | $\sigma(\beta(C_{score}^{eff}-\theta))$ | $[0,1]$ | behaviorとlistenerが読む浸食後のlevel |
 | $C_{density\_mass}^{eff}$ | $(1-h)C_{density\_mass}$ | $[0,+\infty)$ | density placementが読む浸食後のmass |
 
-ここで$\sigma(x) = 1/(1+e^{-x})$、$\beta$はシグモイドの急峻度（デフォルト2.0）、$\theta$はその閾値（デフォルト0.0）である。density massには係数$a{=}1, b{=}0, c{=}{-}\rho, d{=}0$の別個の$\rho$-kernelを用いる。$\rho$（`consonance_density_roughness_gain`、デフォルト1.0）は、roughnessがdensity placementをどれだけ抑えるかを決める。
+ここで$\sigma(x) = 1/(1+e^{-x})$、$\beta$はシグモイドの急峻度（デフォルト2.0）、$\theta$はその閾値（デフォルト0.0）である。密度の正規化前の重みは、$H_{01}^{w_H}$を係数$a{=}1, b{=}0, c{=}{-}\rho_{eff}, d{=}0$の別のカーネルへ入力して計算する。設定値$\rho$（`consonance_density_roughness_gain`、デフォルト1.0）は、roughnessがdensity placementをどれだけ抑えるかを決める。
 
 出生は指定範囲内の分布から抽選する。既定の`SpawnStrategy::Field`は、その周波数範囲だけを切り出し、浸食後の地形から対象別の局所massを作る。そこへ占有maskをかけ、その範囲だけで正規化する。massが全て0なら未占有ビン上の一様分布へ、全ビンが占有されていれば範囲全体の一様分布へ戻る。peak配置は対象の極値を決定論的に選び、tensionを指定した場合は目標field-scoreに最も近い候補を選ぶ。全域の$C_{density\_pmf}$は正規化されたLandscape表現として残り、core testが使う。
 
@@ -1018,7 +1020,7 @@ entrained／steady／flow以外は、配置時の書き込み前にerrorにす�
 *   `play(callback)` / `parallel([callbacks])`: スコープ付き/並行ブロック実行。
 
 **ディレクター操作**（両軸のシーングローバルな地形シェイピング）:
-*   調波地形: `set_roughness_aversion(w)`, `set_pitch_objective("consonance"|"dissonance")`。どちらも評価を変え、感覚としての $R_{01}$ / $H_{01}$ は変えない。
+*   調波地形: `set_roughness_aversion(w)`, `set_harmonicity_preference(w_H)`, `set_pitch_objective("consonance"|"dissonance")`。いずれも評価を変え、感覚としての $R_{01}$ / $H_{01}$ は変えない。
 *   時間地形: `meter_stability(v)`, `temporal_basin(min_hz, max_hz)`（4.4節）。
 *   相互作用: `set_global_coupling(v)`。
 
@@ -1081,7 +1083,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | 記号媒介なしの生成 | `Log2Space`+ランドスケープ。音名・音階・拍子記号はエンジンのどこにも存在しない | §2–4 | 実装済み |
 | 周波数軸の地形（蝸牛/脳幹モデル） | 粗さ・調波性・協和性カーネル | §3 | 実装済み |
 | 時間軸の地形（神経振動） | 創発メーター：強制リミットサイクル、既定の発音列または任意の連続T2再来によるテンポ適応。位相・強度は速い入力で更新し、確信度は位相原点の正しさを認定しない。`metric` は明示的な同期を保ち、`entrained`・`steady`・`flow` は有界な音響観測と身体の参加方策を使う。steadyはdueを固定し、鳴らすか見送るかを選ぶ | §4, §5.4 | 部分。全条件での時間関係の持続は未解決。小節アクセントの結合は任意 |
-| 地形の可変性（文化・個人・未知の原理） | 協和性カーネル係数、`set_roughness_aversion`、既定で有効な慣れによる浸食 | §3.4–3.5, §6.3.6 | 部分。文化的音律体系は未取込 |
+| 地形の可変性（文化・個人・未知の原理） | 協和性カーネル係数、`set_roughness_aversion`、`set_harmonicity_preference`、既定で有効な慣れによる浸食 | §3.4–3.5, §6.3.6 | 部分。文化的音律体系は未取込 |
 | 順応と期待 | Voice ごとの `AdaptationContext`、ecology/listener の `HabituationField`、habitat 側の参加へ渡す短期の反復予測とエネルギー予測 | §3.5, §5 | 部分。関係の記憶、phrase/scene の期待、行動価値学習は未解決 |
 | 音響生命：知覚・代謝・自律 | Voice：アーティキュレーション生命コア、正規化エネルギー、時間領域の endurance/recovery、生存可能性 | §5 | 実装済み |
 | 集団：ニッチ・共生・地形変形 | クラウディング、リスポーン、閉ループ | §5 | 実装済み |
@@ -1120,6 +1122,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | `kernel.d` | `ConsonanceKernel` | Float | バイアス項（デフォルト 0.0）。 |
 | `beta` | `ConsonanceRepresentationParams` | Float | $C_{level01}$ のシグモイド急峻度（デフォルト 2.0）。 |
 | `roughness_aversion` | `LandscapeParams` | Float | 粗さの項 $b$、$c$ と密度の $\rho$ に掛かる評価の重み。`set_roughness_aversion` で設定する。デフォルト 1.0。 |
+| `harmonicity_preference` | `LandscapeParams` | Float | 場の係数 $a$ に掛ける重み。密度では $H_{01}$ の指数に用いる。`set_harmonicity_preference` で設定する。既定値 1.0。 |
 | `theta` | `ConsonanceRepresentationParams` | Float | $C_{level01}$ のシグモイド閾値（デフォルト 0.0）。 |
 | `consonance_density_roughness_gain` | `LandscapeParams` | Float | 密度カーネルにおける $\rho$（デフォルト 1.0）。 |
 | `habituation.enabled` | `HabituationParams` | Bool | Landscapeの慣れによる浸食を有効にする。設定の既定値はtrue。falseを明示するとeffective viewはbase viewとbit単位で一致する。 |

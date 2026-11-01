@@ -468,9 +468,13 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - Field is a bilinear evaluation terrain for behavior, hill-climb, prediction, and UI:
   `field_score = a*H01 + b*R01 + c*H01*R01 + d`.
 - Density is a spawn distribution derived from non-negative mass then normalized to PMF.
-- Density uses a minimal family to absorb roughness-scale arbitrariness:
-  `K_density(H,R; rho) = max(0, H01 * (1 - rho*R01))`.
-- Implementation is unified through `ConsonanceKernel::density_with_rho(rho)` (bilinear special case with coefficients `(1,0,-rho,0)`), while density freedom is limited to `rho` only.
+- Density uses `mass = max(0, H01^w_H * (1 - rho_eff*R01))`.
+  `set_roughness_aversion(w_R)` scales `rho_eff = rho*w_R` and field coefficients
+  `b`, `c`; `set_harmonicity_preference(w_H)` scales only field coefficient `a`
+  and sets the density exponent. The interaction term stays with roughness valuation.
+- Density evaluates `ConsonanceKernel::density_with_rho(rho_eff)` with `H01^w_H`.
+  At `w_H = 1` the original H01 path is bit-exact; at `w_H = 0`, including H01=0,
+  the H factor is 1. Both weights default to 1 and leave H/R sensation unchanged.
 
 ## Consonance Variants (Current)
 1. `consonance_field_score`
@@ -487,7 +491,7 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - Definition: `-score`.
 - Usage: retained for minimization view and consistency checks.
 4. `consonance_density_mass`
-- Definition: `max(0, H01*(1-rho*R01))`.
+- Definition: `max(0, H01^w_H*(1-rho_eff*R01))`.
 - Implementation: `ConsonanceKernel::density_with_rho(rho)` + `src/core/landscape.rs`.
 - Usage: Flora placement reads this base mass. It also supplies the eroded mass and
   `build_consonance_density` (`src/core/landscape.rs`). Range-local spawn reads

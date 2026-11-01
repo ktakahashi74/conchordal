@@ -2361,6 +2361,21 @@ impl ScriptHost {
             },
         );
 
+        let ctx_for_set_harmonicity_preference = ctx.clone();
+        numeric_overloads!(engine, "set_harmonicity_preference", |_call_ctx; value| {
+                let mut ctx = ctx_for_set_harmonicity_preference
+                    .lock()
+                    .expect("lock script context");
+                let cursor = ctx.cursor;
+                ctx.push_event(
+                    cursor,
+                    vec![Action::SetHarmonicityPreference {
+                        value: value as f32,
+                    }],
+                );
+            },
+        );
+
         engine
     }
 

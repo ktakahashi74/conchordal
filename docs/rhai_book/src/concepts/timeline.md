@@ -109,7 +109,8 @@ even after `wait()`. `temporal_mode` is also a scene setting, but must be declar
 once at top level before events.
 
 The `set_` verbs schedule parameter changes at the current cursor:
-`set_roughness_aversion`, `set_global_coupling`, and `set_pitch_objective`.
+`set_roughness_aversion`, `set_harmonicity_preference`, `set_global_coupling`, and
+`set_pitch_objective`.
 Use `wait()` to choose when those changes take effect. Placement, release and
 scope verbs continue to describe actions rather than parameter settings.
 

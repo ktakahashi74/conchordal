@@ -1004,12 +1004,23 @@ and are judged by listening together with those records.
    - Four short, pinned-seed offline cases in `tests/flora_invariance.rs` cover sine,
      harmonic and modal bodies, plus a moving harmonic case with habituation enabled.
      They are focused scenarios, not full top-level sample renders.
-   - `tests/fixtures/flora_invariance_hashes.txt` stores the pre-Flora WAV hashes for
-     each captured target-feature combination. A matching combination compares all
-     four hashes; an uncaptured combination checks render completion without claiming
-     bit identity. The baselines are captured before Flora, never refreshed by the
-     implementation under test. These frozen cases retain their own 2048-sample
-     configuration; the current measurement campaigns below use the default window.
+   - `tests/fixtures/flora_invariance_hashes.txt` stores deterministic no-Flora WAV
+     hashes for the selected auditory front end and each captured target-feature
+     combination. A matching combination compares all four hashes; an uncaptured
+     combination checks render completion without claiming bit identity. The original
+     pre-Flora source was `1104e553`; upstream auditory-front-end and SIMD migrations
+     subsequently established the current references.
+     On 2026-11-01, IP-INT recaptured the oscillator-normalized references from an
+     independent detached `4d39b26de52ab66296497af05a99036367078ea3` checkout with only
+     the oscillator repair applied (patch SHA-256
+     `a77f6ffa673099b67e13273cd086ccff65ce33c719f901fb392026a0c74bdeae`).
+     The existing harness, seeds and configuration were unchanged. All four cases
+     matched in two acquisitions per native and portable feature group; Modal, which
+     the repair does not affect, remained bit-identical to the current upstream
+     reference in both groups. The integrated producer is checked against these
+     independently acquired references, never used to refresh its own baseline.
+     These frozen cases retain their own 2048-sample configuration; the current
+     measurement campaigns below use the default window.
    - Structurally, a scenario with no Flora passes an empty slice to the renderer, and
      Flora's code adds no arithmetic to the voice path.
 2. **Dynamics (unit, fixed synthetic terrain).**

@@ -11175,3 +11175,57 @@ No mechanism changed: the cause was a composer quantity. The Flora composer guid
 now explains how pace relates to the heard harmonic context. Pace keeps no upper
 bound. Which elements join a Flora field (none, Rain, sparse tones, plucks) is a
 composer choice per piece, not an instrument decision.
+
+### 9.3.116 Harmonicity preference and the deferred root readout (HV-1, 2026-11-01)
+
+The author asked whether developments that harmony theory treats symbolically
+(substitute chords, the flat fifth, seventh to thirteenth extensions) could become
+parameters of the cognitive landscape. Sampling near the top of the field favors
+triads and octave doublings. H weights a candidate's integer-ratio relations to the
+sounding partials by (k·m)^−0.4 (k, m ≤ 16), so simple ratios rank first, and the
+scalar `field_score` cannot separate a weakly supported note that keeps the chord's
+support from a note with no support. `tension(τ)` reads only that height, so it
+cannot make the distinction either.
+
+An independent Astra review (HV-1) corrected the orchestrator's first account. The
+H kernel's internal root spectrum is a distribution of harmonic-template support,
+not a perceived root, a root probability or a count of roots; a single sine already
+shows peaks at f/2 and f/3 with weights 0.76 and 0.64. H also rewards integer-ratio
+relations between different frequencies, so it does not measure spectral overlap,
+and lowering the preference for H does not by itself produce extensions: it also
+rewards isolated notes away from the chord. The symmetry of G7(♭5) under tritone
+transposition is a property of octave-folded pitch classes; for unfolded pitches it
+does not imply equal root support for G and D♭. Tuning a readout until named chords
+separate would install an author rule as a perceptual model.
+
+The author adopted the narrower aim of increasing non-symbolic sonic color, not
+reproducing jazz categories or harmonic function. The first step is the composer
+word `set_harmonicity_preference(w)`, the counterpart of `set_roughness_aversion`.
+It is a layer-3 valuation weight and leaves the H sensation unchanged. Listeners
+differ in harmonicity preference and cultures in consonance preference (McDermott,
+Lehr & Oxenham 2010; McDermott et al. 2016), and fusion separates from preference
+(McPherson et al. 2020). This supports placing a weight in layer 3, not its form.
+The form is an author rule. The field's `a` is multiplied by w, while the H×R
+interaction `c` stays with roughness aversion. The density mass is a product with
+H01 as a factor, so the weight there is an exponent: `max(0, H01^w (1 − ρR01))`.
+w = 1 is bit-exact with the previous valuation; w = 0 removes the harmonicity term
+from the field and makes spawn density independent of H.
+
+The root readout is a later unit and is treated as a diagnostic of template support.
+Its success is not a split of named chords; its controls are acoustic structures (a
+single tone's subharmonic series, concentrated support, separated competing support,
+broad support). Three evaluations are registered, each with the decision it changes.
+The effective width of H including the front end decides whether to proceed or to
+revisit the sensation model first; σ = 3 cents was chosen to ease sampling, not
+from a principle. Whether a concentration measure suffices decides whether an
+explicit explanatory model is needed. The effect on local selection decides whether
+the readout becomes a composer word or stays a diagnostic. Functional relations and
+substitution belong to temporal DCC and to layer-3 familiarity, under the existing
+rule against unwarned artificial harmony.
+
+Implementation (HV-1): the word follows the `set_roughness_aversion` path through the
+scenario action, community update, analysis worker, LOO observers and body
+metabolism. At w = 1 the field score, level and energy, the density mass and their
+eroded views are bit-exact with the previous construction, and `harmonicity01` and
+`roughness01` are unchanged at every w. No default, sample or listener profile
+changed, and no audition was run.

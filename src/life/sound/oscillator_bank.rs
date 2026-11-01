@@ -62,6 +62,7 @@ pub struct OscillatorBank {
     spectral_env_decay: f32,
     spectral_damping_active: bool,
     pitch_counter: usize,
+    norm_counter: usize,
     motion_counter: usize,
     current_motion_s: f32,
     current_motion_c: f32,
@@ -88,6 +89,7 @@ impl OscillatorBank {
         self.drive_env = 0.0;
         self.spectral_env = 0.0;
         self.pitch_counter = 0;
+        self.norm_counter = 0;
         self.motion_counter = 0;
         self.current_motion_s = 0.0;
         self.current_motion_c = 1.0;
@@ -205,6 +207,7 @@ impl OscillatorBank {
             spectral_env_decay: (-1.0 / (SPECTRAL_ENV_RELEASE_SEC * fs)).exp(),
             spectral_damping_active,
             pitch_counter: 0,
+            norm_counter: 0,
             motion_counter: 0,
             current_motion_s: 0.0,
             current_motion_c: 1.0,
@@ -489,6 +492,10 @@ impl OscillatorBank {
         }
 
         self.apply_phase_seed_if_needed();
+        // Newly unculled lanes must be corrected before they rotate again.
+        if nominal_pitch_hz.to_bits() != self.last_built_pitch_hz.to_bits() {
+            self.norm_counter = 0;
+        }
         self.last_built_pitch_hz = nominal_pitch_hz;
     }
 
@@ -537,6 +544,10 @@ impl OscillatorBank {
         }
 
         self.apply_phase_seed_if_needed();
+        // Newly unculled lanes must be corrected before they rotate again.
+        if nominal_pitch_hz.to_bits() != self.last_built_pitch_hz.to_bits() {
+            self.norm_counter = 0;
+        }
         self.last_built_pitch_hz = nominal_pitch_hz;
     }
 
@@ -620,9 +631,23 @@ impl OscillatorBank {
         }
     }
 
-    // The rotation kernel preserves state magnitude in exact arithmetic; with f32 it
-    // drifts (or diverges near instability). Active lanes start at unit norm, so a large
-    // departure signals drift/blowup rather than normal operation. Debug-only guard.
+    // Use a render clock: phase3_carrier keeps rotating with closed control,
+    // when pitch_counter is held. Culled lanes stay frozen until reactivation.
+    fn advance_norm_correction(&mut self) {
+        if self.norm_counter == 0 {
+            for idx in 0..self.active_lane_len {
+                let x = self.x[idx];
+                let y = self.y[idx];
+                let norm_sq = x * x + y * y;
+                // Newton's inverse-square-root step leaves O((norm_sq - 1)^2).
+                let gain = 1.5 - 0.5 * norm_sq;
+                self.x[idx] = x * gain;
+                self.y[idx] = y * gain;
+            }
+        }
+        self.norm_counter = (self.norm_counter + 1) % PITCH_REFRESH_PERIOD_SAMPLES;
+    }
+
     #[cfg(debug_assertions)]
     fn debug_assert_state_norms_sane(&self) {
         for idx in 0..self.active_lane_len {
@@ -662,6 +687,7 @@ impl OscillatorBank {
     /// level (SSE2, NEON), which needs no runtime dispatch. Without `mul_add`, every
     /// level matches `process_sample_basic` bit for bit.
     fn process_sample(&mut self, use_motion: bool, motion_s: f32, motion_c: f32) -> f32 {
+        self.advance_norm_correction();
         dispatch!(Level::baseline(), simd => {
             self.process_sample_lanes(simd, use_motion, motion_s, motion_c)
         })
@@ -844,6 +870,7 @@ impl OscillatorBank {
                     self.current_motion_c,
                 )
             } else {
+                self.advance_norm_correction();
                 self.process_sample_basic(
                     self.current_motion_enabled,
                     self.current_motion_s,
@@ -956,6 +983,142 @@ mod tests {
             unison: 1,
             motion,
             ratios: None,
+        }
+    }
+
+    #[test]
+    fn sustained_carrier_norm_stays_bounded_with_motion_and_closed_control() {
+        // 20 million samples span both signs of f32 rotation-radius error.
+        // The 2e-4 squared-norm budget includes 64 steps of two rounded rotations.
+        for motion in [0.0, 0.4] {
+            let mut snapshot = harmonic_snapshot(motion);
+            snapshot.ratios = Some(Arc::from([1., 1.5, 2., 3., 4., 5., 6., 7., 8.]));
+            let mut bank = OscillatorBank::from_snapshot(48_000., &snapshot).unwrap();
+            bank.seed_phases(42);
+            let mut maximum = 0.0_f64;
+            for tick in 0..10_000_000 {
+                let sample = bank.phase3_carrier(220., 0.3, 0., tick < 5_000_000);
+                assert!(sample.is_finite());
+                if tick % 4093 == 0 {
+                    for lane in 0..bank.active_lane_len {
+                        let norm =
+                            f64::from(bank.x[lane]).powi(2) + f64::from(bank.y[lane]).powi(2);
+                        maximum = maximum.max((norm - 1.).abs());
+                        assert!(
+                            maximum < 2e-4,
+                            "motion={motion} tick={tick} lane={lane} norm={norm}"
+                        );
+                    }
+                }
+            }
+            eprintln!("sustained carrier motion={motion} max norm-squared error={maximum}");
+        }
+    }
+
+    #[test]
+    fn norm_correction_preserves_phase_seed_and_culled_lanes() {
+        let mut bank = OscillatorBank::from_snapshot(48_000., &harmonic_snapshot(0.)).unwrap();
+        bank.seed_phases(73);
+        bank.phase3_carrier(220., 1., 0., true);
+        let mut seed = 73;
+        let [x, y] = seeded_phase_state(&mut seed);
+        let [c, s] = [bank.rot_c[0], bank.rot_s[0]];
+        let expected = [c * x - s * y, s * x + c * y];
+        assert!((bank.x[0] * expected[1] - bank.y[0] * expected[0]).abs() < 1e-6);
+        bank.phase3_carrier(20_000., 1., 0., true);
+        let frozen = [bank.x[1], bank.y[1]];
+        for _ in 0..129 {
+            bank.phase3_carrier(20_000., 1., 0., true);
+        }
+        assert_eq!([bank.x[1], bank.y[1]], frozen);
+        // Short repeated activations cannot evade the render-clock correction.
+        for _ in 0..10_000 {
+            bank.phase3_carrier(220., 1., 0., true);
+            bank.phase3_carrier(20_000., 1., 0., true);
+        }
+        for lane in 0..bank.lane_len_real {
+            assert!((bank.x[lane].hypot(bank.y[lane]) - 1.).abs() < 1e-5);
+        }
+        // A positive radial correction preserves angle, even at a cadence boundary.
+        bank.x[0] = 0.6 * 1.00001;
+        bank.y[0] = 0.8 * 1.00001;
+        bank.norm_counter = 0;
+        bank.advance_norm_correction();
+        assert!((bank.x[0] * 0.8 - bank.y[0] * 0.6).abs() < 1e-7);
+    }
+
+    #[test]
+    fn oscillator_forecasts_keep_the_carrier_radius_at_distant_ticks() {
+        use super::super::sine_forecast::SineForecast;
+        let mut bank = OscillatorBank::from_snapshot(48_000., &harmonic_snapshot(0.)).unwrap();
+        for _ in 0..8192 {
+            bank.phase3_carrier(220., 1., 0., true);
+        }
+        let forecast = bank.bank_forecast(220., 8192, None).unwrap();
+        let sine = SineForecast {
+            first_sample: 8192,
+            state: [bank.x[0], bank.y[0]],
+            rotation: [bank.rot_c[0], bank.rot_s[0]],
+            boost: 0.,
+            boost_decay: 1.,
+        };
+        let reference = sine.at(8192).unwrap();
+        let radius = reference[0].hypot(reference[1]);
+        for tick in [8192, 48_000 * 3600, 48_000 * 36_000, 1_000_000_000_000] {
+            let predicted = sine.at(tick).unwrap();
+            assert!((predicted[0].hypot(predicted[1]) - radius).abs() < 1e-12);
+            let initial = forecast.lane_at(0, 8192).unwrap();
+            let predicted = forecast.lane_at(0, tick).unwrap();
+            assert!(
+                (predicted[0].hypot(predicted[1]) - initial[0].hypot(initial[1])).abs() < 1e-12
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn oscillator_norm_correction_has_no_steady_state_allocations() {
+        let mut bank = OscillatorBank::from_snapshot(48_000., &harmonic_snapshot(0.4)).unwrap();
+        bank.seed_phases(42);
+        bank.phase3_carrier(220., 0.3, 0., true);
+        crate::runtime_profile::begin_allocations();
+        for tick in 0..48_000 {
+            std::hint::black_box(bank.phase3_carrier(220., 0.3, 0., tick < 24_000));
+        }
+        let counts = crate::runtime_profile::finish_allocations().unwrap();
+        assert_eq!(counts.count, 0);
+        assert_eq!(counts.bytes, 0);
+        eprintln!("oscillator normalization allocations={counts:?}");
+    }
+
+    #[test]
+    #[ignore = "manual normalization cost measurement; no timing acceptance threshold"]
+    fn oscillator_norm_correction_cost_probe() {
+        for motion in [false, true] {
+            for lanes in [1, 9, 48] {
+                let mut snapshot = harmonic_snapshot(0.);
+                snapshot.ratios = Some(Arc::from(vec![1.; lanes]));
+                let mut initial = OscillatorBank::from_snapshot(48_000., &snapshot).unwrap();
+                initial.phase3_carrier(220., 0.3, 0., true);
+                let (s, c) = 0.001_f32.sin_cos();
+                for corrected in [false, true, true, false] {
+                    let mut bank = initial.clone();
+                    let began = std::time::Instant::now();
+                    for _ in 0..2_000_000 {
+                        if corrected {
+                            bank.advance_norm_correction();
+                        }
+                        let sample = dispatch!(Level::baseline(), simd => {
+                            bank.process_sample_lanes(simd, motion, s, c)
+                        });
+                        std::hint::black_box(sample);
+                    }
+                    eprintln!(
+                        "NORM_COST motion={motion} lanes={lanes} corrected={corrected} ns_per_sample={}",
+                        began.elapsed().as_nanos() as f64 / 2_000_000.
+                    );
+                }
+            }
         }
     }
 

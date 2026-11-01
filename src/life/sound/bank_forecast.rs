@@ -122,7 +122,8 @@ impl BankForecast {
                 };
                 let drive = f64::from(drive_env)
                     * f64::from(drive_decay).powf((tick - self.first_sample) as f64);
-                let gain = c.hypot(s).powf(steps) * mask * (1. + 0.25 * drive);
+                // Oscillator radius is maintained by the renderer, unlike modal decay.
+                let gain = mask * (1. + 0.25 * drive);
                 let (sin, cos) = (omega * steps).sin_cos();
                 [
                     (x * cos - y * sin) * gain,

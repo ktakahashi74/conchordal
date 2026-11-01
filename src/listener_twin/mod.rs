@@ -804,7 +804,7 @@ mod tests {
         twin.observe_presentation_landscape(0.0, 0, 0, &landscape);
         crate::runtime_profile::begin_allocations();
         for frame in 1..65 {
-            twin.observe_presentation_landscape(frame as f32 * 0.01, frame, frame - 1, &landscape);
+            twin.observe_presentation_landscape(frame as f64 * 0.01, frame, frame - 1, &landscape);
         }
         let counts = crate::runtime_profile::finish_allocations().unwrap();
         assert_eq!((counts.count, counts.bytes), (0, 0));

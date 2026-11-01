@@ -17,8 +17,9 @@ impl SineForecast {
         let omega = s.atan2(c);
         let steps = elapsed as f64 + 1.;
         let (sin, cos) = (omega * steps).sin_cos();
-        let gain = c.hypot(s).powf(steps)
-            * (1. + f64::from(self.boost) * f64::from(self.boost_decay).powf(elapsed as f64));
+        // The renderer periodically restores unit radius; coefficient roundoff
+        // is not a physical growth/decay rate to extrapolate over the horizon.
+        let gain = 1. + f64::from(self.boost) * f64::from(self.boost_decay).powf(elapsed as f64);
         let result = [
             (x * cos - y * sin) * gain,
             (x * sin + y * cos) * gain,

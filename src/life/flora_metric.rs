@@ -170,8 +170,8 @@ impl Flora {
         let mut m = self.temporal.take().expect("metric state");
         let tick = m.now + offset as u64;
         let harmonic = self.harmonic_ticks.is_some();
-        let update_targets = crossing || (!harmonic && !m.active) || self.releasing;
-        if harmonic && !update_targets {
+        let allow_assignment = crossing || (!harmonic && !m.active) || self.releasing;
+        if harmonic && !allow_assignment {
             m.held.clear();
             m.held.extend(
                 self.lanes
@@ -358,7 +358,7 @@ impl Flora {
                     }
                 }
             }
-            if harmonic && !update_targets {
+            if harmonic && !allow_assignment {
                 for (lane, (position, sigma, window)) in self.lanes.iter_mut().zip(&m.held) {
                     lane.target_position = *position;
                     lane.sigma = *sigma;
@@ -440,9 +440,16 @@ impl Flora {
             } else {
                 0.0
             };
-            if update_targets && lane.mode == Mode::Free && lane.target > 0.0 {
+            if allow_assignment && lane.mode == Mode::Free && lane.target > 0.0 {
                 lane.mode = Mode::Current;
                 lane.age_samples = 0;
+            }
+            // A silent residual becoming supported is a birth, even when its
+            // preallocated slot is already Current.
+            if lane.mode != Mode::Current
+                || (!allow_assignment && m.before[self.tonal_len + c].3 == 0.0)
+            {
+                lane.target = 0.0;
             }
             let mut moment = 0.0;
             let mut mass = 0.0;
@@ -451,31 +458,22 @@ impl Flora {
                 moment += x * self.space.centers_log2[b];
                 mass += x;
             }
-            if mass > 0.0 && (!harmonic || update_targets) {
+            if mass > 0.0 && (!harmonic || allow_assignment) {
                 lane.target_position = (moment / mass)
                     .clamp(erb_to_hz(cell.lo_erb).log2(), erb_to_hz(cell.hi_erb).log2());
             }
         }
-        if update_targets {
-            let scale = self
-                .lanes
-                .iter()
-                .map(|l| l.target.powi(2))
-                .sum::<f32>()
-                .max(1.0)
-                .sqrt()
-                .recip();
-            for lane in &mut self.lanes {
-                lane.target *= scale;
-            }
-        } else {
-            // Current mass still decides support and separation. Only sounding
-            // targets are held; zero targets retain immediate support-loss exits.
-            for (slot, lane) in self.lanes.iter_mut().enumerate() {
-                if lane.target > 0.0 {
-                    lane.target = m.before[slot].3;
-                }
-            }
+        // Continuous biomass sets amplitude; opportunities only gate assignments.
+        let scale = self
+            .lanes
+            .iter()
+            .map(|l| l.target.powi(2))
+            .sum::<f32>()
+            .max(1.0)
+            .sqrt()
+            .recip();
+        for lane in &mut self.lanes {
+            lane.target *= scale;
         }
         for (slot, lane) in self.lanes.iter().enumerate().filter(|(_, l)| l.tonal) {
             let (mode, generation, since, _) = m.before[slot];
@@ -620,7 +618,7 @@ mod tests {
     }
 
     #[test]
-    fn harmonic_flora_holds_complete_payload_and_private_pace() {
+    fn harmonic_flora_holds_geometry_and_private_pace_but_tracks_amplitude() {
         for known in [false, true] {
             let mut f = setup(FloraTone::Resonant, true);
             f.harmonic_ticks = Some(vec![173]);
@@ -630,10 +628,11 @@ mod tests {
             assert_eq!(f.births, 0);
             f.metric_allocate(true, 173);
             assert!(f.births > 0);
+            let targets: Vec<_> = f.lanes.iter().map(|l| l.target).collect();
             let payload: Vec<_> = f
                 .lanes
                 .iter()
-                .map(|l| (l.target, l.target_position, l.sigma, l.window.clone()))
+                .map(|l| (l.target_position, l.sigma, l.window.clone()))
                 .collect();
             for (i, x) in f.biomass_mass_scan.iter_mut().enumerate() {
                 *x = 0.001 + 8.0 * (-0.5 * ((i as f32 - 35.) / 2.0).powi(2)).exp();
@@ -641,15 +640,14 @@ mod tests {
             f.harmonic_ticks = Some(vec![]);
             f.observe_rhythm(observation(512, known), 512, Default::default());
             f.metric_allocate(false, 0);
+            assert_ne!(
+                targets,
+                f.lanes.iter().map(|l| l.target).collect::<Vec<_>>()
+            );
             for (lane, held) in f.lanes.iter().zip(&payload) {
                 if lane.mode == Mode::Current && lane.target > 0.0 {
                     assert_eq!(
-                        (
-                            lane.target,
-                            lane.target_position,
-                            lane.sigma,
-                            lane.window.clone()
-                        ),
+                        (lane.target_position, lane.sigma, lane.window.clone()),
                         *held
                     );
                 }
@@ -682,94 +680,130 @@ mod tests {
     }
 
     #[test]
-    fn amplitude_targets_hold_between_opportunities_and_fallback_tracks_each_hop() {
+    fn amplitude_targets_track_each_hop_with_joint_normalization_and_slew() {
         for tone in [FloraTone::Sine, FloraTone::Resonant] {
-            let mut f = setup(tone, true);
-            let biomass = |f: &mut Flora, height: f32| {
-                hill(f, 35, height);
-                let cell = f.cells.len() - 2;
-                for (offset, bin) in f.cells[cell].bins.clone().enumerate() {
-                    f.biomass_mass_scan[bin] = 0.001 + height * (offset + 1) as f32 * 0.1;
-                }
-            };
-            biomass(&mut f, 4.0);
-            f.observe_rhythm(observation(0, true), 0, Default::default());
-            f.metric_allocate(true, 0);
-            assert!(f.lanes.iter().any(|l| l.tonal && l.target > 0.0));
-            assert!(f.lanes.iter().any(|l| !l.tonal && l.target > 0.0));
-            let initial: Vec<_> = f.lanes.iter().map(|l| l.target).collect();
-            assert!((initial.iter().map(|x| x * x).sum::<f32>() - 1.0).abs() < 1e-6);
-            for (frame, height) in [8.0, 16.0, 32.0].into_iter().enumerate() {
-                biomass(&mut f, height);
-                let now = (frame + 1) as u64 * 512;
-                f.observe_rhythm(observation(now, true), now, Default::default());
-                f.temporal.as_mut().unwrap().crossings.clear();
-                let mut expected = f.lanes.clone();
-                for lane in &mut expected {
-                    for _ in 0..512 {
-                        lane.slew(f.fs);
+            for known in [false, true] {
+                let mut f = setup(tone, true);
+                let biomass = |f: &mut Flora, height: f32| {
+                    hill(f, 35, height);
+                    let cell = f.cells.len() - 2;
+                    for (offset, bin) in f.cells[cell].bins.clone().enumerate() {
+                        f.biomass_mass_scan[bin] = 0.001 + 0.1 * (offset + 1) as f32;
                     }
+                };
+                biomass(&mut f, 4.0);
+                f.observe_rhythm(observation(0, known), 0, Default::default());
+                f.metric_allocate(true, 0);
+                let mut previous: Vec<_> = f.lanes.iter().map(|l| l.target).collect();
+                let generations: Vec<_> = f.lanes.iter().map(|l| l.generation).collect();
+                for (frame, height) in [8.0, 16.0, 32.0].into_iter().enumerate() {
+                    biomass(&mut f, height);
+                    let now = (frame + 1) as u64 * 512;
+                    f.observe_rhythm(observation(now, known), now, Default::default());
+                    f.temporal.as_mut().unwrap().crossings.clear();
+                    let mut expected = f.clone();
+                    expected.metric_allocate(false, 0);
+                    let targets: Vec<_> = expected.lanes.iter().map(|l| l.target).collect();
+                    assert!((targets.iter().map(|x| x * x).sum::<f32>() - 1.0).abs() < 1e-6);
+                    for tonal in [true, false] {
+                        assert!(
+                            expected
+                                .lanes
+                                .iter()
+                                .enumerate()
+                                .any(|(i, l)| l.tonal == tonal
+                                    && l.target > 0.0
+                                    && l.target != previous[i])
+                        );
+                    }
+                    for lane in &mut expected.lanes {
+                        for _ in 0..512 {
+                            lane.slew(f.fs);
+                        }
+                    }
+                    f.render_add(&mut vec![0.; 512], &mut vec![0.; 512]);
+                    assert_eq!(
+                        generations,
+                        f.lanes.iter().map(|l| l.generation).collect::<Vec<_>>()
+                    );
+                    for (actual, expected) in f.lanes.iter().zip(&expected.lanes) {
+                        assert_eq!(actual.target, expected.target);
+                        assert_eq!(actual.r, expected.r);
+                        assert_eq!(actual.q, expected.q);
+                    }
+                    previous = targets;
                 }
-                f.render_add(&mut vec![0.; 512], &mut vec![0.; 512]);
-                assert_eq!(
-                    initial,
-                    f.lanes.iter().map(|l| l.target).collect::<Vec<_>>()
-                );
-                for (actual, expected) in f.lanes.iter().zip(&expected) {
-                    assert_eq!(actual.r, expected.r);
-                    assert_eq!(actual.q, expected.q);
-                }
-            }
-            biomass(&mut f, 0.1);
-            let mut held = f.clone();
-            let m = f.temporal.as_mut().unwrap();
-            m.crossings.push(CandidatePoint {
-                tick: m.now + 173,
-                gate: 0,
-            });
-            let mut changed_pcm = vec![0.; 512];
-            let mut held_pcm = changed_pcm.clone();
-            f.render_add(&mut changed_pcm, &mut vec![0.; 512]);
-            held.render_add(&mut held_pcm, &mut vec![0.; 512]);
-            assert_eq!(changed_pcm[..173], held_pcm[..173]);
-            assert_ne!(changed_pcm[173..], held_pcm[173..]);
-            // At the crossing, both target kinds use the current biomass and one scale.
-            let crossing: Vec<_> = f.lanes.iter().map(|l| l.target).collect();
-            assert_ne!(initial, crossing);
-            for tonal in [true, false] {
+                // A crossing alone does not refresh unchanged supported carriers.
+                let mut crossing = f.clone();
+                crossing
+                    .temporal
+                    .as_mut()
+                    .unwrap()
+                    .crossings
+                    .push(CandidatePoint {
+                        tick: 1536 + 173,
+                        gate: 0,
+                    });
+                let mut a = vec![0.; 512];
+                let mut b = a.clone();
+                f.render_add(&mut a, &mut vec![0.; 512]);
+                crossing.render_add(&mut b, &mut vec![0.; 512]);
+                assert_eq!(a, b);
+                f.biomass_mass_scan.fill(0.0);
+                f.metric_allocate(false, 0);
+                assert!(f.lanes.iter().all(|l| l.target == 0.0));
                 assert!(
                     f.lanes
                         .iter()
-                        .enumerate()
-                        .any(|(i, l)| l.tonal == tonal && l.target > 0.0 && l.target != initial[i])
+                        .filter(|l| l.tonal)
+                        .all(|l| l.mode != Mode::Current)
                 );
             }
+        }
+    }
+
+    #[test]
+    fn confirmed_births_wait_for_crossing_while_fallback_births_do_not() {
+        for tone in [FloraTone::Sine, FloraTone::Resonant] {
+            let mut f = setup(tone, true);
+            hill(&mut f, 35, 4.0);
+            f.observe_rhythm(observation(0, true), 0, Default::default());
+            f.temporal.as_mut().unwrap().crossings.clear();
+            f.render_add(&mut vec![0.; 512], &mut vec![0.; 512]);
+            assert_eq!(f.births, 0);
+            assert!(f.lanes.iter().all(|l| l.target == 0.0 && l.r == 0.0));
             for unavailable in 0..3 {
                 let mut fallback = f.clone();
-                let mut obs = observation(2048, true);
+                let mut obs = observation(512, true);
                 match unavailable {
                     0 => obs.known = false,
-                    1 => obs.observed_end = Some(1536),
+                    1 => obs.observed_end = Some(0),
                     _ => obs.state.beat.confidence = 0.0,
                 }
-                fallback.observe_rhythm(obs, 2048, Default::default());
-                let mut previous = crossing.clone();
-                for height in [0.2, 0.4] {
-                    biomass(&mut fallback, height);
-                    fallback.metric_allocate(false, 0);
-                    let targets: Vec<_> = fallback.lanes.iter().map(|l| l.target).collect();
-                    assert_ne!(targets, previous);
-                    previous = targets;
-                }
+                fallback.observe_rhythm(obs, 512, Default::default());
+                fallback.metric_allocate(false, 0);
+                assert!(fallback.births > 0);
             }
-            f.biomass_mass_scan.fill(0.0);
-            f.metric_allocate(false, 0);
-            assert!(f.lanes.iter().all(|l| l.target == 0.0));
+            f.observe_rhythm(observation(512, true), 512, Default::default());
+            let m = f.temporal.as_mut().unwrap();
+            m.crossings.clear();
+            m.crossings.push(CandidatePoint {
+                tick: 512 + 173,
+                gate: 0,
+            });
+            let mut pcm = vec![0.; 512];
+            f.render_add(&mut pcm, &mut vec![0.; 512]);
+            assert!(pcm[..173].iter().all(|&x| x == 0.0));
+            assert!(pcm[173..].iter().any(|&x| x != 0.0));
+            assert!(f.births > 0);
             assert!(
-                f.lanes
+                f.temporal
+                    .as_ref()
+                    .unwrap()
+                    .events
                     .iter()
-                    .filter(|l| l.tonal)
-                    .all(|l| l.mode != Mode::Current)
+                    .filter(|e| e.action == "born")
+                    .all(|e| e.tick == 512 + 173)
             );
         }
     }

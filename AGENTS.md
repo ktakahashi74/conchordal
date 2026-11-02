@@ -539,9 +539,10 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   loss and release retire immediately. Changes apply at sample crossings within
   the hop. Unknown, stale or unconfirmed observations use continuous allocation without resetting
   the clock; biomass/resources stay continuous. Flora has no `metric()` opt-in or opt-out.
-  Tonal and residual amplitude targets, including joint normalization, update only
-  at action crossings during confirmed timing; supported targets hold between
-  crossings while the existing slew advances. Fallback updates every hop.
+  Supported tonal and residual amplitude targets, including joint normalization,
+  follow current biomass every hop through the existing slew. Confirmed action
+  crossings gate births and discrete replacements, not amplitude refreshes.
+  Unknown timing retains continuous allocation without resetting the clock.
   Flora `pace(k)` (default 1, initial and live) scales ecological time relative
   to private beat velocity f/2. If k > 20 and a fresh confirmed beat has positive
   subdivision confidence and ratio 2, 3 or 4, phase-times-ratio crossings also
@@ -902,8 +903,9 @@ for decoder acceptance. No preset adoption or modulation guarantee is implied.
 One sample-zero clock counts beat crossings using a remainder independent of N.
 All Flora and birth-qualified Once/WhileAlive/Free/Rearticulate/threshold-zero
 Voices consume the same ticks. Keep Flora private span/gap clocks and ecological
-pace independent of N. Hold complete audible targets, including sigma/window;
-support loss and terminal release win. Voice pitch time advances chronologically
+pace independent of N. Hold Flora pitch and sigma/window geometry between shared
+opportunities; supported amplitude and joint normalization follow biomass each hop.
+Voice audible-target holds are unchanged; support loss and terminal release win. Voice pitch time advances chronologically
 once, with LOO ownership prepared before collection; no off-grid frequency Update.
 Temporary range exits resume only at an opportunity, including same-pitch resumes.
 Reject conflicting live pitch patches without dropping unrelated controls. N=4

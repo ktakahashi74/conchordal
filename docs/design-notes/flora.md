@@ -478,15 +478,17 @@ shared boundary. The minimum-separation rule below handles that case.
   to the cell. When `m_r = 0`, the previous position is held (initially the cell
   centre).
 - **Residual dead band.** `r*_res = sqrt(max(0, m_r − m_dead))`, with
-  `m_dead = 0.001`. It is continuous, so the residual never gates on and off.
+  `m_dead = 0.001`. The mass-to-target map is continuous; audible transitions use the existing slew and birth opportunities.
 - **Target sum.** `S = Σ_c m_t + [residual on] · Σ_c max(0, m_r − m_dead)`. When
   `S > 1`, every target amplitude is multiplied by `1/√S`, so `Σ r*² ≤ 1`. This is the
   definition of the rendered target, not a loudness guarantee: `amp` is the nominal
-  target-amplitude scale. During confirmed beat allocation, both tonal and residual
-  targets and this joint normalization update only at action crossings from the
-  current hop-held biomass. Supported targets stay fixed between crossings; only
-  the existing amplitude/power slew advances. Continuous fallback updates each hop.
-  Support loss and release retain their immediate exit paths.
+  target-amplitude scale. Supported current tonal and residual targets and this
+  joint normalization follow the current biomass every hop through the existing
+  amplitude/power slew. Births and discrete replacements still wait for a permitted
+  opportunity during confirmed timing. A silent residual's first positive target
+  is a birth and waits too; unassigned targets do not enter the normalization sum.
+  Continuous fallback retains per-hop allocation. Support loss and release retain
+  their immediate exit paths.
 
 ### Lanes
 
@@ -622,6 +624,17 @@ scalar work and no allocation; no lane or scratch pool grows at retirement.
 
 ### Default beat allocation
 
+**Author decision 2026-11-02 (FA-1).** Supported existing tonal and residual
+lanes follow continuous biomass every hop, including their shared normalization.
+A confirmed opportunity permits births and discrete carrier/claim replacements;
+it does not by itself refresh the strength of unchanged carriers. The existing
+slew remains in physical time. Shared harmonic opportunities still hold pitch
+and window geometry between assignments, but do not hold amplitude. Immediate
+support-loss retirement, finite tails, span/gap, the private CouplingClock and
+unknown-observation fallback retain their rules. No new probability, threshold,
+or constant is introduced; the 50-cent claim, default pitch modes and rest weights
+are unchanged. This is an author rule, not a new principle-layer claim.
+
 With `rest_on_habituation(w) > 0`, Gap suppresses both tonal and residual births.
 Existing lanes use the same finite retirement law; their targets stay zero through
 the tail. After a return crossing, allocation uses current biomass and the ordinary
@@ -644,13 +657,13 @@ shorter than the private beat period and subdivision confidence is positive with
 known ratio 2, 3 or 4, integer crossings of private phase times that ratio also
 allow action. Otherwise only beat crossings do. Switching layers never resets
 phase. Span/gap transitions retain beat crossings, including their fallback;
-subdivision opportunities affect lane allocation and amplitude targets.
+subdivision opportunities affect births and discrete replacements.
 
 Biomass and resource integration remain continuous. Between crossings, current
 lanes track nearby supported candidates. Ordinary replacement retirement becomes
 pending; each such lane retains its last tonal window. Its current excess is
-reserved each hop for accounting, while its amplitude target stays at the previous
-opportunity's value until the next opportunity or support loss. One bounded pending birth slot per cell records the
+reserved each hop for accounting and its amplitude target follows that current
+mass through the existing slew and joint normalization. One bounded pending birth slot per cell records the
 candidate bin and first waiting tick, revalidated every hop. A changed/disappeared
 candidate is dropped. A lane's generation identifies each reuse of its slot.
 

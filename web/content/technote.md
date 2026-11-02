@@ -1095,10 +1095,10 @@ $$ p = \frac{f}{2}\min\{k,20r\}, \qquad \Delta t_{eco}=p\,\Delta t. $$
 This saturates at one `RENEWAL_SEC` (10 ecological seconds) per nominal opportunity;
 continuous fallback uses $r=1$. Growth, diffusion, seeding, resource recovery and
 consumption share this time scale, as does retirement. Biomass and resources
-remain continuous. During confirmed timing, tonal and residual amplitude targets
-and their joint normalization update only at action crossings; supported targets
-hold between crossings while the existing slew advances. Fallback updates targets
-each hop. Waiting lanes reserve only current excess in their last window.
+remain continuous. Supported tonal and residual amplitude targets and their joint
+normalization follow biomass every hop through the existing slew. Confirmed
+opportunities gate births and discrete replacements; a crossing alone does not
+refresh unchanged carriers. Fallback retains continuous allocation. Waiting lanes reserve only current excess in their last window.
 Support loss, separation conflicts and release retire lanes immediately, with a
 finite metabolic tail. Transitions apply at sample ticks within the hop. Macro
 fade bounds release, and explicit `fade(0)` ends immediately.
@@ -1116,8 +1116,8 @@ upper cap. Heard habituation is weighted by the target power of sounding tonal
 lanes. A gap suppresses tonal and residual births while existing lanes retire;
 biomass and resources continue evolving. Return follows private recovery after
 the tails end. Span/gap transitions use beat crossings, including the free-running
-clock during fallback; subdivision opportunities affect allocation and amplitude
-targets only.
+clock during fallback; subdivision opportunities affect births and discrete
+replacements only.
 
 These dynamics belong to the authored-rule tier. Their use of an auditory landscape
 does not make the growth or succession rules a model grounded in auditory cognition.
@@ -1576,7 +1576,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | No central conductor | Local perception only; one shared meter reads habitat recurrence and fast phase/intensity evidence, with optional continuous T2 recurrence | §4–5, §7 | Implemented. Dedicated beat carriers appear only in explicit synchronization demonstrations (sample 07) |
 | Scenario as macro direction | Director terrain operations | §6.3.6 | Implemented as authorial composition |
 | Temporal structure grounded in auditory cognition | Default-disabled `temporal_meter_t2` feeds whole-habitat continuous T2 recurrence into the production meter; group accents and Periodic arrival costs have separate default-disabled settings | §5.4 | Partial. Continuous recurrence, accent and arrival mechanisms are implemented. Production recurrence does not require group assignment and retains causal support and explicit unknowns; group arrival retains owner credit. Group-event numerical parameters have no defaults; an omitted arrival weight uses 1. Phrase perception and harmonic rhythm remain open |
-| Authored spectral ecology | Flora consumer–resource dynamics, default own-PCM exclusion for C/H, beat/subdivision allocation and amplitude targets, ecological pace, lane pitch modes and optional habituation-driven rest | §5.6 | Implemented as author rules; the Rhai API is Experimental |
+| Authored spectral ecology | Flora consumer–resource dynamics, default own-PCM exclusion for C/H, beat/subdivision allocation and continuous amplitude targets, ecological pace, lane pitch modes and optional habituation-driven rest | §5.6 | Implemented as author rules; the Rhai API is Experimental |
 | Authored temporal behavior | Voice span/gap control from heard attacks and private recovery; environmental-level dwell changes pitch-search timing | §5.4 | Implemented as author rules, not phrase perception or tonal-stability principles |
 | DCC stage two: biosignal closed loop | `ListenerTwin` pressure can feed pitch-search temperature when `[dcc]` coupling is enabled | §4.1, §6.2 | Simulated loop implemented, off by default; the physical biosignal loop is open |
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations and suspend DCC pressure until a complete window is available | §6.2 | Implemented. Physical-device overload validation is open |

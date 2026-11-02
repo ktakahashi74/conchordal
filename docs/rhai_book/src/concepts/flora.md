@@ -97,10 +97,10 @@ The Flora API is Experimental. Its dynamics are authored composition rules; this
 ## Beat opportunities
 
 Every Flora uses beat opportunities: with fresh confirmed evidence, new tonal lanes
-and ordinary replacements, together with tonal and residual amplitude targets, wait for the Flora's next local clock crossing. Biomass
-and resources continue to evolve every hop. Targets, including their shared normalization,
-use biomass at each opportunity and stay fixed until the next; the existing slew
-connects them. There is no timing opt-out;
+and ordinary replacements wait for the Flora's next local clock crossing. Biomass
+and resources continue to evolve every hop. Supported tonal and residual amplitude
+targets, including their shared normalization, follow current biomass every hop
+through the existing slew. A crossing alone does not refresh unchanged carriers. There is no timing opt-out;
 `flora().metric()` has been removed.
 
 Like Population `metric()`, Flora uses a private CouplingClock with confidence-weighted

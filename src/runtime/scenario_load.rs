@@ -66,7 +66,10 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
                 Action::UpdateLandscape { .. }
                 | Action::SetGlobalCoupling { .. }
                 | Action::SetRoughnessAversion { .. }
-                | Action::SetHarmonicityPreference { .. } => {}
+                | Action::SetHarmonicityPreference { .. }
+                | Action::FollowHarmonicRelations { .. }
+                | Action::FollowHarmonicContinuation { .. }
+                | Action::SetSupportPreference { .. } => {}
             }
         }
     }

@@ -423,6 +423,16 @@ Create a Population at the current script time. `place()` is the sole Population
 
 **Evidence:** Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 
+#### `observe_harmonic_relations`
+
+```rhai,ignore
+observe_harmonic_relations(max_sources)
+```
+
+Reserve harmonic relation observation before time advances in an endless scenario. Required for either signed nonzero follow_harmonic_relations or follow_harmonic_continuation weight in endless scenes. max_sources is the declared maximum simultaneous Voice and Flora lane sources, including retiring sources; it is a positive integer bounded by the 38400 structural-record capacity. The background observer starts at sample zero. A late declaration or an unreserved nonzero control is a positioned script error. Finite scenes warn and ignore the declaration and retain event pre-scanning. Vertical support scans run from the start of every endless scene without a declaration.
+
+**Evidence:** Author rule: reserve harmonic relation history and source capacity from the start of an endless performance.
+
 #### `observe_tonal_context`
 
 ```rhai,ignore
@@ -1412,6 +1422,56 @@ set_roughness_aversion(weight)
 How much the modeled listener minds roughness (default 1.0). Cursor event: changes roughness valuation from this script time onward. Dimensionless, nonnegative; zero removes aversion. Does not change raw roughness sensation.
 
 **Evidence:** Author rule: consonance evaluation, sign or roughness preference; does not alter H/R sensation (§9.3.56). Existing valuation defaults remain active.
+
+#### `set_support_focus_preference`
+
+```rhai,ignore
+set_support_focus_preference(weight)
+```
+
+Signed preference for support focus. Cursor event; default zero, finite values only, no upper clamp. Author rule integrating heard first-order support fields over body partials. Voice movement requires leave_self_out(true); spawn and Flora lane placement also consume the preference. Habituation and Flora growth keep their existing inputs. Partial densities are cached from the body spectral self-report at birth or reconfiguration. A body without a self-report uses a labeled single partial at its fundamental.
+
+**Evidence:** Author rule: support focus, template conflict and related novelty of candidate density addition. No symbolic harmony; movement requires actual PCM self-exclusion.
+
+#### `follow_harmonic_relations`
+
+```rhai,ignore
+follow_harmonic_relations(weight)
+```
+
+Signed preference for learned relations among changing destinations. Author rule cursor event; finite [-1,1], default 0. Positive favors support, negative favors departure. Paired consequences relative to the existing winner add to native scores, retaining habituation and bodily costs. With continuation zero this cannot turn movement into hold, wait or no-spawn. Unknown paired columns contribute zero. Both dispositions zero preserve choices and RNG bit-for-bit. Weight changes retain memory; no fixed key profile, chord label, progression table or corpus prior. Existing harmonic_rhythm, TC, PS, SQ, ME, PX and PE meanings remain unchanged.
+
+**Evidence:** Author rule: signed relation and continuation consequences learned during the performance add to existing scores. Support is not a root or chord label; no fixed key profile, progression table or corpus prior is used.
+
+#### `follow_harmonic_continuation`
+
+```rhai,ignore
+follow_harmonic_continuation(weight)
+```
+
+Signed preference for learned support of continuation or departure. Author rule cursor event; finite [-1,1], default 0. Adds the bounded, paired continuation consequence to the existing score. Positive can favor holding, waiting at a legal opportunity, retaining a Flora lane or declining spawn when the learned continuation supports it; negative favors departure from that support. It does not create off-grid opportunities. Unsupported evidence is neutral. Both dispositions zero bypass prediction, preview and new random draws. Invalid values warn and are ignored; weight changes retain memory.
+
+**Evidence:** Author rule: signed relation and continuation consequences learned during the performance add to existing scores. Support is not a root or chord label; no fixed key profile, progression table or corpus prior is used.
+
+#### `set_support_conflict_preference`
+
+```rhai,ignore
+set_support_conflict_preference(weight)
+```
+
+Signed preference for conflicting template support. Cursor event; default zero, finite values only, no upper clamp. Author rule integrating heard first-order support fields over body partials. Voice movement requires leave_self_out(true); spawn and Flora lane placement also consume the preference. Habituation and Flora growth keep their existing inputs. Partial densities are cached from the body spectral self-report at birth or reconfiguration. A body without a self-report uses a labeled single partial at its fundamental.
+
+**Evidence:** Author rule: support focus, template conflict and related novelty of candidate density addition. No symbolic harmony; movement requires actual PCM self-exclusion.
+
+#### `set_related_novelty_preference`
+
+```rhai,ignore
+set_related_novelty_preference(weight)
+```
+
+Nonnegative preference for related new spectral content. Cursor event; default zero, finite values only, no upper clamp. Author rule integrating heard first-order support fields over body partials. Voice movement requires leave_self_out(true); spawn and Flora lane placement also consume the preference. Habituation and Flora growth keep their existing inputs. Partial densities are cached from the body spectral self-report at birth or reconfiguration. A body without a self-report uses a labeled single partial at its fundamental.
+
+**Evidence:** Author rule: support focus, template conflict and related novelty of candidate density addition. No symbolic harmony; movement requires actual PCM self-exclusion.
 
 #### `set_harmonicity_preference`
 

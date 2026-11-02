@@ -32,6 +32,7 @@ impl Drop for PcmPacket {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Observation {
+    pub(crate) support: Option<Arc<crate::core::harmonic_support::Snapshot>>,
     pub id: u64,
     pub generation: u32,
     pub h_scan: Vec<f32>,
@@ -238,6 +239,7 @@ impl Observer {
             .map(|(&h, &r)| frame.consonance_kernel.score(h, r))
             .collect();
         Observation {
+            support: frame.support.clone(),
             id: self.id,
             generation: self.generation,
             h_scan,

@@ -75,6 +75,7 @@ struct ToneKey {
 }
 
 struct RoutedTone {
+    harmonic_sounding: bool,
     tone: Tone,
     routing: Routing,
     self_slot: Option<usize>,
@@ -82,6 +83,44 @@ struct RoutedTone {
     body_slot: Option<(usize, u32)>,
     source_pcm_slot: Option<usize>,
     loo_slot: Option<usize>,
+}
+
+impl RoutedTone {
+    fn record_relation(
+        &mut self,
+        key: ToneKey,
+        sample: Tick,
+        flags: u8,
+        sounding: bool,
+        recorder: &crate::temporal_cognition::harmonic_relations::runtime::Recorder,
+    ) {
+        if !self.routing.to_habitat {
+            return;
+        }
+        use crate::temporal_cognition::harmonic_relations::{
+            Source, Trajectory, Value, runtime::Record,
+        };
+        let state = self.tone.harmonic_relation_state(sample);
+        let source = Source {
+            kind: 0,
+            id: key.source_id,
+            generation: u64::from(self.source_generation),
+        };
+        recorder.record(Record {
+            sample,
+            source: Some(source),
+            flags,
+            trajectory: Some(Trajectory {
+                source,
+                pitch: Value::exact(f64::from(state.1.log2())),
+                amplitude: Value::exact(f64::from(state.2)),
+                timbre: Value::default(),
+                articulation: key.tone_id,
+                sounding,
+            }),
+        });
+        self.harmonic_sounding = sounding;
+    }
 }
 
 pub(crate) use crate::core::stream::loo::SourcePcm;
@@ -127,6 +166,8 @@ pub(crate) struct RestSource {
 }
 
 pub struct ScheduleRenderer {
+    pub(crate) harmonic_recorder:
+        Option<crate::temporal_cognition::harmonic_relations::runtime::Recorder>,
     #[cfg(test)]
     pub(crate) harmonic_execution: Option<Vec<(Tick, u64, u64, &'static str, f32)>>,
     phrase_sources: BTreeMap<(u64, u32), PhraseSource>,
@@ -201,6 +242,7 @@ impl ScheduleRenderer {
 
     pub fn new(time: Timebase) -> Self {
         Self {
+            harmonic_recorder: None,
             #[cfg(test)]
             harmonic_execution: None,
             phrase_sources: BTreeMap::new(),
@@ -268,6 +310,7 @@ impl ScheduleRenderer {
                 (
                     *key,
                     RoutedTone {
+                        harmonic_sounding: false,
                         tone: routed.tone.clone(),
                         routing: routed.routing,
                         self_slot: None,
@@ -578,13 +621,37 @@ impl ScheduleRenderer {
             for (_key, rt) in &mut self.tones {
                 for (idx, sample) in self.scratch_pcm[..samples].iter_mut().enumerate() {
                     let tick = now + idx as Tick;
+                    let relation_before = self
+                        .harmonic_recorder
+                        .as_ref()
+                        .map(|_| rt.tone.harmonic_relation_state(tick));
                     #[cfg(test)]
                     let before = rt.tone.harmonic_execution_state();
                     rt.tone.apply_updates_if_due(tick);
                     rt.tone.kick_planned_if_due(tick);
+                    let relation_impulse =
+                        relation_before.is_some() && rt.tone.harmonic_impulse_due(tick);
                     *sample = rt
                         .tone
                         .render_tick(tick, fs, dt, &self.scratch_rhythms[idx]);
+                    if let (Some(recorder), Some(before)) =
+                        (&self.harmonic_recorder, relation_before)
+                        && rt.routing.to_habitat
+                    {
+                        use crate::temporal_cognition::harmonic_relations::{OFFSET, ONSET};
+                        let after = rt.tone.harmonic_relation_state(tick);
+                        let flags = (u8::from((!before.0 || relation_impulse) && after.0) * ONSET)
+                            | (u8::from(rt.harmonic_sounding && !after.3) * OFFSET);
+                        if flags != 0 || (after.3 && tick + 1 == end) {
+                            rt.record_relation(
+                                *_key,
+                                if flags != 0 { tick } else { end },
+                                flags,
+                                after.3,
+                                recorder,
+                            );
+                        }
+                    }
                     #[cfg(test)]
                     if let Some(trace) = &mut self.harmonic_execution {
                         let after = rt.tone.harmonic_execution_state();
@@ -721,12 +788,35 @@ impl ScheduleRenderer {
             let idx = (tick - now) as usize;
             let mut acc_presentation = 0.0f32;
             let mut acc_habitat = 0.0f32;
-            for rt in self.tones.values_mut() {
+            for (key, rt) in &mut self.tones {
+                let relation_before = self
+                    .harmonic_recorder
+                    .as_ref()
+                    .map(|_| rt.tone.harmonic_relation_state(tick));
                 if rt.tone.phrase.is_none() {
                     rt.tone.apply_updates_if_due(tick);
                 }
                 rt.tone.kick_planned_if_due(tick);
+                let relation_impulse =
+                    relation_before.is_some() && rt.tone.harmonic_impulse_due(tick);
                 let mut sample = rt.tone.render_tick(tick, fs, dt, &rhythms);
+                if let (Some(recorder), Some(before)) = (&self.harmonic_recorder, relation_before)
+                    && rt.routing.to_habitat
+                {
+                    use crate::temporal_cognition::harmonic_relations::{OFFSET, ONSET};
+                    let after = rt.tone.harmonic_relation_state(tick);
+                    let flags = (u8::from((!before.0 || relation_impulse) && after.0) * ONSET)
+                        | (u8::from(rt.harmonic_sounding && !after.3) * OFFSET);
+                    if flags != 0 || (after.3 && tick + 1 == end) {
+                        rt.record_relation(
+                            *key,
+                            if flags != 0 { tick } else { end },
+                            flags,
+                            after.3,
+                            recorder,
+                        );
+                    }
+                }
                 if !self.expression_gain.is_empty() {
                     sample *= self.expression_gain[(tick - now) as usize];
                 }
@@ -1002,6 +1092,7 @@ impl ScheduleRenderer {
                             self.tones.insert(
                                 key,
                                 RoutedTone {
+                                    harmonic_sounding: false,
                                     tone,
                                     source_pcm_slot: None,
                                     loo_slot: None,
@@ -1629,6 +1720,7 @@ mod tests {
                     tone_id,
                 },
                 RoutedTone {
+                    harmonic_sounding: false,
                     tone: tone.clone(),
                     routing: Routing::default(),
                     self_slot: None,
@@ -1897,6 +1989,68 @@ mod tests {
                 .filter(|r| r.record.kind == ExecutionKind::On)
                 .all(|r| !r.interval_supported)
         );
+    }
+
+    #[test]
+    fn harmonic_renderer_keeps_pitch_updates_as_trajectory_and_records_late_offset() {
+        use crate::temporal_cognition::harmonic_relations::{
+            OFFSET, ONSET, OPPORTUNITY, runtime::Recorder,
+        };
+        for sample_major in [false, true] {
+            let (recorder, records) = Recorder::channel();
+            let mut renderer = ScheduleRenderer::new(Timebase {
+                fs: 1000.,
+                hop: 100,
+            });
+            renderer.sample_major_oracle = sample_major;
+            renderer.harmonic_recorder = Some(recorder);
+            let mut batch = outcome_batch(BodyKind::Sine);
+            batch.tones[0].onset = 0;
+            batch.tones[0].hold_ticks = Some(100);
+            batch.tones[0].adsr = Some(crate::life::sound::ToneAdsr {
+                attack_sec: 0.,
+                decay_sec: 0.,
+                sustain_level: 1.,
+                release_sec: 0.,
+            });
+            batch.cmds.push(ToneCmd::Update {
+                tone_id: 1,
+                at_tick: Some(37),
+                update: ToneUpdate {
+                    target_freq_hz: Some(440.),
+                    ..Default::default()
+                },
+            });
+            renderer.render(&[batch], 0, &NeuralRhythms::default());
+            let first: Vec<_> = records.try_iter().collect();
+            assert_eq!(first.iter().filter(|r| r.flags & ONSET != 0).count(), 1);
+            assert!(first.iter().all(|r| r.flags & OPPORTUNITY == 0));
+            let trajectory = first
+                .iter()
+                .find(|r| r.sample == 100)
+                .unwrap()
+                .trajectory
+                .unwrap();
+            assert_eq!(trajectory.pitch.value, f64::from(440f32.log2()));
+            assert!(trajectory.sounding);
+            // Ingestion follows cleanup: this late Off is executed during this hop,
+            // and its finished tone is removed by the following hop's cleanup.
+            let mut off = outcome_batch(BodyKind::Sine);
+            off.tones.clear();
+            off.cmds = vec![ToneCmd::Off {
+                tone_id: 1,
+                off_tick: 99,
+            }];
+            renderer.render(&[off], 100, &NeuralRhythms::default());
+            let closing: Vec<_> = records.try_iter().collect();
+            assert_eq!(closing.len(), 1);
+            assert_eq!((closing[0].sample, closing[0].flags), (100, OFFSET));
+            assert!(!closing[0].trajectory.unwrap().sounding);
+            assert!(!renderer.is_idle());
+            renderer.render(&[], 200, &NeuralRhythms::default());
+            assert!(renderer.is_idle());
+            assert!(records.try_iter().next().is_none());
+        }
     }
 
     #[test]

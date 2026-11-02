@@ -21,7 +21,7 @@ pub(crate) struct SynchronousAnalysis {
     pub(super) legacy: Option<SpectralFrontEnd>,
     pub landscape: Landscape,
     pub du: Arc<[f32]>,
-    potentials: PotentialScratch,
+    pub(super) potentials: PotentialScratch,
     ref_total: f32,
     ref_peak: f32,
 }

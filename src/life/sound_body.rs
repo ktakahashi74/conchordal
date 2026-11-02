@@ -21,6 +21,35 @@ use std::sync::{Arc, Mutex, OnceLock};
 use tracing::warn;
 
 pub trait SoundBody: Send {
+    /// Nominal active partial density from the body's spectral self-report.
+    /// Build at birth/reconfiguration; it describes this body, not mixed PCM.
+    /// Override with None when no spectral self-report is available. Empty is silence.
+    fn project_support_density(
+        &mut self,
+        space: &Log2Space,
+        ref_power: f32,
+        loudness_exp: f32,
+        signal: &ArticulationSignal,
+    ) -> Option<Vec<(isize, f32)>> {
+        let mut amplitudes = vec![0.; space.n_bins()];
+        // Existing projections disagree on whether the body gain is included.
+        // Project at unit gain, then apply the physical body gain exactly once.
+        let amp = self.amp();
+        self.set_amp(1.);
+        self.project_spectral_body(&mut amplitudes, space, signal);
+        self.set_amp(amp);
+        for a in &mut amplitudes {
+            *a *= amp.max(0.);
+        }
+        Some(crate::core::harmonic_support::body_density::project(
+            &amplitudes,
+            self.base_freq_hz(),
+            space,
+            ref_power,
+            loudness_exp,
+        ))
+    }
+
     fn base_freq_hz(&self) -> f32;
     fn set_freq(&mut self, freq: f32);
     fn set_pitch_log2(&mut self, log_freq: f32);
@@ -387,6 +416,24 @@ impl AnySoundBody {
 }
 
 impl SoundBody for AnySoundBody {
+    fn project_support_density(
+        &mut self,
+        space: &Log2Space,
+        ref_power: f32,
+        loudness_exp: f32,
+        signal: &ArticulationSignal,
+    ) -> Option<Vec<(isize, f32)>> {
+        match self {
+            Self::Sine(body) => {
+                body.project_support_density(space, ref_power, loudness_exp, signal)
+            }
+            Self::Harmonic(body) => {
+                body.project_support_density(space, ref_power, loudness_exp, signal)
+            }
+            Self::Dyn(body) => body.project_support_density(space, ref_power, loudness_exp, signal),
+        }
+    }
+
     fn base_freq_hz(&self) -> f32 {
         match self {
             AnySoundBody::Sine(body) => body.base_freq_hz(),

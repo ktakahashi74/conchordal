@@ -5,10 +5,13 @@ use crate::core::nsgt_rt::RtNsgtKernelLog2;
 /// Spectral analysis shared with the body's synchronous perception path.
 #[derive(Clone)]
 pub struct AnalysisStream {
+    support_history_planned: bool,
     analysis: SynchronousAnalysis,
     params: LandscapeParams,
     onset_habituation: Option<crate::core::onset_habituation::OnsetHabituation>,
     next_sample: u64,
+    support_buffers: Option<[std::sync::Arc<crate::core::harmonic_support::Snapshot>; 2]>,
+    support_next: usize,
     tonal_context: Option<crate::core::tonal_context::Context>,
     pitch_set: Option<crate::core::tonal_context::pitch_set::Tracker>,
 }
@@ -33,13 +36,37 @@ impl AnalysisStream {
             params.roughness_ref_eps,
         );
         Self {
+            support_history_planned: false,
             analysis,
             params,
             onset_habituation: None,
             next_sample: 0,
+            support_buffers: None,
+            support_next: 0,
             tonal_context: None,
             pitch_set: None,
         }
+    }
+
+    pub(crate) fn enable_support(
+        &mut self,
+        geometry: std::sync::Arc<crate::core::harmonic_support::Geometry>,
+        retain_history: bool,
+    ) {
+        self.support_history_planned |= retain_history;
+        self.analysis.potentials.support_active = true;
+        self.analysis.potentials.support_roots =
+            Some(vec![
+                0.;
+                self.params
+                    .harmonicity_kernel
+                    .root_buffer_len(&self.analysis.landscape.space)
+            ]);
+        self.support_buffers = Some(std::array::from_fn(|_| {
+            std::sync::Arc::new(crate::core::harmonic_support::Snapshot::new(
+                geometry.clone(),
+            ))
+        }));
     }
 
     pub(crate) fn enable_tonal_context(
@@ -110,7 +137,9 @@ impl AnalysisStream {
             state.gap(sample);
         }
         let pitch_set_weight = self.analysis.landscape.pitch_set_weight;
+        let support_weights = self.analysis.landscape.support_weights;
         self.analysis.reset(&self.params);
+        self.analysis.landscape.support_weights = support_weights;
         self.analysis.landscape.pitch_set_weight = pitch_set_weight;
         self.next_sample = sample;
         self.analysis.landscape.pitch_set = self.pitch_set.as_ref().and_then(|s| s.snapshot());
@@ -132,10 +161,19 @@ impl AnalysisStream {
 
     pub(crate) fn voice_observer(&self) -> Self {
         let mut observer = Self {
+            support_history_planned: self.support_history_planned,
             analysis: self.analysis.clone(),
             params: self.params.clone(),
             onset_habituation: None,
             next_sample: self.next_sample,
+            support_buffers: self.support_buffers.as_ref().map(|buffers| {
+                std::array::from_fn(|_| {
+                    std::sync::Arc::new(crate::core::harmonic_support::Snapshot::new(
+                        buffers[0].geometry.clone(),
+                    ))
+                })
+            }),
+            support_next: 0,
             tonal_context: None,
             pitch_set: None,
         };
@@ -191,6 +229,20 @@ impl AnalysisStream {
                 self.analysis.landscape.pitch_set = ps.snapshot();
             }
             self.next_sample = self.next_sample.saturating_add(audio.len() as u64);
+            if self.analysis.potentials.support_active
+                && let Some(buffers) = &mut self.support_buffers
+            {
+                self.analysis.landscape.support = None;
+                let snapshot = std::sync::Arc::make_mut(&mut buffers[self.support_next]);
+                snapshot.observe_projection(
+                    &self.analysis.landscape.subjective_intensity,
+                    self.analysis.potentials.support_roots.as_deref(),
+                    self.params.roughness_ref_eps,
+                    self.next_sample,
+                );
+                self.analysis.landscape.support = Some(buffers[self.support_next].clone());
+                self.support_next ^= 1;
+            }
             if let Some(state) = &mut self.onset_habituation {
                 state.process(
                     self.analysis.frontend.band_energy().1,
@@ -222,7 +274,9 @@ impl AnalysisStream {
             state.invalidate();
         }
         let pitch_set_weight = self.analysis.landscape.pitch_set_weight;
+        let support_weights = self.analysis.landscape.support_weights;
         self.analysis.reset(&self.params);
+        self.analysis.landscape.support_weights = support_weights;
         self.analysis.landscape.pitch_set_weight = pitch_set_weight;
         self.next_sample = 0;
         if self.pitch_set.is_some() {
@@ -232,6 +286,39 @@ impl AnalysisStream {
     }
 
     pub fn apply_update(&mut self, upd: LandscapeUpdate) {
+        if let Some(weight) = upd.harmonic_relations_weight
+            && weight.is_finite()
+            && (-1. ..=1.).contains(&weight)
+        {
+            self.analysis.landscape.harmonic_relations_weight = weight;
+            self.support_history_planned |= weight != 0.;
+        }
+        if let Some(weight) = upd.harmonic_continuation_weight
+            && weight.is_finite()
+            && (-1. ..=1.).contains(&weight)
+        {
+            self.analysis.landscape.harmonic_continuation_weight = weight;
+            self.support_history_planned |= weight != 0.;
+        }
+        for (axis, value) in upd.support_preference.into_iter().enumerate() {
+            if let Some(value) = value {
+                self.analysis.landscape.support_weights.set(axis, value);
+                self.analysis.potentials.support_active = self.support_buffers.is_some()
+                    && (self.analysis.landscape.support_weights.active()
+                        || self.support_history_planned);
+                if !self.analysis.potentials.support_active {
+                    self.analysis.landscape.support = None;
+                }
+            }
+        }
+        if upd.harmonic_relations_weight.is_some() || upd.harmonic_continuation_weight.is_some() {
+            self.analysis.potentials.support_active = self.support_buffers.is_some()
+                && (self.analysis.landscape.support_weights.active()
+                    || self.support_history_planned);
+            if !self.analysis.potentials.support_active {
+                self.analysis.landscape.support = None;
+            }
+        }
         if let Some(w) = upd.roughness_aversion {
             self.params.set_roughness_aversion(w);
         }
@@ -372,7 +459,10 @@ mod tests {
     #[test]
     fn voice_observers_drop_resource_work_without_changing_perception() {
         let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let geometry =
+            crate::core::harmonic_support::Geometry::new(nsgt.space(), &params.harmonicity_kernel);
         let mut mixed = AnalysisStream::new(params, nsgt);
+        mixed.enable_support(geometry, false);
         mixed.enable_resource_power();
         let audio: Vec<_> = (0..mixed.hop_samples())
             .map(|i| 0.03 * (i as f32 * 0.11).sin())
@@ -391,6 +481,10 @@ mod tests {
             assert_eq!(actual.nsgt_power, retained_power);
             assert_eq!(actual.harmonicity, expected.harmonicity);
             assert_eq!(actual.roughness01, expected.roughness01);
+            assert_eq!(
+                actual.support.as_ref().unwrap().focus,
+                expected.support.as_ref().unwrap().focus
+            );
         }
     }
 

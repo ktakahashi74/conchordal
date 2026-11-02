@@ -11,6 +11,7 @@ pub(crate) mod fft;
 pub(crate) mod float;
 pub(crate) mod habituation;
 pub(crate) mod harmonic_ratios;
+pub(crate) mod harmonic_support;
 pub(crate) mod harmonicity_kernel;
 pub(crate) mod history_prediction;
 pub mod landscape;

@@ -97,6 +97,9 @@ impl LandscapeParams {
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct LandscapeUpdate {
+    pub harmonic_relations_weight: Option<f64>,
+    pub harmonic_continuation_weight: Option<f64>,
+    pub support_preference: [Option<f64>; 3],
     pub roughness_aversion: Option<f32>,
     pub harmonicity_preference: Option<f32>,
     pub pitch_objective_mode: Option<PitchObjectiveMode>,
@@ -123,6 +126,19 @@ impl PitchObjectiveMode {
 /// Values here are perceptual (`perc_*`) unless stated otherwise.
 #[derive(Clone, Debug)]
 pub struct Landscape {
+    pub(crate) harmonic_recorder:
+        Option<crate::temporal_cognition::harmonic_relations::runtime::Recorder>,
+    pub(crate) harmonic_now_sample: u64,
+    pub(crate) harmonic_query_version: u64,
+    pub(crate) harmonic_relations_weight: f64,
+    pub(crate) harmonic_continuation_weight: f64,
+    pub(crate) harmonic_relations:
+        Option<std::sync::Arc<crate::temporal_cognition::harmonic_relations::consumer::Decision>>,
+    pub(crate) support_planned: bool,
+    pub(crate) support_ref_power: f32,
+    pub(crate) support_loudness_exp: f32,
+    pub(crate) support_weights: crate::core::harmonic_support::Weights,
+    pub(crate) support: Option<std::sync::Arc<crate::core::harmonic_support::Snapshot>>,
     pub space: Log2Space,
     /// Runtime copy of roughness-kernel center suppression width (ERB).
     /// Used by behavior-side crowding when sigma is synced to roughness settings.
@@ -188,6 +204,12 @@ pub struct Landscape {
 }
 
 impl Landscape {
+    /// Nominal single-partial density when no spectral self-report is available.
+    pub(crate) fn support_single_density(&self, amp: f32) -> f32 {
+        (0.5 * amp.max(0.).powi(2) / self.support_ref_power.max(1e-12))
+            .powf(self.support_loudness_exp)
+    }
+
     pub(crate) fn set_analysis_metadata(
         &mut self,
         roughness: crate::core::roughness_kernel::KernelParams,
@@ -210,6 +232,17 @@ impl Landscape {
         let n = space.n_bins();
         Self {
             space,
+            harmonic_recorder: None,
+            harmonic_now_sample: 0,
+            harmonic_query_version: 0,
+            harmonic_relations_weight: 0.,
+            harmonic_continuation_weight: 0.,
+            harmonic_relations: None,
+            support_planned: false,
+            support_ref_power: 1.,
+            support_loudness_exp: 1.,
+            support_weights: Default::default(),
+            support: None,
             roughness_suppress_sigma_erb: 0.06,
             roughness_kernel_params: crate::core::roughness_kernel::KernelParams::default(),
             roughness: vec![0.0; n],
@@ -353,6 +386,8 @@ impl Landscape {
     }
 
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
+        self.support_ref_power = params.ref_power;
+        self.support_loudness_exp = params.loudness_exp.max(0.01);
         for observation in &mut self.loo {
             observation.revalue(&self.space, params);
         }

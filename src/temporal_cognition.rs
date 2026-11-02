@@ -9,6 +9,7 @@ mod feature_projection;
 mod features;
 mod group;
 mod grouping;
+pub(crate) mod harmonic_relations;
 mod observables;
 pub(crate) mod observation;
 pub(crate) mod proposals;

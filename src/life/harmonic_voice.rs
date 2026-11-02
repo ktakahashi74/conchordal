@@ -112,6 +112,7 @@ impl Voice {
                 at == now && !self.phonation_engine.has_active_notes() && !self.harmonic_waiting;
             self.pitch_ctl.control_tick = Some(at);
             self.pitch_ctl.harmonic_gate = Some(shared && legal && !initial);
+            self.pitch_ctl.harmonic_next_tick = ticks.get(opportunity).copied();
             ctx.rhythms.advance_in_place((at - previous) as f32 / tb.fs);
             let changed = self.pitch_ctl.update_pitch_target(
                 self.body.base_freq_hz(),
@@ -200,6 +201,7 @@ impl Voice {
         }
         self.harmonic_neighbors = (neighbors, salience);
         self.pitch_ctl.harmonic_gate = None;
+        self.pitch_ctl.harmonic_next_tick = None;
         self.apply_phonation_onsets(
             landscape.evaluate_pitch_level(self.body.base_freq_hz()),
             out,

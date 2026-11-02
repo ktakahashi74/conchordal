@@ -96,6 +96,16 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
         .map(|agent| {
             let freq_hz = agent.body.base_freq_hz();
             VoiceStateInfo {
+                support_template: agent.support_template.clone(),
+                support: input
+                    .current_landscape
+                    .loo
+                    .iter()
+                    .find(|s| s.id == agent.id && s.generation == agent.metadata.generation)
+                    .and_then(|s| s.support.clone()),
+                support_single_density: input
+                    .current_landscape
+                    .support_single_density(agent.body.amp()),
                 id: agent.id,
                 freq_hz,
                 target_freq: 2.0f32.powf(agent.target_pitch_log2()),

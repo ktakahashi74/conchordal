@@ -32,6 +32,7 @@ pub(super) fn merge_latest_analysis_results(
             }
             Ok((_, None)) => {
                 unavailable = true;
+                current_landscape.support = None;
                 current_landscape.onset_habituation_known = false;
                 current_landscape.tonal_context = None;
                 current_landscape.tonal_observations.clear();
@@ -44,6 +45,7 @@ pub(super) fn merge_latest_analysis_results(
             Err(TryRecvError::Empty) => break,
             Err(TryRecvError::Disconnected) => {
                 unavailable = true;
+                current_landscape.support = None;
                 current_landscape.onset_habituation_known = false;
                 current_landscape.tonal_context = None;
                 current_landscape.tonal_observations.clear();
@@ -83,6 +85,7 @@ pub(super) fn merge_latest_analysis_results(
     current_landscape.roughness01_scalar = frame.roughness01_scalar;
     current_landscape.loudness_mass = frame.loudness_mass;
     current_landscape.pitch_objective_mode = frame.pitch_objective_mode;
+    current_landscape.support = frame.support;
     current_landscape.subjective_intensity = frame.subjective_intensity;
     current_landscape.nsgt_power = frame.nsgt_power;
     current_landscape.loo = frame.loo;
@@ -396,6 +399,23 @@ pub(super) fn apply_pending_landscape_update(
     listener_analysis_update_tx: Option<&Sender<LandscapeUpdate>>,
 ) -> bool {
     if let Some(update) = pop.take_pending_update() {
+        if let Some(weight) = update.harmonic_relations_weight
+            && weight.is_finite()
+            && (-1. ..=1.).contains(&weight)
+        {
+            current_landscape.harmonic_relations_weight = weight;
+        }
+        if let Some(weight) = update.harmonic_continuation_weight
+            && weight.is_finite()
+            && (-1. ..=1.).contains(&weight)
+        {
+            current_landscape.harmonic_continuation_weight = weight;
+        }
+        for (axis, value) in update.support_preference.iter().enumerate() {
+            if let Some(value) = value {
+                current_landscape.support_weights.set(axis, *value);
+            }
+        }
         let roughness_changed = update
             .roughness_aversion
             .is_some_and(|w| params.set_roughness_aversion(w));

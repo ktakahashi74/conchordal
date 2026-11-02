@@ -501,15 +501,25 @@ fn n2_peak_render_reference() {
                 scores.1.max(0.0).powf(config.scene_score_exponent) * prior,
             ));
             old_winners.push(
-                peak_bias_local_search_with(center, lo, hi, config, |hz| {
-                    observations[&hz.to_bits()].0
-                })
+                peak_bias_local_search_with(
+                    center,
+                    lo,
+                    hi,
+                    config,
+                    |hz| observations[&hz.to_bits()].0,
+                    None,
+                )
                 .to_bits(),
             );
             new_winners.push(
-                peak_bias_local_search_with(center, lo, hi, config, |hz| {
-                    observations[&hz.to_bits()].1
-                })
+                peak_bias_local_search_with(
+                    center,
+                    lo,
+                    hi,
+                    config,
+                    |hz| observations[&hz.to_bits()].1,
+                    None,
+                )
                 .to_bits(),
             );
         }

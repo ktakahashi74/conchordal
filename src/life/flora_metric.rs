@@ -214,6 +214,71 @@ impl Flora {
                 m.drops += u64::from(pending.take().is_some());
             }
         } else if crossing || (!harmonic && !m.active) {
+            self.harmonic_act_now = true;
+            if let Some(use_relations) = &self.harmonic_use {
+                use_relations.set_sample(tick);
+            }
+            if let Some(recorder) = &self.harmonic_recorder {
+                use crate::temporal_cognition::harmonic_relations::{
+                    OPPORTUNITY, Source, runtime::Record,
+                };
+                if self.harmonic_weight > 0. {
+                    let missing = self.harmonic_query_version > 0
+                        && self.harmonic_use.as_ref().is_none_or(|u| !u.active());
+                    recorder.opportunity_stats(2, 1, missing);
+                    let lanes = self
+                        .lanes
+                        .iter()
+                        .filter(|l| l.tonal && l.mode == Mode::Current)
+                        .count();
+                    recorder.opportunity_stats(1, lanes as u64, missing);
+                    if missing {
+                        recorder.flora_unavailable(
+                            tick,
+                            self.id,
+                            self.harmonic_query_version,
+                            f64::from(self.fs),
+                            1 + lanes as u64,
+                            self.harmonic_availability,
+                        );
+                    }
+                }
+                recorder.record(Record {
+                    sample: tick,
+                    source: None,
+                    flags: OPPORTUNITY,
+                    trajectory: None,
+                });
+                for lane in self
+                    .lanes
+                    .iter()
+                    .filter(|l| l.tonal && l.mode == Mode::Current)
+                {
+                    recorder.record(Record {
+                        sample: tick,
+                        source: Some(Source {
+                            kind: 1,
+                            id: self.id,
+                            generation: lane.generation,
+                        }),
+                        flags: OPPORTUNITY,
+                        trajectory: None,
+                    });
+                }
+            }
+            if let Some(use_relations) = self.harmonic_use.as_ref().filter(|u| u.active()) {
+                use_relations.set_sample(tick);
+                let next = if let Some(ticks) = &self.harmonic_ticks {
+                    ticks.iter().copied().find(|&t| t > tick)
+                } else if m.active {
+                    m.crossings.iter().map(|c| c.tick).find(|&t| t > tick)
+                } else {
+                    Some(m.now + self.hop as u64)
+                };
+                if let Some(next) = next {
+                    self.harmonic_act_now = use_relations.allow_now(next);
+                }
+            }
             self.update_tones();
         } else {
             // Existing W priority determines which continuing lane owns a candidate.

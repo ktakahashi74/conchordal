@@ -71,6 +71,8 @@ pub struct Voice {
     pub phonation_engine: PhonationEngine,
     pub(crate) social_coupling: f32,
     pub body: AnySoundBody,
+    pub(crate) support_template: Option<std::sync::Arc<[(isize, f32)]>>,
+    support_template_key: Option<(f32, f32, u32, f32, f32)>,
     pub last_signal: ArticulationSignal,
     pub(crate) selection_environment: bool,
     pub(crate) phonation_scratch: PhonationScratch,
@@ -717,7 +719,7 @@ impl Voice {
         let phonation_gate_open =
             !matches!(effective_control.phonation.gate, PhonationGate::WhenViable);
 
-        Voice {
+        let mut voice = Voice {
             harmonic_member: false,
             harmonic_temperature_bonus: 0.0,
             harmonic_events: Vec::new(),
@@ -764,6 +766,8 @@ impl Voice {
             phonation_engine,
             social_coupling,
             body,
+            support_template: None,
+            support_template_key: None,
             last_signal: Default::default(),
             selection_environment,
             phonation_scratch: Default::default(),
@@ -773,7 +777,13 @@ impl Voice {
             life_accumulator: None,
             voice_adsr,
             phonation_gate_open,
+        };
+        if let Some(landscape) = landscape.filter(|l| l.support_weights.active())
+            && voice.effective_control.pitch.leave_self_out
+        {
+            voice.refresh_support_template(landscape);
         }
+        voice
     }
 
     fn phonation_segment(&self, ctx: &CoreTickCtx, start: Tick, end: Tick) -> CoreTickCtx {
@@ -841,7 +851,32 @@ impl Voice {
             || self.sustain_participation
     }
 
+    pub(crate) fn refresh_support_template(&mut self, landscape: &Landscape) {
+        let space = &landscape.space;
+        let key = (
+            space.fmin,
+            space.fmax,
+            space.bins_per_oct,
+            landscape.support_ref_power,
+            landscape.support_loudness_exp,
+        );
+        if self.support_template_key == Some(key) {
+            return;
+        }
+        let signal = ArticulationSignal {
+            amplitude: 1.,
+            is_active: true,
+            ..Default::default()
+        };
+        let density = self
+            .body
+            .project_support_density(space, key.3, key.4, &signal);
+        self.support_template = density.map(Into::into);
+        self.support_template_key = Some(key);
+    }
+
     fn apply_body_runtime(&mut self) {
+        self.support_template_key = None;
         let runtime = BodyRuntime::from_control(&self.effective_control.body);
         self.amp_update_pending |= runtime.amp != self.body.amp();
         self.body.set_amp(runtime.amp);
@@ -2087,6 +2122,68 @@ mod tests {
             None,
             0,
         )
+    }
+
+    #[test]
+    fn support_partial_cache_reuses_storage_and_rebuilds_after_body_change() {
+        use crate::core::log2space::Log2Space;
+        use crate::scenario::control::BodyMethod;
+        let landscape = Landscape::new(Log2Space::new(55., 7040., 48));
+        for method in [BodyMethod::Sine, BodyMethod::Harmonic, BodyMethod::Modal] {
+            let mut control = VoiceControl::default();
+            control.body.method = method;
+            control.body.amp = 0.2;
+            control.pitch.freq = 220.;
+            let mut voice = Voice::spawn_from_control(
+                control,
+                ArticulationCoreConfig::Drone {
+                    sway: None,
+                    breath_gain_init: None,
+                },
+                1,
+                0,
+                VoiceMetadata::default(),
+                48_000.,
+                Some(&landscape),
+                735,
+            );
+            voice.refresh_support_template(&landscape);
+            let first = voice.support_template.clone().expect("body self-report");
+            assert!(first.iter().all(|&(_, q)| q.is_finite() && q > 0.));
+            #[cfg(feature = "profile-alloc")]
+            crate::runtime_profile::begin_allocations();
+            for _ in 0..8 {
+                voice.refresh_support_template(&landscape);
+                assert!(std::sync::Arc::ptr_eq(
+                    &first,
+                    voice.support_template.as_ref().unwrap()
+                ));
+            }
+            #[cfg(feature = "profile-alloc")]
+            {
+                let counts = crate::runtime_profile::finish_allocations().unwrap();
+                assert_eq!((counts.count, counts.bytes), (0, 0));
+            }
+            voice.effective_control.body.amp = 0.4;
+            voice.apply_body_runtime();
+            voice.refresh_support_template(&landscape);
+            let changed = voice.support_template.as_ref().unwrap();
+            assert!(!std::sync::Arc::ptr_eq(&first, changed));
+            assert!(
+                changed.iter().map(|&(_, q)| q).sum::<f32>()
+                    > first.iter().map(|&(_, q)| q).sum::<f32>()
+            );
+            voice.effective_control.body.amp = 0.;
+            voice.apply_body_runtime();
+            voice.refresh_support_template(&landscape);
+            assert!(
+                voice
+                    .support_template
+                    .as_ref()
+                    .expect("silent self-report remains known")
+                    .is_empty()
+            );
+        }
     }
 
     #[test]

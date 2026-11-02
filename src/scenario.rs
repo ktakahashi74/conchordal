@@ -119,6 +119,7 @@ pub struct RainPatch {
 #[derive(Debug, Clone)]
 pub struct Scenario {
     pub(crate) observe_tonal_context: bool,
+    pub(crate) harmonic_relation_sources: Option<usize>,
     pub(crate) expression: Option<expression::Expression>,
     pub(crate) expression_cursor: Option<f64>,
     pub seed: u64,
@@ -892,6 +893,16 @@ pub enum Action {
     SetRoughnessAversion {
         value: f32,
     },
+    SetSupportPreference {
+        axis: usize,
+        value: f64,
+    },
+    FollowHarmonicRelations {
+        weight: f64,
+    },
+    FollowHarmonicContinuation {
+        weight: f64,
+    },
     SetHarmonicityPreference {
         value: f32,
     },
@@ -995,6 +1006,15 @@ impl fmt::Display for Action {
             }
             Action::SetRoughnessAversion { value } => {
                 write!(f, "SetRoughnessAversion value={:.3}", value)
+            }
+            Action::SetSupportPreference { axis, value } => {
+                write!(f, "SetSupportPreference axis={axis} value={value}")
+            }
+            Action::FollowHarmonicContinuation { weight } => {
+                write!(f, "FollowHarmonicContinuation weight={weight}")
+            }
+            Action::FollowHarmonicRelations { weight } => {
+                write!(f, "FollowHarmonicRelations weight={weight}")
             }
             Action::SetHarmonicityPreference { value } => {
                 write!(f, "SetHarmonicityPreference value={:.3}", value)

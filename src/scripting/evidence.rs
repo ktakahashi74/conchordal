@@ -640,3 +640,13 @@ pub const PITCH_SET: &[EvidenceDoc] = &[
         ja: "候補（出典あり）：IPEMのANI・周期性観測。語全体が公表された学習モデルや確定した脳機構を実装するという意味ではない。",
     },
 ];
+
+pub const HARMONIC_SUPPORT: &[EvidenceDoc] = &[EvidenceDoc {
+    en: "Author rule: support focus, template conflict and related novelty of candidate density addition. No symbolic harmony; movement requires actual PCM self-exclusion.",
+    ja: "作者規則：候補密度の追加による支持の集中、テンプレート間の競合、関連する新規成分。記号的和声は用いず、Voiceの移動には実PCMの自己除外が必要。",
+}];
+
+pub const HARMONIC_RELATIONS: &[EvidenceDoc] = &[EvidenceDoc {
+    en: "Author rule: signed relation and continuation consequences learned during the performance add to existing scores. Support is not a root or chord label; no fixed key profile, progression table or corpus prior is used.",
+    ja: "作者規則：演奏中に学んだ関係と継続の結果を分け、符号付きの性向で既存scoreへ加算する。支持は根音や和音の札ではなく、固定の調profile・進行表・corpus事前分布を用いない。",
+}];

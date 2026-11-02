@@ -108,6 +108,7 @@ fn continuous_runtime_rejects_actual_device_rate_before_spawning() {
         "invalid raw rate".into(),
         Scenario {
             observe_tonal_context: false,
+            harmonic_relation_sources: None,
             expression: None,
             expression_cursor: None,
             seed: 21,

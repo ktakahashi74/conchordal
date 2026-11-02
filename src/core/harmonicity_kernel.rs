@@ -88,6 +88,10 @@ pub struct HarmonicityKernel {
 }
 
 impl HarmonicityKernel {
+    pub(crate) fn support_smoothing(&self) -> &[f32] {
+        &self.smooth_kernel
+    }
+
     pub fn new(space: &Log2Space, params: HarmonicityParams) -> Self {
         let params = Self::sanitize_params(params);
         let (sub_limit, harm_limit, max_limit) = Self::effective_limits(&params);
@@ -174,6 +178,25 @@ impl HarmonicityKernel {
         root_spectrum: &mut [f32],
         landscape: &mut [f32],
     ) -> f32 {
+        self.potential_h_and_support_into(
+            envelope,
+            space,
+            smeared_env,
+            root_spectrum,
+            landscape,
+            None,
+        )
+    }
+
+    pub(crate) fn potential_h_and_support_into(
+        &self,
+        envelope: &[f32],
+        space: &Log2Space,
+        smeared_env: &mut [f32],
+        root_spectrum: &mut [f32],
+        landscape: &mut [f32],
+        support: Option<&mut [f32]>,
+    ) -> f32 {
         dispatch!(Level::new(), simd => self.potential_h_lanes(
             simd,
             envelope,
@@ -181,10 +204,12 @@ impl HarmonicityKernel {
             smeared_env,
             root_spectrum,
             landscape,
+            support,
         ))
     }
 
     #[inline(always)]
+    #[allow(clippy::too_many_arguments)]
     fn potential_h_lanes<S: Simd>(
         &self,
         simd: S,
@@ -193,6 +218,7 @@ impl HarmonicityKernel {
         smeared_env: &mut [f32],
         root_spectrum: &mut [f32],
         landscape: &mut [f32],
+        support: Option<&mut [f32]>,
     ) -> f32 {
         space.assert_scan_len_named(smeared_env, "h_smeared_scan");
         assert_eq!(
@@ -231,6 +257,9 @@ impl HarmonicityKernel {
             let weight = (k as f32).powf(-self.params.rho_common_root);
             let offset = center_offset - shift_bins;
             Self::accumulate_shifted(simd, smeared_env, root_spectrum, offset, weight);
+        }
+        if let Some(support) = support {
+            support.copy_from_slice(root_spectrum);
         }
         let gamma_root = self.params.gamma_root.max(1e-3);
         if (gamma_root - 1.0).abs() > 1e-6 {

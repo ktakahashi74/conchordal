@@ -1662,3 +1662,136 @@ fn numerical_reference_on_bundled_sample_histories() {
         }
     }
 }
+
+#[test]
+fn endless_harmonic_history_starts_before_future_consumers() {
+    for temporal in [false, true] {
+        let reached = Arc::new(AtomicBool::new(false));
+        let observed = reached.clone();
+        let mut opts = options();
+        opts.duration_sec = Some(0.6);
+        opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+            if tick == 20 * 512 {
+                let support = state
+                    .current_landscape
+                    .support
+                    .as_ref()
+                    .expect("reserved support scan");
+                assert!(support.end_sample > 0);
+                assert!(!state.current_landscape.support_weights.active());
+                assert_eq!(state.current_landscape.harmonic_relations_weight, 0.);
+                assert_eq!(state.harmonic_relations.is_some(), temporal);
+                if let Some(relations) = &state.harmonic_relations {
+                    assert_eq!(relations.sources, 36);
+                    assert!(relations.observations.load(Ordering::Relaxed) > 0);
+                }
+                observed.store(true, Ordering::SeqCst);
+            }
+        }));
+        let declaration = if temporal {
+            "observe_harmonic_relations(36);"
+        } else {
+            ""
+        };
+        let control = if temporal {
+            "follow_harmonic_relations(1);"
+        } else {
+            "set_support_focus_preference(1);"
+        };
+        let source = format!(
+            "endless(); {declaration} place(sine().sustain(),at(440)); wait(0.5); {control} wait(1);"
+        );
+        let (wiring, _, dir) = fixture(opts, &source);
+        join(wiring).unwrap();
+        assert!(reached.load(Ordering::SeqCst));
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+}
+
+#[test]
+#[cfg(feature = "profile-alloc")]
+#[ignore = "HV-INT observer cost acquisition requires the timing lock and HVINT_COST_OUTPUT"]
+fn harmonic_observer_reservation_cost() {
+    use crate::core::stream::loo::SourceKind;
+    use std::collections::BTreeMap;
+    type SourceKey = (u8, u64, u32);
+    type Input = (Vec<f32>, Vec<(SourceKey, Vec<f32>)>);
+    let inputs = Arc::new(std::sync::Mutex::new(Vec::<Input>::new()));
+    let captured = inputs.clone();
+    let mut opts = options();
+    opts.offline_body_probe = Some(Box::new(move |state, _, _, pcm| {
+        let own = state
+            .schedule_renderer
+            .loo_pcm
+            .iter()
+            .filter(|s| s.analyze_hr)
+            .map(|s| {
+                (
+                    (
+                        if s.kind == SourceKind::Voice { 0 } else { 1 },
+                        s.id,
+                        s.generation,
+                    ),
+                    s.habitat.clone(),
+                )
+            })
+            .collect();
+        captured.lock().unwrap().push((pcm[0].to_vec(), own));
+    }));
+    let source = std::fs::read_to_string("tests/research/harmonic_relations_load.rhai")
+        .unwrap()
+        .replace(
+            "follow_harmonic_relations(0.8)",
+            "follow_harmonic_relations(0)",
+        );
+    let (wiring, _, dir) = fixture(opts, &source);
+    join(wiring).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+    let inputs = Arc::try_unwrap(inputs).unwrap().into_inner().unwrap();
+    let max_own = inputs.iter().map(|(_, s)| s.len()).max().unwrap();
+    assert_eq!(max_own, 4, "two Voice and two Flora H/R observers");
+    let mut results = Vec::new();
+    for support in [false, true, true, false] {
+        let initial_heap = crate::runtime_profile::heap_live_bytes();
+        let core = build_analysis_runtime_core(&AppConfig::default(), 48000);
+        let mut mixed = AnalysisStream::new(core.lparams.clone(), core.nsgt).with_nsgt_power(true);
+        if support {
+            let geometry = crate::core::harmonic_support::Geometry::new(
+                &mixed.last().space,
+                &core.lparams.harmonicity_kernel,
+            );
+            mixed.enable_support(geometry, true);
+        }
+        let mut own = BTreeMap::<SourceKey, AnalysisStream>::new();
+        let mut scratch = vec![0.; 512];
+        let mut times = Vec::with_capacity(inputs.len());
+        let mut heap_peak = 0;
+        for (pcm, sources) in &inputs {
+            own.retain(|key, _| sources.iter().any(|(k, _)| key == k));
+            for (key, _) in sources {
+                own.entry(*key).or_insert_with(|| mixed.voice_observer());
+            }
+            let start = Instant::now();
+            std::hint::black_box(mixed.process(pcm));
+            for (key, self_pcm) in sources {
+                for ((dst, mix), source) in scratch.iter_mut().zip(pcm).zip(self_pcm) {
+                    *dst = mix - source;
+                }
+                std::hint::black_box(own.get_mut(key).unwrap().process(&scratch));
+            }
+            times.push(start.elapsed().as_secs_f64() * 1000.);
+            heap_peak = heap_peak
+                .max(crate::runtime_profile::heap_live_bytes().saturating_sub(initial_heap));
+        }
+        results.push(
+            serde_json::json!({"support":support,"heap_peak_bytes":heap_peak,"hop_ms":times}),
+        );
+    }
+    let output = std::env::var("HVINT_COST_OUTPUT").unwrap();
+    std::fs::write(output, serde_json::to_vec_pretty(&serde_json::json!({
+        "sample_rate":48000,"hop":512,"hops":inputs.len(),"maximum_self_observers":max_own,
+        "source":"tests/research/harmonic_relations_load.rhai; temporal weight zero; actual habitat and own PCM",
+        "scope":"auditory mixed plus actual Voice/Flora self-subtracted H/R streams; excludes publication, resource-only Flora FFT, consumer and background work",
+        "windows":results
+    })).unwrap()).unwrap();
+}

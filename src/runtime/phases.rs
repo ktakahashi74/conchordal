@@ -97,6 +97,7 @@ pub(super) fn advance_population(
             v.id() == receipt.record.voice_id && v.metadata.generation == receipt.record.generation
         }) && let Some(phrase) = &mut voice.phonation_engine.phrase_boundary
         {
+            phrase.harmonic_recorder = state.current_landscape.harmonic_recorder.clone();
             phrase.trace_enabled = state.reporter.is_some();
             phrase.observe(&receipt, now_tick);
         }
@@ -643,6 +644,10 @@ pub(super) fn render_and_route_audio(
     now_tick: Tick,
     phonation_count: usize,
 ) -> (Arc<[f32]>, Arc<[f32]>, f32, Duration) {
+    state.schedule_renderer.harmonic_recorder = state.current_landscape.harmonic_recorder.clone();
+    for flora in &mut state.pop.flora {
+        flora.harmonic_recorder = state.current_landscape.harmonic_recorder.clone();
+    }
     state
         .schedule_renderer
         .retain_phrase_sources(|id, generation| {

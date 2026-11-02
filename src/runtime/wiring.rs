@@ -298,6 +298,44 @@ pub(super) fn wire_runtime(
     let display_or_report = ui_tx.is_some() || reporter.is_some();
     let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
         .with_nsgt_power(display_or_report || taps[0].is_some() || resource_power);
+    let harmonic_relations_enabled = scenario.harmonic_relation_sources.is_some()
+        || scenario
+            .events
+            .iter()
+            .flat_map(|event| &event.actions)
+            .any(|action| {
+                let valid = |w: f64| w.is_finite() && w != 0. && (-1. ..=1.).contains(&w);
+                match action {
+                    Action::FollowHarmonicRelations { weight }
+                    | Action::FollowHarmonicContinuation { weight } => valid(*weight),
+                    Action::UpdateLandscape { update } => {
+                        update.harmonic_relations_weight.is_some_and(valid)
+                            || update.harmonic_continuation_weight.is_some_and(valid)
+                    }
+                    _ => false,
+                }
+            });
+    let support_enabled = scenario.end == crate::scenario::ScenarioEnd::Open || harmonic_relations_enabled || scenario.events.iter().flat_map(|event| &event.actions).any(|action| {
+        matches!(action, crate::scenario::Action::SetSupportPreference { axis, value } if *axis < 3 && value.is_finite() && *value != 0. && (*axis != 2 || *value > 0.))
+        || matches!(action, crate::scenario::Action::UpdateLandscape { update } if update.support_preference.iter().enumerate().any(|(axis, value)| value.is_some_and(|w| w.is_finite() && w != 0. && (axis != 2 || w > 0.))))
+    });
+    let support_geometry = support_enabled.then(|| {
+        crate::core::harmonic_support::Geometry::new(
+            core.nsgt.space(),
+            &core.lparams.harmonicity_kernel,
+        )
+    });
+    if let Some(geometry) = &support_geometry {
+        analysis_stream.enable_support(
+            geometry.clone(),
+            harmonic_relations_enabled || scenario.end == crate::scenario::ScenarioEnd::Open,
+        );
+        analysis_stream.apply_update(crate::core::landscape::LandscapeUpdate {
+            support_preference: [Some(0.); 3],
+            ..Default::default()
+        });
+    }
+
     let tonal_enabled = scenario.observe_tonal_context || scenario.events.iter().flat_map(|e| &e.actions).any(
         |a| matches!(a, Action::Spawn { spec, .. } if spec.control.pitch.follow_tonal_context > 0.),
     );
@@ -387,10 +425,21 @@ pub(super) fn wire_runtime(
         (None, None, None, None)
     };
 
-    let landscape = core.landscape;
+    let mut landscape = core.landscape;
+    landscape.support_planned = support_enabled;
+    landscape.support_ref_power = core.lparams.ref_power;
+    landscape.support_loudness_exp = core.lparams.loudness_exp;
+    if support_enabled {
+        tracing::info!(
+            "harmonic support: heard first-order fields integrated over cached body partials; no self-report uses a labeled single partial"
+        );
+    }
     let dorsal = core.dorsal;
 
     let mut pop = Community::new(crate::core::timebase::Timebase { fs, hop });
+    if support_enabled {
+        pop.prepare_support(core.nsgt.space().n_bins());
+    }
     if let Some(settings) = config.body_metabolism.filter(|settings| settings.enabled) {
         pop.body_metabolism = Some(
             crate::life::body_metabolism::BodyMetabolism::new(
@@ -472,6 +521,31 @@ pub(super) fn wire_runtime(
             .iter()
             .flat_map(|event| &event.actions)
             .any(|action| matches!(action, Action::PlaceFlora { .. }));
+    let harmonic_relations = harmonic_relations_enabled.then(|| {
+        let sources = scenario.harmonic_relation_sources.unwrap_or_else(|| {
+            scenario
+                .events
+                .iter()
+                .flat_map(|event| &event.actions)
+                .map(|action| match action {
+                    Action::Spawn { ids, .. } => ids.len(),
+                    Action::PlaceFlora {
+                        spec, extent_hz, ..
+                    } => crate::life::flora::harmonic_source_bound(
+                        &landscape.space,
+                        *extent_hz,
+                        spec.residual,
+                    ),
+                    Action::SetRespawnPolicy { capacity, .. } => *capacity,
+                    _ => 0,
+                })
+                .sum::<usize>()
+        });
+        (
+            support_geometry.clone().expect("temporal support geometry"),
+            sources,
+        )
+    });
     let mut conductor =
         Conductor::from_scenario(scenario, crate::core::timebase::Timebase { fs, hop });
 
@@ -479,6 +553,7 @@ pub(super) fn wire_runtime(
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
+        harmonic_relations,
         has_flora,
         render_prototype: config.render_prototype,
         temporal_meter_t2: config.temporal_meter_t2,

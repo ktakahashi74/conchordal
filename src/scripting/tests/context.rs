@@ -2843,3 +2843,112 @@ fn endless_allows_top_level_conditionals_before_events_and_time() {
         assert_eq!(scenario.end, ScenarioEnd::Open);
     }
 }
+
+#[test]
+fn support_preferences_are_signed_cursor_events_and_novelty_is_nonnegative() {
+    let scenario = run_script("wait(0.25); set_support_focus_preference(-2); set_support_conflict_preference(1.5); wait(0.5); set_related_novelty_preference(3);").0;
+    let actual: Vec<_> = action_times(&scenario)
+        .into_iter()
+        .filter_map(|(time, action)| {
+            if let Action::SetSupportPreference { axis, value } = action {
+                Some((time, *axis, *value))
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(actual, vec![(0.25, 0, -2.), (0.25, 1, 1.5), (0.75, 2, 3.)]);
+    let mut pop = Community::new(Timebase {
+        fs: 48000.,
+        hop: 512,
+    });
+    let landscape = Landscape::new(crate::core::log2space::Log2Space::new(55., 880., 24));
+    for (axis, value) in [
+        (0, -5.),
+        (1, f64::MAX),
+        (2, 1.),
+        (2, -1.),
+        (0, f64::NAN),
+        (1, f64::INFINITY),
+    ] {
+        pop.apply_action(Action::SetSupportPreference { axis, value }, &landscape);
+    }
+    assert_eq!(
+        pop.take_pending_update().unwrap().support_preference,
+        [Some(-5.), Some(f64::MAX), Some(1.)]
+    );
+}
+
+#[test]
+fn harmonic_relations_weights_are_cursor_events_and_reject_invalid_updates() {
+    let scenario = run_script(
+        "wait(0.25); follow_harmonic_relations(1); wait(0.5); follow_harmonic_relations(0.5); follow_harmonic_relations(0);",
+    ).0;
+    let actual: Vec<_> = action_times(&scenario)
+        .into_iter()
+        .filter_map(|(time, action)| match action {
+            Action::FollowHarmonicRelations { weight } => Some((time, *weight)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(actual, [(0.25, 1.), (0.75, 0.5), (0.75, 0.)]);
+
+    let mut pop = Community::new(Timebase {
+        fs: 48000.,
+        hop: 512,
+    });
+    let landscape = Landscape::default();
+    assert_eq!(landscape.harmonic_relations_weight, 0.);
+    assert!(pop.take_pending_update().is_none());
+    pop.apply_action(Action::FollowHarmonicRelations { weight: 0.5 }, &landscape);
+    pop.apply_action(
+        Action::SetSupportPreference { axis: 0, value: 2. },
+        &landscape,
+    );
+    for weight in [-1.01, 1.01, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        pop.apply_action(Action::FollowHarmonicRelations { weight }, &landscape);
+    }
+    let update = pop.take_pending_update().unwrap();
+    assert_eq!(update.harmonic_relations_weight, Some(0.5));
+    assert_eq!(update.support_preference[0], Some(2.));
+    for weight in [-1., 0., 1.] {
+        pop.apply_action(Action::FollowHarmonicRelations { weight }, &landscape);
+        assert_eq!(
+            pop.take_pending_update().unwrap().harmonic_relations_weight,
+            Some(weight)
+        );
+    }
+    pop.apply_action(
+        Action::FollowHarmonicRelations { weight: f64::MAX },
+        &landscape,
+    );
+    assert!(pop.take_pending_update().is_none());
+}
+
+#[test]
+fn harmonic_continuation_is_an_independent_signed_cursor_event() {
+    let scenario = run_script("wait(0.25); follow_harmonic_relations(-1); follow_harmonic_continuation(1); wait(0.5); follow_harmonic_continuation(-0.5);").0;
+    let values: Vec<_> = action_times(&scenario)
+        .into_iter()
+        .filter_map(|(t, a)| match a {
+            Action::FollowHarmonicContinuation { weight } => Some((t, *weight)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(values, [(0.25, 1.), (0.75, -0.5)]);
+    let mut pop = Community::new(Timebase {
+        fs: 48000.,
+        hop: 512,
+    });
+    let landscape = Landscape::default();
+    for weight in [-1., 0., 1.] {
+        pop.apply_action(Action::FollowHarmonicContinuation { weight }, &landscape);
+        let update = pop.take_pending_update().unwrap();
+        assert_eq!(update.harmonic_continuation_weight, Some(weight));
+        assert_eq!(update.harmonic_relations_weight, None);
+    }
+    for weight in [-1.01, 1.01, f64::NAN, f64::INFINITY] {
+        pop.apply_action(Action::FollowHarmonicContinuation { weight }, &landscape);
+        assert!(pop.take_pending_update().is_none());
+    }
+}

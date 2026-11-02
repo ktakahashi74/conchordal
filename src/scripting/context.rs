@@ -58,6 +58,7 @@ pub(super) struct ScopeFrame {}
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
     pub(super) tonal_observation_position: Option<Position>,
+    pub(super) harmonic_observation_position: Option<Position>,
     pub(super) stream: Option<Arc<score::ScoreStream>>,
     pub(super) emission_error: Option<ScriptError>,
     pub(super) emitted_any_event: bool,
@@ -108,6 +109,7 @@ impl ScriptContext {
     pub(super) fn with_seed(seed: u64) -> Self {
         Self {
             tonal_observation_position: None,
+            harmonic_observation_position: None,
             harmonic_position: Position::NONE,
             harmonic_sites: Vec::new(),
             listener_profile: DEFAULT_LISTENER_PROFILE,
@@ -120,6 +122,7 @@ impl ScriptContext {
             expression_sections: Vec::new(),
             scenario: Scenario {
                 observe_tonal_context: false,
+                harmonic_relation_sources: None,
                 expression: None,
                 expression_cursor: None,
                 seed,
@@ -751,6 +754,10 @@ impl ScriptContext {
                 );
             }
             return;
+        }
+        if let Some(position) = self.harmonic_observation_position {
+            self.warn("finite_harmonic_observation", "observe_harmonic_relations ignored in a finite scenario; events determine observation and source capacity".into(), position);
+            self.scenario.harmonic_relation_sources = None;
         }
         if let Some(position) = self.tonal_observation_position {
             self.warn("finite_tonal_observation", "observe_tonal_context ignored in a finite scenario; placements determine observation".into(), position);

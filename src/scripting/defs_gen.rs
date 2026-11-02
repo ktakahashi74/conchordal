@@ -655,12 +655,45 @@ disappear as their research questions settle.",
                 if let Some(applies) = applies_line(doc, sigs, language) {
                     let _ = writeln!(out, "{applies}\n");
                 }
-                if language == ReferenceLanguage::Japanese && doc.name == "observe_tonal_context" {
+                if language == ReferenceLanguage::Japanese
+                    && doc.name == "observe_harmonic_relations"
+                {
+                    out.push_str("終わりを定めない曲で、時刻を進める前に和声関係の履歴を予約する作者規則。二つのfollow_harmonic語を正負いずれかの非零の重みで使う場合に必要。max_sourcesは退役中を含む同時VoiceとFlora laneの最大音源数を表す正の整数で、構造記録の容量38400を超えられない。観測は演奏開始時から行う。遅い宣言と未予約の非零制御は位置付きの脚本エラー。有限の曲では警告して宣言を無視し、従来どおりeventを先読みする。縦の支持scanはendlessで宣言なしに開始時から観測する。");
+                } else if language == ReferenceLanguage::Japanese
+                    && doc.name == "observe_tonal_context"
+                {
                     out.push_str("終わりを定めない曲で、時刻を進める前に調的文脈の観測を予約する作者規則。正のfollow_tonal_contextを配置する前に宣言すると、演奏開始時から観測器と共有の表を用意する。遅い宣言と未予約の正の配置は位置付きの脚本エラー。有限の曲では宣言は不要で、書いた場合は警告して無効にする。有限の曲の表の要否は従来どおり配置の先読みで決まる。");
                 } else if language == ReferenceLanguage::Japanese
                     && doc.name == "remember_pitch_set"
                 {
                     out.push_str("実際のhabitat音から周期性の経験分布を作り、自由音高のHillClimbで山を再提案する実験的な作者規則。場面の動作とscopeより前に有限非負の重みを指定する。省略と0は中立。入力は48 kHz、問い合わせ範囲は約15.84〜1378.13 Hz。自己を含む音を聴き、有効な聴取時間で累積平均する。候補と現在目標へ同じ記憶を加点し、Floraのlane選択には接続しない。PPの観測部分はIPEM候補、連続化・記憶・候補化・採点は作者規則。部分調波や平均で移動した山も含むため、発音基音の台帳とは呼ばない。欠測では経験を保持してPS観測を再開し、TCは従来どおり無効のまま。固定音階、オクターブ折り畳み、忘却時間の指定、listener profileへの追加はない。");
+                } else if language == ReferenceLanguage::Japanese
+                    && matches!(
+                        doc.name,
+                        "follow_harmonic_relations" | "follow_harmonic_continuation"
+                    )
+                {
+                    let text = if doc.name == "follow_harmonic_relations" {
+                        "作者規則。cursor event、有限の[-1,1]、既定0。動く候補どうしで、正は学んだ関係への適合、負は離脱を好む。既定の勝者との支持された差を有界化し、慣れや身体費用を含む既存scoreへ加算する。継続0なら、関係だけでは保持・待機・出生見送りを増やさない。"
+                    } else {
+                        "作者規則。cursor event、有限の[-1,1]、既定0。学んだ継続への支持を既定候補との差として既存scoreへ加算する。正は保持・合法な機会での待機・Flora laneの保持・出生見送りを支持に応じて好み、負はその支持からの離脱を好む。機会の時刻は新設しない。"
+                    };
+                    out.push_str(text);
+                    out.push_str(" 支持されない比較は中立。両方0なら既存の選択と乱数列を保つ。性向の変更でも履歴は残り、不正値は警告して無視する。固定の調や進行のprofileは用いない。");
+                } else if language == ReferenceLanguage::Japanese
+                    && matches!(
+                        doc.name,
+                        "set_support_focus_preference"
+                            | "set_support_conflict_preference"
+                            | "set_related_novelty_preference"
+                    )
+                {
+                    out.push_str(match doc.name {
+                        "set_support_focus_preference" => "支持の集中への選好。符号付きの有限値を指定し、正で集中を好み、負で避ける。",
+                        "set_support_conflict_preference" => "支持されるテンプレート間の競合への選好。符号付きの有限値を指定し、正で競合を好み、負で避ける。",
+                        _ => "既存の音と支持を共有する新しい成分への選好。0以上の有限値を指定し、既存密度に覆われた成分には加点しない。",
+                    });
+                    out.push_str("既定値0のcursor eventで、上限は設けない。聴いた音の一次の支持場を身体の部分音で積分する作者規則。Voiceの移動にはleave_self_out(true)が必要で、出生とFloraのlane選択にも作用する。Floraの成長と慣れの入力は維持する。部分音の密度は身体の自己申告から出生・再構成時に保存する。自己申告がない身体は基本周波数の単一部分音として読み、その旨を表示する。");
                 } else if language == ReferenceLanguage::Japanese && doc.name == "harmonic_rhythm" {
                     out.push_str("背景の変化をN拍ごとの共有機会にまとめる作者規則。Nは作曲者が置く非負整数で、0と省略は中立。最後の有効な指定を場面全体の初期前提とし、有限の曲ではwait()後の記述も途中変更にはならない。endlessでは最初に時刻を進めるwait()より前に宣言する。対象は全Floraと、出生時にOnce／WhileAlive、Free、Rearticulate、閾値0のVoice。準備が整わなければ機会を見送る。解放と支持喪失は優先し、競合する実行中の音高設定はwarningとともに拒否する。調・和音・進行の表や、小節頭への再整列は導入しない。Nは推定小節長ではない。");
                 } else {

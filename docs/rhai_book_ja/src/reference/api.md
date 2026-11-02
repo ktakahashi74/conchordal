@@ -423,6 +423,16 @@ Create a Population at the current script time. `place()` is the sole Population
 
 **根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
 
+#### `observe_harmonic_relations`
+
+```rhai,ignore
+observe_harmonic_relations(max_sources)
+```
+
+終わりを定めない曲で、時刻を進める前に和声関係の履歴を予約する作者規則。二つのfollow_harmonic語を正負いずれかの非零の重みで使う場合に必要。max_sourcesは退役中を含む同時VoiceとFlora laneの最大音源数を表す正の整数で、構造記録の容量38400を超えられない。観測は演奏開始時から行う。遅い宣言と未予約の非零制御は位置付きの脚本エラー。有限の曲では警告して宣言を無視し、従来どおりeventを先読みする。縦の支持scanはendlessで宣言なしに開始時から観測する。
+
+**根拠:** 作者規則：終わりを定めない演奏で、開始時から和声関係の履歴と音源数の容量を予約する。
+
 #### `observe_tonal_context`
 
 ```rhai,ignore
@@ -1412,6 +1422,56 @@ set_roughness_aversion(weight)
 How much the modeled listener minds roughness (default 1.0). Cursor event: changes roughness valuation from this script time onward. Dimensionless, nonnegative; zero removes aversion. Does not change raw roughness sensation.
 
 **根拠:** 作者規則：協和の評価、符号、粗さの好み。H/Rの感覚は変更しない（§9.3.56）。既存の評価の既定値は維持。
+
+#### `set_support_focus_preference`
+
+```rhai,ignore
+set_support_focus_preference(weight)
+```
+
+支持の集中への選好。符号付きの有限値を指定し、正で集中を好み、負で避ける。既定値0のcursor eventで、上限は設けない。聴いた音の一次の支持場を身体の部分音で積分する作者規則。Voiceの移動にはleave_self_out(true)が必要で、出生とFloraのlane選択にも作用する。Floraの成長と慣れの入力は維持する。部分音の密度は身体の自己申告から出生・再構成時に保存する。自己申告がない身体は基本周波数の単一部分音として読み、その旨を表示する。
+
+**根拠:** 作者規則：候補密度の追加による支持の集中、テンプレート間の競合、関連する新規成分。記号的和声は用いず、Voiceの移動には実PCMの自己除外が必要。
+
+#### `follow_harmonic_relations`
+
+```rhai,ignore
+follow_harmonic_relations(weight)
+```
+
+作者規則。cursor event、有限の[-1,1]、既定0。動く候補どうしで、正は学んだ関係への適合、負は離脱を好む。既定の勝者との支持された差を有界化し、慣れや身体費用を含む既存scoreへ加算する。継続0なら、関係だけでは保持・待機・出生見送りを増やさない。 支持されない比較は中立。両方0なら既存の選択と乱数列を保つ。性向の変更でも履歴は残り、不正値は警告して無視する。固定の調や進行のprofileは用いない。
+
+**根拠:** 作者規則：演奏中に学んだ関係と継続の結果を分け、符号付きの性向で既存scoreへ加算する。支持は根音や和音の札ではなく、固定の調profile・進行表・corpus事前分布を用いない。
+
+#### `follow_harmonic_continuation`
+
+```rhai,ignore
+follow_harmonic_continuation(weight)
+```
+
+作者規則。cursor event、有限の[-1,1]、既定0。学んだ継続への支持を既定候補との差として既存scoreへ加算する。正は保持・合法な機会での待機・Flora laneの保持・出生見送りを支持に応じて好み、負はその支持からの離脱を好む。機会の時刻は新設しない。 支持されない比較は中立。両方0なら既存の選択と乱数列を保つ。性向の変更でも履歴は残り、不正値は警告して無視する。固定の調や進行のprofileは用いない。
+
+**根拠:** 作者規則：演奏中に学んだ関係と継続の結果を分け、符号付きの性向で既存scoreへ加算する。支持は根音や和音の札ではなく、固定の調profile・進行表・corpus事前分布を用いない。
+
+#### `set_support_conflict_preference`
+
+```rhai,ignore
+set_support_conflict_preference(weight)
+```
+
+支持されるテンプレート間の競合への選好。符号付きの有限値を指定し、正で競合を好み、負で避ける。既定値0のcursor eventで、上限は設けない。聴いた音の一次の支持場を身体の部分音で積分する作者規則。Voiceの移動にはleave_self_out(true)が必要で、出生とFloraのlane選択にも作用する。Floraの成長と慣れの入力は維持する。部分音の密度は身体の自己申告から出生・再構成時に保存する。自己申告がない身体は基本周波数の単一部分音として読み、その旨を表示する。
+
+**根拠:** 作者規則：候補密度の追加による支持の集中、テンプレート間の競合、関連する新規成分。記号的和声は用いず、Voiceの移動には実PCMの自己除外が必要。
+
+#### `set_related_novelty_preference`
+
+```rhai,ignore
+set_related_novelty_preference(weight)
+```
+
+既存の音と支持を共有する新しい成分への選好。0以上の有限値を指定し、既存密度に覆われた成分には加点しない。既定値0のcursor eventで、上限は設けない。聴いた音の一次の支持場を身体の部分音で積分する作者規則。Voiceの移動にはleave_self_out(true)が必要で、出生とFloraのlane選択にも作用する。Floraの成長と慣れの入力は維持する。部分音の密度は身体の自己申告から出生・再構成時に保存する。自己申告がない身体は基本周波数の単一部分音として読み、その旨を表示する。
+
+**根拠:** 作者規則：候補密度の追加による支持の集中、テンプレート間の競合、関連する新規成分。記号的和声は用いず、Voiceの移動には実PCMの自己除外が必要。
 
 #### `set_harmonicity_preference`
 

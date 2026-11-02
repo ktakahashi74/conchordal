@@ -104,6 +104,8 @@ fn profile(input: &[[f64; 3]], caps: [f64; 3], output: &mut [f64]) -> bool {
 }
 
 pub(crate) struct PhraseBoundary {
+    pub(crate) harmonic_recorder:
+        Option<crate::temporal_cognition::harmonic_relations::runtime::Recorder>,
     voice: u64,
     generation: u32,
     fs: f64,
@@ -122,6 +124,7 @@ pub(crate) struct PhraseBoundary {
 impl PhraseBoundary {
     pub fn new(voice: u64, generation: u32, fs: f32, weight: f64, caps: [f64; 3]) -> Self {
         Self {
+            harmonic_recorder: None,
             voice,
             generation,
             fs: fs as f64,
@@ -231,6 +234,21 @@ impl PhraseBoundary {
                     model: "LBDM-2001/local-6-v1/renderer-executed",
                     publication: "final-local",
                 };
+                if let Some(recorder) = &self.harmonic_recorder {
+                    use crate::temporal_cognition::harmonic_relations::{
+                        BOUNDARY, Source, runtime::Record,
+                    };
+                    recorder.record(Record {
+                        sample: now,
+                        source: Some(Source {
+                            kind: 0,
+                            id: self.voice,
+                            generation: u64::from(self.generation),
+                        }),
+                        flags: BOUNDARY,
+                        trajectory: None,
+                    });
+                }
                 if self.trace_enabled {
                     self.trace.push(boundary.clone());
                 }

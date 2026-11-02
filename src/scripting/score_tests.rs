@@ -582,3 +582,85 @@ fn endless_harmonic_patches_preserve_birth_membership_and_unrelated_controls() {
     }
     assert_eq!(amplitudes, [0.2, 0.3]);
 }
+
+#[test]
+fn harmonic_reservation_controls_incremental_admission() {
+    for control in ["follow_harmonic_relations", "follow_harmonic_continuation"] {
+        for weight in ["1", "-0.5"] {
+            let source = format!("endless(); wait(0.01); {control}({weight});");
+            let session = ScriptHost::start_source(source, Some(21), Some(0.1), 32);
+            let error = session
+                .drain(timebase(), &AtomicBool::new(false), |_| {})
+                .unwrap_err();
+            assert!(error.contains("observe_harmonic_relations"), "{error}");
+            let state = session.stream.state.lock().unwrap();
+            let Some(Terminal::Failed(error)) = &state.terminal else {
+                panic!("missing error")
+            };
+            assert!(error.position.is_some_and(|p| p.line().is_some()));
+            drop(state);
+            let source = format!(
+                "endless(); observe_harmonic_relations(36); wait(0.01); {control}({weight}); wait(0.02);"
+            );
+            let session = ScriptHost::start_source(source, Some(21), Some(0.1), 32);
+            session
+                .drain(timebase(), &AtomicBool::new(false), |_| {})
+                .unwrap();
+            assert_eq!(
+                session
+                    .stream
+                    .state
+                    .lock()
+                    .unwrap()
+                    .header
+                    .as_ref()
+                    .unwrap()
+                    .harmonic_relation_sources,
+                Some(36)
+            );
+        }
+    }
+    for source in [
+        "endless(); wait(0.01); observe_harmonic_relations(36);",
+        "endless(); observe_harmonic_relations(0);",
+        "endless(); observe_harmonic_relations(38401);",
+    ] {
+        assert!(
+            evaluate(source, 0.1, 32)
+                .2
+                .unwrap_err()
+                .contains("observe_harmonic_relations")
+        );
+    }
+    let (_, _, result) = evaluate(
+        "endless(); wait(0.01); follow_harmonic_relations(0); follow_harmonic_continuation(0.0); set_support_focus_preference(1);",
+        0.1,
+        32,
+    );
+    result.unwrap();
+}
+
+#[test]
+fn finite_harmonic_reservation_keeps_event_prescan() {
+    for declaration in ["", "observe_harmonic_relations(36);"] {
+        let source = format!(
+            "{declaration} wait(0.01); follow_harmonic_relations(1); follow_harmonic_continuation(-0.5); wait(0.02);"
+        );
+        let session = ScriptHost::start_source(source, Some(21), None, 32);
+        session
+            .drain(timebase(), &AtomicBool::new(false), |_| {})
+            .unwrap();
+        let state = session.stream.state.lock().unwrap();
+        assert_eq!(
+            state.header.as_ref().unwrap().harmonic_relation_sources,
+            None
+        );
+        assert_eq!(
+            state
+                .warnings
+                .values()
+                .any(|w| w.kind == "finite_harmonic_observation" && w.position.line().is_some()),
+            !declaration.is_empty()
+        );
+    }
+}

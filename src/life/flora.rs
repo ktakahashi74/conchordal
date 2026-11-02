@@ -74,6 +74,15 @@ fn partition_erb_cells(space: &Log2Space, erb_scan: &[f32], extent_hz: (f32, f32
     cells
 }
 
+pub(crate) fn harmonic_source_bound(
+    space: &Log2Space,
+    extent_hz: (f32, f32),
+    residual: bool,
+) -> usize {
+    let erb: Vec<_> = space.centers_hz.iter().map(|&f| hz_to_erb(f)).collect();
+    partition_erb_cells(space, &erb, extent_hz).len() * (2 + usize::from(residual))
+}
+
 const GROWTH_RATE: f32 = 8.0;
 const RENEWAL_SEC: f32 = 10.0;
 
@@ -160,6 +169,8 @@ enum Mode {
 
 #[derive(Clone, Debug)]
 struct Lane {
+    harmonic_hold: bool,
+    harmonic_sounding: bool,
     mode: Mode,
     tonal: bool,
     noisy: bool,
@@ -191,6 +202,8 @@ struct Lane {
 impl Lane {
     fn new(noisy: bool, position: f32) -> Self {
         Self {
+            harmonic_sounding: false,
+            harmonic_hold: false,
             mode: Mode::Free,
             tonal: true,
             noisy,
@@ -284,6 +297,46 @@ impl Lane {
         self.e[1] = self.a * self.e[1] + self.b * n[1];
         self.e[0] * self.z[0] - self.e[1] * self.z[1]
     }
+
+    fn project_support_density(
+        &self,
+        amp: f32,
+        fs: f32,
+        space: &Log2Space,
+        ref_power: f32,
+        loudness_exp: f32,
+    ) -> Vec<(isize, f32)> {
+        let hz = self.sounding_log2.exp2();
+        let mut amplitudes = vec![0.; space.n_bins()];
+        if !self.noisy {
+            super::sound::spectral::add_log2_energy(&mut amplitudes, space, hz, amp * self.r);
+        } else {
+            // Integrate the stationary AR(1) sidebands over each log-frequency bin.
+            // Each quadrature's innovation has variance 1/2; the real atom has
+            // mean-square power 1/2, like the unit sine atom.
+            let a = f64::from(self.a);
+            let w0 = std::f64::consts::TAU * f64::from(hz / fs);
+            let primitive =
+                |w: f64| 2. * ((1. + a) * (w / 2.).sin()).atan2((1. - a) * (w / 2.).cos());
+            let half = f64::from(space.step()) / 2.;
+            for (i, amplitude) in amplitudes.iter_mut().enumerate() {
+                let center = f64::from(space.centers_log2[i]);
+                let lo = std::f64::consts::TAU * (center - half).exp2() / f64::from(fs);
+                let hi = std::f64::consts::TAU * (center + half).exp2() / f64::from(fs);
+                let power = (primitive(hi - w0) - primitive(lo - w0) + primitive(hi + w0)
+                    - primitive(lo + w0))
+                    / (4. * std::f64::consts::PI);
+                *amplitude = amp * self.r * (2. * power.max(0.)).sqrt() as f32;
+            }
+        }
+        crate::core::harmonic_support::body_density::project(
+            &amplitudes,
+            hz,
+            space,
+            ref_power,
+            loudness_exp,
+        )
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -314,6 +367,14 @@ struct Cell {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Flora {
+    harmonic_use: Option<crate::temporal_cognition::harmonic_relations::consumer::Use>,
+    harmonic_cells: Vec<usize>,
+    harmonic_act_now: bool,
+    harmonic_weight: f64,
+    harmonic_query_version: u64,
+    harmonic_availability: crate::temporal_cognition::harmonic_relations::runtime::Availability,
+    pub(crate) harmonic_recorder:
+        Option<crate::temporal_cognition::harmonic_relations::runtime::Recorder>,
     pub(crate) harmonic_ticks: Option<Vec<u64>>,
     pub(crate) id: u64,
     pub(crate) span_gap: Option<SpanGap>,
@@ -330,6 +391,11 @@ pub(crate) struct Flora {
     pace: f32,
     diffusion: f32,
     rng: u64,
+    support_choice_scan: Vec<f64>,
+    support_active: bool,
+    support_template: std::sync::Arc<[(isize, f32)]>,
+    support_ref_power: f32,
+    support_loudness_exp: f32,
     growth_level_scan: Vec<f32>,
     harmonicity_state_scan: Vec<f32>,
     biomass_mass_scan: Vec<f32>,
@@ -490,6 +556,17 @@ impl Flora {
                 && extent_hz.1 > extent_hz.0
         );
         let mut flora = Self {
+            harmonic_use: None,
+            harmonic_act_now: true,
+            harmonic_weight: 0.,
+            harmonic_query_version: 0,
+            harmonic_availability: Default::default(),
+            harmonic_cells: Vec::with_capacity(if landscape.support_planned {
+                landscape.space.n_bins()
+            } else {
+                0
+            }),
+            harmonic_recorder: None,
             harmonic_ticks: None,
             id,
             spec,
@@ -515,6 +592,15 @@ impl Flora {
             pace: ecological_pace(spec.pace, 1.0, 1),
             diffusion: 0.0,
             rng: scenario_seed ^ id.wrapping_mul(0xD6E8_FEB8_6659_FD93),
+            support_choice_scan: if landscape.support_planned || landscape.support.is_some() {
+                vec![0.; landscape.space.n_bins()]
+            } else {
+                Vec::new()
+            },
+            support_active: false,
+            support_template: std::sync::Arc::from([]),
+            support_ref_power: landscape.support_ref_power,
+            support_loudness_exp: landscape.support_loudness_exp,
             growth_level_scan: Vec::new(),
             harmonicity_state_scan: Vec::new(),
             biomass_mass_scan: Vec::new(),
@@ -603,7 +689,29 @@ impl Flora {
         if let Some(amp) = patch.amp {
             self.spec.amp = amp;
             self.amp.to(amp, SLEW_SEC, self.fs);
+            self.refresh_support_template();
         }
+    }
+
+    fn refresh_support_template(&mut self) {
+        if self.support_choice_scan.is_empty() {
+            return;
+        }
+        let hz = (self.extent_hz.0 * self.extent_hz.1).sqrt();
+        let mut atom = Lane::new(self.spec.tone == FloraTone::Resonant, hz.log2());
+        atom.r = 1.;
+        if atom.noisy {
+            atom.a = (-PI * erb_bw_hz(hz) / self.fs).exp();
+        }
+        self.support_template = atom
+            .project_support_density(
+                self.spec.amp,
+                self.fs,
+                &self.space,
+                self.support_ref_power,
+                self.support_loudness_exp,
+            )
+            .into();
     }
 
     pub(crate) fn release(&mut self, fade_sec: f32) {
@@ -632,6 +740,10 @@ impl Flora {
     }
 
     pub(crate) fn on_space_change(&mut self, space: &Log2Space) {
+        if !self.support_choice_scan.is_empty() {
+            self.support_choice_scan.resize(space.n_bins(), 0.);
+        }
+        self.support_active = false;
         if !self.biomass_mass_scan.is_empty() {
             self.assert_scans();
         }
@@ -761,6 +873,7 @@ impl Flora {
         self.order = Vec::with_capacity(self.lanes.len());
         self.noise = vec![0.0; 2 * self.noisy_len * self.hop];
         self.assert_scans();
+        self.refresh_support_template();
     }
 
     fn assert_scans(&self) {
@@ -816,6 +929,91 @@ impl Flora {
     }
 
     pub(crate) fn advance(&mut self, landscape: &Landscape) {
+        self.harmonic_weight = landscape
+            .harmonic_relations_weight
+            .abs()
+            .max(landscape.harmonic_continuation_weight.abs());
+        self.harmonic_query_version = landscape.harmonic_query_version;
+        if landscape.harmonic_relations_weight != 0. || landscape.harmonic_continuation_weight != 0.
+        {
+            use crate::core::harmonic_support::preview::Observer;
+            use crate::temporal_cognition::harmonic_relations::consumer::Use;
+            let excluded = self.needs_hr_observer() && self.rendered_samples > 0;
+            let snapshot = if excluded {
+                landscape
+                    .flora_observations
+                    .iter()
+                    .find(|s| s.id == self.id && s.generation == 0)
+                    .and_then(|s| s.perception.as_ref())
+                    .and_then(|s| s.support.clone())
+            } else {
+                landscape.support.clone()
+            };
+            let baseline_present = snapshot.is_some();
+            self.harmonic_availability =
+                crate::temporal_cognition::harmonic_relations::runtime::Availability::from_decision(
+                    landscape.harmonic_relations.as_deref(),
+                );
+            Use::refresh(
+                &mut self.harmonic_use,
+                landscape,
+                None,
+                if excluded {
+                    Observer::Excluded {
+                        kind: 1,
+                        id: self.id,
+                        generation: 0,
+                    }
+                } else {
+                    Observer::Mixed
+                },
+                snapshot,
+                Some(self.support_template.clone()),
+                0.,
+                self.fs,
+                landscape.harmonic_now_sample,
+            );
+            if baseline_present && let Some(use_relations) = &self.harmonic_use {
+                self.harmonic_availability = use_relations.availability();
+            }
+            if self.harmonic_cells.capacity() < self.cells.len() {
+                self.harmonic_cells
+                    .reserve(self.cells.len() - self.harmonic_cells.len());
+            }
+        } else if let Some(active) = &mut self.harmonic_use {
+            active.weight = 0.;
+        }
+        self.support_active = false;
+        if landscape.support_weights.active() {
+            let snapshot = if !self.needs_hr_observer() || self.rendered_samples == 0 {
+                landscape.support.as_deref()
+            } else {
+                landscape
+                    .flora_observations
+                    .iter()
+                    .find(|s| s.id == self.id && s.generation == 0)
+                    .and_then(|s| s.perception.as_ref())
+                    .and_then(|s| s.support.as_deref())
+            };
+            if let Some(snapshot) = snapshot {
+                tracing::trace!(
+                    support_evaluation = "body_partials",
+                    flora_id = self.id,
+                    "support Flora choice scan"
+                );
+                self.space
+                    .assert_scan_len_named(&self.support_choice_scan, "flora_support_choice_scan");
+                for (i, value) in self.support_choice_scan.iter_mut().enumerate() {
+                    *value = (f64::from(landscape.consonance_representation.beta)
+                        * landscape
+                            .support_weights
+                            .value(snapshot.template_features(i, &self.support_template)))
+                    .clamp(-f64::MAX, f64::MAX);
+                }
+                self.support_active = true;
+            }
+        }
+
         self.assert_scans();
         self.space
             .assert_scan_len_named(&landscape.consonance_field_level, "consonance_field_level");
@@ -1017,7 +1215,8 @@ impl Flora {
         });
         for &i in &self.order {
             let lane = &mut self.lanes[i];
-            let nearest = self
+            lane.harmonic_hold = !self.harmonic_act_now;
+            let mut nearest = self
                 .cells
                 .iter()
                 .enumerate()
@@ -1028,6 +1227,62 @@ impl Flora {
                         .then_some((c, distance, peak.bin))
                 })
                 .min_by(|a, b| a.1.total_cmp(&b.1).then(a.2.cmp(&b.2)));
+            if self.harmonic_act_now
+                && let Some(use_relations) = self.harmonic_use.as_mut().filter(|u| u.active())
+                && let Some((baseline, _, _)) = nearest
+            {
+                use_relations.set_source(Some(
+                    crate::temporal_cognition::harmonic_relations::Source {
+                        kind: 1,
+                        id: self.id,
+                        generation: lane.generation,
+                    },
+                ));
+                self.harmonic_cells.clear();
+                self.harmonic_cells
+                    .extend(self.cells.iter().enumerate().filter_map(|(c, cell)| {
+                        let peak = cell.peak.as_ref()?;
+                        (peak.stay
+                            && peak.claimed.is_none()
+                            && (peak.position - lane.position).abs() <= 50. / 1200.)
+                            .then_some(c)
+                    }));
+                let base = self
+                    .harmonic_cells
+                    .iter()
+                    .position(|&c| c == baseline)
+                    .unwrap();
+                let count = self.harmonic_cells.len();
+                let baseline_distance = -f64::from(
+                    (self.cells[baseline].peak.as_ref().unwrap().position - lane.position).abs(),
+                );
+                let selected = use_relations.choose_scored(count + 1, base, |j| {
+                    if j == count {
+                        (
+                            Some(lane.position),
+                            use_relations.source(),
+                            baseline_distance,
+                            true,
+                        )
+                    } else {
+                        let peak = self.cells[self.harmonic_cells[j]].peak.as_ref().unwrap();
+                        // The existing continuation selector minimizes displacement.
+                        (
+                            Some(peak.position),
+                            use_relations.source(),
+                            -f64::from((peak.position - lane.position).abs()),
+                            false,
+                        )
+                    }
+                });
+                if selected == count {
+                    lane.harmonic_hold = true;
+                } else {
+                    let c = self.harmonic_cells[selected];
+                    let peak = self.cells[c].peak.as_ref().unwrap();
+                    nearest = Some((c, (peak.position - lane.position).abs(), peak.bin));
+                }
+            }
             if let Some((c, _, _)) = nearest {
                 self.cells[c].peak.as_mut().unwrap().claimed = Some(i);
                 lane.cell = Some(c);
@@ -1069,11 +1324,43 @@ impl Flora {
                 if hz_to_erb(pb.position.exp2()) - hz_to_erb(pa.position.exp2()) >= 0.5 {
                     return None;
                 }
-                Some(if pa.mass < pb.mass || (pa.mass == pb.mass && a > b) {
-                    a
+                let (va, vb) = if self.support_active {
+                    (
+                        f64::from(pa.mass).ln() + self.support_choice_scan[pa.bin],
+                        f64::from(pb.mass).ln() + self.support_choice_scan[pb.bin],
+                    )
                 } else {
-                    b
-                })
+                    (f64::from(pa.mass), f64::from(pb.mass))
+                };
+                let loser = if va < vb || (va == vb && a > b) { a } else { b };
+                if self.harmonic_act_now
+                    && let Some(use_relations) = self.harmonic_use.as_ref().filter(|u| u.active())
+                {
+                    let candidates = [a.min(b), a.max(b)];
+                    let baseline = usize::from(candidates[0] == loser);
+                    let keep = use_relations.choose_scored(2, baseline, |j| {
+                        let lane = &self.lanes[candidates[j]];
+                        (
+                            Some(
+                                self.cells[lane.cell.unwrap()]
+                                    .peak
+                                    .as_ref()
+                                    .unwrap()
+                                    .position,
+                            ),
+                            Some(crate::temporal_cognition::harmonic_relations::Source {
+                                kind: 1,
+                                id: self.id,
+                                generation: lane.generation,
+                            }),
+                            if candidates[j] == a { va } else { vb },
+                            false,
+                        )
+                    });
+                    Some(candidates[1 - keep])
+                } else {
+                    Some(loser)
+                }
             });
             let Some(i) = conflict else {
                 break;
@@ -1101,11 +1388,61 @@ impl Flora {
                 .max_by(|&a, &b| {
                     let pa = self.cells[a].peak.as_ref().unwrap();
                     let pb = self.cells[b].peak.as_ref().unwrap();
-                    pa.mass.total_cmp(&pb.mass).then(pb.bin.cmp(&pa.bin))
+                    if self.support_active {
+                        (f64::from(pa.mass).ln() + self.support_choice_scan[pa.bin])
+                            .total_cmp(
+                                &(f64::from(pb.mass).ln() + self.support_choice_scan[pb.bin]),
+                            )
+                            .then(pb.bin.cmp(&pa.bin))
+                    } else {
+                        pa.mass.total_cmp(&pb.mass).then(pb.bin.cmp(&pa.bin))
+                    }
                 });
-            let Some(c) = best else {
+            if !self.harmonic_act_now {
+                break;
+            }
+            let Some(mut c) = best else {
                 break;
             };
+            if let Some(use_relations) = self.harmonic_use.as_mut().filter(|u| u.active()) {
+                use_relations.set_source(None);
+                self.harmonic_cells.clear();
+                self.harmonic_cells
+                    .extend(self.cells.iter().enumerate().filter_map(|(c, cell)| {
+                        let peak = cell.peak.as_ref()?;
+                        (peak.enter && peak.claimed.is_none() && !peak.suppressed && !peak.visited)
+                            .then_some(c)
+                    }));
+                let base = self
+                    .harmonic_cells
+                    .iter()
+                    .position(|&candidate| candidate == c)
+                    .unwrap();
+                let count = self.harmonic_cells.len();
+                let base_peak = self.cells[self.harmonic_cells[base]].peak.as_ref().unwrap();
+                let base_score = if self.support_active {
+                    f64::from(base_peak.mass).ln() + self.support_choice_scan[base_peak.bin]
+                } else {
+                    f64::from(base_peak.mass)
+                };
+                let chosen = use_relations.choose_scored(count + 1, base, |j| {
+                    if j == count {
+                        (None, None, base_score, true)
+                    } else {
+                        let peak = self.cells[self.harmonic_cells[j]].peak.as_ref().unwrap();
+                        let score = if self.support_active {
+                            f64::from(peak.mass).ln() + self.support_choice_scan[peak.bin]
+                        } else {
+                            f64::from(peak.mass)
+                        };
+                        (Some(peak.position), None, score, false)
+                    }
+                });
+                if chosen == count {
+                    break;
+                }
+                c = self.harmonic_cells[chosen];
+            }
             let position = self.cells[c].peak.as_ref().unwrap().position;
             self.cells[c].peak.as_mut().unwrap().visited = true;
             let blocked = self.lanes.iter().any(|lane| {
@@ -1154,6 +1491,7 @@ impl Flora {
                 let peak = self.cells[lane.cell.unwrap()].peak.as_ref().unwrap();
                 lane.target = peak.mass.sqrt();
                 lane.target_position = if self.spec.pitch_apply_mode == PitchApplyMode::Rearticulate
+                    || lane.harmonic_hold
                 {
                     lane.position
                 } else {
@@ -1252,7 +1590,7 @@ impl Flora {
             }
             let amp = self.amp.tick() * self.gain.tick();
             let amp = if self.range.is_empty() { 0.0 } else { amp };
-            for lane in &mut self.lanes {
+            for (lane_index, lane) in self.lanes.iter_mut().enumerate() {
                 if self.releasing && self.gain.value == 0.0 {
                     lane.mode = Mode::Free;
                     lane.r = 0.0;
@@ -1271,6 +1609,52 @@ impl Flora {
                     lane.sounding_log2 = log2;
                     let (sin, cos) = (TAU * log2.exp2() / self.fs).sin_cos();
                     lane.w = [cos, sin];
+                }
+                if let Some(recorder) = &self.harmonic_recorder
+                    && self.spec.routing.to_habitat
+                    && (lane.tonal || self.spec.residual)
+                {
+                    use crate::temporal_cognition::harmonic_relations::{
+                        OFFSET, ONSET, Source, Trajectory, Value, runtime::Record,
+                    };
+                    let sounding = lane.mode != Mode::Free && amp * lane.r != 0.;
+                    let flags = if sounding != lane.harmonic_sounding {
+                        if sounding { ONSET } else { OFFSET }
+                    } else {
+                        0
+                    };
+                    if flags != 0 || (sounding && t + 1 == self.hop) {
+                        let source = Source {
+                            kind: if lane.tonal { 1 } else { 2 },
+                            id: self.id,
+                            generation: if lane.tonal {
+                                lane.generation
+                            } else {
+                                lane_index as u64
+                            },
+                        };
+                        recorder.record(Record {
+                            sample: if flags != 0 {
+                                at
+                            } else {
+                                now + self.hop as u64
+                            },
+                            source: Some(source),
+                            flags,
+                            trajectory: Some(Trajectory {
+                                source,
+                                pitch: Value {
+                                    valid: lane.tonal,
+                                    ..Value::exact(f64::from(lane.sounding_log2))
+                                },
+                                amplitude: Value::exact(f64::from(amp * lane.r)),
+                                timbre: Value::default(),
+                                articulation: source.generation,
+                                sounding,
+                            }),
+                        });
+                    }
+                    lane.harmonic_sounding = sounding;
                 }
             }
             self.observe_sounding_span_gap(at, amp);
@@ -1549,6 +1933,131 @@ mod tests {
             "{actual} != {expected}"
         );
         assert!(actual <= 1.0 + 1e-6);
+    }
+
+    #[test]
+    fn harmonic_relations_flora_zero_keeps_rng_and_observed_hold_prevents_birth() {
+        use crate::temporal_cognition::harmonic_relations::{Acoustic, Bin, Value, consumer};
+        use std::sync::Arc;
+        let (mut l, _) = consumer::test_landscape(1., true);
+        l.harmonic_continuation_weight = 1.;
+        let baseline = l.support.as_ref().unwrap().clone();
+        let decision = Arc::make_mut(l.harmonic_relations.as_mut().unwrap());
+        let atom = &mut decision.prediction.atoms[0];
+        atom.acoustic = Acoustic {
+            mass: Value::exact(baseline.mass),
+            focus: Value::exact(baseline.focus),
+            competition: Value::exact(baseline.conflict),
+            ..atom.acoustic
+        };
+        atom.bins = baseline
+            .p
+            .iter()
+            .enumerate()
+            .filter_map(|(index, &p)| {
+                (p > 0.).then_some(Bin {
+                    index,
+                    mass: p as f32,
+                })
+            })
+            .collect();
+        atom.shape_error = baseline.numerical_errors().shape;
+        let make = |landscape: &Landscape| {
+            let mut f = Flora::new(
+                7,
+                FloraSpec::default(),
+                (100., 1000.),
+                FloraSeeding::Uniform,
+                42,
+                landscape,
+                48000.,
+                512,
+            );
+            f.external_observed_frame = Some(0);
+            f.temporal.as_mut().unwrap().now = landscape.harmonic_now_sample;
+            f.advance(landscape);
+            f.biomass_mass_scan.fill(0.);
+            hill(&mut f, 50, 0.7);
+            hill(&mut f, 90, 0.3);
+            f
+        };
+        let mut held = make(&l);
+        let held_rng = held.rng;
+        allocate(&mut held);
+        assert_eq!(
+            held.births, 0,
+            "observed no-addition successor must allow retaining an empty lane"
+        );
+        assert_eq!(
+            held.rng, held_rng,
+            "hold must precede lane initialization RNG"
+        );
+        l.harmonic_relations_weight = 0.;
+        l.harmonic_continuation_weight = 0.;
+        let mut explicit_zero = make(&l);
+        let mut legacy = explicit_zero.clone();
+        legacy.harmonic_use = None;
+        allocate(&mut explicit_zero);
+        allocate(&mut legacy);
+        assert!(legacy.births > 0);
+        assert_eq!(explicit_zero.births, legacy.births);
+        assert_eq!(explicit_zero.rng, legacy.rng);
+        assert_eq!(
+            explicit_zero
+                .lanes
+                .iter()
+                .map(|x| (x.position.to_bits(), x.target.to_bits()))
+                .collect::<Vec<_>>(),
+            legacy
+                .lanes
+                .iter()
+                .map(|x| (x.position.to_bits(), x.target.to_bits()))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn support_changes_lane_placement_but_not_growth_input() {
+        use crate::core::harmonic_support::{Geometry, Snapshot};
+        use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
+        let mut l = terrain();
+        l.support_planned = true;
+        let g = Geometry::new(
+            &l.space,
+            &HarmonicityKernel::new(&l.space, HarmonicityParams::default()),
+        );
+        let mut e = vec![0.; l.space.n_bins()];
+        e[20] = 1.;
+        let mut s = Snapshot::new(g);
+        s.observe(&e, 1e-12, 512);
+        l.support = Some(std::sync::Arc::new(s));
+        for tone in [FloraTone::Sine, FloraTone::Resonant] {
+            let run = |l: &Landscape| {
+                let mut f = flora(l);
+                f.spec.tone = tone;
+                f.refresh_support_template();
+                assert!(!f.support_template.is_empty());
+                f.tonal_len = 1;
+                f.advance(l);
+                f.biomass_mass_scan.fill(0.);
+                hill(&mut f, 20, 1.);
+                hill(&mut f, 75, 1.);
+                allocate(&mut f);
+                let lane = f
+                    .lanes
+                    .iter()
+                    .find(|lane| lane.tonal && lane.mode == Mode::Current)
+                    .unwrap();
+                (lane.position, f.growth_level_scan.clone())
+            };
+            l.support_weights.set(0, 1000.);
+            let positive = run(&l);
+            l.support_weights.set(0, -1000.);
+            let negative = run(&l);
+            assert_ne!(positive.0, negative.0);
+            assert_eq!(positive.1, negative.1);
+            assert_eq!(positive.1, l.consonance_field_level);
+        }
     }
 
     #[test]
@@ -2985,6 +3494,40 @@ mod tests {
         let mut l = terrain();
         l.consonance_density_mass.pop();
         let _ = flora(&l);
+    }
+
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn support_flora_partial_scan_reuses_cache_without_allocations() {
+        use crate::core::harmonic_support::{Geometry, Snapshot};
+        use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
+        for tone in [FloraTone::Sine, FloraTone::Resonant] {
+            let mut l = terrain();
+            l.support_planned = true;
+            l.support_weights.0 = [1.; 3];
+            let g = Geometry::new(
+                &l.space,
+                &HarmonicityKernel::new(&l.space, HarmonicityParams::default()),
+            );
+            let mut s = Snapshot::new(g);
+            let mut e = vec![0.; l.space.n_bins()];
+            e[30] = 1.;
+            s.observe(&e, 1e-12, 512);
+            l.support = Some(std::sync::Arc::new(s));
+            let mut f = flora(&l);
+            f.spec.tone = tone;
+            f.refresh_support_template();
+            let ptr = f.support_template.as_ptr();
+            f.advance(&l);
+            crate::runtime_profile::begin_allocations();
+            for _ in 0..16 {
+                f.advance(&l);
+            }
+            let counts = crate::runtime_profile::finish_allocations().unwrap();
+            assert_eq!((counts.count, counts.bytes), (0, 0));
+            assert_eq!(ptr, f.support_template.as_ptr());
+            assert!(f.support_active);
+        }
     }
 
     #[test]

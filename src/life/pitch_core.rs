@@ -716,13 +716,40 @@ impl PitchHillClimbPitchCore {
                         .nth(pick)
                         .unwrap();
                     let delta = score(p, b) - current_score;
-                    if delta >= 0.
-                        || f64::from(rng.random_range(0.0_f32..1.0))
-                            < (delta / (f64::from(self.temperature) / scale)).exp()
-                    {
+                    let draw = if delta >= 0. {
+                        None
+                    } else {
+                        Some(f64::from(rng.random_range(0.0_f32..1.0)))
+                    };
+                    let ratio = (delta / (f64::from(self.temperature) / scale)).exp();
+                    let accepted = delta >= 0. || draw.is_some_and(|u| u < ratio);
+                    if accepted {
                         target = p;
                     }
                 }
+            }
+            if let Some(temporal) = self.loo_input.relations.as_ref().filter(|u| u.active()) {
+                let baseline_index = items
+                    .iter()
+                    .position(|(p, _)| *p == target)
+                    .unwrap_or(items.len());
+                let hold_missing = !items.iter().any(|(p, _)| *p == current);
+                let temperature = if improvement > f64::from(IMPROVEMENT_THRESHOLD) / scale {
+                    0.
+                } else {
+                    f64::from(self.temperature) / scale
+                };
+                let selected = temporal.choose_conditioned(
+                    items.len() + usize::from(hold_missing),
+                    baseline_index,
+                    temperature,
+                    1. / scale,
+                    |i| {
+                        let (p, b) = items.get(i).copied().unwrap_or((current, baseline));
+                        (Some(p), temporal.source(), score(p, b), p == current)
+                    },
+                );
+                target = items.get(selected).map_or(current, |(p, _)| *p);
             }
             TargetProposal {
                 target_pitch_log2: target,
@@ -854,12 +881,47 @@ impl PitchHillClimbPitchCore {
                                 <= probability as f64 * relative + 2.0 * f32::EPSILON as f64
                         });
                 }
-                if delta >= 0.0 || draw.is_some_and(|u| u < probability) {
+                let accepted = delta >= 0.0 || draw.is_some_and(|u| u < probability);
+                if accepted {
                     target_pitch_log2 = candidate_pitch;
                 }
             }
         }
         // else: temperature == 0, settle (greedy hill-climb stays put).
+
+        if let Some(temporal) = self.loo_input.relations.as_ref().filter(|u| u.active()) {
+            let baseline = scored
+                .iter()
+                .position(|(p, _)| *p == target_pitch_log2)
+                .unwrap_or(scored.len());
+            let hold_missing = !scored.iter().any(|(p, _)| *p == current_target_log2);
+            let temperature = if improvement > IMPROVEMENT_THRESHOLD {
+                0.
+            } else {
+                f64::from(self.temperature)
+            };
+            let selected = temporal.choose_conditioned(
+                scored.len() + usize::from(hold_missing),
+                baseline,
+                temperature,
+                1.,
+                |i| {
+                    let (p, s) = scored
+                        .get(i)
+                        .copied()
+                        .unwrap_or((current_target_log2, current_adjusted));
+                    (
+                        Some(p),
+                        temporal.source(),
+                        f64::from(s),
+                        p == current_target_log2,
+                    )
+                },
+            );
+            target_pitch_log2 = scored
+                .get(selected)
+                .map_or(current_target_log2, |(p, _)| *p);
+        }
 
         TargetProposal {
             target_pitch_log2,
@@ -957,8 +1019,15 @@ impl PitchCore for PitchHillClimbPitchCore {
         } else {
             loo_scan
         };
+        let support = self
+            .loo_input
+            .support
+            .clone()
+            .filter(|_| leave_self_out && landscape.support_weights.active());
+        let single_density = self.loo_input.support_single_density;
+        let support_template = self.loo_input.support_template.clone();
         let scorer = |pitch_log2, replace| {
-            adjusted_pitch_score_impl(
+            let base = adjusted_pitch_score_impl(
                 pitch_log2,
                 current_pitch_log2,
                 move_cost_time_sec,
@@ -978,7 +1047,23 @@ impl PitchCore for PitchHillClimbPitchCore {
                 crowding_sigma_cents,
                 neighbor_pitch_log2,
                 neighbor_salience,
-            )
+            );
+            support.as_ref().map_or(base, |s| {
+                (f64::from(base)
+                    + support_template.as_ref().map_or_else(
+                        || {
+                            s.single_partial_value(
+                                pitch_log2,
+                                single_density,
+                                landscape.support_weights,
+                            )
+                        },
+                        |template| {
+                            s.template_value(pitch_log2, template, landscape.support_weights)
+                        },
+                    ))
+                .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
+            })
         };
         let snapshot = self.melodic;
         let original_rng = snapshot.map(|_| rng.clone());
@@ -1239,8 +1324,15 @@ impl PitchCore for PitchPeakSamplerCore {
         } else {
             None
         };
+        let support = self
+            .loo_input
+            .support
+            .clone()
+            .filter(|_| leave_self_out && landscape.support_weights.active());
+        let single_density = self.loo_input.support_single_density;
+        let support_template = self.loo_input.support_template.clone();
         let mut scorer = |pitch_log2: f32| -> f32 {
-            adjusted_pitch_score_impl(
+            let base = adjusted_pitch_score_impl(
                 pitch_log2,
                 current_pitch_log2,
                 integration_window,
@@ -1260,7 +1352,23 @@ impl PitchCore for PitchPeakSamplerCore {
                 crowding_sigma_cents,
                 neighbor_pitch_log2,
                 neighbor_salience,
-            )
+            );
+            support.as_ref().map_or(base, |s| {
+                (f64::from(base)
+                    + support_template.as_ref().map_or_else(
+                        || {
+                            s.single_partial_value(
+                                pitch_log2,
+                                single_density,
+                                landscape.support_weights,
+                            )
+                        },
+                        |template| {
+                            s.template_value(pitch_log2, template, landscape.support_weights)
+                        },
+                    ))
+                .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
+            })
         };
 
         let mut candidates =
@@ -1301,17 +1409,39 @@ impl PitchCore for PitchPeakSamplerCore {
         }
         let improvement = best_score - current_adjusted;
 
+        let temporal = self.loo_input.relations.as_ref().filter(|u| u.active());
         let target_pitch_log2 = if self.temperature > 0.0 {
-            sample_softmax_candidate(&scored, self.temperature, rng).clamp(fmin, fmax)
+            if let Some(temporal) = temporal {
+                sample_softmax_with_relations(
+                    &scored,
+                    self.temperature,
+                    rng,
+                    Some(temporal),
+                    Some(current_target_log2),
+                )
+                .clamp(fmin, fmax)
+            } else {
+                sample_softmax_candidate(&scored, self.temperature, rng).clamp(fmin, fmax)
+            }
         } else {
             // Greedy: settle on the highest-scoring candidate (current target is
             // always among `scored`, so this never moves downhill).
-            scored
+            let baseline = scored
                 .iter()
-                .max_by(|a, b| a.1.total_cmp(&b.1))
-                .map(|(pitch, _)| *pitch)
-                .unwrap_or(current_target_log2)
-                .clamp(fmin, fmax)
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.1.total_cmp(&b.1))
+                .map(|(i, _)| i)
+                .unwrap();
+            let selected = temporal.map_or(baseline, |u| {
+                // max_by chooses the last tie, so retain that candidate order.
+                scored.len()
+                    - 1
+                    - u.choose_scored(scored.len(), scored.len() - 1 - baseline, |i| {
+                        let (p, s) = scored[scored.len() - 1 - i];
+                        (Some(p), u.source(), f64::from(s), p == current_target_log2)
+                    })
+            });
+            scored[selected].0.clamp(fmin, fmax)
         };
 
         TargetProposal {
@@ -1686,6 +1816,12 @@ fn legacy_sample_consonance_score_with_loo(
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct LooInput {
+    pub(crate) relations: Option<crate::temporal_cognition::harmonic_relations::consumer::Use>,
+    pub(crate) relation_source: crate::temporal_cognition::harmonic_relations::Source,
+    pub(crate) support_template: Option<Arc<[(isize, f32)]>>,
+    pub(crate) support: Option<Arc<crate::core::harmonic_support::Snapshot>>,
+    pub(crate) support_single_density: f32,
+    pub(crate) support_warned: bool,
     pub(crate) tonal_context: Option<Arc<crate::core::tonal_context::Snapshot>>,
     pub(crate) exact_score: Option<Arc<[f32]>>,
     #[cfg(test)]
@@ -2177,6 +2313,16 @@ fn sample_softmax_candidate<R: Rng + Clone>(
     temperature: f32,
     rng: &mut R,
 ) -> f32 {
+    sample_softmax_with_relations(scored, temperature, rng, None, None)
+}
+
+fn sample_softmax_with_relations<R: Rng + Clone>(
+    scored: &[(f32, f32)],
+    temperature: f32,
+    rng: &mut R,
+    temporal: Option<&crate::temporal_cognition::harmonic_relations::consumer::Use>,
+    current: Option<f32>,
+) -> f32 {
     if scored.is_empty() {
         return 0.0;
     }
@@ -2210,7 +2356,40 @@ fn sample_softmax_candidate<R: Rng + Clone>(
         return best;
     }
 
+    let mut conditioned = false;
+    let mut conditional_draw = None;
+    if let Some(temporal) = temporal.filter(|u| u.active()) {
+        let mut shadow = rng.clone();
+        let reference = sample_softmax_candidate(scored, temperature, &mut shadow);
+        let baseline = scored.iter().position(|(p, _)| *p == reference).unwrap();
+        if temporal.continuation == 0. {
+            let retain = current == Some(reference);
+            let mut class_mass = 0.;
+            let mut excluded_before = 0.;
+            for (i, ((pitch, _), &mass)) in scored.iter().zip(&weights).enumerate() {
+                if (current == Some(*pitch)) == retain {
+                    class_mass += mass;
+                } else if i < baseline {
+                    excluded_before += mass;
+                }
+            }
+            conditional_draw = Some((excluded_before, class_mass));
+        }
+        conditioned = temporal.softmax_scores(&mut weights, baseline, f64::from(temp), |i| {
+            (
+                Some(scored[i].0),
+                temporal.source(),
+                f64::from(scored[i].1),
+                current == Some(scored[i].0),
+            )
+        });
+    }
+
     let mut draw = rng.random_range(0.0..total);
+    if conditioned && let Some((excluded_before, class_mass)) = conditional_draw {
+        // Reuse the native quantile within its action class, without another draw.
+        draw = ((draw - excluded_before).max(0.) / class_mass * total).min(total);
+    }
     for ((pitch, _), weight) in scored.iter().zip(weights.iter()) {
         if *weight <= 0.0 {
             continue;
@@ -2221,7 +2400,15 @@ fn sample_softmax_candidate<R: Rng + Clone>(
         draw -= *weight;
     }
 
-    best
+    if conditioned {
+        // Float accumulation may leave a tail; stay inside the conditioned support.
+        weights
+            .iter()
+            .rposition(|w| *w > 0.)
+            .map_or(best, |i| scored[i].0)
+    } else {
+        best
+    }
 }
 
 fn dedupe_log2_by_cents(values_log2: &mut Vec<f32>, dedupe_cents: f32) {
@@ -2637,6 +2824,204 @@ mod tests {
     }
 
     #[test]
+    fn harmonic_relation_selectors_preserve_zero_and_unknown_rng_states() {
+        use crate::temporal_cognition::harmonic_relations::consumer::test_use;
+        use rand::SeedableRng;
+        for weight in [0., 1.] {
+            let (temporal, pitches) = test_use(weight, false);
+            for seed in 0..32 {
+                let mut a = rand::rngs::SmallRng::seed_from_u64(seed);
+                let mut b = a.clone();
+                let scored = [(pitches[0], -0.3), (pitches[1], 0.8)];
+                let old = sample_softmax_candidate(&scored, 0.5, &mut a);
+                let new =
+                    sample_softmax_with_relations(&scored, 0.5, &mut b, Some(&temporal), None);
+                assert_eq!(old.to_bits(), new.to_bits());
+                assert_eq!(a.random::<u64>(), b.random::<u64>());
+            }
+        }
+    }
+
+    #[test]
+    fn harmonic_relation_softmax_keeps_native_class_and_conditional_quantile() {
+        use crate::temporal_cognition::harmonic_relations::consumer::test_use;
+        use rand::SeedableRng;
+        for weight in [1e-12, 1., -1.] {
+            let (temporal, pitches) = test_use(weight, true);
+            let current = (pitches[0] + pitches[1]) * 0.5;
+            let scored = [(current, 0.), (pitches[0], 0.), (pitches[1], 0.)];
+            let mut changed = 0;
+            for seed in 0..1024 {
+                let mut a = rand::rngs::SmallRng::seed_from_u64(seed);
+                let mut b = a.clone();
+                let old = sample_softmax_candidate(&scored, 0.5, &mut a);
+                let new = sample_softmax_with_relations(
+                    &scored,
+                    0.5,
+                    &mut b,
+                    Some(&temporal),
+                    Some(current),
+                );
+                assert_eq!(old == current, new == current);
+                assert_eq!(a.random::<u64>(), b.random::<u64>());
+                changed += usize::from(old != new);
+            }
+            if weight == 1e-12 {
+                assert_eq!(
+                    changed, 0,
+                    "vanishing support must not resample destinations"
+                );
+            } else {
+                assert!(
+                    changed > 0,
+                    "signed support must reach the sampled destination"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn harmonic_relation_greedy_and_metropolis_use_the_existing_candidates() {
+        use crate::temporal_cognition::harmonic_relations::consumer::test_use;
+        use rand::SeedableRng;
+        let (temporal, pitches) = test_use(1., true);
+        let mut changed = PitchHillClimbPitchCore::new(100., 440., 0.);
+        let old = changed.clone();
+        changed.loo_input.relations = Some(temporal);
+        let mut a = rand::rngs::SmallRng::seed_from_u64(14);
+        let mut b = a.clone();
+        // Relation support for the current pitch cannot turn a baseline move into hold.
+        let scored = vec![(pitches[0], 0.), (pitches[1], 1.)];
+        let before = old.select_scored(pitches[0], 0., &mut scored.clone(), &mut a, None);
+        let after = changed.select_scored(pitches[0], 0., &mut scored.clone(), &mut b, None);
+        assert_eq!(before.target_pitch_log2, after.target_pitch_log2);
+        assert_eq!(a.random::<u64>(), b.random::<u64>());
+        // It can distinguish two moving destinations without discarding native scores.
+        let current = (pitches[0] + pitches[1]) * 0.5;
+        let scored = vec![(pitches[0], 0.2), (pitches[1], 0.3)];
+        let before = old.select_scored(current, 0., &mut scored.clone(), &mut a, None);
+        let after = changed.select_scored(current, 0., &mut scored.clone(), &mut b, None);
+        assert_eq!(before.target_pitch_log2, pitches[1]);
+        assert_eq!(after.target_pitch_log2, pitches[0]);
+        changed.set_temperature(1.);
+        let mut old = old;
+        old.set_temperature(1.);
+        let mut difference = false;
+        for seed in 0..64 {
+            let mut a = rand::rngs::SmallRng::seed_from_u64(seed);
+            let mut b = a.clone();
+            let scored = vec![(pitches[0], -0.1), (pitches[1], -0.2)];
+            let before = old.select_scored(current, 0., &mut scored.clone(), &mut a, None);
+            let after = changed.select_scored(current, 0., &mut scored.clone(), &mut b, None);
+            assert_eq!(
+                before.target_pitch_log2 == current,
+                after.target_pitch_log2 == current
+            );
+            assert!(
+                after.target_pitch_log2 == current || pitches.contains(&after.target_pitch_log2)
+            );
+            difference |= before.target_pitch_log2 != after.target_pitch_log2;
+            assert_eq!(a.random::<u64>(), b.random::<u64>());
+        }
+        assert!(difference);
+    }
+
+    #[test]
+    fn support_movement_uses_one_loo_reference_and_ignores_mixed_without_loo() {
+        use crate::core::harmonic_support::{Geometry, Snapshot};
+        use crate::core::harmonicity_kernel::HarmonicityParams;
+        let mut landscape = Landscape::new(Log2Space::new(55., 1760., 24));
+        let geometry = Geometry::new(
+            &landscape.space,
+            &HarmonicityKernel::new(&landscape.space, HarmonicityParams::default()),
+        );
+        let mut density = vec![0.; landscape.space.n_bins()];
+        density[72] = 1.;
+        let mut snapshot = Snapshot::new(geometry);
+        snapshot.observe(&density, 1e-12, 512);
+        let snapshot = Arc::new(snapshot);
+        let perceptual = test_adaptation(landscape.space.n_bins());
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+        let current = 330.0f32.log2();
+        let mut core = PitchHillClimbPitchCore::new(200., current, 0.);
+        core.move_cost_coeff = 0.;
+        core.crowding_strength = 0.;
+        core.leave_self_out = true;
+        core.loo_input.support = Some(snapshot.clone());
+        core.loo_input.support_single_density = 1.;
+        for template in [None, Some(Arc::from([(0, 0.4), (24, 0.2)]))] {
+            core.loo_input.support_template = template.clone();
+            for axis in 0..3 {
+                landscape.support_weights = Default::default();
+                landscape.support_weights.set(axis, 1.);
+                let mut actual_rng = SmallRng::seed_from_u64(735);
+                let mut expected_rng = actual_rng.clone();
+                let expected = core.propose_with_scorer(
+                    current,
+                    current,
+                    &landscape,
+                    &[],
+                    &mut expected_rng,
+                    |pitch| {
+                        template.as_ref().map_or_else(
+                            || snapshot.single_partial_value(pitch, 1., landscape.support_weights),
+                            |t| snapshot.template_value(pitch, t, landscape.support_weights),
+                        ) as f32
+                    },
+                );
+                let actual = core.propose_target(
+                    current,
+                    current,
+                    330.,
+                    1.,
+                    &landscape,
+                    &perceptual,
+                    &features,
+                    &[],
+                    &mut actual_rng,
+                );
+                assert_eq!(
+                    actual.target_pitch_log2.to_bits(),
+                    expected.target_pitch_log2.to_bits()
+                );
+                assert_eq!(actual_rng.random::<u64>(), expected_rng.random::<u64>());
+            }
+        }
+        core.leave_self_out = false;
+        let mut a = SmallRng::seed_from_u64(735);
+        let mut b = a.clone();
+        let ignored = core.propose_target(
+            current,
+            current,
+            330.,
+            1.,
+            &landscape,
+            &perceptual,
+            &features,
+            &[],
+            &mut a,
+        );
+        landscape.support_weights = Default::default();
+        let neutral = core.propose_target(
+            current,
+            current,
+            330.,
+            1.,
+            &landscape,
+            &perceptual,
+            &features,
+            &[],
+            &mut b,
+        );
+        assert_eq!(
+            ignored.target_pitch_log2.to_bits(),
+            neutral.target_pitch_log2.to_bits()
+        );
+        assert_eq!(a.random::<u64>(), b.random::<u64>());
+    }
+
+    #[test]
     fn melodic_registered_prefix_contrast_and_f32_margin() {
         let mut core = PitchHillClimbPitchCore::new(200.0, 5.0, 0.0);
         core.set_temperature(0.0);
@@ -2767,6 +3152,10 @@ mod tests {
             (result.target_pitch_log2, rng.random::<u64>())
         };
         let actual = run(&mut core);
+        let mut temporal_zero = core.clone();
+        temporal_zero.loo_input.relations =
+            Some(crate::temporal_cognition::harmonic_relations::consumer::test_use(0., true).0);
+        assert_eq!(run(&mut temporal_zero), actual);
         assert_eq!(
             core.sequence_decision
                 .borrow()
@@ -2852,6 +3241,10 @@ mod tests {
                 (result.target_pitch_log2, rng.random::<u64>())
             };
             let chosen = run(&mut core);
+            let mut temporal_zero = core.clone();
+            temporal_zero.loo_input.relations =
+                Some(crate::temporal_cognition::harmonic_relations::consumer::test_use(0., true).0);
+            assert_eq!(run(&mut temporal_zero), chosen);
             let mut zero_old = core.clone();
             zero_old.set_tessitura_gravity(0.);
             zero_old.set_move_cost_coeff(0.);

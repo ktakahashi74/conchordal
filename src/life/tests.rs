@@ -130,6 +130,7 @@ fn conductor_returns_finish_for_worker_on_time() {
     };
     let scenario = Scenario {
         observe_tonal_context: false,
+        harmonic_relation_sources: None,
         expression: None,
         expression_cursor: None,
         seed: 0,
@@ -162,6 +163,7 @@ fn conductor_returns_finish_for_worker_on_time() {
 fn conductor_keeps_future_events_queued_in_order() {
     let scenario = Scenario {
         observe_tonal_context: false,
+        harmonic_relation_sources: None,
         expression: None,
         expression_cursor: None,
         seed: 0,
@@ -1243,6 +1245,7 @@ fn indefinite_conductor_dispatches_tick_boundaries() {
     let a = 1u64 << 40;
     let mut scenario = Scenario {
         observe_tonal_context: false,
+        harmonic_relation_sources: None,
         expression: None,
         expression_cursor: None,
         harmonic_rhythm: 0,

@@ -138,6 +138,39 @@ impl Community {
             Action::SetRoughnessAversion { value } => {
                 self.on_set_roughness_aversion(value);
             }
+            Action::SetSupportPreference { axis, value } => {
+                let mut update = LandscapeUpdate::default();
+                if axis < 3 && value.is_finite() && (axis != 2 || value >= 0.) {
+                    update.support_preference[axis] = Some(value);
+                    self.merge_landscape_update(update);
+                } else {
+                    tracing::warn!("invalid harmonic support preference ignored");
+                }
+            }
+            Action::FollowHarmonicRelations { weight } => {
+                if weight.is_finite() && (-1. ..=1.).contains(&weight) {
+                    self.merge_landscape_update(LandscapeUpdate {
+                        harmonic_relations_weight: Some(weight),
+                        ..LandscapeUpdate::default()
+                    });
+                } else {
+                    tracing::warn!(
+                        "follow_harmonic_relations requires a finite weight in [-1,1]; ignored"
+                    );
+                }
+            }
+            Action::FollowHarmonicContinuation { weight } => {
+                if weight.is_finite() && (-1. ..=1.).contains(&weight) {
+                    self.merge_landscape_update(LandscapeUpdate {
+                        harmonic_continuation_weight: Some(weight),
+                        ..LandscapeUpdate::default()
+                    });
+                } else {
+                    tracing::warn!(
+                        "follow_harmonic_continuation requires a finite weight in [-1,1]; ignored"
+                    );
+                }
+            }
             Action::SetHarmonicityPreference { value } => {
                 self.merge_landscape_update(LandscapeUpdate {
                     harmonicity_preference: Some(value),
@@ -176,10 +209,14 @@ impl Community {
                         &reserved,
                         (member_idx, total),
                         &spec.control,
+                        true,
                     )
                 })
                 .unwrap_or(spec.control.pitch.freq)
                 .max(MIN_FREQ_HZ);
+            if !self.harmonic_spawn_allowed(landscape, &spec.control, freq_hz) {
+                continue;
+            }
             self.spawn_one(
                 SpawnParams {
                     id,
@@ -382,11 +419,26 @@ impl Community {
 
     fn merge_landscape_update(&mut self, update: LandscapeUpdate) {
         let mut merged = self.pending_update.unwrap_or_default();
+        for (out, value) in merged
+            .support_preference
+            .iter_mut()
+            .zip(update.support_preference)
+        {
+            if value.is_some() {
+                *out = value;
+            }
+        }
         if update.roughness_aversion.is_some() {
             merged.roughness_aversion = update.roughness_aversion;
         }
         if update.harmonicity_preference.is_some() {
             merged.harmonicity_preference = update.harmonicity_preference;
+        }
+        if update.harmonic_relations_weight.is_some() {
+            merged.harmonic_relations_weight = update.harmonic_relations_weight;
+        }
+        if update.harmonic_continuation_weight.is_some() {
+            merged.harmonic_continuation_weight = update.harmonic_continuation_weight;
         }
         if update.pitch_objective_mode.is_some() {
             merged.pitch_objective_mode = update.pitch_objective_mode;

@@ -70,6 +70,7 @@ fn loo_observation_delivery_steady_state_allocates_nothing() {
     );
     for voice in &community.voices {
         landscape.loo.push(crate::core::stream::loo::Observation {
+            support: None,
             id: voice.id(),
             generation: voice.metadata.generation,
             h_scan: vec![0.; landscape.space.n_bins()],

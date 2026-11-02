@@ -482,6 +482,28 @@ impl Tone {
         (self.started, self.target_pitch_hz)
     }
 
+    pub(crate) fn harmonic_relation_state(&self, sample: Tick) -> (bool, f32, f32, bool) {
+        (
+            self.started,
+            self.current_pitch_hz,
+            self.current_amp,
+            self.started && sample < self.phrase_release(),
+        )
+    }
+
+    pub(crate) fn harmonic_impulse_due(&self, sample: Tick) -> bool {
+        sample >= self.envelope.onset
+            && sample < self.envelope.release_end
+            && self
+                .excited
+                .as_ref()
+                .is_none_or(|state| !state.closed && !state.retired)
+            && (self.pending_impulse_energy > 0.
+                || self
+                    .pending_trigger
+                    .is_some_and(|trigger| sample >= trigger.at_tick))
+    }
+
     pub(crate) fn phrase_release(&self) -> Tick {
         self.envelope.hold_end
     }

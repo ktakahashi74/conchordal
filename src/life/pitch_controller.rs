@@ -22,6 +22,7 @@ pub(crate) struct DwellRecord {
 #[derive(Debug)]
 pub struct PitchController {
     pub(crate) harmonic_gate: Option<bool>,
+    pub(crate) harmonic_next_tick: Option<u64>,
     pub(crate) harmonic_evaluated: bool,
     #[cfg(test)]
     pub(crate) trace_owner: Option<(u64, u32)>,
@@ -63,6 +64,7 @@ impl PitchController {
     ) -> Self {
         Self {
             harmonic_gate: None,
+            harmonic_next_tick: None,
             harmonic_evaluated: false,
             #[cfg(test)]
             trace_owner: None,
@@ -352,6 +354,40 @@ impl PitchController {
                     weight: 0.0,
                 });
             }
+            if landscape.harmonic_relations_weight != 0.
+                || landscape.harmonic_continuation_weight != 0.
+            {
+                let sample = self.control_tick.unwrap_or(landscape.harmonic_now_sample);
+                let input = self.core.loo_input_mut();
+                crate::temporal_cognition::harmonic_relations::runtime::record_opportunity(
+                    landscape,
+                    Some(input.relation_source),
+                    sample,
+                );
+                if let Some(relations) = &input.relations {
+                    relations.set_sample(sample);
+                    // A future adaptive gate is unknown until its owning clock publishes it.
+                    let next = if self.harmonic_gate.is_some() {
+                        self.harmonic_next_tick.unwrap_or(sample)
+                    } else if dwelling {
+                        sample
+                    } else if has_rhythm && proposal_interval_sec.is_none() {
+                        if rhythms.theta.freq_hz.is_finite() && rhythms.theta.freq_hz > 0. {
+                            relations.sample_after(f64::from(rhythms.theta.freq_hz.recip()))
+                        } else {
+                            sample
+                        }
+                    } else {
+                        relations.sample_after(f64::from(
+                            proposal_interval_sec.unwrap_or(self.integration_window),
+                        ))
+                    };
+                    if !relations.allow_now(next) {
+                        self.harmonic_evaluated = false;
+                        return false;
+                    }
+                }
+            }
             // Stage 1.5/2 of the occupancy redesign: adaptation's environment term is
             // fed by the predictive fundamental-occupancy of visible neighbors
             // (f0-based, zero-latency, self-excluded), built with the same shared
@@ -560,6 +596,60 @@ mod dwell_tests {
         );
         ctl.dwell_trace_enabled = true;
         ctl
+    }
+
+    #[test]
+    fn harmonic_relation_timing_holds_then_acts_only_at_published_opportunities() {
+        use crate::temporal_cognition::harmonic_relations::consumer::{test_landscape, test_use};
+        let pitch = PitchControl {
+            proposal_interval_sec: Some(0.1),
+            ..Default::default()
+        };
+        let (landscape, _) = test_landscape(1., true);
+        let mut ctl = controller(&pitch, &landscape.space);
+        ctl.loo_input_mut().relations = Some(test_use(1., true).0);
+        ctl.loo_input_mut().relations.as_mut().unwrap().continuation = 1.;
+        ctl.harmonic_gate = Some(true);
+        ctl.harmonic_next_tick = Some(48000);
+        ctl.control_tick = Some(512);
+        ctl.update_pitch_target(
+            220.,
+            &NeuralRhythms::default(),
+            1.,
+            &landscape,
+            &pitch,
+            &[],
+            &[],
+            0.,
+        );
+        assert!(!ctl.harmonic_evaluated);
+        ctl.harmonic_gate = Some(false);
+        ctl.control_tick = Some(24000);
+        ctl.update_pitch_target(
+            220.,
+            &NeuralRhythms::default(),
+            0.5,
+            &landscape,
+            &pitch,
+            &[],
+            &[],
+            0.,
+        );
+        assert!(!ctl.harmonic_evaluated);
+        ctl.harmonic_gate = Some(true);
+        ctl.harmonic_next_tick = Some(96000);
+        ctl.control_tick = Some(48000);
+        ctl.update_pitch_target(
+            220.,
+            &NeuralRhythms::default(),
+            0.5,
+            &landscape,
+            &pitch,
+            &[],
+            &[],
+            0.,
+        );
+        assert!(ctl.harmonic_evaluated);
     }
 
     #[test]

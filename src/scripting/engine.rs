@@ -1390,6 +1390,23 @@ impl ScriptHost {
             },
         );
 
+        let ctx_for_harmonic_observation = ctx.clone();
+        engine.register_fn(
+            "observe_harmonic_relations",
+            move |call: NativeCallContext, max_sources: INT| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_harmonic_observation.lock().expect("lock script context");
+                let position = call.call_position();
+                ctx.check_header("observe_harmonic_relations", position)?;
+                if max_sources <= 0 || max_sources as u64 > crate::temporal_cognition::harmonic_relations::UMAX as u64 {
+                    return Err(EvalAltResult::ErrorRuntime(
+                        "observe_harmonic_relations requires a positive source bound no larger than the structural-record capacity (38400)".into(), position).into());
+                }
+                ctx.scenario.harmonic_relation_sources = Some(max_sources as usize);
+                ctx.harmonic_observation_position = Some(position);
+                Ok(())
+            },
+        );
+
         let ctx_for_temporal_mode = ctx.clone();
         engine.register_fn(
             "temporal_mode",
@@ -2642,6 +2659,65 @@ impl ScriptHost {
             },
         );
 
+        for (continuation, name) in ["follow_harmonic_relations", "follow_harmonic_continuation"]
+            .into_iter()
+            .enumerate()
+        {
+            let ctx_harmonic = ctx.clone();
+            let operation = move |call: NativeCallContext,
+                                  weight: FLOAT|
+                  -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_harmonic.lock().expect("lock script context");
+                let position = call.call_position();
+                if ctx.scenario.end == ScenarioEnd::Open
+                    && weight.is_finite()
+                    && weight != 0.
+                    && (-1. ..=1.).contains(&weight)
+                    && ctx.scenario.harmonic_relation_sources.is_none()
+                {
+                    return Err(EvalAltResult::ErrorRuntime(
+                        "declare observe_harmonic_relations(max_sources) before time advances to use a nonzero harmonic relation or continuation weight in an endless scenario".into(), position).into());
+                }
+                let action = if continuation == 0 {
+                    Action::FollowHarmonicRelations { weight }
+                } else {
+                    Action::FollowHarmonicContinuation { weight }
+                };
+                let cursor = ctx.cursor;
+                ctx.push_event(cursor, vec![action], position);
+                ctx.check_emission()
+            };
+            engine.register_fn(name, operation.clone());
+            engine.register_fn(name, move |call: NativeCallContext, weight: INT| {
+                operation(call, weight as FLOAT)
+            });
+        }
+
+        for (axis, name) in [
+            "set_support_focus_preference",
+            "set_support_conflict_preference",
+            "set_related_novelty_preference",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let ctx_support = ctx.clone();
+            let operation =
+                move |call: NativeCallContext, value: FLOAT| -> Result<(), Box<EvalAltResult>> {
+                    let mut ctx = ctx_support.lock().expect("lock script context");
+                    let cursor = ctx.cursor;
+                    ctx.push_event(
+                        cursor,
+                        vec![Action::SetSupportPreference { axis, value }],
+                        call.call_position(),
+                    );
+                    ctx.check_emission()
+                };
+            engine.register_fn(name, operation.clone());
+            engine.register_fn(name, move |call: NativeCallContext, value: INT| {
+                operation(call, value as FLOAT)
+            });
+        }
         engine
     }
 

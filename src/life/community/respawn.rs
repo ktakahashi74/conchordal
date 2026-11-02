@@ -24,7 +24,7 @@ impl Community {
     }
 }
 
-pub(super) fn weighted_parent_select<R: Rng + ?Sized>(
+pub(super) fn weighted_parent_select<R: Rng + Clone>(
     parents: &[ParentCandidate],
     rng: &mut R,
 ) -> usize {
@@ -158,10 +158,16 @@ pub(super) fn peak_bias_local_search_frequency(
     min_hz: f32,
     max_hz: f32,
     config: RespawnPeakBiasConfig,
+    temporal: Option<&crate::temporal_cognition::harmonic_relations::consumer::Use>,
 ) -> f32 {
-    peak_bias_local_search_with(center_hz, min_hz, max_hz, config, |hz| {
-        landscape.evaluate_pitch_score(hz)
-    })
+    peak_bias_local_search_with(
+        center_hz,
+        min_hz,
+        max_hz,
+        config,
+        |hz| landscape.evaluate_pitch_score(hz),
+        temporal,
+    )
 }
 
 fn peak_bias_local_search_with(
@@ -170,6 +176,7 @@ fn peak_bias_local_search_with(
     max_hz: f32,
     config: RespawnPeakBiasConfig,
     mut score_at: impl FnMut(f32) -> f32,
+    temporal: Option<&crate::temporal_cognition::harmonic_relations::consumer::Use>,
 ) -> f32 {
     let lo = min_hz.min(max_hz).max(MIN_FREQ_HZ);
     let hi = max_hz.max(min_hz).clamp(lo, MAX_FREQ_HZ);
@@ -188,6 +195,8 @@ fn peak_bias_local_search_with(
     let max_log2 = hi.log2().min(center_log2 + radius_log2);
     let mut best_freq = center_hz;
     let mut best_score = score_at(center_hz);
+    let mut best_index = 0;
+    let mut count = 1;
     let mut cur = min_log2;
     while cur <= max_log2 + 1e-6 {
         let freq_hz = 2.0f32.powf(cur).clamp(lo, hi);
@@ -195,16 +204,48 @@ fn peak_bias_local_search_with(
         if score.is_finite() && (!best_score.is_finite() || score > best_score) {
             best_score = score;
             best_freq = freq_hz;
+            best_index = count;
         }
+        count += 1;
         cur += step_log2;
+    }
+    if let Some(temporal) = temporal.filter(|u| u.active()) {
+        let mut cur = min_log2;
+        let chosen = temporal.choose_scored(count, best_index, |i| {
+            if i == 0 {
+                return (
+                    Some(center_hz.log2()),
+                    None,
+                    f64::from(score_at(center_hz)),
+                    false,
+                );
+            }
+            let frequency = 2.0f32.powf(cur).clamp(lo, hi);
+            cur += step_log2;
+            (
+                Some(frequency.log2()),
+                None,
+                f64::from(score_at(frequency)),
+                false,
+            )
+        });
+        if chosen == 0 {
+            return center_hz;
+        }
+        let mut cur = min_log2;
+        for _ in 1..chosen {
+            cur += step_log2;
+        }
+        return 2.0f32.powf(cur).clamp(lo, hi);
     }
     best_freq
 }
 
-pub(super) fn choose_candidate_by_scene_score<R: Rng + ?Sized>(
+pub(super) fn choose_candidate_by_scene_score<R: Rng + Clone>(
     landscape: &Landscape,
     candidates: &[f32],
     rng: &mut R,
+    temporal: Option<&crate::temporal_cognition::harmonic_relations::consumer::Use>,
 ) -> Option<f32> {
     if candidates.is_empty() {
         return None;
@@ -222,11 +263,36 @@ pub(super) fn choose_candidate_by_scene_score<R: Rng + ?Sized>(
         });
     }
 
+    if let Some(temporal) = temporal.filter(|u| u.active()) {
+        let mut weights = [0.; RESPAWN_CANDIDATE_COUNT];
+        for (out, weight) in weights.iter_mut().zip(&selection_weights) {
+            *out = f64::from(*weight);
+        }
+        let baseline = WeightedIndex::new(&selection_weights).map_or_else(
+            |_| {
+                scene_scores
+                    .iter()
+                    .enumerate()
+                    .max_by(|a, b| a.1.total_cmp(b.1))
+                    .map_or(0, |(i, _)| i)
+            },
+            |d| d.sample(&mut rng.clone()),
+        );
+        temporal.mix(&mut weights[..candidates.len()], baseline, |i| {
+            Some(candidates[i].log2())
+        });
+        for (out, weight) in selection_weights.iter_mut().zip(weights) {
+            *out = weight as f32;
+        }
+    }
+
+    let mut sampled = false;
     let chosen_idx = if selection_weights
         .iter()
         .any(|weight| *weight > 0.0 && weight.is_finite())
     {
         if let Ok(dist) = WeightedIndex::new(&selection_weights) {
+            sampled = true;
             dist.sample(rng)
         } else {
             selection_weights
@@ -245,6 +311,19 @@ pub(super) fn choose_candidate_by_scene_score<R: Rng + ?Sized>(
             .unwrap_or(0)
     };
 
+    let chosen_idx = if !sampled && let Some(temporal) = temporal.filter(|u| u.active()) {
+        let last = candidates.len() - 1;
+        last - temporal.choose_scored(candidates.len(), last - chosen_idx, |i| {
+            (
+                Some(candidates[last - i].log2()),
+                None,
+                f64::from(scene_scores[last - i]),
+                false,
+            )
+        })
+    } else {
+        chosen_idx
+    };
     Some(candidates[chosen_idx])
 }
 
@@ -295,7 +374,7 @@ impl Community {
         }
     }
 
-    fn random_respawn_frequency<R: Rng + ?Sized>(
+    fn random_respawn_frequency<R: Rng + Clone>(
         &self,
         population: &RuntimePopulationState,
         landscape: &Landscape,
@@ -311,6 +390,7 @@ impl Community {
                 &[],
                 (linear_idx, population.spawn_count_hint.max(1)),
                 &population.template.control,
+                false,
             )
             .max(MIN_FREQ_HZ)
         } else {
@@ -323,7 +403,7 @@ impl Community {
         }
     }
 
-    fn peak_biased_respawn_candidate<R: Rng + ?Sized>(
+    fn peak_biased_respawn_candidate<R: Rng + Clone>(
         &self,
         population: &RuntimePopulationState,
         selected_parent: Option<ParentCandidate>,
@@ -410,28 +490,60 @@ impl Community {
                 final_weights.clone_from(&scene_weights);
             }
 
+            let temporal = (landscape.harmonic_relations_weight != 0.
+                || landscape.harmonic_continuation_weight != 0.)
+                && landscape.harmonic_relations.is_some()
+                && self.refresh_spawn_relations(
+                    landscape,
+                    Some(&population.template.control),
+                    self.spawn_body_template(
+                        Some(&population.template.control),
+                        landscape,
+                        (lo * hi).sqrt(),
+                    ),
+                );
+            if temporal {
+                self.mix_spawn_weights(&centers[..candidate_bins.len()], &mut final_weights, rng);
+            }
+
             let chosen_idx = if let Ok(dist) = WeightedIndex::new(&final_weights) {
                 dist.sample(rng)
             } else {
-                scene_weights
+                let baseline = scene_weights
                     .iter()
                     .enumerate()
                     .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
                     .map(|(idx, _)| idx)
-                    .unwrap_or(0)
+                    .unwrap_or(0);
+                if temporal {
+                    self.choose_spawn_candidate(&centers[..candidate_bins.len()], baseline, |i| {
+                        f64::from(final_weights[i])
+                    })
+                } else {
+                    baseline
+                }
             };
             let center_hz = landscape.space.centers_hz[candidate_bins[chosen_idx]].clamp(lo, hi);
+            let active = self.harmonic_spawn.borrow();
+            let temporal = if temporal { active.as_ref() } else { None };
             if body_enabled {
-                peak_bias_local_search_with(center_hz, lo, hi, config, |hz| {
-                    let mut score = [0.0];
-                    if self.respawn_body_scores(population, landscape, &[hz], &mut score) {
-                        score[0]
-                    } else {
-                        landscape.evaluate_pitch_score(hz)
-                    }
-                })
+                peak_bias_local_search_with(
+                    center_hz,
+                    lo,
+                    hi,
+                    config,
+                    |hz| {
+                        let mut score = [0.0];
+                        if self.respawn_body_scores(population, landscape, &[hz], &mut score) {
+                            score[0]
+                        } else {
+                            landscape.evaluate_pitch_score(hz)
+                        }
+                    },
+                    temporal,
+                )
             } else {
-                peak_bias_local_search_frequency(landscape, center_hz, lo, hi, config)
+                peak_bias_local_search_frequency(landscape, center_hz, lo, hi, config, temporal)
             }
         };
 
@@ -448,7 +560,7 @@ impl Community {
         Some((chosen_freq, parent_id, parent_gen))
     }
 
-    fn pick_respawn_candidate<R: Rng + ?Sized>(
+    fn pick_respawn_candidate<R: Rng + Clone>(
         &self,
         population_id: u64,
         population: &RuntimePopulationState,
@@ -509,6 +621,7 @@ impl Community {
                         &[],
                         (member_idx + idx, candidate_count),
                         &population.template.control,
+                        false,
                     )
                     .max(MIN_FREQ_HZ),
                 _ => match population.respawn_policy {
@@ -547,48 +660,109 @@ impl Community {
         let mut body_scores = [0.0; RESPAWN_CANDIDATE_COUNT];
         let body_enabled =
             self.respawn_body_scores(population, landscape, &candidates, &mut body_scores);
+        let temporal = if (landscape.harmonic_relations_weight != 0.
+            || landscape.harmonic_continuation_weight != 0.)
+            && landscape.harmonic_relations.is_some()
+        {
+            let lo = candidates.iter().copied().fold(f32::INFINITY, f32::min);
+            let hi = candidates.iter().copied().fold(0., f32::max);
+            self.refresh_spawn_relations(
+                landscape,
+                Some(&population.template.control),
+                self.spawn_body_template(
+                    Some(&population.template.control),
+                    landscape,
+                    (lo * hi).sqrt(),
+                ),
+            )
+        } else {
+            false
+        };
         let chosen_freq = if body_enabled {
             let idx = if matches!(population.respawn_policy, RespawnPolicy::Random) {
-                let weights = body_scores.map(|score| score.max(0.0));
+                let mut weights = body_scores.map(|score| score.max(0.0));
+                if temporal {
+                    self.mix_spawn_weights(&candidates, &mut weights, rng);
+                }
                 if weights.iter().any(|w| *w > 0.0) {
                     if weights.iter().sum::<f32>().is_finite()
                         && let Ok(dist) = WeightedIndex::new(weights)
                     {
                         dist.sample(rng)
                     } else {
-                        weights
+                        let baseline = weights
                             .iter()
                             .enumerate()
                             .max_by(|a, b| a.1.total_cmp(b.1))?
-                            .0
+                            .0;
+                        if temporal {
+                            self.choose_spawn_candidate(&candidates, baseline, |i| {
+                                f64::from(weights[i])
+                            })
+                        } else {
+                            baseline
+                        }
                     }
                 } else {
-                    body_scores
+                    let baseline = body_scores
                         .iter()
                         .enumerate()
                         .max_by(|a, b| a.1.total_cmp(b.1))?
-                        .0
+                        .0;
+                    if temporal {
+                        self.choose_spawn_candidate(&candidates, baseline, |i| {
+                            f64::from(body_scores[i])
+                        })
+                    } else {
+                        baseline
+                    }
                 }
             } else {
                 let repr = self.birth_surrogate.borrow().as_ref().unwrap().level_repr;
-                body_scores
+                let baseline = body_scores
                     .iter()
                     .enumerate()
                     .max_by(|a, b| repr.level(*a.1).total_cmp(&repr.level(*b.1)))?
-                    .0
+                    .0;
+                if temporal {
+                    self.choose_spawn_candidate(&candidates, baseline, |i| {
+                        f64::from(repr.level(body_scores[i]))
+                    })
+                } else {
+                    baseline
+                }
             };
             candidates[idx]
         } else {
             match population.respawn_policy {
                 RespawnPolicy::Random => {
-                    choose_candidate_by_scene_score(landscape, &candidates, rng)?
+                    let active = self.harmonic_spawn.borrow();
+                    choose_candidate_by_scene_score(
+                        landscape,
+                        &candidates,
+                        rng,
+                        if temporal { active.as_ref() } else { None },
+                    )?
                 }
-                _ => *candidates.iter().max_by(|a, b| {
-                    landscape
-                        .evaluate_pitch_level(**a)
-                        .partial_cmp(&landscape.evaluate_pitch_level(**b))
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                })?,
+                _ => {
+                    let baseline = candidates
+                        .iter()
+                        .enumerate()
+                        .max_by(|a, b| {
+                            landscape
+                                .evaluate_pitch_level(*a.1)
+                                .partial_cmp(&landscape.evaluate_pitch_level(*b.1))
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        })?
+                        .0;
+                    candidates[if temporal {
+                        self.choose_spawn_candidate(&candidates, baseline, |i| {
+                            f64::from(landscape.evaluate_pitch_level(candidates[i]))
+                        })
+                    } else {
+                        baseline
+                    }]
+                }
             }
         };
 
@@ -691,6 +865,10 @@ impl Community {
             ) else {
                 continue;
             };
+
+            if !self.harmonic_spawn_allowed(landscape, &population.template.control, freq_hz) {
+                continue;
+            }
 
             let id = self.allocate_runtime_id();
             self.spawn_one(
@@ -1306,11 +1484,12 @@ mod tests {
             landscape.consonance_field_level_eff[bin_idx] = score.clamp(0.0, 1.0);
         }
 
-        let mut rng = rand::rngs::StdRng::seed_from_u64(20260331);
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(20260331);
         let mut counts = [0usize; 3];
         for _ in 0..4096 {
-            let chosen = choose_candidate_by_scene_score(&landscape, &candidate_freqs, &mut rng)
-                .expect("candidate should be selected");
+            let chosen =
+                choose_candidate_by_scene_score(&landscape, &candidate_freqs, &mut rng, None)
+                    .expect("candidate should be selected");
             let idx = candidate_freqs
                 .iter()
                 .position(|freq_hz| (*freq_hz - chosen).abs() <= 1e-6)
@@ -1381,7 +1560,8 @@ mod tests {
             })
             .collect();
         let expected =
-            choose_candidate_by_scene_score(&landscape, &proposals, &mut expected_rng).unwrap();
+            choose_candidate_by_scene_score(&landscape, &proposals, &mut expected_rng, None)
+                .unwrap();
         assert_eq!(
             enabled.pick_respawn_candidate(1, &population, &parents, &landscape, &mut rng, 0),
             Some((expected, None, None))

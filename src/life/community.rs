@@ -85,6 +85,11 @@ pub struct Community {
     pub(crate) rest_enabled: bool,
     pub(crate) onset_habituation_config: Option<(crate::core::habituation::HabituationParams, f64)>,
     pub(crate) body_metabolism: Option<super::body_metabolism::BodyMetabolism>,
+    support_scratch: std::cell::RefCell<[Vec<f64>; 2]>,
+    harmonic_spawn:
+        std::cell::RefCell<Option<crate::temporal_cognition::harmonic_relations::consumer::Use>>,
+    harmonic_spawn_weights: std::cell::RefCell<Vec<f64>>,
+    harmonic_spawn_candidates: std::cell::RefCell<Vec<usize>>,
     birth_surrogate: std::cell::RefCell<Option<super::sound::birth_surrogate::BirthSurrogate>>,
     pub voices: Vec<Voice>,
     pub(crate) flora: Vec<super::flora::Flora>,
@@ -233,6 +238,10 @@ impl Community {
             expression: None,
             body_metabolism: None,
             birth_surrogate: std::cell::RefCell::new(None),
+            support_scratch: std::cell::RefCell::new(Default::default()),
+            harmonic_spawn: std::cell::RefCell::new(None),
+            harmonic_spawn_weights: std::cell::RefCell::new(Vec::new()),
+            harmonic_spawn_candidates: std::cell::RefCell::new(Vec::new()),
             rest_enabled: false,
             onset_habituation_config: None,
             voices: Vec::new(),
@@ -294,6 +303,12 @@ impl Community {
 
     pub fn set_seed(&mut self, seed: u64) {
         self.seed = seed;
+    }
+
+    pub(crate) fn prepare_support(&mut self, bins: usize) {
+        *self.support_scratch.get_mut() = std::array::from_fn(|_| vec![0.; bins]);
+        self.harmonic_spawn_weights.get_mut().resize(bins, 0.);
+        self.harmonic_spawn_candidates.get_mut().reserve(bins);
     }
 
     pub(crate) fn enable_birth_surrogate(
@@ -884,7 +899,74 @@ impl Community {
                 .iter()
                 .find(|s| s.id == voice.id() && s.generation == voice.metadata.generation)
                 .map(|s| s.score_scan.clone());
-            voice.pitch_ctl.loo_input_mut().exact_score = score;
+            let temporal = landscape.harmonic_relations_weight != 0.
+                || landscape.harmonic_continuation_weight != 0.;
+            let enabled = landscape.support_weights.active() || temporal;
+            let excluded = voice.effective_control.pitch.leave_self_out;
+            let density = landscape.support_single_density(voice.body.amp());
+            if enabled && (excluded || temporal) {
+                voice.refresh_support_template(landscape);
+            }
+            let input = voice.pitch_ctl.loo_input_mut();
+            if temporal {
+                input.relation_source = crate::temporal_cognition::harmonic_relations::Source {
+                    kind: 0,
+                    id: voice.id,
+                    generation: u64::from(voice.metadata.generation),
+                };
+            }
+            input.exact_score = score;
+            input.support = if enabled && excluded {
+                landscape
+                    .loo
+                    .iter()
+                    .find(|s| s.id == voice.id && s.generation == voice.metadata.generation)
+                    .and_then(|s| s.support.clone())
+            } else if temporal {
+                landscape.support.clone()
+            } else {
+                None
+            };
+            input.support_single_density = density;
+            input.support_template = if enabled && (excluded || temporal) {
+                voice.support_template.clone()
+            } else {
+                None
+            };
+            if temporal || input.relations.is_some() {
+                use crate::core::harmonic_support::preview::Observer;
+                use crate::temporal_cognition::harmonic_relations::consumer::Use;
+                let source = input.relation_source;
+                Use::refresh(
+                    &mut input.relations,
+                    landscape,
+                    Some(source),
+                    if excluded {
+                        Observer::Excluded {
+                            kind: 0,
+                            id: source.id,
+                            generation: source.generation,
+                        }
+                    } else {
+                        Observer::Mixed
+                    },
+                    input.support.clone(),
+                    input.support_template.clone(),
+                    density,
+                    self.time.fs,
+                    self.time.frame_start_tick(self.current_frame),
+                );
+            }
+            if !excluded
+                && !input.support_warned
+                && landscape.support_weights.0.iter().any(|&w| w > 0.)
+            {
+                tracing::warn!(
+                    voice_id = voice.id,
+                    "harmonic support movement requires leave_self_out(true); ignoring preferences for this Voice"
+                );
+                input.support_warned = true;
+            }
         }
     }
 
@@ -1470,6 +1552,7 @@ mod tests {
                 .is_none()
         );
         landscape.loo.push(crate::core::stream::loo::Observation {
+            support: None,
             id: 70,
             generation: 0,
             h_scan: vec![0.; landscape.space.n_bins()],
@@ -1531,6 +1614,7 @@ mod tests {
             landscape.loo.clear();
             if present {
                 landscape.loo.push(crate::core::stream::loo::Observation {
+                    support: None,
                     id,
                     generation,
                     h_scan: vec![0.0; landscape.space.n_bins()],

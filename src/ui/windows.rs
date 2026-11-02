@@ -879,6 +879,36 @@ pub fn main_window(
         });
 
         ui.separator();
+        egui::CollapsingHeader::new("Harmonic support — first-order fields")
+            .show(ui, |ui| {
+                if let Some(global) = &frame.landscape.support {
+                    ui.label(format!("M {:.4} grid units · C {:.4} · D {:.4} · sample {}", global.mass, global.focus, global.conflict, global.end_sample));
+                    ui.label(format!("Support includes sub-roots from {:.2} Hz; not root probabilities", global.geometry.root_start_log2.exp2()));
+                    let id = egui::Id::unique("harmonic_support_voice");
+                    let mut selected = ui.ctx().data_mut(|data| data.get_temp::<u64>(id)).unwrap_or_else(|| frame.voices.first().map_or(0, |v| v.id));
+                    egui::ComboBox::from_id_salt(id).selected_text(format!("Voice {selected}"))
+                        .show_ui(ui, |ui| { for voice in &frame.voices { ui.selectable_value(&mut selected, voice.id, format!("Voice {}", voice.id)); } });
+                    ui.ctx().data_mut(|data| data.insert_temp(id, selected));
+                    if let Some(voice) = frame.voices.iter().find(|v| v.id == selected) {
+                        if let Some(reference) = &voice.support {
+                            ui.label(if voice.support_template.is_some() { "Body partials reading first-order fields; PCM self-excluded reference" } else { "Single partial at the nominal pitch and level (no spectral self-report); PCM self-excluded reference." });
+                            let mut scans = std::array::from_fn(|_| vec![0.; frame.landscape.space.n_bins()]);
+                            if let Some(template) = &voice.support_template {
+                                for i in 0..frame.landscape.space.n_bins() {
+                                    for (scan, value) in scans.iter_mut().zip(reference.template_features(i, template)) { scan[i] = value; }
+                                }
+                            } else { reference.single_partial_scan(voice.support_single_density, &mut scans); }
+                            for (name, scan) in ["dC (first order)", "dD (first order)", "N"].into_iter().zip(scans) {
+                                let values: Vec<_> = scan.into_iter().map(|v| v as f32).collect();
+                                let lo = values.iter().copied().fold(0., f32::min);
+                                let hi = values.iter().copied().fold(0., f32::max);
+                                log2_plot_hz(ui, name, &frame.landscape.space.centers_hz, &values, name, f64::from(lo), if hi > lo { f64::from(hi) } else { 1. }, 90., None, None, None);
+                            }
+                        } else { ui.label("No self-excluded support for this Voice; movement term unavailable."); }
+                    }
+                } else { ui.label("Support observation disabled or unavailable."); }
+            });
+        ui.separator();
         egui::CollapsingHeader::new("Prediction")
             .default_open(false)
             .show_unindented(ui, |ui| {

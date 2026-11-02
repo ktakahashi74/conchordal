@@ -244,6 +244,7 @@ fn environment_viability_consumes_pcm_observation_without_pitch_self_exclusion()
             ..Default::default()
         };
         landscape.loo = vec![crate::core::stream::loo::Observation {
+            support: None,
             id: voice.id(),
             generation: voice.metadata.generation,
             h_scan: vec![0.; landscape.space.n_bins()],
@@ -470,6 +471,12 @@ fn rendered_loo_conformance() {
                     }
                 }
                 let mut input = LooInput {
+                    relations: None,
+                    relation_source: Default::default(),
+                    support: None,
+                    support_template: None,
+                    support_single_density: 0.,
+                    support_warned: false,
                     tonal_context: None,
                     exact_score: Some(candidate.snapshot().score_scan),
                     own_power_scan: own_power,
@@ -493,6 +500,10 @@ fn rendered_loo_conformance() {
                 for kind in [PitchCoreKind::HillClimb, PitchCoreKind::PeakSampler] {
                     let mut voice = viability_voice(base_hz, kind);
                     *voice.pitch_ctl.loo_input_mut() = LooInput {
+                        support: None,
+                        support_template: None,
+                        support_single_density: 0.,
+                        support_warned: false,
                         computed_score: None,
                         ..input.clone()
                     };
@@ -1173,6 +1184,12 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                         .map(|p| actual.evaluate_pitch_score_log2(*p))
                         .collect();
                     let mut legacy_input = LooInput {
+                        relations: None,
+                        relation_source: Default::default(),
+                        support: None,
+                        support_template: None,
+                        support_single_density: 0.,
+                        support_warned: false,
                         tonal_context: None,
                         exact_score: None,
                         own_power_scan: own_power.clone(),

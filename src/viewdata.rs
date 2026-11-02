@@ -42,6 +42,9 @@ pub struct ListenerFrame {
 
 #[derive(Clone, Debug, Default)]
 pub struct VoiceStateInfo {
+    pub(crate) support: Option<std::sync::Arc<crate::core::harmonic_support::Snapshot>>,
+    pub(crate) support_single_density: f32,
+    pub(crate) support_template: Option<std::sync::Arc<[(isize, f32)]>>,
     pub id: u64,
     pub freq_hz: f32,
     pub target_freq: f32,

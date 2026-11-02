@@ -2,6 +2,7 @@ use super::*;
 
 /// Immutable per-run settings and shared control flags for the worker thread.
 pub(super) struct WorkerConfig {
+    pub(super) harmonic_relations: Option<(Arc<crate::core::harmonic_support::Geometry>, usize)>,
     pub(super) has_flora: bool,
     pub(super) render_prototype: bool,
     pub(super) temporal_meter_t2: bool,
@@ -49,6 +50,8 @@ pub(super) struct WorkerChannels {
 pub(super) struct WorkerState {
     pub(super) script_error_reported: bool,
     pub(super) loo_populations: Vec<u64>,
+    pub(super) harmonic_relations:
+        Option<crate::temporal_cognition::harmonic_relations::runtime::Runtime>,
     pub(super) loo_recycle: (
         Sender<Vec<crate::core::stream::loo::SourcePcm>>,
         Receiver<Vec<crate::core::stream::loo::SourcePcm>>,
@@ -197,7 +200,17 @@ impl WorkerState {
         let expression = conductor.expression;
         pop.expression = expression;
         pop.harmonic_rhythm = cfg.harmonic_rhythm > 0;
-        let current_landscape: Landscape = landscape;
+        let mut current_landscape: Landscape = landscape;
+        let harmonic_relations = cfg.harmonic_relations.as_ref().map(|(geometry, sources)| {
+            let runtime = crate::temporal_cognition::harmonic_relations::runtime::Runtime::new(
+                geometry.clone(),
+                cfg.fs as u32,
+                cfg.hop,
+                *sources,
+            );
+            current_landscape.harmonic_recorder = Some(runtime.recorder.clone());
+            runtime
+        });
         let log_space = current_landscape.space.clone();
         let timebase = crate::core::timebase::Timebase {
             fs: cfg.fs,
@@ -241,6 +254,7 @@ impl WorkerState {
         }
         let now = Instant::now();
         Self {
+            harmonic_relations,
             #[cfg(test)]
             offline_body_probe: None,
             pop,
@@ -363,6 +377,8 @@ pub(super) fn worker_loop(
         }
         if cfg.exiting.load(Ordering::SeqCst) || state.finished {
             if !state.finalized {
+                #[cfg(test)]
+                drop(l1_probe.take());
                 finish_run(&cfg, &mut channels, &mut state);
             }
             if cfg.exiting.load(Ordering::SeqCst) || !cfg.wait_user_exit {
@@ -468,6 +484,40 @@ pub(super) fn finish_run(
     channels: &mut WorkerChannels,
     state: &mut WorkerState,
 ) {
+    #[cfg(test)]
+    if let Some(relations) = &state.harmonic_relations
+        && let Some(directory) = std::env::var_os("L1_OUTPUT")
+    {
+        let path = std::path::Path::new(&directory).join("harmonic-relations-at-audio-end.json");
+        serde_json::to_writer(
+            std::fs::File::create(path).expect("L1 audio-end harmonic statistics"),
+            &relations.summary(),
+        )
+        .expect("L1 audio-end harmonic statistics serialization");
+    }
+    if state.harmonic_relations.is_some() && state.frame_idx > 0 {
+        wait_for_analysis(state, &channels.analysis_result_rx, &cfg.exiting);
+    }
+    if let Some(relations) = &mut state.harmonic_relations {
+        if let Some(support) = state.current_landscape.support.clone() {
+            relations.advance(&support, &mut state.current_landscape);
+        }
+        relations.finish();
+        let summary = relations.summary();
+        tracing::info!(summary = %summary, "harmonic relations runtime");
+        #[cfg(test)]
+        {
+            eprintln!("HV7_RUNTIME {summary}");
+            if let Some(directory) = std::env::var_os("L1_OUTPUT") {
+                let path = std::path::Path::new(&directory).join("harmonic-relations.json");
+                serde_json::to_writer(
+                    std::fs::File::create(path).expect("L1 harmonic statistics"),
+                    &summary,
+                )
+                .expect("L1 harmonic statistics serialization");
+            }
+        }
+    }
     if state.scenario_end_tick.is_none() && state.reporter.is_some() {
         for voice in &state.pop.voices {
             if let Some(mut record) = voice.pitch_ctl.dwell_state {
@@ -700,6 +750,12 @@ pub(super) fn process_hop(
     }
 
     let population_start = state.profile.as_ref().map(|_| Instant::now());
+    state.current_landscape.harmonic_now_sample = now_tick;
+    if let Some(relations) = &mut state.harmonic_relations
+        && let Some(support) = state.current_landscape.support.clone()
+    {
+        relations.advance(&support, &mut state.current_landscape);
+    }
     let phonation_count = advance_population(state, cfg, now_tick, listener_pressure);
     let population_elapsed = population_start
         .map(|start| start.elapsed())
@@ -720,6 +776,9 @@ pub(super) fn process_hop(
     let render_start = state.profile.as_ref().map(|_| Instant::now());
     let (presentation_chunk, habitat_chunk, max_abs, synthesis_elapsed) =
         render_and_route_audio(state, channels, cfg, now_tick, phonation_count);
+    if let Some(relations) = &mut state.harmonic_relations {
+        relations.collect(now_tick + cfg.hop as u64);
+    }
     let render_route = render_start
         .map(|start| start.elapsed())
         .unwrap_or_default();

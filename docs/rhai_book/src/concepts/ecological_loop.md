@@ -101,6 +101,25 @@ critical-band compression, density smoothing and H/R/C pipeline as
 the mixed field. Habitat-routed Flora, including residual sound, stays in the
 remainder. All bodies use this method; there is no mode selector.
 
+The default `tail_roughness_aversion(0)` keeps both H and R self-excluded.
+You can choose `.tail_roughness_aversion(w)` on a Population, initially or live,
+to avoid roughness with its outgoing sound. This is an **Author rule**, a
+composer disposition (DCC §5), not a change to sensation. A fast passage may
+ignore the overlap; a slow drone may avoid it; pedal-like overlap may be intended.
+Only actual held-Tone Off/On candidates with `leave_self_out(true)` blend external
+R and mixed R in proportions 1-w and w, retaining external H and the existing
+field coefficients and sigmoid. Zero preserves the original default, one the
+accepted VR-1 view. The author heard Undergrowth B as clearer, with less muddiness.
+
+Use a finite weight in [0,1]. Invalid values warn and clamp: +infinity becomes 1,
+-infinity and NaN become 0. Positive weight with `leave_self_out(false)` has no
+effect and warns once per Population. Lock, `rearticulate_above`, final pitch
+bounds and onset eligibility decide the action; holds, Glide, GateSnap and
+proposals waiting for independent participation retain their previous views.
+Shared harmonic opportunities use the same rule. Environment recovery still
+excludes both H and R; shared observations, Flora and release are unchanged.
+This uses sound just before On, not a prediction of the future release or body.
+
 Observers are reserved from birth for populations that use either consumer,
 including a later `leave_self_out(true)` patch. Before birth their state is the
 mixed stream's state. Voice identity and generation bind the observation to its

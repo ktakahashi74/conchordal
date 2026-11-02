@@ -80,7 +80,7 @@ leave_self_out(enabled)
 
 Exclude Flora's own habitat PCM from growth consonance and seed harmonicity. Default true, unlike Voice's false: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Set false before placement to read mixed C/H without an H/R observer. External resource power always excludes own PCM. Presentation-only Flora reads mixed C/H regardless of this setting.
 
-**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：H/R入力から自己のhabitat PCMを除く選択。Voiceの既定はfalse、Floraはtrue。Floraの資源powerの自己除外とは独立（§9.3.95）。
+**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：自己除外。Voiceの既定はfalse、Floraはtrue。Voiceは既定ではH/Rの両方から自己を除き、tail_roughness_aversionで実際のOff/On音高候補のRだけを選択的に混合する。environmentの回復とFloraの契約は維持（§9.3.95、§9.3.120）。
 
 #### `send`
 
@@ -1002,6 +1002,18 @@ Proposal generation interval in seconds. Controls opportunities to propose a pit
 
 **根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
+#### `tail_roughness_aversion`
+
+```rhai,ignore
+tail_roughness_aversion(w)
+```
+
+適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
+
+作者規則。初期設定と実行中の更新に対応し、既定値は0。有限の[0,1]を指定する。範囲外・非有限は警告し、有限値は範囲内へ制限、正の無限大は1、負の無限大とNaNは0にする。leave_self_out(true)で実際に旧ToneをOff・新ToneをOnする音高候補だけ、自己除外Rと混合Rを1-wとwで混ぜる。Hは自己除外のまま、既存の場の係数とsigmoidを使う。0は従来の既定経路、1は採択したVR-1の場。Lock、保持、Glide、GateSnap、提案によるOnのない待機には効かない。leave_self_out(false)で正の重みは効かず、Populationごとに一度だけ警告する。共有の和声機会でも同じ行為判定を使う。未来のreleaseや候補の全身体の予測ではない。environment、Flora、routing、releaseは変えない。
+
+**根拠:** 作者規則：自分の余韻との粗さを音高選択で避ける性向。作曲者が選び、既定値は0。感覚は変えない（DCC §5、§9.3.120）。
+
 ### 近傍の知覚
 
 Fieldを評価するとき、ほかのVoiceと自分自身のspectrum footprintをどう知覚するかを決める。
@@ -1027,9 +1039,9 @@ leave_self_out(enabled)
 
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
-Evaluate the field without this voice when choosing pitch. Default false, unlike Flora's true: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
+Voiceの既定はfalse、Floraはtrue。自己の実habitat PCMを聴覚解析前に除く。tail_roughness_aversionの既定値0では、従来どおりH/Rの両方から全自己を除く。正の重みを選んだ場合だけ、実際に旧ToneをOff・新ToneをOnする音高候補のRに混合Rを加える。H、environmentの継続回復、共有snapshot、Floraの契約は変えない。
 
-**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：H/R入力から自己のhabitat PCMを除く選択。Voiceの既定はfalse、Floraはtrue。Floraの資源powerの自己除外とは独立（§9.3.95）。
+**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：自己除外。Voiceの既定はfalse、Floraはtrue。Voiceは既定ではH/Rの両方から自己を除き、tail_roughness_aversionで実際のOff/On音高候補のRだけを選択的に混合する。environmentの回復とFloraの契約は維持（§9.3.95、§9.3.120）。
 
 ### LifecycleとViability
 
@@ -2012,7 +2024,7 @@ viability_scope(name)
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-`"environment"` or `"total"`: choose the field used for viability. Environment uses the same PCM self-removal observation as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
+`"environment"` or `"total"`: choose the field used for viability. Environment uses the PCM self-removal observation at the current pitch for the continuous-recharge score. Both H and R stay self-excluded here; the rearticulation pitch view does not feed recovery. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
 
 **根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
 

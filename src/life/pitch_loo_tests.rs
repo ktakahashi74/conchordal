@@ -285,3 +285,239 @@ fn redistribution_steady_state_allocates_nothing() {
     );
     assert_eq!((counts.count, counts.bytes), (0, 0));
 }
+
+#[test]
+fn rearticulation_candidate_view_preserves_holds_and_glides() {
+    let space = Log2Space::new(55., 8000., 96);
+    let previous = space.centers_log2[100];
+    let mut input = LooInput {
+        rearticulation: Some(RearticulationView {
+            weight: 1.0,
+            id: 1,
+            generation: 0,
+            reference_log2: previous,
+            threshold_cents: 50.,
+            previous_target: previous,
+            bounds: (space.fmin.log2(), space.fmax.log2()),
+        }),
+        rearticulation_score: vec![1.; space.n_bins()],
+        ..Default::default()
+    };
+    let external = vec![0.; space.n_bins()];
+    for (step, expected) in [(0, 0.), (1, 0.), (4, 0.), (5, 1.)] {
+        let p = space.centers_log2[100 + step];
+        assert_eq!(
+            input.candidate_scan(&space, p, Some(&external)).unwrap()[0],
+            expected
+        );
+    }
+    input.rearticulation.as_mut().unwrap().threshold_cents = 0.;
+    assert_eq!(
+        input
+            .candidate_scan(&space, previous, Some(&external))
+            .unwrap()[0],
+        0.
+    );
+    input.rearticulation.as_mut().unwrap().bounds = (previous, previous);
+    assert_eq!(
+        input
+            .candidate_scan(&space, space.centers_log2[120], Some(&external))
+            .unwrap()[0],
+        0.
+    );
+    assert!(input.candidate_scan(&space, previous, None).is_none());
+    input.rearticulation = None;
+    assert_eq!(
+        input
+            .candidate_scan(&space, previous, Some(&external))
+            .unwrap(),
+        external
+    );
+}
+
+#[test]
+#[cfg(feature = "profile-alloc")]
+fn rearticulation_view_reuses_proposal_storage() {
+    let mut land = Landscape::new(Log2Space::new(55., 8000., 96));
+    let n = land.space.n_bins();
+    land.loo.push(crate::core::stream::loo::Observation {
+        support: None,
+        id: 1,
+        generation: 0,
+        h_scan: vec![0.3; n],
+        r_scan: vec![0.1; n],
+        score_scan: vec![0.2; n].into(),
+    });
+    let mut input = LooInput {
+        exact_score: Some(land.loo[0].score_scan.clone()),
+        rearticulation: Some(RearticulationView {
+            weight: 1.0,
+            id: 1,
+            generation: 0,
+            reference_log2: 8.,
+            threshold_cents: 0.,
+            previous_target: 8.,
+            bounds: land.freq_bounds_log2(),
+        }),
+        ..Default::default()
+    };
+    loo_score_scan(&land, &mut input);
+    crate::runtime_profile::begin_allocations();
+    for _ in 0..128 {
+        let scan = loo_score_scan(&land, &mut input);
+        std::hint::black_box(input.candidate_scan(&land.space, 8.1, scan.as_deref()));
+    }
+    let counts = crate::runtime_profile::finish_allocations().unwrap();
+    assert_eq!(counts.count, 0);
+    assert_eq!(counts.bytes, 0);
+    println!("VR1_ALLOCATION {counts:?}");
+}
+
+#[test]
+fn harmonic_opportunity_uses_the_same_separate_pitch_view() {
+    use crate::core::{modulation::NeuralRhythms, timebase::Timebase};
+    use crate::life::voice::{PhonationBatch, Voice, VoiceMetadata};
+    use crate::scenario::{
+        ArticulationCoreConfig,
+        control::{PitchApplyMode, PitchMode, VoiceControl},
+    };
+    for opportunity in [false, true] {
+        let mut land = Landscape::new(Log2Space::new(55., 2000., 96));
+        let n = land.space.n_bins();
+        land.roughness01.fill(0.2);
+        let external: Arc<[f32]> = vec![0.; n].into();
+        land.loo.push(crate::core::stream::loo::Observation {
+            support: None,
+            id: 1,
+            generation: 0,
+            h_scan: vec![1.; n],
+            r_scan: vec![0.; n],
+            score_scan: external.clone(),
+        });
+        let mut c = VoiceControl::default();
+        c.pitch.mode = PitchMode::Free;
+        c.pitch.freq = 220.;
+        c.pitch.range_oct = 4.;
+        c.pitch.pitch_apply_mode = PitchApplyMode::Rearticulate;
+        c.pitch.proposal_interval_sec = Some(0.001);
+        c.pitch.leave_self_out = true;
+        c.pitch.tail_roughness_aversion = 1.0;
+        let mut voice = Voice::spawn_from_control(
+            c,
+            ArticulationCoreConfig::Drone {
+                sway: None,
+                breath_gain_init: None,
+            },
+            1,
+            0,
+            VoiceMetadata::default(),
+            48000.,
+            Some(&land),
+            21,
+        );
+        voice.harmonic_member = true;
+        voice.configure_control_hop(512, 64, 48000.);
+        voice.pitch_ctl.loo_input_mut().exact_score = Some(external.clone());
+        let mut batch = PhonationBatch::default();
+        let tb = Timebase {
+            fs: 48000.,
+            hop: 512,
+        };
+        voice.tick_harmonic(&tb, 0, &land, &[], &mut batch);
+        assert_eq!(batch.tones.len(), 1);
+        voice.tick_harmonic(
+            &tb,
+            512,
+            &land,
+            if opportunity { &[600] } else { &[] },
+            &mut batch,
+        );
+        let input = voice.pitch_ctl.loo_input_mut();
+        assert_eq!(!input.rearticulation_score.is_empty(), opportunity);
+        assert_eq!(input.exact_score.as_ref().unwrap(), &external);
+        assert_eq!(land.loo[0].score_scan, external);
+        assert_eq!(
+            batch
+                .cmds
+                .iter()
+                .any(|c| matches!(c, crate::life::phonation_engine::ToneCmd::Off { .. })),
+            opportunity
+        );
+        assert_eq!(!batch.tones.is_empty(), opportunity);
+        voice.start_remove_fade(1.);
+        voice.tick_harmonic(&tb, 1024, &land, &[1100], &mut batch);
+        assert!(batch.tones.is_empty());
+        assert!(voice.pitch_ctl.loo_input_mut().rearticulation.is_none());
+        // Ordinary updates do not run a second proposal for this member.
+        voice.update_pitch_target(&NeuralRhythms::default(), 1., &land, &[], &[]);
+    }
+}
+
+#[test]
+fn tail_roughness_aversion_interpolates_r_without_changing_h_or_shared_observation() {
+    use crate::core::consonance_kernel::ConsonanceKernel;
+    for (external, mixed) in [(0.1, 0.9), (0.8, 0.2), (0.4, 0.4)] {
+        let mut land = Landscape::new(Log2Space::new(55., 8000., 96));
+        let n = land.space.n_bins();
+        land.roughness01.fill(mixed);
+        // Read R directly through the actual field path, then check the full kernel.
+        for kernel in [
+            ConsonanceKernel {
+                a: 0.,
+                b: 1.,
+                c: 0.,
+                d: 0.,
+            },
+            ConsonanceKernel::default(),
+        ] {
+            land.consonance_kernel = kernel;
+            land.loo = vec![crate::core::stream::loo::Observation {
+                support: None,
+                id: 1,
+                generation: 0,
+                h_scan: vec![0.3; n],
+                r_scan: vec![external; n],
+                score_scan: vec![kernel.score(0.3, external); n].into(),
+            }];
+            let original = land.loo[0].score_scan.clone();
+            let mut input = LooInput {
+                exact_score: Some(original.clone()),
+                ..Default::default()
+            };
+            let mut previous_r = external;
+            for weight in [0., 0.125, 0.25, 0.5, 0.75, 1., 0.] {
+                input.rearticulation = Some(RearticulationView {
+                    weight,
+                    id: 1,
+                    generation: 0,
+                    reference_log2: 8.,
+                    threshold_cents: 0.,
+                    previous_target: 8.,
+                    bounds: land.freq_bounds_log2(),
+                });
+                let external_scan = loo_score_scan(&land, &mut input).unwrap();
+                let actual = input
+                    .candidate_scan(&land.space, 8.1, Some(&external_scan))
+                    .unwrap()[0];
+                let r = if weight == 0. {
+                    external
+                } else if weight == 1. {
+                    mixed
+                } else {
+                    (1. - weight) * external + weight * mixed
+                };
+                assert_eq!(actual.to_bits(), kernel.score(0.3, r).to_bits());
+                if kernel.a == 0. && weight > 0. {
+                    assert!(actual >= external.min(mixed) && actual <= external.max(mixed));
+                    assert!((actual - previous_r) * (mixed - external) >= 0.);
+                    previous_r = actual;
+                }
+                if weight == 0. {
+                    assert!(input.rearticulation_score.is_empty());
+                }
+                assert_eq!(&*land.loo[0].score_scan, &*original);
+                assert!(land.loo[0].h_scan.iter().all(|&h| h == 0.3));
+            }
+        }
+    }
+}

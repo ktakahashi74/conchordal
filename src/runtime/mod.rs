@@ -133,6 +133,9 @@ mod meter_recurrence_tests;
 mod articulation_persistence_tests;
 
 #[cfg(test)]
+mod tail_roughness_tests;
+
+#[cfg(test)]
 #[path = "temporal_meter_tests.rs"]
 mod temporal_meter_tests;
 

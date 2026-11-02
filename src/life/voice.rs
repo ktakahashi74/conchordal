@@ -278,6 +278,7 @@ impl Dirty {
             || update.crowding_strength.is_some()
             || update.crowding_sigma_cents.is_some()
             || update.leave_self_out.is_some()
+            || update.tail_roughness_aversion.is_some()
             || update.move_cost_coeff.is_some()
             || update.move_cost_exp.is_some()
             || update.proposal_interval_sec.is_some()
@@ -1181,6 +1182,40 @@ impl Voice {
             self.pitch_ctl.loo_input_mut().tonal_context = None;
         }
         let previous = self.target_pitch_log2();
+        // Deferred participation adopts at an independent opportunity, not at this proposal.
+        let rearticulation = (self.effective_control.pitch.tail_roughness_aversion > 0.0
+            && self.effective_control.pitch.leave_self_out
+            && select_pitch_application(&self.effective_control.pitch, None)
+                == PitchApplyMode::Rearticulate
+            && !self.sustain_participation
+            && matches!(self.phonation_engine.mode, PhonationMode::Hold)
+            && self.phonation_engine.has_active_notes()
+            && self.phonation_gate_open
+            && self.compute_target_amp() > Self::AMP_EPS
+            && self.is_alive()
+            && !self.release.pending
+            && !self.release.remove_pending
+            && self.control_tick.is_some())
+        .then(|| pitch_core::RearticulationView {
+            weight: self.effective_control.pitch.tail_roughness_aversion,
+            id: self.id,
+            generation: self.metadata.generation,
+            reference_log2: self
+                .participation_pitch
+                .rearticulations
+                .last()
+                .map(|r| r.pitch_log2.exp2().log2())
+                .or(self.participation_pitch.last_onset_log2)
+                .unwrap_or(previous),
+            threshold_cents: self.effective_control.pitch.rearticulate_above_cents,
+            previous_target: previous,
+            bounds: PitchController::target_bounds(
+                &self.effective_control.pitch,
+                current_freq.max(1.).log2(),
+                landscape,
+            ),
+        });
+        self.pitch_ctl.loo_input_mut().rearticulation = rearticulation;
         self.pitch_ctl.control_tick = self.control_tick;
         self.participation_pitch.adopted = self.pitch_ctl.update_pitch_target(
             current_freq,

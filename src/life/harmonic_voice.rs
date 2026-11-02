@@ -114,6 +114,23 @@ impl Voice {
             self.pitch_ctl.harmonic_gate = Some(shared && legal && !initial);
             self.pitch_ctl.harmonic_next_tick = ticks.get(opportunity).copied();
             ctx.rhythms.advance_in_place((at - previous) as f32 / tb.fs);
+            self.pitch_ctl.loo_input_mut().rearticulation = (shared
+                && legal
+                && !initial
+                && self.effective_control.pitch.tail_roughness_aversion > 0.0
+                && self.effective_control.pitch.leave_self_out
+                && self.phonation_engine.has_active_notes()
+                && select_pitch_application(&self.effective_control.pitch, None)
+                    == PitchApplyMode::Rearticulate)
+                .then(|| pitch_core::RearticulationView {
+                    weight: self.effective_control.pitch.tail_roughness_aversion,
+                    id: self.id,
+                    generation: self.metadata.generation,
+                    reference_log2: self.body.base_freq_hz().log2(),
+                    threshold_cents: self.effective_control.pitch.rearticulate_above_cents,
+                    previous_target: self.pitch_ctl.target_pitch_log2(),
+                    bounds: (lo, hi),
+                });
             let changed = self.pitch_ctl.update_pitch_target(
                 self.body.base_freq_hz(),
                 &ctx.rhythms,

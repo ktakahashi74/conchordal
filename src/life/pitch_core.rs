@@ -1041,7 +1041,8 @@ impl PitchCore for PitchHillClimbPitchCore {
                 leave_self_out,
                 reference_loo_mode,
                 reference_harmonics,
-                loo_scan.as_deref(),
+                self.loo_input
+                    .candidate_scan(&landscape.space, pitch_log2, loo_scan.as_deref()),
                 body_ratios.as_deref(),
                 crowding_strength,
                 crowding_sigma_cents,
@@ -1346,7 +1347,8 @@ impl PitchCore for PitchPeakSamplerCore {
                 leave_self_out,
                 ReferenceLooMode::ApproxHarmonics,
                 DEFAULT_LOO_HARMONICS,
-                loo_scan.as_deref(),
+                self.loo_input
+                    .candidate_scan(&landscape.space, pitch_log2, loo_scan.as_deref()),
                 body_ratios.as_deref(),
                 crowding_strength,
                 crowding_sigma_cents,
@@ -1824,6 +1826,8 @@ pub(crate) struct LooInput {
     pub(crate) support_warned: bool,
     pub(crate) tonal_context: Option<Arc<crate::core::tonal_context::Snapshot>>,
     pub(crate) exact_score: Option<Arc<[f32]>>,
+    pub(super) rearticulation: Option<RearticulationView>,
+    rearticulation_score: Vec<f32>,
     #[cfg(test)]
     pub(crate) own_power_scan: Vec<f32>,
     #[cfg(test)]
@@ -1832,7 +1836,90 @@ pub(crate) struct LooInput {
     pub(crate) computed_score: Option<Option<Arc<[f32]>>>,
 }
 
+/// A candidate action context; shared observation scans remain untouched.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct RearticulationView {
+    pub weight: f32,
+    pub id: u64,
+    pub generation: u32,
+    pub reference_log2: f32,
+    pub threshold_cents: f32,
+    pub previous_target: f32,
+    pub bounds: (f32, f32),
+}
+
+impl LooInput {
+    fn candidate_scan<'a>(
+        &'a self,
+        space: &Log2Space,
+        pitch_log2: f32,
+        external: Option<&'a [f32]>,
+    ) -> Option<&'a [f32]> {
+        let Some(action) = self.rearticulation else {
+            return external;
+        };
+        let bounds = if action.bounds.0 <= action.bounds.1 {
+            action.bounds
+        } else {
+            (space.fmin.log2(), space.fmax.log2())
+        };
+        let target = pitch_log2.clamp(bounds.0, bounds.1);
+        if external.is_some()
+            && !self.rearticulation_score.is_empty()
+            && action.previous_target > 0.0
+            && target != action.previous_target
+            && !(action.threshold_cents > 0.0
+                && super::onset_distance_cents(space, action.reference_log2, target)
+                    <= f64::from(action.threshold_cents))
+        {
+            Some(&self.rearticulation_score)
+        } else {
+            external
+        }
+    }
+}
+
 fn loo_score_scan(landscape: &Landscape, input: &mut LooInput) -> Option<Arc<[f32]>> {
+    input.rearticulation_score.clear();
+    if let Some(action) = input.rearticulation
+        && action.weight > 0.0
+        && let Some(observation) = landscape
+            .loo
+            .iter()
+            .find(|s| s.id == action.id && s.generation == action.generation)
+    {
+        landscape
+            .space
+            .assert_scan_len_named(&observation.h_scan, "loo_h_scan");
+        landscape
+            .space
+            .assert_scan_len_named(&landscape.roughness01, "mixed_r_scan");
+        // Keep the accepted weight-one arithmetic unchanged.
+        if action.weight == 1.0 {
+            input.rearticulation_score.extend(
+                observation
+                    .h_scan
+                    .iter()
+                    .zip(&landscape.roughness01)
+                    .map(|(&h, &r)| landscape.consonance_kernel.score(h, r)),
+            );
+        } else {
+            landscape
+                .space
+                .assert_scan_len_named(&observation.r_scan, "loo_r_scan");
+            input.rearticulation_score.extend(
+                observation
+                    .h_scan
+                    .iter()
+                    .zip(&observation.r_scan)
+                    .zip(&landscape.roughness01)
+                    .map(|((&h, &external), &mixed)| {
+                        let r = (1.0 - action.weight) * external + action.weight * mixed;
+                        landscape.consonance_kernel.score(h, r)
+                    }),
+            );
+        }
+    }
     if let Some(scan) = &input.exact_score {
         landscape
             .space

@@ -694,6 +694,16 @@ disappear as their research questions settle.",
                         _ => "既存の音と支持を共有する新しい成分への選好。0以上の有限値を指定し、既存密度に覆われた成分には加点しない。",
                     });
                     out.push_str("既定値0のcursor eventで、上限は設けない。聴いた音の一次の支持場を身体の部分音で積分する作者規則。Voiceの移動にはleave_self_out(true)が必要で、出生とFloraのlane選択にも作用する。Floraの成長と慣れの入力は維持する。部分音の密度は身体の自己申告から出生・再構成時に保存する。自己申告がない身体は基本周波数の単一部分音として読み、その旨を表示する。");
+                } else if language == ReferenceLanguage::Japanese
+                    && doc.name == "leave_self_out"
+                    && doc.owner == docs::Owner::Population
+                {
+                    out.push_str("Voiceの既定はfalse、Floraはtrue。自己の実habitat PCMを聴覚解析前に除く。tail_roughness_aversionの既定値0では、従来どおりH/Rの両方から全自己を除く。正の重みを選んだ場合だけ、実際に旧ToneをOff・新ToneをOnする音高候補のRに混合Rを加える。H、environmentの継続回復、共有snapshot、Floraの契約は変えない。");
+                } else if language == ReferenceLanguage::Japanese
+                    && doc.owner == Owner::Population
+                    && doc.name == "tail_roughness_aversion"
+                {
+                    out.push_str("作者規則。初期設定と実行中の更新に対応し、既定値は0。有限の[0,1]を指定する。範囲外・非有限は警告し、有限値は範囲内へ制限、正の無限大は1、負の無限大とNaNは0にする。leave_self_out(true)で実際に旧ToneをOff・新ToneをOnする音高候補だけ、自己除外Rと混合Rを1-wとwで混ぜる。Hは自己除外のまま、既存の場の係数とsigmoidを使う。0は従来の既定経路、1は採択したVR-1の場。Lock、保持、Glide、GateSnap、提案によるOnのない待機には効かない。leave_self_out(false)で正の重みは効かず、Populationごとに一度だけ警告する。共有の和声機会でも同じ行為判定を使う。未来のreleaseや候補の全身体の予測ではない。environment、Flora、routing、releaseは変えない。");
                 } else if language == ReferenceLanguage::Japanese && doc.name == "harmonic_rhythm" {
                     out.push_str("背景の変化をN拍ごとの共有機会にまとめる作者規則。Nは作曲者が置く非負整数で、0と省略は中立。最後の有効な指定を場面全体の初期前提とし、有限の曲ではwait()後の記述も途中変更にはならない。endlessでは最初に時刻を進めるwait()より前に宣言する。対象は全Floraと、出生時にOnce／WhileAlive、Free、Rearticulate、閾値0のVoice。準備が整わなければ機会を見送る。解放と支持喪失は優先し、競合する実行中の音高設定はwarningとともに拒否する。調・和音・進行の表や、小節頭への再整列は導入しない。Nは推定小節長ではない。");
                 } else {

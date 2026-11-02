@@ -80,7 +80,7 @@ Applies to: `FloraSpec`.
 
 Exclude Flora's own habitat PCM from growth consonance and seed harmonicity. Default true, unlike Voice's false: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Set false before placement to read mixed C/H without an H/R observer. External resource power always excludes own PCM. Presentation-only Flora reads mixed C/H regardless of this setting.
 
-**Evidence:** Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: whether own habitat PCM is excluded from H/R; Voice defaults false, Flora true. Flora resource-power exclusion is independent (§9.3.95).
+**Evidence:** Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: self-exclusion. Voice defaults false, Flora true. Voice H/R both exclude self by default; tail_roughness_aversion optionally mixes R for actual Off/On pitch candidates. Environment recovery and Flora retain their contracts (§9.3.95, §9.3.120).
 
 #### `send`
 
@@ -1002,6 +1002,18 @@ Proposal generation interval in seconds. Controls opportunities to propose a pit
 
 **Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
 
+#### `tail_roughness_aversion`
+
+```rhai,ignore
+tail_roughness_aversion(w)
+```
+
+Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
+
+Choose how strongly pitch avoids roughness with one's outgoing sound. Author rule, default 0, initial and live. Finite [0,1]; invalid values warn and clamp with the existing unit-interval rule: positive infinity becomes 1, negative infinity and NaN become 0. Only leave_self_out(true) candidates that actually replace a held Tone with Off/On blend external R and mixed R with weights 1-w and w; H stays self-excluded, with the existing field coefficients and sigmoid. Zero preserves the original default path; one uses the accepted VR-1 view. Lock, holds, Glide, GateSnap and deferred candidates without proposal-triggered On are unaffected. Positive weight with leave_self_out(false) has no effect and warns once per Population. Shared harmonic opportunities use the same eligibility. No future release or candidate-body prediction; environment, Flora, routing and release remain unchanged.
+
+**Evidence:** Author rule: composer-selected aversion to roughness with one's outgoing sound, default 0; sensation is unchanged (DCC §5, §9.3.120).
+
 ### Neighbor Awareness
 
 How a voice perceives other voices and its own spectral footprint when evaluating the field.
@@ -1027,9 +1039,9 @@ leave_self_out(enabled)
 
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-Evaluate the field without this voice when choosing pitch. Default false, unlike Flora's true: one Flora has many partials whose own harmonic lattice can sustain its growth and seed positions. Subtracts the Voice's actual habitat PCM before the causal auditory filterbank, critical-band compression, density smoothing and H/R/C evaluation. Pitch and environment viability share the same synchronized observation; all bodies use this method.
+Exclude one's actual habitat sound when choosing pitch. Default false, unlike Flora's true. Actual habitat PCM is removed before the auditory front end. With the default tail_roughness_aversion(0), both H and R exclude all own sound, as before. Positive tail_roughness_aversion optionally blends mixed R into actual Off/On pitch candidates while retaining external H. Environment recovery, shared snapshots and Flora remain unchanged.
 
-**Evidence:** Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: whether own habitat PCM is excluded from H/R; Voice defaults false, Flora true. Flora resource-power exclusion is independent (§9.3.95).
+**Evidence:** Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: self-exclusion. Voice defaults false, Flora true. Voice H/R both exclude self by default; tail_roughness_aversion optionally mixes R for actual Off/On pitch candidates. Environment recovery and Flora retain their contracts (§9.3.95, §9.3.120).
 
 ### Lifecycle & Viability
 
@@ -2012,7 +2024,7 @@ viability_scope(name)
 
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-`"environment"` or `"total"`: choose the field used for viability. Environment uses the same PCM self-removal observation as pitch self-exclusion, at the current pitch, for the continuous-recharge score. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
+`"environment"` or `"total"`: choose the field used for viability. Environment uses the PCM self-removal observation at the current pitch for the continuous-recharge score. Both H and R stay self-excluded here; the rearticulation pitch view does not feed recovery. It is independent of leave_self_out. Use `"total"` only when selection should include the voice's own contribution.
 
 **Evidence:** Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57).
 

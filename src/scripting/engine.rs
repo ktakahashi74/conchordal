@@ -715,6 +715,10 @@ impl ScriptHost {
             &mut engine,
             ctx.clone(),
             &[
+                (
+                    "tail_roughness_aversion",
+                    PopulationSpec::set_tail_roughness_aversion,
+                ),
                 ("tie", PopulationSpec::set_tie),
                 ("glide", PopulationSpec::set_pitch_glide_tau_sec),
                 ("rearticulate_above", PopulationSpec::set_rearticulate_above),
@@ -2380,6 +2384,11 @@ impl ScriptHost {
                     PopulationSpec::set_brightness,
                     patch_timbre_brightness,
                 ),
+                (
+                    "tail_roughness_aversion",
+                    PopulationSpec::set_tail_roughness_aversion,
+                    patch_tail_roughness_aversion,
+                ),
                 ("spread", PopulationSpec::set_spread, patch_timbre_spread),
             ],
         );
@@ -3009,6 +3018,10 @@ fn patch_sigma_cents(update: &mut ControlUpdate, value: f32) {
 
 fn patch_random_candidates(update: &mut ControlUpdate, value: INT) {
     update.random_candidates = Some(value);
+}
+
+fn patch_tail_roughness_aversion(update: &mut ControlUpdate, value: f32) {
+    update.tail_roughness_aversion = Some(crate::core::float::sanitize01(value));
 }
 
 fn patch_rearticulate_above(update: &mut ControlUpdate, value: f32) {

@@ -329,7 +329,22 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   including a later enabling patch. The renderer captures those Voices by ID and
   generation from birth. Each analysis observer subtracts actual own habitat PCM
   before the auditory front end, using a clone of the mixed stream's pre-birth
-  history. Both histories
+  history. The default remains full H/R self-exclusion. Population
+  `tail_roughness_aversion(w)` is an initial/live Author rule, default 0, finite
+  [0,1]. Only with positive w and `leave_self_out(true)`, a candidate that actually
+  replaces a held Tone with Off/On reads a separate field with external H and
+  `R_w = (1-w)*R_external + w*R_mixed` from the same observation and grid, using
+  the existing a/b/c/d and sigmoid. Zero bypasses this view; one retains the
+  accepted VR-1 view, including existing tails and the outgoing Tone in R.
+  Invalid weights warn and use sanitize01; positive w without self-exclusion
+  has no effect and warns once per Population. Candidate classification follows
+  Lock, the existing rearticulate-above boundary, projected target and onset
+  eligibility, including shared harmonic opportunities. Holds, Glide, GateSnap,
+  deferred participation without a proposal-triggered On, missing observations,
+  environment recovery and Flora retain their existing contracts. Shared LOO
+  snapshots are never overwritten. This is an author rule, not a future-tail
+  predictor; its score scratch is allocated on first use and reused thereafter.
+  Both histories
   reset on gaps. Processing uses reused scratch; publication owns per-Voice H/R and
   score scans and therefore allocates. Each habitat-routed Flora with
   `leave_self_out(true)` (the default) also evaluates H/R through an auditory observer cloned from the mixed pre-birth history.

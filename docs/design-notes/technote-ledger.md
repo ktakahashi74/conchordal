@@ -121,6 +121,7 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.117 2026-10-31: Incremental evaluation of endless scores](#incremental-endless-scores-20261031)
   - [§9.3.118 2026-10-31: Open-ended performance, implementation and acceptance boundaries](#indefinite-performance-20261031)
   - [§9.3.119 2026-11-02: Harmony integration and endless observation reservations](#harmony-endless-reservations-20261102)
+  - [§9.3.120 2026-11-02: Tail roughness aversion adopted as a composer word (VR-1)](#voice-rearticulation-roughness)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -11445,3 +11446,64 @@ background completion and external load. Its results do not certify hardware aud
 unbounded-duration operation, arbitrary workload WCET or author audition. Machine-local
 source pins, observer CPU/memory measurements and validation records are in
 `.orchestration/units/HV-INT/report.md`.
+
+
+---
+
+<a id="voice-rearticulation-roughness"></a>
+### 9.3.120 2026-11-02: Tail roughness aversion adopted as a composer word (VR-1)
+
+The author's evening decision adopts Population `.tail_roughness_aversion(w)`
+as an **Author rule**, initial and live, finite [0,1], default **0**. The default
+instrument behavior remains main `105e3cde`; VR-1 is not a default change. Hearing
+roughness with one's previous sound is a sensation-layer function; choosing
+whether pitch should avoid it is a style and performance disposition (DCC §5).
+Fast passages or legato can ignore it, drones can avoid it, and pedal-like overlap
+can be intentional. During VR-2 the author described Undergrowth B (VR-1) as
+“クリアで濁りがすくない” (clear, with less muddiness). This is author audition.
+
+Only `leave_self_out(true)` candidates that actually replace a held Tone with
+Off/On use `R_w = (1-w)*R_external + w*R_mixed`, with external H and the existing
+a/b/c/d field and sigmoid. Both inputs share the observation and grid. Zero
+bypasses the new view and preserves baseline audio, events and RNG; one exactly
+retains the prior VR-1 view, including old tails and the outgoing Tone in R.
+The upper bound is the full mixed-R endpoint, not a resource limit. Invalid
+values warn and use sanitize01: finite clamp, +infinity to 1, -infinity/NaN to 0.
+Positive w with `leave_self_out(false)` is inert and warns once per Population.
+No release parameter, application threshold or listener-profile default changes.
+
+The existing final target projection, Lock, inclusive `rearticulate_above` boundary
+and legal onset conditions determine whether a candidate uses this view. The
+shared harmonic-opportunity path applies the same distinction. Unchanged targets,
+Glide, GateSnap, proposals awaiting independent participation opportunities and
+missing observations keep their existing contracts. Environment recovery,
+baseline consumption, statistical mixed fields and Flora are unchanged. Shared
+LOO snapshots are never overwritten; the private pitch score scratch is reused.
+This reads the actual sound just before On as the initial tail context. It does
+not predict the full release, the future attack or the candidate's entire body.
+
+The prior weight-one preregistered comparison used A `105e3cde`, the unchanged HV-10 ref/demo,
+config and seed 1128749181177961461, and their full 354.016 seconds. Primary
+old/new-Tone pairs (`0.06 < delta ERB < 1`) decreased from 5705.451 to 5319.563
+pair-seconds in ref and from 5992.331 to 5758.752 in demo. Both amplitude-floor
+sensitivities (1e-4 and 1e-3) were non-increasing. Pair-seconds per overlap second
+fell from 16.491 to 15.512 and from 17.280 to 16.812; onset counts were
+163/161 and 165/162. The denominators remained nonzero. These numerical floors
+are diagnostics, not auditory thresholds, and this does not establish that all
+beating or internal body roughness disappeared.
+
+Independent PCM references, the unchanged 15-family/84-scene conformance matrix,
+environment references, actual Off/On fixtures and shared-opportunity checks
+support the implementation. The declared load and the same load with actual
+rearticulation passed external-load ABBA with no B audio deadline misses or
+analysis hops over 512/48000 seconds. Initial cache-collision timing was rejected:
+A and B had accidentally used the same binary. The accepted acquisition rebuilt
+both identities and verified A against its saved full PCM. View reevaluation
+used zero allocations after its first scratch allocation. Source, job, waveform,
+causal and cost records are retained under VR-1. See
+[LOO conformance](loo-conformance.md) for the consumer contract. The composer-control revision checks zero against the baseline (whole WAV bytes,
+semantic events and RNG continuation), weight one against the existing PCM
+fixture, intermediate monotonic R, warnings and live patches. It reuses the
+previous ABBA: zero follows the original path and one the accepted endpoint.
+Other seeds, device callbacks and long endurance remain unverified; the VR-2
+author audition above is separate from numerical acceptance.

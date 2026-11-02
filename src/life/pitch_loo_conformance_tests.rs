@@ -482,6 +482,7 @@ fn rendered_loo_conformance() {
                     own_power_scan: own_power,
                     other_power_scan: other_power,
                     computed_score: None,
+                    ..Default::default()
                 };
                 let candidate_scan = loo_score_scan(&mix, &mut input);
                 let expected_score =
@@ -1195,6 +1196,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                         own_power_scan: own_power.clone(),
                         other_power_scan: vec![0.; own_power.len()],
                         computed_score: None,
+                        ..Default::default()
                     };
                     let legacy_scan = approx_loo_score_scan(&mix, &mut legacy_input, &mut None);
                     let legacy: Vec<_> = pitches
@@ -1401,4 +1403,286 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
         failed_cases.is_empty(),
         "Flora consumer counterexamples: {failed_cases:?}"
     );
+}
+
+#[test]
+fn rearticulation_mixed_roughness_matches_independent_pcm() {
+    let mut config = AppConfig::default();
+    config.psychoacoustics.habituation.enabled = false;
+    let (params, kernel, hop) = crate::runtime::birth_surrogate_assay_core(&config, FS as u32);
+    let template = AnalysisStream::new(params.clone(), kernel);
+    let tb = Timebase { fs: FS, hop };
+    let mut rows = Vec::new();
+    for tails in [0, 2] {
+        for habitat in [true, false] {
+            let mut streams = [template.clone(), template.clone(), template.clone()];
+            let mut observer = crate::core::stream::loo::Observer::new(2, 7, &template);
+            let mut renderers: [_; 5] = std::array::from_fn(|_| ScheduleRenderer::new(tb));
+            let mut batches: Vec<_> = [660., 440., 392., 466., 452.]
+                .into_iter()
+                .enumerate()
+                .map(|(i, hz)| {
+                    let mut b = batch(i as u64 + 10, &recipe("sine", hz, template.last()));
+                    b.tones[0].hold_ticks = Some(u64::MAX);
+                    b.tones[0].render_modulator =
+                        RenderModulatorSpec::SeqGate { duration_sec: 10. };
+                    if i != 0 {
+                        b.routing.to_habitat = habitat;
+                    }
+                    b
+                })
+                .collect();
+            let mut overlap_energy = 0.0;
+            let mut captured = None;
+            for frame in 0..96 {
+                let now = (frame * hop) as u64;
+                let mut pcm: [Vec<f32>; 5] = std::array::from_fn(|_| vec![0.; hop]);
+                for i in 0..5 {
+                    let starts =
+                        (frame == 0 && i < 4 && (i < 2 || tails == 2)) || (frame == 64 && i == 4);
+                    let ends = (frame == 32 && (i == 2 || i == 3)) || (frame == 64 && i == 1);
+                    let off = PhonationBatch {
+                        source_id: i as u64 + 10,
+                        cmds: vec![ToneCmd::Off {
+                            tone_id: 1,
+                            off_tick: now,
+                        }],
+                        ..Default::default()
+                    };
+                    if starts {
+                        batches[i].tones[0].onset = now;
+                    }
+                    let commands = if starts {
+                        std::slice::from_ref(&batches[i])
+                    } else if ends {
+                        std::slice::from_ref(&off)
+                    } else {
+                        &[]
+                    };
+                    pcm[i].copy_from_slice(
+                        renderers[i]
+                            .render(commands, now, &NeuralRhythms::default())
+                            .habitat,
+                    );
+                }
+                let own: Vec<f32> = (0..hop)
+                    .map(|i| pcm[1][i] + pcm[2][i] + pcm[3][i] + pcm[4][i])
+                    .collect();
+                let mix: Vec<f32> = (0..hop).map(|i| pcm[0][i] + own[i]).collect();
+                let tails_only: Vec<f32> = (0..hop)
+                    .map(|i| pcm[0][i] + pcm[2][i] + pcm[3][i])
+                    .collect();
+                observer.process(&mix, &own);
+                streams[0].process(&mix);
+                streams[1].process(&pcm[0]);
+                streams[2].process(&tails_only);
+                if frame == 63 {
+                    let mut land = streams[0].last().clone();
+                    land.recompute_consonance(&params);
+                    let mut external = streams[1].last().clone();
+                    external.recompute_consonance(&params);
+                    let mut tail = streams[2].last().clone();
+                    tail.recompute_consonance(&params);
+                    let mut obs = observer.snapshot();
+                    obs.revalue(&land.space, &params);
+                    let untouched = obs.score_scan.clone();
+                    land.loo.push(obs);
+                    let mut input = LooInput {
+                        exact_score: Some(untouched.clone()),
+                        rearticulation: Some(RearticulationView {
+                            weight: 1.0,
+                            id: 2,
+                            generation: 7,
+                            reference_log2: 440_f32.log2(),
+                            threshold_cents: 0.,
+                            previous_target: 440_f32.log2(),
+                            bounds: land.freq_bounds_log2(),
+                        }),
+                        ..Default::default()
+                    };
+                    let excluded = loo_score_scan(&land, &mut input).unwrap();
+                    let expected: Vec<_> = external
+                        .harmonicity01
+                        .iter()
+                        .zip(&land.roughness01)
+                        .map(|(&h, &r)| land.consonance_kernel.score(h, r))
+                        .collect();
+                    let gate = metrics(
+                        &input.rearticulation_score,
+                        &expected,
+                        &params.consonance_representation,
+                    );
+                    assert_eq!(gate["registered_movement_gate_pass"], true, "{gate}");
+                    assert_eq!(land.loo[0].score_scan, untouched);
+                    assert_eq!(excluded, untouched);
+                    let difference = land
+                        .roughness01
+                        .iter()
+                        .zip(&tail.roughness01)
+                        .map(|(a, b)| (a - b).abs())
+                        .fold(0_f32, f32::max);
+                    if habitat && tails == 0 {
+                        assert!(difference > 0.);
+                    }
+                    if !habitat {
+                        assert_eq!(land.roughness01, external.roughness01);
+                    }
+                    let pitches: Vec<_> =
+                        CENTS.iter().map(|c| 440_f32.log2() + c / 1200.).collect();
+                    let got: Vec<_> = pitches
+                        .iter()
+                        .map(|&p| {
+                            sample_ownership_score(
+                                &land,
+                                p,
+                                input.candidate_scan(&land.space, p, Some(&excluded)),
+                            )
+                        })
+                        .collect();
+                    let reference: Vec<_> = pitches
+                        .iter()
+                        .map(|&p| {
+                            sample_ownership_score(
+                                &land,
+                                p,
+                                Some(if p == 440_f32.log2() {
+                                    &external.consonance_field_score
+                                } else {
+                                    &expected
+                                }),
+                            )
+                        })
+                        .collect();
+                    assert_eq!(
+                        metrics(&got, &reference, &params.consonance_representation)["registered_movement_gate_pass"],
+                        true
+                    );
+                    let tails_only_scan: Vec<_> = external
+                        .harmonicity01
+                        .iter()
+                        .zip(&tail.roughness01)
+                        .map(|(&h, &r)| land.consonance_kernel.score(h, r))
+                        .collect();
+                    let tails_only_scores: Vec<_> = pitches
+                        .iter()
+                        .map(|&p| {
+                            sample_ownership_score(
+                                &land,
+                                p,
+                                Some(if p == 440_f32.log2() {
+                                    &external.consonance_field_score
+                                } else {
+                                    &tails_only_scan
+                                }),
+                            )
+                        })
+                        .collect();
+                    let mut reference_rank_changes = 0;
+                    for i in 0..pitches.len() {
+                        for j in i + 1..pitches.len() {
+                            if (reference[i] - reference[j]).signum()
+                                != (tails_only_scores[i] - tails_only_scores[j]).signum()
+                            {
+                                reference_rank_changes += 1;
+                            }
+                        }
+                    }
+                    let mut native_changes = 0;
+                    // Native proposals use the same candidates, temperature and random stream.
+                    let perceptual =
+                        AdaptationContext::from_config(&Default::default(), land.space.n_bins());
+                    let features = FeaturesNow::from_occupancy_scan(
+                        &land.space,
+                        &vec![0.; land.space.n_bins()],
+                    );
+                    for temperature in [0., 0.05, 0.2] {
+                        let mut native = PitchHillClimbPitchCore::new(24., 440_f32.log2(), 0.);
+                        native.leave_self_out = true;
+                        native.set_temperature(temperature);
+                        native.loo_input = input.clone();
+                        let mut oracle = native.clone();
+                        let mut reference_land = land.clone();
+                        reference_land.loo[0].h_scan = external.harmonicity01.clone();
+                        oracle.loo_input.exact_score =
+                            Some(external.consonance_field_score.clone().into());
+                        let mut tails_land = reference_land.clone();
+                        tails_land.roughness01 = tail.roughness01.clone();
+                        let mut control = oracle.clone();
+                        for seed in 0..16 {
+                            let a = native.propose_target(
+                                440_f32.log2(),
+                                440_f32.log2(),
+                                440.,
+                                1.,
+                                &land,
+                                &perceptual,
+                                &features,
+                                &[],
+                                &mut SmallRng::seed_from_u64(seed),
+                            );
+                            let b = oracle.propose_target(
+                                440_f32.log2(),
+                                440_f32.log2(),
+                                440.,
+                                1.,
+                                &reference_land,
+                                &perceptual,
+                                &features,
+                                &[],
+                                &mut SmallRng::seed_from_u64(seed),
+                            );
+                            let c = control.propose_target(
+                                440_f32.log2(),
+                                440_f32.log2(),
+                                440.,
+                                1.,
+                                &tails_land,
+                                &perceptual,
+                                &features,
+                                &[],
+                                &mut SmallRng::seed_from_u64(seed),
+                            );
+                            native_changes +=
+                                usize::from(b.target_pitch_log2 != c.target_pitch_log2);
+                            assert!(
+                                a.target_pitch_log2.to_bits() == b.target_pitch_log2.to_bits(),
+                                "native/reference tails={tails} habitat={habitat} seed={seed}"
+                            );
+                        }
+                    }
+                    // Missing observations, stale generations and reset grids cannot reuse the view.
+                    input.rearticulation.as_mut().unwrap().generation = 8;
+                    loo_score_scan(&land, &mut input);
+                    assert!(input.rearticulation_score.is_empty());
+                    land.loo.clear();
+                    loo_score_scan(&land, &mut input);
+                    assert!(input.rearticulation_score.is_empty());
+                    observer.reset();
+                    let zeros = vec![0.; hop];
+                    observer.process(&zeros, &zeros);
+                    let mut fresh = crate::core::stream::loo::Observer::new(2, 7, &template);
+                    fresh.process(&zeros, &zeros);
+                    assert_eq!(observer.snapshot().score_scan, fresh.snapshot().score_scan);
+                    input.exact_score = None;
+                    land.resize_to_space(Log2Space::new(110., 1760., 48));
+                    assert!(loo_score_scan(&land, &mut input).is_none());
+                    assert!(input.rearticulation_score.is_empty());
+                    captured = Some(gate.clone());
+                    rows.push(json!({"tails":tails,"habitat":habitat,"current_vs_tails_only_r_difference":difference,
+                        "fixed_scores":got,"reference_scores":reference,"tails_only_scores":tails_only_scores,
+                        "reference_rank_changes":reference_rank_changes,"native_reference_changes":native_changes,"gate":gate}));
+                }
+                if frame >= 64 {
+                    overlap_energy += pcm[1]
+                        .iter()
+                        .zip(&pcm[4])
+                        .map(|(a, b)| f64::from(a.abs() * b.abs()))
+                        .sum::<f64>();
+                }
+            }
+            assert!(captured.is_some());
+            assert_eq!(overlap_energy > 0., habitat);
+        }
+    }
+    println!("VR1_PCM_REFERENCE {}", json!(rows));
 }

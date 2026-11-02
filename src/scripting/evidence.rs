@@ -83,10 +83,15 @@ pub const SELF_EXCLUSION: &[EvidenceDoc] = &[
         ja: "原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。",
     },
     EvidenceDoc {
-        en: "Author rule: whether own habitat PCM is excluded from H/R; Voice defaults false, Flora true. Flora resource-power exclusion is independent (§9.3.95).",
-        ja: "作者規則：H/R入力から自己のhabitat PCMを除く選択。Voiceの既定はfalse、Floraはtrue。Floraの資源powerの自己除外とは独立（§9.3.95）。",
+        en: "Author rule: self-exclusion. Voice defaults false, Flora true. Voice H/R both exclude self by default; tail_roughness_aversion optionally mixes R for actual Off/On pitch candidates. Environment recovery and Flora retain their contracts (§9.3.95, §9.3.120).",
+        ja: "作者規則：自己除外。Voiceの既定はfalse、Floraはtrue。Voiceは既定ではH/Rの両方から自己を除き、tail_roughness_aversionで実際のOff/On音高候補のRだけを選択的に混合する。environmentの回復とFloraの契約は維持（§9.3.95、§9.3.120）。",
     },
 ];
+
+pub const TAIL_ROUGHNESS: &[EvidenceDoc] = &[EvidenceDoc {
+    en: "Author rule: composer-selected aversion to roughness with one's outgoing sound, default 0; sensation is unchanged (DCC §5, §9.3.120).",
+    ja: "作者規則：自分の余韻との粗さを音高選択で避ける性向。作曲者が選び、既定値は0。感覚は変えない（DCC §5、§9.3.120）。",
+}];
 
 pub const METER: &[EvidenceDoc] = &[
     EvidenceDoc {

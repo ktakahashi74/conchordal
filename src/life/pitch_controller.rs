@@ -51,6 +51,32 @@ pub struct PitchController {
 }
 
 impl PitchController {
+    #[cfg(test)]
+    pub(crate) fn rng_state_for_test(&self) -> String {
+        format!("{:?}", self.rng)
+    }
+
+    pub(super) fn target_bounds(
+        pitch: &PitchControl,
+        current_pitch_log2: f32,
+        landscape: &Landscape,
+    ) -> (f32, f32) {
+        let (fmin, fmax) = landscape.freq_bounds_log2();
+        let center_log2 = if pitch.freq.is_finite() && pitch.freq > 0.0 {
+            pitch.freq.log2()
+        } else {
+            current_pitch_log2
+        };
+        let range_oct = pitch.range_oct.clamp(0.0, 6.0);
+        let (min_range, max_range) = if range_oct <= 0.0 {
+            (center_log2, center_log2)
+        } else {
+            let half = range_oct * 0.5;
+            (center_log2 - half, center_log2 + half)
+        };
+        (fmin.max(min_range), fmax.min(max_range))
+    }
+
     pub(crate) fn integration_window_for_freq(freq_hz: f32) -> f32 {
         2.0 + 10.0 / freq_hz.max(1.0)
     }
@@ -493,20 +519,7 @@ impl PitchController {
             return false;
         }
         let (fmin, fmax) = landscape.freq_bounds_log2();
-        let center_log2 = if pitch.freq.is_finite() && pitch.freq > 0.0 {
-            pitch.freq.log2()
-        } else {
-            current_pitch_log2
-        };
-        let range_oct = pitch.range_oct.clamp(0.0, 6.0);
-        let (min_range, max_range) = if range_oct <= 0.0 {
-            (center_log2, center_log2)
-        } else {
-            let half = range_oct * 0.5;
-            (center_log2 - half, center_log2 + half)
-        };
-        let min = fmin.max(min_range);
-        let max = fmax.min(max_range);
+        let (min, max) = Self::target_bounds(pitch, current_pitch_log2, landscape);
         let clamped = if min <= max {
             target_pitch_log2.clamp(min, max)
         } else {

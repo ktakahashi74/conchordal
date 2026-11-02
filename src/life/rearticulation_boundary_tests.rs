@@ -220,3 +220,124 @@ fn rearticulation_reference_is_net_displacement_and_birth_state_is_empty() {
     emit(&mut v, &tb, &r, 1024, &mut out);
     assert!(out.onsets.is_empty());
 }
+
+#[test]
+fn roughness_view_follows_eligible_off_on_actions() {
+    for case in [
+        "replace", "same", "glide", "lock", "snap", "silent", "released", "no_tone", "untimed",
+        "mixed", "deferred", "zero",
+    ] {
+        let (mut v, mut land, tb, r, mut out) = fixture();
+        v.effective_control.pitch.leave_self_out = true;
+        v.effective_control.pitch.tail_roughness_aversion = 1.0;
+        let n = land.space.n_bins();
+        land.loo.push(crate::core::stream::loo::Observation {
+            support: None,
+            id: v.id,
+            generation: v.metadata.generation,
+            h_scan: vec![0.; n],
+            r_scan: vec![0.; n],
+            score_scan: vec![0.; n].into(),
+        });
+        v.pitch_ctl.loo_input_mut().exact_score = Some(land.loo[0].score_scan.clone());
+        if case != "no_tone" {
+            emit(&mut v, &tb, &r, 0, &mut out);
+        }
+        let old = v.participation_pitch.last_onset_log2;
+        let target_index = if case == "same" {
+            100
+        } else if case == "glide" {
+            101
+        } else {
+            110
+        };
+        if case == "same" {
+            v.effective_control.pitch.rearticulate_above_cents = 0.;
+        }
+        if case == "lock" {
+            v.effective_control.pitch.mode = PitchMode::Lock;
+        }
+        if case == "snap" {
+            v.effective_control.pitch.pitch_apply_mode = PitchApplyMode::GateSnap;
+        }
+        if case == "silent" {
+            v.body.set_amp(0.);
+        }
+        if case == "released" {
+            v.release.pending = true;
+        }
+        if case == "zero" {
+            v.effective_control.pitch.tail_roughness_aversion = 0.;
+        }
+        if case == "mixed" {
+            v.effective_control.pitch.leave_self_out = false;
+        }
+        if case == "deferred" {
+            v.sustain_participation = true;
+        }
+        v.effective_control.pitch.freq = land.space.centers_log2[target_index].exp2();
+        v.effective_control.pitch.range_oct = 0.;
+        v.effective_control.pitch.proposal_interval_sec = Some(0.5);
+        v.set_accumulated_time_for_test(0.5);
+        if case != "untimed" {
+            v.set_control_tick(576);
+        }
+        // An untimed isolated caller cannot enqueue an actual restart.
+        if case == "untimed" {
+            v.control_tick = None;
+            v.release.pending = true;
+        }
+        v.update_pitch_target(&r, 0.001, &land, &[], &[]);
+        let view = v.pitch_ctl.loo_input_mut().rearticulation;
+        assert_eq!(
+            view.is_some(),
+            matches!(case, "replace" | "same" | "glide"),
+            "{case}"
+        );
+        if let Some(view) = view {
+            let application = select_pitch_application(
+                &v.effective_control.pitch,
+                Some((&land.space, view.reference_log2, v.target_pitch_log2())),
+            );
+            v.update_articulation_autonomous(0.001, &r);
+            emit(&mut v, &tb, &r, 512, &mut out);
+            let off_on = out.cmds.iter().any(|c| matches!(c, ToneCmd::Off { .. }))
+                && out.cmds.iter().any(|c| matches!(c, ToneCmd::On { .. }));
+            assert_eq!(
+                off_on,
+                application == PitchApplyMode::Rearticulate && case != "same",
+                "{case}"
+            );
+            if case == "glide" {
+                assert_eq!(v.participation_pitch.last_onset_log2, old);
+            }
+        }
+    }
+}
+
+#[test]
+fn tail_roughness_live_patch_changes_next_proposal_without_attacking() {
+    let (mut v, land, tb, r, mut out) = fixture();
+    v.apply_patch(&ControlUpdate {
+        leave_self_out: Some(true),
+        ..Default::default()
+    })
+    .unwrap();
+    emit(&mut v, &tb, &r, 0, &mut out);
+    let previous_on = v.participation_pitch.last_onset_log2;
+    for weight in [1., 0.5, 0.] {
+        v.apply_patch(&ControlUpdate {
+            tail_roughness_aversion: Some(weight),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(v.effective_control.pitch.tail_roughness_aversion, weight);
+        assert_eq!(v.participation_pitch.last_onset_log2, previous_on);
+        v.set_control_tick(576);
+        v.update_pitch_target(&r, 0.001, &land, &[], &[]);
+        assert_eq!(
+            v.pitch_ctl.loo_input_mut().rearticulation.map(|v| v.weight),
+            (weight > 0.).then_some(weight)
+        );
+    }
+}

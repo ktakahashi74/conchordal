@@ -521,6 +521,13 @@ impl PopulationSpec {
         self.control.phonation.articulation_persistence = crate::core::float::sanitize01(value);
     }
 
+    pub(super) fn set_tail_roughness_aversion(&mut self, value: f32) {
+        if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+            self.warn("tail_roughness_aversion() expects a finite weight in [0, 1]; clamped (infinities saturate, NaN becomes 0)".into());
+        }
+        self.control.pitch.tail_roughness_aversion = crate::core::float::sanitize01(value);
+    }
+
     pub(super) fn set_rearticulate_above(&mut self, value: f32) {
         self.control
             .pitch

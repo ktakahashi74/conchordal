@@ -2952,3 +2952,109 @@ fn harmonic_continuation_is_an_independent_signed_cursor_event() {
         assert!(pop.take_pending_update().is_none());
     }
 }
+
+#[test]
+fn tail_roughness_aversion_initial_live_validation_and_once_warning() {
+    for (value, expected, invalid) in [
+        (0., 0., false),
+        (0.5, 0.5, false),
+        (1., 1., false),
+        (-1., 0., true),
+        (2., 1., true),
+        (f64::NAN, 0., true),
+        (f64::INFINITY, 1., true),
+        (f64::NEG_INFINITY, 0., true),
+    ] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
+        let mut engine = ScriptHost::create_engine(ctx.clone());
+        engine.register_fn("test_weight", move || value);
+        let mut scope = rhai::Scope::new();
+        let _ = engine.eval_with_scope::<Dynamic>(&mut scope,
+            "let p=create(sine().leave_self_out(true).tail_roughness_aversion(test_weight()),1); flush();").unwrap();
+        {
+            let state = ctx.lock().unwrap();
+            assert_eq!(
+                state.populations[&1]
+                    .spec
+                    .control
+                    .pitch
+                    .tail_roughness_aversion,
+                expected
+            );
+            assert_eq!(
+                state
+                    .warnings
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|w| w.message.contains("expects a finite weight"))
+                    .count(),
+                usize::from(invalid)
+            );
+        }
+        let _ = engine
+            .eval_with_scope::<Dynamic>(
+                &mut scope,
+                "p.tail_roughness_aversion(test_weight()); flush();",
+            )
+            .unwrap();
+        let state = ctx.lock().unwrap();
+        let patch = state
+            .scenario
+            .events
+            .iter()
+            .flat_map(|e| &e.actions)
+            .find_map(|a| match a {
+                Action::UpdatePopulation { patch, .. } => Some(patch),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(patch.tail_roughness_aversion, Some(expected));
+        let mut control = crate::scenario::control::PitchControl::default();
+        control.apply_update(patch);
+        assert_eq!(control.tail_roughness_aversion, expected);
+        assert_eq!(
+            state
+                .warnings
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|w| w.message.contains("expects a finite weight"))
+                .count(),
+            2 * usize::from(invalid)
+        );
+    }
+    for initial in [
+        "tail_roughness_aversion(1)",
+        "leave_self_out(true).tail_roughness_aversion(1)",
+        "tail_roughness_aversion(1).leave_self_out(true)",
+    ] {
+        let (_, warnings) = run_script(&format!(
+            "let p=create(sine().{initial},1); p.leave_self_out(false); flush(); p.tail_roughness_aversion(0.5); flush(); p.leave_self_out(true); flush(); p.leave_self_out(false); flush();"
+        ));
+        let warnings = warnings.lock().unwrap();
+        let count: u64 = warnings
+            .iter()
+            .filter(|w| {
+                w.message
+                    .contains("has no effect with leave_self_out(false)")
+            })
+            .map(|w| w.count)
+            .sum();
+        assert_eq!(count, 1, "{initial}");
+    }
+    for initial in [
+        "",
+        ".tail_roughness_aversion(0)",
+        ".tail_roughness_aversion(1).leave_self_out(true)",
+    ] {
+        let (_, warnings) = run_script(&format!("create(sine(){initial},1);"));
+        assert!(
+            !warnings
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|w| w.message.contains("tail_roughness_aversion"))
+        );
+    }
+}

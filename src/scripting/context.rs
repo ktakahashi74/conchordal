@@ -15,6 +15,7 @@ pub(super) struct PopulationState {
     pub(super) spec: PopulationSpec,
     pub(super) respawn_policy: RespawnPolicy,
     pub(super) loo_at_placement: bool,
+    tail_roughness_warned: bool,
     pub(super) crowding_target_same: bool,
     pub(super) crowding_target_other: bool,
     pub(super) status: PopulationStatus,
@@ -576,6 +577,16 @@ impl ScriptContext {
                     continue;
                 }
                 if p.pending_patch != ControlUpdate::default() && p.spawned {
+                    if !p.tail_roughness_warned
+                        && p.spec.control.pitch.tail_roughness_aversion > 0.0
+                        && !p.spec.control.pitch.leave_self_out
+                    {
+                        p.spec.warn(
+                            "tail_roughness_aversion() has no effect with leave_self_out(false)"
+                                .into(),
+                        );
+                        p.tail_roughness_warned = true;
+                    }
                     append(Action::UpdatePopulation {
                         population_id: id,
                         patch: std::mem::take(&mut p.pending_patch),
@@ -1082,6 +1093,15 @@ impl ScriptContext {
                 }
             }
         }
+        let tail_roughness_warned = population_spec.spec.control.pitch.tail_roughness_aversion
+            > 0.0
+            && !population_spec.spec.control.pitch.leave_self_out;
+        if tail_roughness_warned {
+            warn_at(
+                "tail_roughness_aversion",
+                "tail_roughness_aversion() has no effect with leave_self_out(false)",
+            );
+        }
         let id = self.next_population_id;
         self.next_population_id = self.next_population_id.wrapping_add(1);
         let ids = if self.scenario.end == ScenarioEnd::Open {
@@ -1099,6 +1119,7 @@ impl ScriptContext {
                 .supports_harmonic_rhythm(),
             respawn_policy: population_spec.spec.respawn_policy,
             loo_at_placement: population_spec.spec.control.pitch.leave_self_out,
+            tail_roughness_warned,
             crowding_target_same: population_spec.spec.crowding_target_same,
             crowding_target_other: population_spec.spec.crowding_target_other,
             spec: population_spec.spec,

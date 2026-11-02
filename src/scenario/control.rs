@@ -275,6 +275,7 @@ pub struct PitchControl {
     pub crowding_strength: f32,
     pub crowding_sigma_cents: f32,
     pub leave_self_out: bool,
+    pub tail_roughness_aversion: f32,
     pub move_cost_coeff: f32,
     pub move_cost_exp: Option<u8>,
     pub proposal_interval_sec: Option<f32>,
@@ -311,6 +312,7 @@ impl Default for PitchControl {
             crowding_strength: 0.0,
             crowding_sigma_cents: DEFAULT_CROWDING_SIGMA_CENTS,
             leave_self_out: false,
+            tail_roughness_aversion: 0.0,
             move_cost_coeff: DEFAULT_MOVE_COST_COEFF,
             move_cost_exp: None,
             proposal_interval_sec: None,
@@ -397,6 +399,7 @@ pub struct ControlUpdate {
     pub crowding_strength: Option<f32>,
     pub crowding_sigma_cents: Option<f32>,
     pub leave_self_out: Option<bool>,
+    pub tail_roughness_aversion: Option<f32>,
     pub timbre_brightness: Option<f32>,
     pub timbre_inharmonic: Option<f32>,
     pub timbre_motion: Option<f32>,
@@ -596,6 +599,9 @@ impl PitchControl {
     }
 
     pub fn apply_update(&mut self, update: &ControlUpdate) {
+        if let Some(weight) = update.tail_roughness_aversion {
+            self.tail_roughness_aversion = crate::core::float::sanitize01(weight);
+        }
         if let Some(cents) = update.rearticulate_above_cents {
             self.set_rearticulate_above_cents_clamped(cents);
         }
@@ -712,6 +718,7 @@ mod tests {
             crowding_strength: Some(-4.0),
             crowding_sigma_cents: Some(-3.0),
             leave_self_out: Some(true),
+            tail_roughness_aversion: Some(0.5),
             timbre_brightness: Some(-0.1),
             timbre_inharmonic: Some(2.0),
             timbre_motion: Some(0.5),

@@ -120,6 +120,7 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.109 Known final expression](#known-final-expression)
   - [§9.3.117 2026-10-31: Incremental evaluation of endless scores](#incremental-endless-scores-20261031)
   - [§9.3.118 2026-10-31: Open-ended performance, implementation and acceptance boundaries](#indefinite-performance-20261031)
+  - [§9.3.119 2026-11-02: Harmony integration and endless observation reservations](#harmony-endless-reservations-20261102)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -11413,3 +11414,34 @@ The technote records the implemented mechanisms and marks the open-ended commitm
 partial. It does not yet claim supported continuing operation.
 
 **2026-11-01 integration addendum.** The acquisitions and costs above describe the old base; V6/V8 must be acquired on the integrated auditory front end, Rain, Flora and TC implementation. At 22:5x JST the author adopted unconditional run-start shared onset-habituation observation for endless pieces and the pre-time-advance `observe_tonal_context()` header declaration (Author rule). Declared endless pieces reserve the TC observer and table from run start. Positive `follow_tonal_context` placement without it is a positioned script error; late declaration uses the existing header error. Finite pieces warn and ignore this declaration, preserving look-ahead for both onset and TC.
+
+<a id="harmony-endless-reservations-20261102"></a>
+
+### 9.3.119 2026-11-02: Harmony integration and endless observation reservations
+
+HV-INT applies the author-adopted 2026-11-01 22:5x reservation policy to the
+vertical and temporal harmony mechanisms on the integrated IP lineage. The vertical
+observer publishes from sample zero in endless scenes, independently of its three
+valuation weights. Its bounded per-observer scratch and shared geometry retain no
+performance-length graph. The temporal observer retains a 600-second rolling relation
+history, structural records and matching state, and requires
+`observe_harmonic_relations(max_sources)` before time advances. This Author-rule
+header declares the simultaneous Voice and Flora lane source bound, including retiring
+sources; the existing 38,400 structural-record capacity is the declaration ceiling.
+Both positive and negative nonzero temporal weights require reservation and otherwise
+raise a positioned script error. Finite scenes warn and ignore the header and retain
+event pre-scanning. Reservation never activates a valuation weight.
+
+The five controls, actual-PCM self-exclusion, ordered sample timestamps, bounded
+background adapter and six existing consumers are preserved. The signed additive
+utility law and frozen scientific controls are not replaced. IP tick/f64 time,
+incremental score credits, oscillator normalization, estimator repairs, onset
+reservation and `observe_tonal_context()` remain in force. Existing sections and
+anchors retain their identifiers; this entry appends a new number.
+
+The scoped acquisition uses the HV-9 declared Voice/Flora load with relation weight 1
+and continuation weight 0, recording every ABBA window's deadlines, prediction misses,
+background completion and external load. Its results do not certify hardware audio,
+unbounded-duration operation, arbitrary workload WCET or author audition. Machine-local
+source pins, observer CPU/memory measurements and validation records are in
+`.orchestration/units/HV-INT/report.md`.

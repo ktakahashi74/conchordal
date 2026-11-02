@@ -255,6 +255,75 @@ The director's `set_roughness_aversion(w)` multiplies the roughness terms $b$ an
 
 The paired `set_harmonicity_preference(w_H)` multiplies only the field coefficient $a$ by $w_H$ and uses $H_{01}^{w_H}$ in density mass: $\max(0, H_{01}^{w_H}(1-\rho_{eff}R_{01}))$, where $\rho_{eff}=\rho w$ from roughness aversion. It is a cursor event with default 1 and the same finite $[0,100]$ clamp; non-finite updates are ignored. At 1 the original evaluation remains bit-exact. At 0 the field's $aH_{01}$ term vanishes and density becomes independent of harmonicity, including $0^0=1$. The interaction coefficient $c$ stays under roughness aversion. Neither control changes sensed $H_{01}$ or $R_{01}$. These weighting forms are author rules. Western consonance preference tracks harmonicity and grows with musical experience (McDermott, Lehr & Oxenham 2010), and Tsimane listeners show no consonance preference (McDermott et al. 2016). This motivates a separate valuation weight, not this choice of formula.
 
+Three default-zero cursor controls add reference-dependent support valuation:
+`set_support_focus_preference`, `set_support_conflict_preference`, and
+`set_related_novelty_preference`. Focus and conflict accept signed finite weights;
+novelty accepts nonnegative finite weights. There is no upper input clamp. These are
+**author rules**, not symbolic harmony profiles. With the existing downward H projection
+`r = A e`, focus measures concentration at the H smoothing resolution, conflict measures
+disagreement between supported harmonic templates, and novelty counts only candidate
+components `max(0, q-e)` that share support with the reference. Sub-root peaks are retained.
+The new sums and cosines use the log2 grid; the silence factor alone inherits the existing
+ERB mass floor. The support mass M is not loudness mass.
+
+The gradients include the derivative of the silence factor below the shared ERB mass
+floor; at the floor they use the right derivative for added density. Novelty uses the
+partial formula below without a silence-factor multiplier.
+
+The observer publishes `gC = ∂C/∂e`, `gD = ∂D/∂e` and `k = K e` on Log2Space.
+For partial positions `y_k` and densities `q_k` from the body's spectral self-report,
+
+`V_body(f) = Σ_k q_k [w_C gC(y_k) + w_D gD(y_k)] + w_N 4 Σ_k k(y_k) max(0, q_k − e(y_k)) / (Σe + Σq)²`.
+
+The first two terms are first-order changes, not bounded finite changes or predictions
+of a PCM mixture. Partial densities use the single-body auditory compression and are cached
+at birth or reconfiguration. A body without a self-report reads a labeled single partial
+at its fundamental. A moving Voice uses the same actual PCM self-excluded reference,
+body partials and level for the candidate and current pitch. Without pitch self-exclusion
+it ignores this term and warns once for positive weights. Birth peak/tension selection
+uses score + V; density adds βV to log mass and preserves zero mass. Flora uses the term
+only for lane choices. Growth, habituation and ListenerTwin keep their existing inputs.
+All three weights at zero bypass valuation and preserve existing decisions bit for bit.
+The UI separates global M/C/D and the selected Voice's first-order dC/dD and partial N
+from the ordinary Landscape.
+
+`follow_harmonic_relations(w)` and `follow_harmonic_continuation(w)` are separate
+**author rules**, with finite signed dispositions in `[-1,1]`, both defaulting to zero,
+applied at the script cursor. Relations value support or departure among changing
+destinations. Continuation values learned support for retaining, waiting or declining
+birth; its negative direction prefers departure from that support. Their paired,
+bounded consequences add to existing scores, including habituation and bodily costs.
+Relations alone do not change the baseline act/retain choice. The temporal model learns
+from sample-timestamped acoustic support and actual renderer events within the current
+performance. It uses no fixed key profiles, chord labels, progression tables or external
+harmonic corpus. Unsupported comparisons are neutral; weight changes retain history.
+
+Candidate previews add body density to support mass, `r′ = r + Σ q_k a_(y_k)`,
+then use the existing normalization `p′ = r′ / Σr′`. This keeps the support distribution
+nonnegative and normalized, including a silent baseline when the candidate adds mass.
+The mass M is additive; focus C and conflict D retain their first-order gradient changes.
+This is an additive density model, not a forecast of mixed PCM or recompressed power.
+The preview carries its observer, sample time and coordinate version. Voice consumers
+use their actual PCM self-excluded observer when available; births use mixed evidence.
+
+At existing legal opportunities, the existing softmax, Hastings or deterministic
+selector uses the augmented scores. Destination comparisons are conditional on changing;
+continuation is the only column that can prefer retaining the current state. Both zero
+branch before prediction, preview or additional random draws. Nonzero dispositions use
+the separate bounded worker; unavailable current predictions have neutral effect. These mechanisms describe the implementation;
+causal acceptance, declared-load performance and author audition are recorded separately.
+
+Correspondence retrieval extends at most 16 retained hypotheses per new anchor and
+seeds them from a bounded neighborhood in the square-root support embedding.
+Already scored prefixes are reused. Context attribution shares those proposals;
+missing successors and pruned mappings retain unknown mass. Historical observations
+use sparse owned storage, with their original values and source identities preserved.
+
+The bounded implementation met the recorded paired real-time checks on the declared
+four-Voice/two-Flora load: audio deadlines held, consumer prediction misses were zero,
+and no background work remained at audio end. This evidence applies to that load and
+acquisition window; it does not establish arbitrary-load performance or author audition.
+
 **Layer 2 — Representations:**
 
 | Name | Formula | Range | Meaning |
@@ -1362,6 +1431,18 @@ end request at the same tick. Compile-only uses a virtual playhead and the same
 readiness and capacity rules. Repeated warnings are coalesced by kind and script position.
 
 `observe_tonal_context()` is an **Author rule** declared before time advances. In an endless piece it reserves the TC observer and table from run start; placing a positive `follow_tonal_context` without this declaration is a positioned script error. In a finite piece the declaration warns and is ignored, preserving the existing look-ahead. Endless pieces also create the shared onset-habituation observer unconditionally at run start; finite pieces retain look-ahead.
+
+
+Endless scenes publish vertical support scans from sample zero, including while all
+three valuation weights are zero. The temporal observer is separately reserved by
+`observe_harmonic_relations(max_sources)` before time advances. The positive integer
+bounds simultaneous Voice and Flora lane sources, including retiring sources; its
+ceiling is the existing structural-record capacity of 38,400, not a musical limit.
+Both signed nonzero temporal controls require this declaration; missing or late
+reservation is a positioned script error. Finite scenes warn and ignore the declaration,
+retaining event pre-scanning for observer and source capacity. Observation does not
+activate either valuation weight. The declaration is an Author rule and does not
+change the existing 600-second rolling history or the supported event density.
 
 ### 6.4.3 Time representation
 

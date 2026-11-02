@@ -109,8 +109,9 @@ even after `wait()`. `temporal_mode` is also a scene setting, but must be declar
 once at top level before events.
 
 The `set_` verbs schedule parameter changes at the current cursor:
-`set_roughness_aversion`, `set_harmonicity_preference`, `set_global_coupling`, and
-`set_pitch_objective`.
+`set_roughness_aversion`, `set_harmonicity_preference`, `set_support_focus_preference`,
+`set_support_conflict_preference`, `set_related_novelty_preference`,
+`set_global_coupling`, and `set_pitch_objective`.
 Use `wait()` to choose when those changes take effect. Placement, release and
 scope verbs continue to describe actions rather than parameter settings.
 
@@ -291,3 +292,36 @@ Endless pieces always observe shared onset habituation from run start, including
 before a later `rest_on_habituation` placement. Finite pieces reserve this observer
 only when a positive consumer appears in the script. `harmonic_rhythm` also belongs
 before the first advancing `wait()` in endless pieces.
+
+The three support preferences default to zero. Focus and conflict accept signed finite
+weights; related novelty accepts nonnegative finite weights. They are author rules that
+integrate the heard first-order support fields over the body's partials. A moving Voice
+needs `leave_self_out(true)`; otherwise positive weights warn once and movement ignores
+them. Peak, density and tension births and Flora lane choices also read these preferences.
+Flora growth, habituation and ListenerTwin retain their existing inputs. Partial densities
+come from the body's spectral self-report and are cached at birth or reconfiguration.
+Without a self-report, the body reads a labeled single partial at its fundamental.
+This valuation does not predict the density of a hypothetical PCM mixture.
+
+`follow_harmonic_relations(w)` and `follow_harmonic_continuation(w)` are cursor events
+with finite signed dispositions in `[-1,1]`, both defaulting to zero. Relations value
+support (positive) or departure (negative) among changing destinations. Continuation
+values learned support for retaining, waiting or declining birth, with negative values
+preferring departure from that support. Relations alone cannot change the baseline
+act/retain class. Both are Author rules: paired consequences are added to existing
+scores, retaining habituation and bodily costs. Unknown evidence is neutral. Both zero
+preserve the old path and random stream. No fixed key or progression profile is used;
+weight changes retain memory. Use `wait()` before a change intended later in the scene.
+
+### Endless harmony observation reservations
+
+Endless scenes publish vertical support scans from sample zero, including while all
+three valuation weights are zero. The temporal observer is separately reserved by
+`observe_harmonic_relations(max_sources)` before time advances. The positive integer
+bounds simultaneous Voice and Flora lane sources, including retiring sources; its
+ceiling is the existing structural-record capacity of 38,400, not a musical limit.
+Both signed nonzero temporal controls require this declaration; missing or late
+reservation is a positioned script error. Finite scenes warn and ignore the declaration,
+retaining event pre-scanning for observer and source capacity. Observation does not
+activate either valuation weight. The declaration is an Author rule and does not
+change the existing 600-second rolling history or the supported event density.

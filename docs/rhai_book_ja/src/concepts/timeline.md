@@ -98,7 +98,8 @@ section("overlap", || {
 終わりを定めた曲では、`wait()`の後に書いても、最後の指定が全体へ適用されます。`temporal_mode`も
 初期条件ですが、イベントを置く前に最上位で一度だけ宣言します。
 
-`set_roughness_aversion`、`set_harmonicity_preference`、`set_global_coupling`、
+`set_roughness_aversion`、`set_harmonicity_preference`、`set_support_focus_preference`、
+`set_support_conflict_preference`、`set_related_novelty_preference`、`set_global_coupling`、
 `set_pitch_objective`は、
 その時点のスクリプト時刻に変更を置きます。`wait()`で変更の時刻を選べます。
 配置、解放、有効範囲を作る語は、引き続き操作そのものを表します。
@@ -271,3 +272,32 @@ loop {
 後の`rest_on_habituation`の配置を予見できないためです。有限の曲は正の重みの利用者が
 ある場合だけ観測器を用意します。`harmonic_rhythm`も、終わりを定めない曲では最初に
 時刻を進める`wait()`より前に宣言します。
+
+支持の集中・競合・関連する新規成分への三つの選好は、いずれも既定値が0です。
+集中と競合には符号付きの有限値、新規成分には0以上の有限値を指定します。
+聴いた音の一次の支持場を身体の部分音で積分する作者規則です。Voiceの移動には
+`leave_self_out(true)`が必要で、自己除外がないVoiceでは正の重みを一度警告し、
+移動への加点を無視します。出生のpeak・density・tensionとFloraのlane選択にも作用します。
+Floraの成長、慣れ、ListenerTwinの入力は変えません。部分音の密度は身体のスペクトルの
+自己申告から出生・再構成時に保存します。自己申告がない身体は基本周波数の単一部分音として
+読み、その旨を表示します。これは仮想的なPCMの混合結果を予測する評価ではありません。
+
+`follow_harmonic_relations(w)` と `follow_harmonic_continuation(w)` はcursor eventで、
+有限の `[-1,1]`、既定0の符号付きの性向を取ります。関係は、動くときの行き先について
+正なら学んだ関係への適合、負なら離脱を好みます。継続は、正なら保持・待機・出生見送り、
+負ならその逆の方向を、学んだ継続の支持に応じて評価します。関係だけでは既定の
+「動く／保つ」を変更しません。どちらも作者規則であり、既存の慣れや身体費用を含む
+scoreへ加算します。未知の証拠は中立、両方0なら元の経路と乱数列を保ちます。
+固定の調や進行profileを使わず、性向の変更でも履歴は残ります。
+シーンの途中で変更する場合は、`wait()`でcursorを進めてから指定します。
+
+### endlessでの和声観測の予約
+
+endlessでは縦の支持scanを演奏開始時から公開し、三つの評価重みが0の間も観測します。
+時間方向の関係モデルは、時刻を進める前に`observe_harmonic_relations(max_sources)`で
+別に予約します。正の整数max_sourcesは退役中を含む同時VoiceとFlora laneの最大音源数で、
+上限38400は既存の構造記録の容量に由来し、音楽上の上限ではありません。時間の二語は
+正負いずれかの非零重みを使うときに宣言が必要で、未宣言と遅い宣言は位置付きの脚本エラーです。
+有限の曲では宣言を警告して無視し、観測器と音源容量は従来どおりeventの先読みで決めます。
+宣言だけでは評価重みは有効になりません。宣言は作者規則で、既存の600秒の移動履歴と
+対応するevent密度の範囲を変更しません。

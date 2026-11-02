@@ -111,6 +111,7 @@
   - [§9.3.109 既知の最終区間の表情](#known-final-expression)
   - [§9.3.117 2026-10-31：endlessな脚本の逐次評価](#incremental-endless-scores-20261031)
   - [§9.3.118 2026-10-31：終端を決めない演奏の実装と受入の境界](#indefinite-performance-20261031)
+  - [§9.3.119 2026-11-02：和声の統合とendlessでの観測予約](#harmony-endless-reservations-20261102)
 - [§9.4 整合と拡張の順序](#94-整合と拡張の順序)
 
 ---
@@ -8215,3 +8216,26 @@ technoteには実装した機構を記し、終端のない運転の約束は部
 継続運転への対応が受け入れられたとは、まだ書かない。
 
 **2026-11-01 統合追記。** 上記の取得と費用は旧土台の記録であり、新しい聴覚 front end、Rain、Flora、TCを統合した後のV6/V8は別途取得する。作者は同日22:5x JSTに、endlessでonset habituationの共有観測器を開始時から無条件に作ることと、時間を進める前の`observe_tonal_context()`宣言（Author rule）を採択した。宣言したendlessはTCの観測器と表を開始時から用意する。宣言なしの正の`follow_tonal_context`配置は位置付きscript error、遅い宣言は既存のheader errorとなる。有限の曲の宣言は警告して無視し、onsetとTCとも従来の先読みを保つ。
+
+<a id="harmony-endless-reservations-20261102"></a>
+
+### 9.3.119 2026-11-02：和声の統合とendlessでの観測予約
+
+HV-INTは、作者が2026-11-01 22:5x JSTに採択した予約方針を、IP統合後の縦と時間の
+和声機構へ適用した。縦の観測器は、三つの評価重みにかかわらずendlessの演奏開始時から
+scanを公開する。共有geometryと観測器ごとのscratchは有界で、演奏全長のgraphは保持しない。
+時間の観測器は600秒の移動履歴、構造記録と照合状態を持つため、時間を進める前の
+`observe_harmonic_relations(max_sources)`を要求する。作者規則のheaderであり、
+退役中を含む同時VoiceとFlora laneの最大音源数を宣言する。上限38400は既存の構造記録容量。
+時間の二語の正負いずれかの非零重みは予約が必要で、未宣言なら位置付きscript errorとなる。
+有限の曲では宣言を警告して無視し、eventの先読みを保持する。予約だけで評価重みは有効にならない。
+
+五つの語、実PCM自己除外、順序付きsample時刻、有界の背景adapter、既存の6消費者を維持した。
+符号付き加算utilityと凍結した科学対照を置き換えていない。IPのtick/f64時刻、逐次scoreの課金、
+発振器正規化、推定器修理、onset予約、`observe_tonal_context()`も維持する。既存の番号とanchorは
+変更せず、この記録だけ新しい番号で追加した。
+
+取得はHV-9と同じ宣言Voice/Flora負荷で関係1・継続0のABBAを使い、窓ごとのdeadline、
+prediction miss、背景完了と外部負荷を記録する。実機音声、無期限運転、任意負荷のWCET、
+作者試聴の確認へ読み替えない。source pin、観測器のCPU・記憶域測定、検査結果は
+機械内の`.orchestration/units/HV-INT/report.md`に保存する。

@@ -938,3 +938,69 @@ positioned script error. In finite scenes the declaration warns and is ignored;
 placement pre-scanning still determines TC costs. V6/V8 must measure integrated
 reservation costs; prior allocation census values do not certify the endless path
 and require reacquisition for that configuration.
+
+## Harmonic support valuation (HV-3)
+
+- Support focus/conflict/related-novelty preferences are finite cursor weights,
+  default zero (novelty nonnegative). Zero bypasses all consumer score/RNG changes.
+- `core::harmonic_support` uses the existing H downward projection, including its
+  lower halo. New inner products use log2 grid coordinates; only the silence gate
+  uses the shared ERB mass floor. Timestamped p/M/C/D is support, not root probability.
+- Observers publish first-order gC/gD and related-support k scans. Bodies integrate
+  these at their partial positions using densities cached from their spectral
+  self-report at birth/reconfiguration. Bodies without a self-report use a labeled
+  single partial at the fundamental. This is local valuation, not mixed-PCM prediction.
+  Movement requires the matching Voice/generation PCM observer;
+  spawn uses mixed evidence and Flora lane choice uses its existing ownership.
+- Keep habituation, ListenerTwin and Flora growth on their existing inputs.
+  Support publication reuses two buffers; retained snapshots may require owned
+  publication copies. Do not call the whole asynchronous pipeline allocation-free.
+
+## Harmonic temporal relations (HV-9)
+
+- `follow_harmonic_relations(w)` and `follow_harmonic_continuation(w)` are Author rule
+  cursor events: finite `[-1,1]`, default zero. Relations value support/departure among
+  changing destinations; continuation values retaining/waiting/no-spawn versus acting.
+  Add paired `tanh(difference/development_IQR)` consequences to existing native scores,
+  retaining habituation and bodily costs; never replace scores by compatibility or a
+  convex mixture. Unsupported paired columns are zero. With continuation zero, relations
+  cannot change the baseline action class. Both zero bypass prediction/preview/new draws.
+  Development scales use HV-8 calibration, floor 1e-6, frozen before acceptance.
+  Weight changes retain memory. There are no key profiles,
+  progression tables, chord labels or external harmonic training corpora.
+- Timestamped mixed support and actual renderer source/onset/offset events feed
+  the bounded temporal worker. Candidate previews use mixed or actual-PCM LOO
+  baselines. Missing or stale current predictions are neutral.
+- Previews add density to support amount and normalize it projectively; C/D use
+  first-order gC/gD and M is additive. Preserve observer, time and coordinate identity;
+  do not replace this with hypothetical mixed PCM analysis or power recompression.
+- Consumer choices keep existing candidate sets, opportunity clocks and random streams.
+  Temporal zero branches before prediction/preview/RNG. Birth includes no-spawn;
+  Flora includes hold. Runtime mechanism tests, scientific causal acceptance,
+  declared-load timing and author audition are distinct records.
+
+- Extend the retained Hmax bank only with new anchors. Retrieve bounded seeds through
+  the square-root support index; generation and context attribution share the current
+  resource chunk's proposal bank. Do not restore whole-history DP or prefix rescoring.
+  A missing observed successor remains unknown. Expire index entries in one batch.
+  Distinguish dense declared capacity, sparse live payload and allocated capacity.
+
+- The revised bounded worker passed the recorded HV-7 four-Voice/two-Flora ABBA
+  windows with zero audio deadline misses, consumer prediction misses and pending
+  background work at audio end. This is declared-load evidence, not an arbitrary-load
+  or full-retention-duration guarantee. Keep unavailable evidence neutral and counted.
+  Collector records at a hop's right boundary stay queued until the next batch;
+  expected query and background observation must use exactly the same record set.
+
+### Endless harmony observation reservations
+
+Endless scenes publish vertical support scans from sample zero, including while all
+three valuation weights are zero. The temporal observer is separately reserved by
+`observe_harmonic_relations(max_sources)` before time advances. The positive integer
+bounds simultaneous Voice and Flora lane sources, including retiring sources; its
+ceiling is the existing structural-record capacity of 38,400, not a musical limit.
+Both signed nonzero temporal controls require this declaration; missing or late
+reservation is a positioned script error. Finite scenes warn and ignore the declaration,
+retaining event pre-scanning for observer and source capacity. Observation does not
+activate either valuation weight. The declaration is an Author rule and does not
+change the existing 600-second rolling history or the supported event density.

@@ -686,3 +686,55 @@ reservation is a positioned script error. Finite scenes warn and ignore the decl
 retaining event pre-scanning for observer and source capacity. Observation does not
 activate either valuation weight. The declaration is an Author rule and does not
 change the existing 600-second rolling history or the supported event density.
+
+### Orchestrator revision after HV-11
+
+**[Author rule; prediction uncertainty, not a new categorical tolerance]** Keep
+§6's `categorical` arrival and its cadence evidence unchanged. They test the
+propagated observation-error envelope. Record a separate `predictive` arrival,
+soft compatibility, available-block coverage, and residual/scale pairs for time,
+M, C, D and support shape. A separate predictive cadence uses the same observed
+retention, articulation, boundary and inactivity vector. Neither record is a
+claim about a listener's sense of arrival or closure.
+
+Condition the uncertainty on the query's retained empirical successor mixture,
+after correspondence and transport, before the next observation. For valid
+attribute d, let `x_j` be the transported successor value, `w_j` its already
+assigned mixture weight, and `id_j` its observed successor identity. Use the
+pairwise form of §5.1's sample variance:
+
+```text
+v_d = sum_{i<j, id_i != id_j} w_i w_j distance_d(x_i,x_j)^2
+      / (2 sum_{i<j, id_i != id_j} w_i w_j)
+```
+
+Only pairs with both attributes available contribute. For scalar attributes,
+`distance²=(x_i-x_j)²`; for support shape it is the squared Hellinger distance
+already defined in §5.1. Pitch is conditioned separately on the complete source
+identity, including generation. Equal-weight distinct observations give exactly
+the ordinary `n-1` sample variance. Alternative mappings of one observation do
+not create independent samples. With fewer than two supported observations the
+variance is zero. The normalization here estimates conditional dispersion; it
+never renormalizes the predictive mixture or removes unknown mass.
+
+The residual from any fixed atom has this same variance, since subtracting that
+atom does not change centered dispersion. Use the existing §5.1 scale
+`s²=error_current²+error_atom²+v_d` for its predictive envelope and compatibility.
+This is one empirical scale, not a confidence interval or a fitted coverage
+probability. No epsilon, confidence multiplier or new composer parameter is
+introduced. Unavailable attributes remain unavailable. The variance is frozen
+with the issued prediction, invalidated when its retained history begins to
+expire, and recomputed from surviving evidence at the next publication. The
+observation being scored never fits its own scale. These conditional scales do
+not replace the retrieval statistics or change the consumer utility columns.
+
+**[Author rule; Flora diagnosis]** Observe the existing lane selector's paired
+masks, values, native/augmented utilities and selected index. Distinguish an
+identical action, absence of paired support, equal supported values, cancellation,
+and a nonzero consequence. Also count legal changing destinations: the native
+lane selector admits unclaimed stay peaks within its existing 50-cent range,
+plus hold. A sole changing destination necessarily has zero relation difference
+from itself. Relations alone cannot compare it against hold (§7.2). Do not enlarge
+the native candidate set, reinterpret missing projection columns as measured
+support, or activate continuation merely to make a diagnostic count nonzero.
+The hooks belong to a disposable observation renderer, not the audio instrument.

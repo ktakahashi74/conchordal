@@ -991,6 +991,11 @@ and require reacquisition for that configuration.
 - Previews add density to support amount and normalize it projectively; C/D use
   first-order gC/gD and M is additive. Preserve observer, time and coordinate identity;
   do not replace this with hypothetical mixed PCM analysis or power recompression.
+- Categorical arrival/cadence retain the observation-error envelope. Separate predictive
+  arrival/cadence use frozen conditional successor sample variance, with residual/scale
+  and compatibility evidence. Alternative mappings of one successor are not independent
+  samples; expired evidence and missing attributes cannot create tolerance. These
+  records do not change consumer utility or certify a listener's sense of closure.
 - Consumer choices keep existing candidate sets, opportunity clocks and random streams.
   Temporal zero branches before prediction/preview/RNG. Birth includes no-spawn;
   Flora includes hold. Runtime mechanism tests, scientific causal acceptance,

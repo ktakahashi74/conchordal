@@ -178,6 +178,10 @@ pub(crate) struct Prediction {
     pub searched_endpoints: usize,
     pub variances: [f64; 9],
     pub shape_variance: f64,
+    pub arrival_variances: [f64; 4],
+    pub arrival_shape_variance: f64,
+    pub arrival_pitch_variances: Vec<(Source, f64)>,
+    pub arrival_expires_at: f64,
 }
 impl Prediction {
     pub fn new(b: usize, sources: usize) -> Self {
@@ -210,6 +214,10 @@ impl Prediction {
             searched_endpoints: 0,
             variances: [0.; 9],
             shape_variance: 0.,
+            arrival_variances: [0.; 4],
+            arrival_shape_variance: 0.,
+            arrival_pitch_variances: Vec::with_capacity(sources),
+            arrival_expires_at: f64::INFINITY,
         }
     }
     pub fn for_query(&self, version: u64) -> Option<&Self> {
@@ -217,6 +225,7 @@ impl Prediction {
     }
     pub fn bytes(&self) -> usize {
         self.atoms.capacity() * size_of::<Atom>()
+            + self.arrival_pitch_variances.capacity() * size_of::<(Source, f64)>()
             + self
                 .atoms
                 .iter()
@@ -531,6 +540,10 @@ impl Matcher {
         p.searched_endpoints = self.endpoints;
         p.variances = g.statistics.map(Moments::variance);
         p.shape_variance = g.shape_variance();
+        p.arrival_variances = [0.; 4];
+        p.arrival_shape_variance = 0.;
+        p.arrival_pitch_variances.clear();
+        p.arrival_expires_at = g.nodes.front().map_or(f64::INFINITY, |n| n.start + TMAX);
         if self.endpoints == 0 {
             return;
         }
@@ -644,6 +657,71 @@ impl Matcher {
             p.len += 1;
         }
         p.unknown = p.unknown.clamp(0., 1.);
+        p.arrival_uncertainty(q.last().unwrap().trajectories);
+    }
+}
+
+impl Prediction {
+    fn arrival_uncertainty(&mut self, current: &[Trajectory]) {
+        let atoms = &self.atoms[..self.len];
+        for (i, variance) in self.arrival_variances.iter_mut().enumerate() {
+            *variance = conditional_variance(atoms, |a, b| {
+                let x = [
+                    a.acoustic.mass,
+                    a.acoustic.focus,
+                    a.acoustic.competition,
+                    a.time,
+                ][i];
+                let y = [
+                    b.acoustic.mass,
+                    b.acoustic.focus,
+                    b.acoustic.competition,
+                    b.time,
+                ][i];
+                (x.valid && y.valid).then_some((x.value - y.value).powi(2))
+            });
+        }
+        self.arrival_shape_variance = conditional_variance(atoms, |a, b| {
+            (a.shape_valid && b.shape_valid && a.residual == 0. && b.residual == 0.)
+                .then(|| hellinger(&a.bins, &b.bins))
+        });
+        self.arrival_pitch_variances.clear();
+        for trajectory in current {
+            let source = trajectory.source;
+            let variance = conditional_variance(atoms, |a, b| {
+                let x = a.trajectories.iter().find(|t| t.source == source)?.pitch;
+                let y = b.trajectories.iter().find(|t| t.source == source)?.pitch;
+                (x.valid && y.valid).then_some((x.value - y.value).powi(2))
+            });
+            self.arrival_pitch_variances.push((source, variance));
+        }
+    }
+}
+
+// Pairwise sample variance of the conditional empirical successors. Alternative
+// mappings of one observation cannot supply a second independent sample.
+fn conditional_variance(atoms: &[Atom], distance: impl Fn(&Atom, &Atom) -> Option<f64>) -> f64 {
+    let scale = atoms.iter().map(|a| a.weight).fold(0., f64::max);
+    if scale == 0. {
+        return 0.;
+    }
+    let (mut squared_residual, mut weight) = (0., 0.);
+    for (i, a) in atoms.iter().enumerate() {
+        for b in &atoms[..i] {
+            if a.successor == b.successor {
+                continue;
+            }
+            if let Some(d) = distance(a, b) {
+                let w = (a.weight / scale) * (b.weight / scale);
+                squared_residual += w * d;
+                weight += w;
+            }
+        }
+    }
+    if weight > 0. {
+        squared_residual / (2. * weight)
+    } else {
+        0.
     }
 }
 // A source interval can continue across another source's structural event.
@@ -994,4 +1072,57 @@ fn incremental_queries_reuse_scored_prefix_and_match_bounded_replay() {
     incremental.search(&model.graph, &query, true);
     assert_eq!(incremental.extensions, query.len());
     assert_eq!(before, format!("{:?}", incremental.best));
+}
+
+#[cfg(test)]
+mod uncertainty_tests {
+    use super::*;
+
+    #[test]
+    fn conditional_residual_variance_counts_observations_not_mappings() {
+        let mut p = Prediction::new(2, 0);
+        p.len = 3;
+        let values = [1., 2., 6.];
+        let mut moments = Moments::default();
+        for (i, a) in p.atoms[..3].iter_mut().enumerate() {
+            a.successor = i as u64;
+            a.weight = 0.1;
+            a.time = Value::exact(values[i]);
+            moments.add(values[i]);
+        }
+        p.arrival_uncertainty(&[]);
+        let expected = moments.variance();
+        assert!((p.arrival_variances[3] - expected).abs() < 1e-14);
+        assert_eq!(p.arrival_variances[..3], [0.; 3]);
+        // Splitting one empirical observation into equivalent mappings adds no data.
+        p.atoms[0].weight *= 0.5;
+        p.atoms[3] = p.atoms[0].clone();
+        p.len = 4;
+        p.arrival_uncertainty(&[]);
+        assert!((p.arrival_variances[3] - expected).abs() < 1e-14);
+        p.atoms[1].weight = 0.;
+        p.atoms[2].weight = 0.;
+        p.arrival_uncertainty(&[]);
+        assert_eq!(p.arrival_variances[3], 0.);
+    }
+
+    #[test]
+    fn conditional_shape_uses_embedding_dispersion_and_preserves_unknown() {
+        let mut p = Prediction::new(2, 0);
+        p.len = 2;
+        p.unknown = 0.7;
+        for (i, a) in p.atoms[..2].iter_mut().enumerate() {
+            a.successor = i as u64;
+            a.weight = 0.15;
+            a.shape_valid = true;
+            a.bins.push(Bin { index: i, mass: 1. });
+        }
+        p.arrival_uncertainty(&[]);
+        // Orthogonal unit embeddings: half the pairwise Hellinger square is 1/2.
+        assert_eq!(p.arrival_shape_variance, 0.5);
+        assert_eq!(p.unknown, 0.7);
+        p.atoms[1].residual = 0.1;
+        p.arrival_uncertainty(&[]);
+        assert_eq!(p.arrival_shape_variance, 0.);
+    }
 }

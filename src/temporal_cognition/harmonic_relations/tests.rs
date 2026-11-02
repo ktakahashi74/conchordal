@@ -834,3 +834,47 @@ fn open_chunk_updates_responsibilities_and_pivot_without_closing_an_episode() {
         2.
     );
 }
+
+#[test]
+fn predictive_arrival_uses_frozen_conditional_experience_separately_from_categorical() {
+    let mut m = model();
+    for (time, bin) in [(0., 1), (1., 2), (3., 1), (5., 2)] {
+        observe(&mut m, &Input::new(time, bin));
+    }
+    let q = Input::new(10., 1);
+    let p = m.predict(&[q.observation()], 1).unwrap().clone();
+    assert!(p.arrival_variances[3] > 0.);
+    let atom = p.atoms[..p.len]
+        .iter()
+        .find(|a| a.bins[0].index == 2 && !a.mapping.transformed)
+        .unwrap();
+    let time = atom.time.value + 0.1;
+    observe(&mut m, &Input::new(time, 2).boundary());
+    let arrivals = &m.relations.arrivals[..m.relations.arrival_count];
+    assert!(arrivals.iter().any(|a| a.predictive));
+    assert!(arrivals.iter().all(|a| !a.categorical));
+    assert!(m.relations.predictive_cadence.candidate());
+    assert!(!m.relations.cadence.candidate());
+    assert_eq!(m.prediction.arrival_variances, p.arrival_variances);
+    assert!(
+        arrivals
+            .iter()
+            .filter(|a| a.predictive)
+            .all(|a| a.predictive_compatibility > 0.)
+    );
+}
+
+#[test]
+fn expired_conditional_evidence_cannot_supply_predictive_tolerance() {
+    let mut m = model();
+    observe(&mut m, &Input::new(0., 1));
+    observe(&mut m, &Input::new(1., 2));
+    let q = Input::new(10., 1);
+    m.predict(&[q.observation()], 1).unwrap();
+    // The frozen distribution is usable only while every contributing sample survives.
+    m.prediction.arrival_expires_at = 10.;
+    observe(&mut m, &Input::new(11., 2));
+    let arrivals = &m.relations.arrivals[..m.relations.arrival_count];
+    assert!(arrivals.iter().any(|a| a.categorical));
+    assert!(arrivals.iter().all(|a| !a.predictive));
+}

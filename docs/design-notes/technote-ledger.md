@@ -11621,6 +11621,14 @@ alone preserve the baseline action class. Unsupported paired columns are neutral
 both zero bypass prediction, preview and extra random draws. The development
 scales came from the saved HV-8 calibration and were frozen before acceptance.
 
+HV-13 separates strict observation-error arrival/cadence from predictive evidence.
+The latter uses the query's retained, transported successor sample variance,
+frozen before observation, with source-specific pitch and Hellinger shape dispersion.
+Alternative mappings of one successor do not add independent samples; zero variance
+retains zero scale. Residuals, scales, compatibility and coverage remain distinct
+from a categorical match and from a listener's experience. This observation-side
+change does not replace the existing consumer consequences or their frozen scales.
+
 In HV-9's same-seed, full-length comparison, relation 1 / continuation 0 changed
 pitch at 78/78 second-half opportunities, with zero waits, lane holds or no-birth
 choices. At the same decision opportunities it changed 55 Voice destinations

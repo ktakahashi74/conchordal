@@ -6,6 +6,11 @@ use matching::{Prediction, hellinger};
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Arrival {
     pub categorical: bool,
+    pub predictive: bool,
+    pub predictive_compatibility: f64,
+    pub predictive_coverage: f64,
+    pub residuals: [Option<f64>; 5],
+    pub scales: [Option<f64>; 5],
     pub compatibility: f64,
     pub weight: f64,
     pub successor: u64,
@@ -80,11 +85,13 @@ pub(crate) struct Relations {
     pub competition: CompetitionReduction,
     pub continuity: Vec<Continuity>,
     pub cadence: Cadence,
+    pub predictive_cadence: Cadence,
     pub ornaments: Vec<Ornament>,
     pub substitutions: [Option<Substitution>; HMAX],
     pub pivot: Option<Pivot>,
     pub leading_context: u64,
     last_arrival: bool,
+    last_predictive_arrival: bool,
     last_snapshot: u64,
     last_time: f64,
 }
@@ -96,11 +103,13 @@ impl Relations {
             competition: CompetitionReduction::default(),
             continuity: Vec::with_capacity(sources),
             cadence: Cadence::default(),
+            predictive_cadence: Cadence::default(),
             ornaments: Vec::with_capacity(sources),
             substitutions: [None; HMAX],
             pivot: None,
             leading_context: 0,
             last_arrival: false,
+            last_predictive_arrival: false,
             last_snapshot: 0,
             last_time: 0.,
         }
@@ -157,42 +166,94 @@ impl Relations {
                 );
                 let mut envelope =
                     (o.time - atom.time.value).abs() <= o.timing_error + atom.time.error;
+                let mut predictive = o.time <= p.arrival_expires_at;
+                let mut predictive_kernel = Kernel::default();
+                let mut residuals = [None; 5];
+                let mut scales = [None; 5];
+                let time = Value {
+                    value: o.time,
+                    error: o.timing_error,
+                    valid: true,
+                    bound: false,
+                };
+                predictive_kernel.scalar(time, atom.time, p.arrival_variances[3]);
+                residuals[3] = Some((o.time - atom.time.value).abs());
+                scales[3] = Some(
+                    (o.timing_error.powi(2) + atom.time.error.powi(2) + p.arrival_variances[3])
+                        .sqrt(),
+                );
+                predictive &= residuals[3] <= scales[3];
                 let mut valid = 0;
-                for (a, b) in [
+                for (i, (a, b)) in [
                     (o.acoustic.mass, atom.acoustic.mass),
                     (o.acoustic.focus, atom.acoustic.focus),
                     (o.acoustic.competition, atom.acoustic.competition),
-                ] {
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    predictive_kernel.scalar(a, b, p.arrival_variances[i]);
                     if a.valid && b.valid {
                         valid += 1;
                         envelope &= (a.value - b.value).abs() <= a.error + b.error;
+                        residuals[i] = Some((a.value - b.value).abs());
+                        scales[i] = Some(
+                            (a.error.powi(2) + b.error.powi(2) + p.arrival_variances[i]).sqrt(),
+                        );
+                        predictive &= residuals[i] <= scales[i];
                     }
                 }
+                predictive_kernel.requested += 1;
                 if o.support.valid
                     && o.support.residual == 0.
                     && atom.shape_valid
                     && atom.residual == 0.
                 {
                     valid += 1;
-                    envelope &= hellinger(o.support.bins, &atom.bins).sqrt()
-                        <= o.support.error + atom.shape_error;
+                    let distance = hellinger(o.support.bins, &atom.bins);
+                    envelope &= distance.sqrt() <= o.support.error + atom.shape_error;
+                    let variance = o.support.error.powi(2)
+                        + atom.shape_error.powi(2)
+                        + p.arrival_shape_variance;
+                    predictive_kernel.distance(distance, variance);
+                    residuals[4] = Some(distance.sqrt());
+                    scales[4] = Some(variance.sqrt());
+                    predictive &= distance <= variance;
                 }
                 for expected in &atom.trajectories {
                     if let Some(actual) =
                         o.trajectories.iter().find(|t| t.source == expected.source)
                     {
+                        let variance = p
+                            .arrival_pitch_variances
+                            .iter()
+                            .find(|(source, _)| *source == expected.source)
+                            .map_or(0., |(_, v)| *v);
+                        predictive_kernel.scalar(actual.pitch, expected.pitch, variance);
                         if actual.pitch.valid && expected.pitch.valid {
                             valid += 1;
                             envelope &= (actual.pitch.value - expected.pitch.value).abs()
                                 <= actual.pitch.error + expected.pitch.error;
                             k.scalar(actual.pitch, expected.pitch, g.statistics[5].variance());
+                            predictive &= (actual.pitch.value - expected.pitch.value).powi(2)
+                                <= actual.pitch.error.powi(2)
+                                    + expected.pitch.error.powi(2)
+                                    + variance;
                         }
                     } else {
                         envelope = false;
+                        predictive = false;
+                        predictive_kernel.requested += 1;
                     }
                 }
                 self.arrivals[self.arrival_count] = Arrival {
                     categorical: envelope && valid > 0,
+                    predictive: predictive && valid > 0,
+                    predictive_compatibility: predictive_kernel.compatibility(),
+                    predictive_coverage: predictive_kernel.valid as f64
+                        / predictive_kernel.requested as f64,
+                    residuals,
+                    scales,
                     compatibility: k.compatibility(),
                     weight: atom.weight,
                     successor: atom.successor,
@@ -203,6 +264,9 @@ impl Relations {
         let arrival = self.arrivals[..self.arrival_count]
             .iter()
             .any(|a| a.categorical);
+        let predictive_arrival = self.arrivals[..self.arrival_count]
+            .iter()
+            .any(|a| a.predictive);
         self.cadence = Cadence {
             arrival: arrival || self.last_arrival,
             boundary: o.events.iter().any(|e| e.flags & BOUNDARY != 0),
@@ -326,6 +390,11 @@ impl Relations {
         } else {
             self.competition = CompetitionReduction::default();
         }
+        self.predictive_cadence = Cadence {
+            arrival: predictive_arrival || self.last_predictive_arrival,
+            ..self.cadence
+        };
+        self.last_predictive_arrival = predictive_arrival;
         self.last_arrival = arrival;
         self.last_snapshot = o.acoustic.snapshot;
         self.last_time = o.time;

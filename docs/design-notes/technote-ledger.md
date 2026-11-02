@@ -122,6 +122,8 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.118 2026-10-31: Open-ended performance, implementation and acceptance boundaries](#indefinite-performance-20261031)
   - [§9.3.119 2026-11-02: Harmony integration and endless observation reservations](#harmony-endless-reservations-20261102)
   - [§9.3.120 2026-11-02: Tail roughness aversion adopted as a composer word (VR-1)](#voice-rearticulation-roughness)
+  - [§9.3.121 2026-11-02: Vertical and temporal harmony acceptance (HV-6–HV-10)](#harmony-acceptance-20261102)
+  - [§9.3.122 2026-11-02: Flora amplitude tracking and the rejected mixed-R growth rule](#flora-amplitude-and-mixed-roughness-20261102)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -11181,6 +11183,8 @@ now explains how pace relates to the heard harmonic context. Pace keeps no upper
 bound. Which elements join a Flora field (none, Rain, sparse tones, plucks) is a
 composer choice per piece, not an instrument decision.
 
+<a id="harmonicity-preference-root-readout"></a>
+
 ### 9.3.116 Harmonicity preference and the deferred root readout (HV-1, 2026-11-01)
 
 The author asked whether developments that harmony theory treats symbolically
@@ -11235,6 +11239,10 @@ eroded views are bit-exact with the previous construction, and `harmonicity01` a
 `roughness01` are unchanged at every w. No default, sample or listener profile
 changed, and no audition was run.
 
+This is the HV-1 decision record. The later support scans, temporal valuation and
+two author auditions are recorded in [§9.3.121](#harmony-acceptance-20261102);
+they do not turn harmonic-template support into perceived-root probabilities.
+
 <a id="incremental-endless-scores-20261031"></a>
 
 ### 9.3.117 2026-10-31: Incremental evaluation of endless scores
@@ -11272,8 +11280,10 @@ state and reports, bound cleanup, real render/compile-only action and payload
 overflow, and both credit-return interleavings (V4). Report comparison excludes
 only the three wall-clock timing fields (`elapsed_us`, `analysis_wait_us`,
 `listener_wait_us`); the score, state and remaining report fields compare exactly.
-These checks establish implementation behavior. V6b endurance, V7 estimator
-precision, V8 realtime load and author audition are not established by this unit.
+These checks establish implementation behavior. Integrated endurance, estimator
+precision and realtime-load results were acquired separately by IP-ACQ; see the
+2026-11-02 acceptance addendum in [§9.3.118](#indefinite-performance-20261031).
+The score checks alone do not establish those results or author audition.
 
 <a id="indefinite-performance-20261031"></a>
 
@@ -11383,9 +11393,9 @@ roundoff-zero fix removes the reported endpoint defect, not this general assignm
 problem. This remains a meter design issue, separate from degradation with elapsed
 performance time.
 
-**Acceptance record and remaining work ([§9](../superpowers/specs/2026-10-31-indefinite-performance-design.md#9-validation), updated 2026-11-01).**
-V5–V7 remain unacquired in this entry. Unit tests, static review, short numerical
-comparisons, capacity calibration and U2's offline cost estimates do not replace them:
+**Historical acceptance record ([§9](../superpowers/specs/2026-10-31-indefinite-performance-design.md#9-validation), as of 2026-11-01; updated by the addendum below).**
+V5–V7 were then unacquired. Unit tests, static review, short numerical comparisons,
+capacity calibration and U2's offline cost estimates did not replace them:
 
 - **V5 — hardware recovery:** restart/stop PipeWire on blanche and exercise GUI End
   and headless Ctrl-C during an outage. The result decides whether the implemented
@@ -11405,16 +11415,72 @@ comparisons, capacity calibration and U2's offline cost estimates do not replace
   `1b5db013`: **349 final executions passed under load, 11 remained unresolved**.
   All 391 saved attempts had zero measurement-window underruns; the largest final
   p99 was **8.598154 ms (about 8.6 ms)**. Repeated over-budget hops under external
-  load leave those 11 conditions unresolved; rerun them in a quiet window to decide
-  whether a regression needs repair. The matrix is acquired, but full V8 acceptance
+  load left those 11 conditions unresolved. The proposed quiet-window rerun was
+  superseded by the paired-load policy recorded below. The matrix is acquired, but full V8 acceptance
   is not established. Its source pin predates the U2 review repairs: neither those
   hardware results nor the later eight-condition offline comparison establish formal
   V8 acceptance for `87c6dc4c`. Source: machine-local IP-V8b `report.md`.
 
-The technote records the implemented mechanisms and marks the open-ended commitment
-partial. It does not yet claim supported continuing operation.
+At that stage the technote recorded the implemented mechanisms and marked the
+open-ended commitment partial, without claiming supported continuing operation.
 
 **2026-11-01 integration addendum.** The acquisitions and costs above describe the old base; V6/V8 must be acquired on the integrated auditory front end, Rain, Flora and TC implementation. At 22:5x JST the author adopted unconditional run-start shared onset-habituation observation for endless pieces and the pre-time-advance `observe_tonal_context()` header declaration (Author rule). Declared endless pieces reserve the TC observer and table from run start. Positive `follow_tonal_context` placement without it is a positioned script error; late declaration uses the existing header error. Finite pieces warn and ignore this declaration, preserving look-ahead for both onset and TC.
+
+**2026-11-02 integrated acceptance addendum (IP-INT / IP-ACQ).** IP-INT rebased
+all 27 commits from the old lineage onto the pinned upstream `4d39b26d`, yielding
+`ac5ad8d2`. It retained the new auditory front end, Rain, Flora and TC, the adopted
+onset/TC reservations, compensated-Gram iterative refinement and oscillator
+normalization. Normal checks passed; that integration result alone was not acceptance.
+IP-ACQ bound the following acquisitions to this source and its fixed binaries:
+
+- **V6 passed:** 132,000 score seconds, exit 0, with the always-on endless onset
+  observer included. RSS, amplitude and live-count criteria passed. The second-half
+  RSS slope was −4.75 MB/day. Live heap's all-point slope was positive (about
+  +72 KB/day), but ten-minute minima included zero (about +0.24 KB/day) and the
+  same-live-count comparison decreased (about −2.4 KB/day). The three views are
+  retained rather than treating every capacity step as a leak. This is finite-duration
+  endurance evidence, not indefinite stability or device-audio validation.
+- **V7 passed at 10⁶ issues:** history candidate energy, comparison mixture weight
+  and EnergyForecastLearning weight passed 1,206 / 1,206 / 603 checks, with zero
+  failures, inconclusive or uncertified results. The run continued beyond that
+  checkpoint; later checkpoints are not accepted by this record.
+- **V8 — no product regression, with a retained cost:** the first integrated matrix
+  covered 216 conditions / 864 ABBA windows: 175 passed under load, 39 were unresolved
+  and two suggested regression. Across 432 pairs the p99 ratio median was 1.05007,
+  with 309 slower and 123 faster pairs. This initial result remains in the record.
+  Only the changed build had process-wide live-heap atomics, so the version comparison
+  confounded product and instrumentation costs. The registered follow-up kept worker
+  allocation counts and compared heap measurement on/off for the same product in
+  12 finite, 64-Voice conditions (report 0, DCC 0; 48 offline windows / 24 pairs).
+  Subtracting each instrumentation difference from its matched old device difference
+  gave total-hop p99 residual median +274.843 µs, 17 positive / 7 negative,
+  two-sided p = 0.0639146566. Under that registration the result is **no product
+  regression in the subtraction estimate**. It assumes additive transfer of the
+  offline instrumentation difference to the device comparison; it is not a new
+  all-216-condition device acceptance or an attribution of the whole earlier +5%.
+  Population-stage mean residuals were positive in all 24 pairs, with median
+  **+127.494 µs at 64 Voices**, about **1.2% of the 10.666667 ms hop budget**.
+  The orchestrator attributes this retained product cost to the estimator precision
+  repair; the acquisition did not time iterative refinement in isolation.
+  The two endless suspects were then repeated on device with heap measurement off
+  (`1f5e5895`), ABBA twice per condition: all 16 windows passed with zero over-budget
+  hops, and both conditions passed both repetitions. The orchestrator attributed
+  the earlier suspects to external load (selected-CPU external busy about 240–315%
+  earlier, 14–31% on retake). Keep the retake separate from the old matrix and the
+  finite subtraction estimate.
+- **V5 remains unacquired:** hardware recovery is not discharged by these runs.
+
+The author stated that the host will not become quiet while other projects keep
+running. Acceptance therefore uses paired reference → changed → changed → reference
+(ABBA) windows with external-load records, instead of waiting for a quiet host.
+Alternation controls the comparison under continuing load; it does not make every
+window's load identical. Sources: machine-local IP-INT `report.md`, IP-ACQ `report.md`
+(initial matrix and instrumentation addendum), `v6/report.md`,
+`endless-retake-r2-2026-11-02T124416+0900/analysis.json`, and the orchestrator's
+2026-11-02 12:5x / 14:4x status entries for the final interpretation. These later
+results supersede the old pending statuses, while the acquisition records above
+remain historical evidence. The technote may report the tested duration and
+checkpoint; the open-ended commitment remains partial.
 
 <a id="harmony-endless-reservations-20261102"></a>
 
@@ -11462,6 +11528,12 @@ Fast passages or legato can ignore it, drones can avoid it, and pedal-like overl
 can be intentional. During VR-2 the author described Undergrowth B (VR-1) as
 “クリアで濁りがすくない” (clear, with less muddiness). This is author audition.
 
+The original VR-1 proposal made mixed R the default for rearticulated pitch
+selection without a new word. The author's correction separated perceiving
+roughness (layer 1) from deciding to avoid it (layer 3). A clearer audition does
+not require every style to reject overlap. The adopted composer word therefore
+replaces that default-change proposal, with zero preserving the existing behavior.
+
 Only `leave_self_out(true)` candidates that actually replace a held Tone with
 Off/On use `R_w = (1-w)*R_external + w*R_mixed`, with external H and the existing
 a/b/c/d field and sigmoid. Both inputs share the observation and grid. Zero
@@ -11507,3 +11579,111 @@ fixture, intermediate monotonic R, warnings and live patches. It reuses the
 previous ABBA: zero follows the original path and one the accepted endpoint.
 Other seeds, device callbacks and long endurance remain unverified; the VR-2
 author audition above is separate from numerical acceptance.
+
+<a id="harmony-acceptance-20261102"></a>
+
+### 9.3.121 2026-11-02: Vertical and temporal harmony acceptance (HV-6–HV-10)
+
+This continues [HV-1's valuation/readout distinction](#harmonicity-preference-root-readout)
+without claiming symbolic chord or harmonic-function recognition. The implemented
+vertical and temporal controls are **Author rules**, default zero. No key profiles,
+written progressions, chord labels or external harmonic corpus were added.
+
+The declared-load timing fixture contains fixed 440/220 Hz carriers authored by
+the HV-6/HV-7 workers, not harmony generated by the ecology. Its other Voices and
+Flora lanes are chosen by the ecology. These carriers were not added to the
+Undergrowth audition pieces.
+
+**Vertical valuation (HV-6).** The candidate-after-mix prediction path was removed.
+Each timestamped observer instead publishes first-order `gC = ∂C/∂e`,
+`gD = ∂D/∂e` and related-support `k` scans. A body integrates them at its partial
+positions using its cached single-body spectral density. Movement uses actual-PCM
+self-exclusion; birth peak/density/tension and Flora lane choice use their existing
+references. The three support weights do not change Flora growth, habituation or
+ListenerTwin. Silence-floor derivatives, partial interpolation, body fallback and
+zero-weight audio/event identity passed the scoped checks. This is local valuation,
+not a prediction of future mixed PCM.
+
+**Temporal valuation (HV-7, HV-9).** HV-7 connected the bounded relation worker and
+six existing consumers. HV-8 then exposed a flaw in the original convex mixture:
+at weight 1, learned compatibility alone ranked deterministic choices, removing
+the native score's habituation and bodily terms. In the saved diagnostic demo's
+second half only 3/78 pitch opportunities changed pitch, 55/78 waited, and 20
+decisive moves became holds. Increased A→B→A return was not the main cause.
+
+HV-9 replaced that mixture with the DCC hierarchy's §9.6 utility form. Relative
+to the existing winner `a0`, paired supported consequence differences are scaled
+by development IQR and bounded with `tanh`; their signed weighted sum is added to
+the existing score. `follow_harmonic_relations(w)` values destinations conditional
+on moving, while `follow_harmonic_continuation(w)` separately values hold, wait,
+lane retention and no-birth. Both accept finite `[-1,1]`, default zero. Relations
+alone preserve the baseline action class. Unsupported paired columns are neutral;
+both zero bypass prediction, preview and extra random draws. The development
+scales came from the saved HV-8 calibration and were frozen before acceptance.
+
+In HV-9's same-seed, full-length comparison, relation 1 / continuation 0 changed
+pitch at 78/78 second-half opportunities, with zero waits, lane holds or no-birth
+choices. At the same decision opportunities it changed 55 Voice destinations
+from the native winner. Continuation alone produced 40/78 waits, demonstrating
+the distinct control. On the final integrated source, HV-10 repeated the 354.016 s
+ref/demo comparison: demo changed pitch at 75/75 second-half opportunities, with
+no increase in the registered hold/wait/no-birth measures; 46 Voice destinations
+differed from their same-opportunity native winners. These are separate closed-loop
+acquisitions, not interchangeable counts. Official and diagnostic full PCM matched
+in HV-10. The declared four-Voice/two-Flora ABBA checks passed in HV-7/HV-9/HV-INT;
+they do not certify arbitrary loads or unlimited duration.
+
+**Author audition and acceptance.** On HV-8's old form, the author heard
+“若干テンションが感じられる” (some tension) and “後半は同じ音が続いて単調”
+(the same notes continue in the second half, monotonously). On HV-10's revised
+form the author heard “後半はあきらかに単調さが減った” (clearly less monotony in
+the second half). The orchestrator records acceptance of the implemented extension.
+This audition is separate from numerical/causal acceptance and adopts no nonzero
+default. It does not establish every proposed tension, resolution, substitution,
+pivot or ornamental role; phenomenon-level assessment remains separate.
+
+Endless observation reservations are recorded once in
+[§9.3.119](#harmony-endless-reservations-20261102). Sources: machine-local HV-6,
+HV-7, HV-8, HV-9, HV-10 and HV-INT `report.md`. The workers' HV-8/HV-10 reports
+precede audition; the author quotations and later acceptance come from the
+orchestrator's DOC-1 brief, not those pre-audition reports.
+
+<a id="flora-amplitude-and-mixed-roughness-20261102"></a>
+
+### 9.3.122 2026-11-02: Flora amplitude tracking and the rejected mixed-R growth rule
+
+**FA-1, adopted and implemented.** Supported tonal/residual amplitude targets and
+their joint normalization follow current biomass every hop through the existing
+slew. Confirmed beat/subdivision opportunities still gate births and discrete
+replacements; an unchanged allocation no longer refreshes amplitude only at those
+crossings. In the full ref/demo records, beat-only amplitude changes without an
+allocation change fell to zero. The remaining 109 / 125 crossing-time target
+changes all coincided with birth or retirement. Missing/unconfirmed observation
+keeps the existing continuous fallback, and support loss or release may retire
+immediately; not every birth or retirement is on a beat. This is an Author rule,
+not a new principle or a change to the finite-tail law. Scoped tests and the
+declared-load ABBA passed; this unit did not include author audition.
+
+**UG-2, diagnosis.** External R penalties operated as designed, but did not reject
+every audible beat or rough pair. Flora's own R was excluded from growth; a
+rearticulated Voice could overlap the outgoing Tone and older tails; near-unison
+roughness is weak under the existing kernel's center suppression. Lane separation
+also does not eliminate the kernel's wider response. These are ownership boundaries
+and valuation tradeoffs, not evidence of a violation of the adopted H/R equations.
+Pair-seconds count simultaneous partial pairs and are neither audible duration nor
+a perceptual classification of slow beating.
+
+**FR-1, not adopted.** The trial evaluated Flora growth with external H and mixed
+R from the same observation, retaining external resource power and seed H. It
+passed implementation checks but failed its registered behavioral acceptance:
+same-Flora pairs in `0.06 < ΔERB < 1` increased in ref from 1,224.789 to 1,226.987
+pair-seconds, although demo decreased from 1,859.979 to 1,716.971. Lichen's longest
+lowest-lane stays also lengthened in both pieces. Aggregate improvement did not
+discharge the per-piece criteria. The proposal was not integrated; Flora retains
+its existing self-excluded growth C/H. Its patch is preserved at machine-local
+`.orchestration/units/FR-1/validation/fr1-only.patch`, together with the failed
+acceptance records. FA-1 remains adopted independently.
+
+Voice tail-roughness valuation and the author's correction of the proposed default
+change are recorded in [§9.3.120](#voice-rearticulation-roughness). Sources: FA-1,
+UG-2 and FR-1 `report.md`; DOC-1's brief records the final non-adoption of FR-1.

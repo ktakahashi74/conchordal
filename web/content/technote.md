@@ -293,6 +293,9 @@ applied at the script cursor. Relations value support or departure among changin
 destinations. Continuation values learned support for retaining, waiting or declining
 birth; its negative direction prefers departure from that support. Their paired,
 bounded consequences add to existing scores, including habituation and bodily costs.
+Each column uses `tanh(paired_difference / development_IQR)` relative to the native
+winner; its scale is fixed, with a floor of 1e-6. The signed sum augments the native
+score rather than replacing it with learned compatibility.
 Relations alone do not change the baseline act/retain choice. The temporal model learns
 from sample-timestamped acoustic support and actual renderer events within the current
 performance. It uses no fixed key profiles, chord labels, progression tables or external
@@ -626,6 +629,19 @@ is applied once when a consumer samples the resulting score.
 the continuous-recharge score, independently of pitch movement. Basal drain and
 telemetry retain their mixed-field level; the optional body-weighted metabolism
 evaluator retains its own contract.
+
+Population `.tail_roughness_aversion(w)` is a separate **author rule**, initially
+or live, finite `[0,1]`, default 0. With `leave_self_out(true)`, only pitch candidates
+that actually replace a held Tone through Off/On use
+`R_w = (1-w) R_external + w R_mixed`, retaining external H and the existing field
+coefficients and sigmoid. This lets a composer weigh roughness against the sound
+that is about to become a tail. Zero bypasses the additional view; one uses the
+full mixed R, including older tails and the outgoing Tone. Both observations share
+the sample time and grid. Positive weight without self-exclusion has no effect
+and warns once per Population. Holds, Glide, GateSnap and proposals that do not
+trigger On retain their existing evaluation. The control changes pitch valuation,
+not the sensed H/R, environmental recharge or Flora growth, and does not predict
+future release audio. Live changes apply to subsequent proposals.
 
 These timing-sensitive transitions and crowding evaluations are guarded by regression tests to prevent subtle breakage.
 
@@ -1096,7 +1112,8 @@ This saturates at one `RENEWAL_SEC` (10 ecological seconds) per nominal opportun
 continuous fallback uses $r=1$. Growth, diffusion, seeding, resource recovery and
 consumption share this time scale, as does retirement. Biomass and resources
 remain continuous. Supported tonal and residual amplitude targets and their joint
-normalization follow biomass every hop through the existing slew. Confirmed
+normalization follow biomass every hop through the existing slew. A not-yet-sounding
+lane stays silent until an allocation opportunity permits its birth. Confirmed
 opportunities gate births and discrete replacements; a crossing alone does not
 refresh unchanged carriers. Fallback retains continuous allocation. Waiting lanes reserve only current excess in their last window.
 Support loss, separation conflicts and release retire lanes immediately, with a
@@ -1481,6 +1498,11 @@ observer, and computes projections with two triangular solves instead of propaga
 an inverse. Input checks precede rank-1 updates; refactorization uses reusable
 thread-local scratch and commits only on success.
 
+Projection solves use iterative refinement against the retained compensated Gram
+matrix. Double-double residuals drive at most twelve correction solves, stopping
+early on exact stagnation. This repairs numerical projection without changing the
+ridge or the cumulative model.
+
 Response sums retain high and low parts, folding every two terms with TwoSum.
 At most 10 observed response updates are batched for locality without changing
 per-component addition order; queries, clone, gap and freeze materialize them first.
@@ -1570,7 +1592,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Frequency-axis terrain (cochlea/brainstem models) | Roughness, Harmonicity, Consonance kernels | §3 | Implemented |
 | Temporal-axis terrain (neural oscillation) | Emergent meter: forced limit cycle, default onset recurrence or optional continuous T2 recurrence for tempo adaptation; fast input updates phase and intensity, and confidence does not certify phase-origin accuracy. `metric` keeps explicit synchronization; `entrained`, `steady` and `flow` use a bounded acoustic observer and a bodily participation policy; steady fixes due and chooses sound or skip | §4, §5.4 | Partial. Persistence of temporal relations across all conditions is open; measure-accent coupling is opt-in |
 | Landscape variability (culture, individual, unknown principles) | consonance kernel coefficients, `set_roughness_aversion`, `set_harmonicity_preference`, default-enabled habituation erosion | §3.4–3.5, §6.3.6 | Partial. Cultural tuning systems are not yet absorbed |
-| Adaptation and expectation | Per-Voice `AdaptationContext`, ecology/listener `HabituationField`, short-term recurrence and energy forecasts feeding habitat participation | §3.5, §5 | Partial. Relational memory, phrase/scene expectation and action-value learning are open |
+| Adaptation and expectation | Per-Voice `AdaptationContext`, ecology/listener `HabituationField`, short-term recurrence and energy prediction feeding habitat participation, bounded current-performance harmonic-relation memory | §3.4–3.5, §5 | Partial: harmonic relation and continuation valuation are implemented as optional author rules; phrase/scene expectation and action-value learning remain open |
 | Acoustic life: perception, metabolism, autonomy | The Voice: articulation-life cores, normalized energy, time-domain endurance/recovery, viability | §5 | Implemented |
 | Population: niches, symbiosis, terrain deformation | Crowding, respawn, the closed loop | §5 | Implemented |
 | No central conductor | Local perception only; one shared meter reads habitat recurrence and fast phase/intensity evidence, with optional continuous T2 recurrence | §4–5, §7 | Implemented. Dedicated beat carriers appear only in explicit synchronization demonstrations (sample 07) |
@@ -1582,7 +1604,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | Cognition coupled to the sound actually presented | Separate presentation analysis; missing hops invalidate observations and suspend DCC pressure until a complete window is available | §6.2 | Implemented. Physical-device overload validation is open |
 | Excitation and body radiation | Optional excitation renderer in the instrument and offline binary: immediate Sine/Harmonic response and Modal free decay, with separate Off and disposal | §5.1, §6.1 | Implemented as an opt-in; the default remains the legacy renderer |
 | Music as a living performance | The instrument exposes no audio-file output; the separate `conchordal-render` binary supports offline study | §6 | Implemented as a binary boundary |
-| Performance without a predetermined end | `endless()`, incremental score delivery, explicit ending, tick/f64 clocks, audio supervision and stabilized cumulative numerics | §6.4–6.5 | Partial. Implementation is integrated; V5 hardware recovery, V6 endurance, V7 long-run estimator precision and V8 realtime-load acceptance remain unacquired |
+| Performance without a predetermined end | `endless()`, incremental score delivery, explicit ending, tick/f64 clocks, audio supervision and stabilized cumulative numerics | §6.4–6.5 | Partial. On IP source `ac5ad8d2`, V6 passed 132,000 score seconds and V7 passed the 10⁶-issue checkpoint. The 12-condition V8 instrumentation subtraction found no product regression, and the two endless suspects passed device retakes; the 64-Voice population-stage cost remains about +127 µs/hop (1.2% of budget). V5 hardware recovery and indefinite stability are not established |
 | Dissolution of roles; spatial landscapes; heredity of timbre; other domains | Hereditary respawn exists as assays | — | Horizon |
 
 ## 9.2 Open Problems

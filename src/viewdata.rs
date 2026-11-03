@@ -136,8 +136,6 @@ pub struct SimulationMeta {
     pub window_peak: [f32; 2],
     pub kuramoto_order_r: Option<f32>,
     pub kuramoto_active_count: usize,
-    /// Offset-removed entrainment phases (radians) of live voices, for the phase circle.
-    pub entrain_phases: Vec<f32>,
 }
 
 #[derive(Clone, Debug, Default)]

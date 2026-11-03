@@ -228,6 +228,19 @@ pub(crate) use frequency::field_density_mass;
 use social::*;
 
 impl Community {
+    #[cfg(test)]
+    pub(crate) fn rng_state_for_test(&self) -> String {
+        format!(
+            "{:?}",
+            (
+                self.seed,
+                self.spawn_counter,
+                self.current_frame,
+                &self.population_sway
+            )
+        )
+    }
+
     const CONTROL_STEP_SAMPLES: usize = 64;
 
     pub fn new(time: Timebase) -> Self {

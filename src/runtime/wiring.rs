@@ -172,6 +172,11 @@ pub(super) struct RuntimeWiring {
     pub(super) listener_analysis_handle: Option<thread::JoinHandle<()>>,
 }
 
+#[cfg(test)]
+thread_local! {
+    pub(super) static DISABLE_GUI_SUPPORT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// Wiring shared by both runtime paths: analysis core, channels, analysis
 /// worker threads, Community/Conductor setup, and the worker thread spawn.
 pub(super) fn wire_runtime(
@@ -315,7 +320,10 @@ pub(super) fn wire_runtime(
                     _ => false,
                 }
             });
-    let support_enabled = scenario.end == crate::scenario::ScenarioEnd::Open || harmonic_relations_enabled || scenario.events.iter().flat_map(|event| &event.actions).any(|action| {
+    let gui_support = ui_tx.is_some();
+    #[cfg(test)]
+    let gui_support = gui_support && !DISABLE_GUI_SUPPORT.get();
+    let support_enabled = gui_support || scenario.end == crate::scenario::ScenarioEnd::Open || harmonic_relations_enabled || scenario.events.iter().flat_map(|event| &event.actions).any(|action| {
         matches!(action, crate::scenario::Action::SetSupportPreference { axis, value } if *axis < 3 && value.is_finite() && *value != 0. && (*axis != 2 || *value > 0.))
         || matches!(action, crate::scenario::Action::UpdateLandscape { update } if update.support_preference.iter().enumerate().any(|(axis, value)| value.is_some_and(|w| w.is_finite() && w != 0. && (axis != 2 || w > 0.))))
     });
@@ -330,6 +338,9 @@ pub(super) fn wire_runtime(
             geometry.clone(),
             harmonic_relations_enabled || scenario.end == crate::scenario::ScenarioEnd::Open,
         );
+        if gui_support {
+            analysis_stream.publish_support_for_display();
+        }
         analysis_stream.apply_update(crate::core::landscape::LandscapeUpdate {
             support_preference: [Some(0.); 3],
             ..Default::default()

@@ -1,8 +1,8 @@
 use crate::core::db::amp_to_db;
 use crate::ui::plots::{
-    METER_DISPLAY_CONFIDENCE_MIN, beat_strobe_plot, draw_listener_mandala,
-    draw_roughness_harmonicity, log2_plot_hz, plot_population_dynamics, rhythm_slow_plots,
-    spectrum_time_freq_axes, time_plot,
+    METER_DISPLAY_CONFIDENCE_MIN, beat_strobe_legend, beat_strobe_plot, draw_harmony_circle,
+    draw_meter_circle, draw_roughness_harmonicity, log2_plot_hz, plot_population_dynamics,
+    rhythm_slow_plots, spectrum_time_freq_axes, time_plot,
 };
 use crate::viewdata::{PlaybackState, UiFrame};
 use egui::{CentralPanel, Color32, Panel, Vec2};
@@ -196,7 +196,12 @@ fn mini_fixed_text_label(ui: &mut egui::Ui, text: impl Into<String>, width: f32,
     );
 }
 
-fn mandala_state_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color: Color32) {
+fn listener_state_meter(
+    ui: &mut egui::Ui,
+    label: &str,
+    value: Option<f32>,
+    color: Color32,
+) -> egui::Response {
     let level = value.unwrap_or(0.0).clamp(0.0, 1.0);
     let text = if value.is_some() {
         format!("{level:>4.2}")
@@ -207,7 +212,7 @@ fn mandala_state_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color
         ui.label(egui::RichText::new(label).size(9.0).color(color));
         ui.horizontal(|ui| {
             let desired = Vec2::new(42.0, 8.0);
-            let (rect, resp) = ui.allocate_exact_size(desired, egui::Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
             let painter = ui.painter_at(rect);
             painter.rect_filled(rect, 2.0, ui.visuals().extreme_bg_color);
             painter.rect_stroke(
@@ -222,89 +227,131 @@ fn mandala_state_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color
             )
             .shrink2(Vec2::splat(1.0));
             painter.rect_filled(fill_rect, 1.0, color.gamma_multiply(0.75));
-            resp.on_hover_text(label);
 
             mini_fixed_text_label(ui, text, 29.0, color);
         });
-    });
+    })
+    .response
 }
 
-fn draw_mandala_state_readout(ui: &mut egui::Ui, frame: &UiFrame) {
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing.y = 1.0;
-        mandala_state_meter(
-            ui,
-            "Sensory salience",
-            frame
-                .listener
-                .has_fast_state
-                .then_some(frame.listener.attention_level),
-            Color32::from_rgb(90, 180, 230),
-        );
-        mandala_state_meter(
-            ui,
-            "Adapted stability",
-            frame
-                .listener
-                .has_state
-                .then_some(frame.listener.stability_level),
-            Color32::from_rgb(80, 200, 130),
-        );
-        let prediction = frame.listener.prediction;
-        let forecast = prediction.forecast;
-        mandala_state_meter(
-            ui, "Arrival score",
-            forecast.and_then(|f| f.arrival_score), Color32::from_rgb(235, 200, 75),
-        );
-        mandala_state_meter(
-            ui, "Uncertainty H / ln 5",
-            forecast.and_then(|f| f.entropy_nats).map(|h| h / 5.0_f32.ln()),
-            Color32::from_rgb(235, 95, 85),
-        );
-        let (entropy, coverage, horizon) = forecast.map_or_else(
-            || ("H: N/A".to_owned(), "Coverage: N/A".to_owned(), "Δ: N/A".to_owned()),
-            |f| (
-                f.entropy_nats.map_or_else(|| "H: N/A".to_owned(), |h| format!("H: {h:.2} nat")),
-                format!("Coverage score: {:.3}", f.coverage_score),
-                format!("Δ: {:.3} s (1 beat)", f.horizon_sec),
-            ),
-        );
-        // These readouts live in the menu so the left column does not set the
-        // dashboard height (the lower plots then fit the minimum window).
-        ui.menu_button("E0 details", |ui| {
-            ui.set_max_width(400.0);
-            for text in [&entropy, &coverage, "Target: new audible cell", &horizon] {
-                ui.label(text);
-            }
-            ui.label("Entropy uses p_known; all UNKNOWN has N/A entropy. Coverage is an uncalibrated support score.");
-            ui.label("E0 q = coverage × p_known + remaining mass × marginal · uncalibrated scores");
-            ui.label("Arrival target: the next support change enters a different audible cell. Later changes are outside this target.");
-            if let Some(f) = forecast {
-                ui.label(format!("Window: one predicted beat, Δ = {:.3} s", f.horizon_sec));
-                ui.label(format!("Samples: ({}, {}] · reference: {}", f.start_sample, f.end_sample, f.reference_sample));
-                ui.label(format!("Reference cell: {:?} · retained successors: {}", f.reference_bin, f.examples));
-                if let Some(p) = f.q {
-                    for (name, score) in ["Unchanged", "Audible entry", "Lower cell", "Higher cell", "Silence"].into_iter().zip(p) {
-                        ui.label(format!("{name}: {score:.3}"));
-                    }
-                } else {
-                    ui.label("Next event: N/A (no same-support marginal at issuance)");
-                }
-            } else {
-                ui.label("Prediction: N/A (meter or observation unavailable)");
-            }
-            if let Some(cancelled) = prediction.censored {
-                ui.label(format!("Censored window #{}: reference changed before or at start (sample {})", cancelled.forecast.version, cancelled.observed_sample));
-            }
-            if let Some(done) = prediction.completed {
-                let surprise = if done.zero_likelihood { "∞ (zero model likelihood)".to_owned() }
-                    else { done.surprise_nats.map_or_else(|| "N/A".to_owned(), |s| format!("{s:.3} nat")) };
-                ui.label(format!("Last completed window #{} · surprise: {surprise}", done.forecast.version));
-            } else {
-                ui.label("Surprise: N/A (no completed window)");
-            }
+fn draw_listener_state_readout(ui: &mut egui::Ui, frame: &UiFrame) {
+    let prediction = frame.listener.prediction;
+    let forecast = prediction.forecast;
+    // The E0 details belong to the two bars they explain, so they appear on hover
+    // there instead of in a separate menu row.
+    egui::Grid::new("listener_state_readout")
+        .num_columns(2)
+        .spacing([8.0, 2.0])
+        .show(ui, |ui| {
+            listener_state_meter(
+                ui,
+                "Sensory salience",
+                frame
+                    .listener
+                    .has_fast_state
+                    .then_some(frame.listener.attention_level),
+                Color32::from_rgb(90, 180, 230),
+            )
+            .on_hover_text("Bottom-up acoustic change (flux), smoothed.");
+            listener_state_meter(
+                ui,
+                "Adapted stability",
+                frame
+                    .listener
+                    .has_state
+                    .then_some(frame.listener.stability_level),
+                Color32::from_rgb(80, 200, 130),
+            )
+            .on_hover_text("Mass-weighted consonance field after habituation.");
+            ui.end_row();
+            listener_state_meter(
+                ui,
+                "Uncertainty H / ln 5",
+                forecast
+                    .and_then(|f| f.entropy_nats)
+                    .map(|h| h / 5.0_f32.ln()),
+                Color32::from_rgb(235, 95, 85),
+            )
+            .on_hover_ui(|ui| e0_details(ui, &prediction));
+            listener_state_meter(
+                ui,
+                "Arrival score",
+                forecast.and_then(|f| f.arrival_score),
+                Color32::from_rgb(235, 200, 75),
+            )
+            .on_hover_ui(|ui| e0_details(ui, &prediction));
+            ui.end_row();
         });
-    });
+}
+
+/// What the E0 uncertainty and arrival bars are based on.
+fn e0_details(ui: &mut egui::Ui, prediction: &crate::viewdata::ListenerPrediction) {
+    ui.set_max_width(400.0);
+    let forecast = prediction.forecast;
+    ui.label(egui::RichText::new("E0 prediction (uncalibrated scores)").strong());
+    match forecast {
+        Some(f) => {
+            ui.label(
+                f.entropy_nats
+                    .map_or_else(|| "H: N/A".to_owned(), |h| format!("H: {h:.2} nat")),
+            );
+            ui.label(format!("Coverage score: {:.3}", f.coverage_score));
+            ui.label("Target: new audible cell");
+            ui.label(format!("Δ: {:.3} s (1 beat)", f.horizon_sec));
+        }
+        None => {
+            ui.label("Prediction: N/A (meter or observation unavailable)");
+        }
+    }
+    ui.label("Entropy uses p_known; all UNKNOWN has N/A entropy. Coverage is an uncalibrated support score.");
+    ui.label("E0 q = coverage × p_known + remaining mass × marginal · uncalibrated scores");
+    ui.label("Arrival target: the next support change enters a different audible cell. Later changes are outside this target.");
+    if let Some(f) = forecast {
+        ui.label(format!(
+            "Samples: ({}, {}] · reference: {}",
+            f.start_sample, f.end_sample, f.reference_sample
+        ));
+        ui.label(format!(
+            "Reference cell: {:?} · retained successors: {}",
+            f.reference_bin, f.examples
+        ));
+        if let Some(p) = f.q {
+            for (name, score) in [
+                "Unchanged",
+                "Audible entry",
+                "Lower cell",
+                "Higher cell",
+                "Silence",
+            ]
+            .into_iter()
+            .zip(p)
+            {
+                ui.label(format!("{name}: {score:.3}"));
+            }
+        } else {
+            ui.label("Next event: N/A (no same-support marginal at issuance)");
+        }
+    }
+    if let Some(cancelled) = prediction.censored {
+        ui.label(format!(
+            "Censored window #{}: reference changed before or at start (sample {})",
+            cancelled.forecast.version, cancelled.observed_sample
+        ));
+    }
+    if let Some(done) = prediction.completed {
+        let surprise = if done.zero_likelihood {
+            "∞ (zero model likelihood)".to_owned()
+        } else {
+            done.surprise_nats
+                .map_or_else(|| "N/A".to_owned(), |s| format!("{s:.3} nat"))
+        };
+        ui.label(format!(
+            "Last completed window #{} · surprise: {surprise}",
+            done.forecast.version
+        ));
+    } else {
+        ui.label("Surprise: N/A (no completed window)");
+    }
 }
 
 fn meter_band_label(name: &str, band: crate::core::meter::MeterBand) -> String {
@@ -457,16 +504,21 @@ fn draw_listener_dashboard(
     frame: &UiFrame,
     rhythm_history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
     dorsal_history: &VecDeque<(f64, crate::viewdata::DorsalFrame)>,
-    window_start: f64,
+    harmony_history: &VecDeque<(f64, Option<Vec2>)>,
     window_end: f64,
     time_link_id: &str,
 ) {
+    let window_start = window_end - TIME_WINDOW_SEC;
     let (left_width, _) = split_widths(ui, 0.10, 250.0, 270.0, 640.0);
     let dashboard_height = 300.0;
     let audio_height = 60.0;
     let plot_height = 82.0;
     let strobe_height = 128.0;
-    let mandala_side = 104.0;
+    // Reserve the audio heading, separator and the two readout rows; circle titles
+    // sit inside the circles' corners. At the default width the circles reach half
+    // the column, and the Roughness/Harmonicity layout test bounds this height.
+    let circle_side = (dashboard_height - audio_height - 110.0_f32)
+        .min((left_width - ui.spacing().item_spacing.x) * 0.5);
 
     // Top-align both columns; centering left the shorter column floating.
     // `horizontal_top` would start the row at the full available height, which
@@ -477,6 +529,7 @@ fn draw_listener_dashboard(
             Vec2::new(left_width, dashboard_height),
             egui::Layout::top_down(egui::Align::LEFT),
             |ui| {
+                ui.spacing_mut().item_spacing.y = 2.0;
                 ui.horizontal(|ui| {
                     ui.heading("Audio");
                     ui.separator();
@@ -525,19 +578,11 @@ fn draw_listener_dashboard(
                 );
 
                 ui.separator();
-                // Size to content: inside the page ScrollArea the available height
-                // is unbounded, so filling it would push the lower plots away.
-                ui.heading("Neural Mandala");
-                ui.horizontal_top(|ui| {
-                    draw_listener_mandala(
-                        ui,
-                        &frame.listener,
-                        &frame.meta.entrain_phases,
-                        frame.meta.kuramoto_order_r,
-                        Vec2::splat(mandala_side),
-                    );
-                    draw_mandala_state_readout(ui, frame);
+                ui.horizontal(|ui| {
+                    draw_meter_circle(ui, rhythm_history, window_end, circle_side);
+                    draw_harmony_circle(ui, &frame.landscape, harmony_history, circle_side);
                 });
+                draw_listener_state_readout(ui, frame);
             },
         );
 
@@ -667,7 +712,7 @@ fn draw_listener_dashboard(
                 );
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.label("Neural Rhythm");
+                    ui.label("Listener Meter");
                     if frame.listener.has_fast_state {
                         let meter = frame.listener.meter;
                         let (sub_label, measure_label) = meter_ratio_labels(&meter);
@@ -691,7 +736,7 @@ fn draw_listener_dashboard(
                     }
                 });
                 ui.columns(2, |columns| {
-                    columns[0].label("Beat strobe · newest below · gray: unknown");
+                    beat_strobe_legend(&mut columns[0]);
                     beat_strobe_plot(&mut columns[0], rhythm_history, strobe_height, window_end);
                     columns[1].horizontal(|ui| {
                         ui.label("30 s");
@@ -718,6 +763,7 @@ pub fn main_window(
     frame: &UiFrame,
     rhythm_history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
     dorsal_history: &VecDeque<(f64, crate::viewdata::DorsalFrame)>,
+    harmony_history: &VecDeque<(f64, Option<Vec2>)>,
     display_time: f64,
     runtime_error: Option<&str>,
     exit_flag: &Arc<AtomicBool>,
@@ -746,46 +792,51 @@ pub fn main_window(
         });
 
         ui.horizontal(|ui| {
-            let controls_width = 180.0;
-            if let Some(end) = frame.meta.end {
-                let progress = if end > 0.0 {
-                    (frame.meta.time_sec / end).clamp(0.0, 1.0)
+            // Right to left: Exit sits at the window's right edge, the playback
+            // state beside it, and the progress bar takes the remaining width.
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button("Exit").clicked() {
+                    exit_flag.store(true, Ordering::SeqCst);
+                }
+                match frame.meta.playback_state {
+                    PlaybackState::NotStarted => {
+                        if ui.button("Start").on_hover_text("Start (Space)").clicked() {
+                            start_flag.store(true, Ordering::SeqCst);
+                        }
+                    }
+                    PlaybackState::Playing => {
+                        if ui.button("End").clicked() {
+                            end_request.store(true, Ordering::SeqCst);
+                        }
+                    }
+                    PlaybackState::Ending => {
+                        ui.label("Ending (fade)…");
+                    }
+                    PlaybackState::Finished => {
+                        ui.label("Finished");
+                    }
+                }
+                if let Some(end) = frame.meta.end {
+                    let progress = if end > 0.0 {
+                        (frame.meta.time_sec / end).clamp(0.0, 1.0)
+                    } else {
+                        0.0
+                    };
+                    ui.add(
+                        egui::ProgressBar::new(progress as f32)
+                            .text(format!(
+                                "{} / {}",
+                                format_time(frame.meta.time_sec),
+                                format_time(end)
+                            ))
+                            .desired_width(ui.available_width().max(50.0)),
+                    );
                 } else {
-                    0.0
-                };
-                ui.add(
-                    egui::ProgressBar::new(progress as f32)
-                        .text(format!(
-                            "{} / {}",
-                            format_time(frame.meta.time_sec),
-                            format_time(end)
-                        ))
-                        .desired_width((ui.available_width() - controls_width).max(50.0)),
-                );
-            } else {
-                ui.label(format!("{} · open end", format_time(frame.meta.time_sec)));
-            }
-            match frame.meta.playback_state {
-                PlaybackState::NotStarted => {
-                    if ui.button("Start").on_hover_text("Start (Space)").clicked() {
-                        start_flag.store(true, Ordering::SeqCst);
-                    }
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        ui.label(format!("{} · open end", format_time(frame.meta.time_sec)));
+                    });
                 }
-                PlaybackState::Playing => {
-                    if ui.button("End").clicked() {
-                        end_request.store(true, Ordering::SeqCst);
-                    }
-                }
-                PlaybackState::Ending => {
-                    ui.label("Ending (fade)…");
-                }
-                PlaybackState::Finished => {
-                    ui.label("Finished");
-                }
-            }
-            if ui.button("Exit").clicked() {
-                exit_flag.store(true, Ordering::SeqCst);
-            }
+            });
         });
 
         if frame.meta.playback_state == PlaybackState::NotStarted
@@ -803,7 +854,6 @@ pub fn main_window(
         }
         let time_link_id = "time_freq_link";
         let window_end = display_time;
-        let window_start = window_end - TIME_WINDOW_SEC;
         draw_system_diagnostics(ui, frame);
         ui.separator();
         draw_listener_dashboard(
@@ -811,7 +861,7 @@ pub fn main_window(
             frame,
             rhythm_history,
             dorsal_history,
-            window_start,
+            harmony_history,
             window_end,
             time_link_id,
         );
@@ -1173,6 +1223,7 @@ mod layout_tests {
                 &frame,
                 &VecDeque::new(),
                 &VecDeque::new(),
+                &VecDeque::new(),
                 0.0,
                 None,
                 &flag,
@@ -1190,6 +1241,37 @@ mod layout_tests {
         });
         // 102 is the R/H plot height passed by `main_window`.
         let bottom = heading_bottom.expect("R/H heading on screen") + 102.0;
-        assert!(bottom <= 900.0, "R/H plot ends at {bottom}");
+        let anchors: Vec<_> = output
+            .shapes
+            .iter()
+            .filter_map(|shape| match &shape.shape {
+                egui::epaint::Shape::Text(text)
+                    if matches!(
+                        text.galley.text(),
+                        "Audio"
+                            | "Meter"
+                            | "Harmony · habitat"
+                            | "Population Dynamics"
+                            | "Roughness / Harmonicity"
+                    ) =>
+                {
+                    Some((text.galley.text(), text.pos.y))
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(
+            bottom <= 900.0,
+            "R/H plot ends at {bottom}; anchors: {anchors:?}"
+        );
+        // The author asked for Exit at the right edge, not after a fixed gap.
+        let exit_right = output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::epaint::Shape::Text(text) if text.galley.text() == "Exit" => {
+                Some(text.pos.x + text.galley.size().x)
+            }
+            _ => None,
+        });
+        let exit_right = exit_right.expect("Exit button on screen");
+        assert!(exit_right > 1150.0, "Exit ends at {exit_right}");
     }
 }

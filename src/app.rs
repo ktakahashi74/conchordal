@@ -29,6 +29,7 @@ pub struct App {
     runtime_failed: Arc<AtomicBool>,
     listener_rhythm_history: VecDeque<ListenerRhythmHop>,
     listener_attention_history: VecDeque<(f64, DorsalFrame)>,
+    harmony_history: VecDeque<(f64, Option<egui::Vec2>)>,
     display_clock: DisplayClock,
     start_flag: Arc<AtomicBool>,
     level_history: VecDeque<(std::time::Instant, [f32; 2])>,
@@ -167,6 +168,7 @@ impl App {
             runtime_failed,
             listener_rhythm_history: VecDeque::with_capacity(4096),
             listener_attention_history: VecDeque::with_capacity(4096),
+            harmony_history: VecDeque::new(),
             display_clock: DisplayClock::default(),
             start_flag: rt.start_flag,
             level_history: VecDeque::with_capacity(256),
@@ -175,6 +177,7 @@ impl App {
     }
 
     fn apply_ui_frame(&mut self, frame: UiFrame) {
+        crate::ui::plots::observe_harmony(&mut self.harmony_history, &frame);
         self.last_frame = frame;
 
         let t = self.last_frame.meta.time_sec;
@@ -267,6 +270,7 @@ impl eframe::App for App {
             &self.last_frame,
             &self.listener_rhythm_history,
             &self.listener_attention_history,
+            &self.harmony_history,
             display_time,
             self.runtime_error.as_deref(),
             &self.exiting,
@@ -441,6 +445,7 @@ mod tests {
             runtime_failed: Arc::clone(&failed),
             listener_rhythm_history: VecDeque::new(),
             listener_attention_history: VecDeque::new(),
+            harmony_history: VecDeque::new(),
             display_clock: DisplayClock::default(),
             start_flag: Arc::new(AtomicBool::new(false)),
             level_history: VecDeque::new(),

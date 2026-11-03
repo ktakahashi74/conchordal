@@ -490,3 +490,34 @@ fn support_processing_reuses_scratch_with_one_publication_in_flight() {
     assert_eq!(counts.count, 0, "{counts:?}");
     assert_eq!(counts.bytes, 0, "{counts:?}");
 }
+
+#[test]
+fn support_display_survives_zero_updates_and_gaps_without_enabling_loo() {
+    use crate::core::stream::analysis::AnalysisStream;
+    let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+    let mut stream = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
+    let geometry = Geometry::new(&stream.last().space, &params.harmonicity_kernel);
+    stream.enable_support(geometry, false);
+    stream.publish_support_for_display();
+    let pcm = vec![0.002; stream.hop_samples()];
+    let zero = crate::core::landscape::LandscapeUpdate {
+        support_preference: [Some(0.); 3],
+        harmonic_relations_weight: Some(0.),
+        harmonic_continuation_weight: Some(0.),
+        ..Default::default()
+    };
+    stream.apply_update(zero);
+    assert!(stream.process(&pcm).support.is_some());
+    assert!(stream.voice_observer().process(&pcm).support.is_none());
+    stream.gap_to(96_000);
+    stream.apply_update(zero);
+    assert_eq!(
+        stream.process(&pcm).support.as_ref().unwrap().end_sample,
+        96_000 + pcm.len() as u64
+    );
+    stream.apply_update(crate::core::landscape::LandscapeUpdate {
+        support_preference: [Some(1.), None, None],
+        ..Default::default()
+    });
+    assert!(stream.voice_observer().process(&pcm).support.is_some());
+}

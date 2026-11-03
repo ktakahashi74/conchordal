@@ -309,6 +309,21 @@ pub(crate) struct TemporalParticipation {
 }
 
 impl TemporalParticipation {
+    #[cfg(test)]
+    pub(crate) fn rng_clock_state_for_test(&self) -> String {
+        format!(
+            "{:?}",
+            (
+                &self.rng,
+                self.due_frame,
+                self.last_onset,
+                self.last_reference_frame,
+                self.cluster_remaining,
+                self.skipped_cycles
+            )
+        )
+    }
+
     pub(crate) fn new(
         fs: u32,
         base_rate_hz: f32,

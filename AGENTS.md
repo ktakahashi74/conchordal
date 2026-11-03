@@ -299,6 +299,10 @@ source-matched versus original computation rule or §9.3.56's five listener laye
     30-second-bounded worker buffer retains undelivered hops; only frame construction
     copies the batch. Headless and offline render pass `ui_tx = None`
     and construct neither initial nor runtime UI frames.
+    GUI wiring also publishes mixed-habitat harmonic support at zero valuation
+    weights in every scene. Its two analysis buffers reuse storage; UI-retained
+    snapshots can require owned publication copies. Display-only support does not
+    enable LOO support scans or the harmonic temporal-relations worker.
   - Reporting allocates only when enabled, across `emit_hop_reports`, participation
     context/decision collection in `advance_population`, prediction/body/outcome paths
     in `render_and_route_audio` and `drive_production_meter` (`src/runtime/phases.rs`),
@@ -982,6 +986,10 @@ and require reacquisition for that configuration.
 - Keep habituation, ListenerTwin and Flora growth on their existing inputs.
   Support publication reuses two buffers; retained snapshots may require owned
   publication copies. Do not call the whole asynchronous pipeline allocation-free.
+- GUI wiring publishes mixed-habitat support in every scene, including with all
+  three preferences zero. This display-only reservation survives zero updates and
+  gaps, without reserving temporal relations or LOO support. Headless/offline and
+  report-only wiring retain their existing support-enablement conditions.
 
 ## Harmonic temporal relations (HV-9)
 

@@ -268,6 +268,65 @@ fn strobe_rows(
     rows
 }
 
+/// Display-only extrapolation of the latest supported beat phase to the display
+/// time, so the newest row shows where "now" falls inside the current beat. The
+/// listener itself is not advanced; this only spans the gap to the last hop.
+fn strobe_playhead(
+    history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
+    window_end: f64,
+) -> Option<f32> {
+    let hop = history
+        .iter()
+        .rev()
+        .find(|hop| hop.time_sec <= window_end)?;
+    let beat = hop.meter.beat;
+    (beat.confidence >= METER_DISPLAY_CONFIDENCE_MIN
+        && beat.phase.is_finite()
+        && beat.freq_hz.is_finite()
+        && beat.freq_hz > 0.0)
+        .then(|| {
+            let observed = beat.phase.rem_euclid(std::f32::consts::TAU) / std::f32::consts::TAU;
+            (observed + beat.freq_hz * (window_end - hop.time_sec) as f32).rem_euclid(1.0)
+        })
+}
+
+/// One-line key for the strobe: what a row is and the three patterns to look for.
+pub(crate) fn beat_strobe_legend(ui: &mut egui::Ui) {
+    let small = |text: &str| egui::RichText::new(text).size(10.0).color(Color32::GRAY);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 4.0;
+        ui.label(small("1 row = 1 beat, newest below"));
+        // Cell columns per icon row: aligned, drifting, scattered.
+        for (name, cells) in [
+            ("in time", [0, 0, 0]),
+            ("drifting", [0, 2, 4]),
+            ("no pulse", [4, 0, 3]),
+        ] {
+            let (icon, _) = ui.allocate_exact_size(Vec2::new(14.0, 10.0), egui::Sense::hover());
+            let painter = ui.painter_at(icon);
+            painter.rect_filled(icon, 0.0, Color32::from_gray(38));
+            for (row, column) in cells.into_iter().enumerate() {
+                painter.rect_filled(
+                    egui::Rect::from_min_size(
+                        egui::pos2(
+                            icon.left() + column as f32 * 2.5,
+                            icon.top() + row as f32 * 3.4,
+                        ),
+                        Vec2::new(2.5, 3.0),
+                    ),
+                    0.0,
+                    Color32::from_rgb(80, 180, 255),
+                );
+            }
+            ui.label(small(name));
+        }
+        let (swatch, _) = ui.allocate_exact_size(Vec2::new(10.0, 10.0), egui::Sense::hover());
+        ui.painter()
+            .rect_filled(swatch, 0.0, Color32::from_gray(70));
+        ui.label(small("beat lost"));
+    });
+}
+
 pub(crate) fn beat_strobe_plot(
     ui: &mut egui::Ui,
     history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
@@ -288,24 +347,21 @@ pub(crate) fn beat_strobe_plot(
     let width = (rect.right() - left - 8.0).max(1.0);
     let x = |phase: f32| left + width * phase;
     let font = egui::FontId::monospace(10.0);
-    let ticks = rows
-        .back()
-        .and_then(|row| row.subdivision_ratio)
-        .unwrap_or(1);
-    for tick in 0..=ticks {
-        let phase = tick as f32 / ticks as f32;
-        // Keep the edge labels inside the strobe instead of clipping at its border.
-        let align = if tick == 0 {
-            egui::Align2::LEFT_TOP
-        } else if tick == ticks {
-            egui::Align2::RIGHT_TOP
-        } else {
-            egui::Align2::CENTER_TOP
-        };
+    let counts: &[&str] = match rows.back().and_then(|row| row.subdivision_ratio) {
+        Some(2) => &["0", "½"],
+        Some(3) => &["0", "⅓", "⅔"],
+        Some(4) => &["0", "¼", "½", "¾"],
+        _ => &["0"],
+    };
+    for (tick, count) in counts.iter().enumerate() {
         painter.text(
-            egui::pos2(x(phase), rect.top() + 2.0),
-            align,
-            format!("{phase:.2}"),
+            egui::pos2(x(tick as f32 / counts.len() as f32), rect.top() + 2.0),
+            if tick == 0 {
+                egui::Align2::LEFT_TOP
+            } else {
+                egui::Align2::CENTER_TOP
+            },
+            *count,
             font.clone(),
             Color32::LIGHT_GRAY,
         );
@@ -352,6 +408,18 @@ pub(crate) fn beat_strobe_plot(
             }
         }
     }
+    if let (Some(newest), Some(phase)) = (rows.back(), strobe_playhead(history, window_end))
+        && !newest.unknown
+    {
+        let y = rect.top() + STROBE_AXIS_HEIGHT + (rows.len() - 1) as f32 * STROBE_ROW_HEIGHT;
+        painter.line_segment(
+            [
+                egui::pos2(x(phase), y - 2.0),
+                egui::pos2(x(phase), y + STROBE_ROW_HEIGHT + 1.0),
+            ],
+            Stroke::new(1.5, Color32::WHITE),
+        );
+    }
     if let Some(row) = rows.front() {
         painter.text(
             egui::pos2(rect.left(), rect.top() + STROBE_AXIS_HEIGHT),
@@ -382,8 +450,8 @@ pub(crate) fn rhythm_slow_plots(
     let yellow = Color32::from_rgb(255, 215, 60);
     let red = Color32::from_rgb(255, 110, 90);
     for (panel, (id, axis, height, upper)) in [
-        ("rhythm_tempo", "BPM", 40.0, 240.0),
-        ("rhythm_ratio", "Sub ratio", 34.0, 4.0),
+        ("rhythm_tempo", "Tempo", 40.0, 240.0),
+        ("rhythm_ratio", "Subdivision", 34.0, 4.0),
         ("rhythm_confidence", "Confidence", 54.0, 1.0),
     ]
     .into_iter()
@@ -421,8 +489,11 @@ pub(crate) fn rhythm_slow_plots(
                         (red, "Measure confidence"),
                     ],
                 };
+                // The current value of each trace, shown at the right ("now") edge.
+                let mut current = egui::text::LayoutJob::default();
                 for (trace, &(color, name)) in traces.iter().enumerate() {
                     let mut points = Vec::new();
+                    let mut now = None;
                     for hop in history.iter().filter(|hop| hop.time_sec <= window_end) {
                         let meter = hop.meter;
                         let value = match panel {
@@ -436,7 +507,8 @@ pub(crate) fn rhythm_slow_plots(
                                 _ => meter.measure.confidence,
                             } as f64),
                         };
-                        if let Some(value) = value.filter(|value| value.is_finite()) {
+                        now = value.filter(|value| value.is_finite());
+                        if let Some(value) = now {
                             points.push([hop.time_sec - window_end, value]);
                         } else if !points.is_empty() {
                             plot_ui.line(Line::new(name, std::mem::take(&mut points)).color(color));
@@ -445,7 +517,22 @@ pub(crate) fn rhythm_slow_plots(
                     if !points.is_empty() {
                         plot_ui.line(Line::new(name, points).color(color));
                     }
+                    let text = match (panel, now) {
+                        (_, None) => "–".to_owned(),
+                        (0, Some(bpm)) => format!("{bpm:.0} BPM"),
+                        (1, Some(ratio)) => format!("x{ratio:.0}"),
+                        (_, Some(confidence)) => format!("{confidence:.2}"),
+                    };
+                    current.append(
+                        &text,
+                        if trace == 0 { 0.0 } else { 6.0 },
+                        egui::TextFormat::simple(egui::FontId::proportional(11.0), color),
+                    );
                 }
+                plot_ui.text(
+                    egui_plot::Text::new("", egui_plot::PlotPoint::new(0.0, upper), current)
+                        .anchor(egui::Align2::RIGHT_TOP),
+                );
             });
     }
 }
@@ -637,232 +724,444 @@ pub fn spectrum_time_freq_axes(
     });
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-struct ListenerMandalaLevels {
-    attention: Option<f32>,
-    stability: Option<f32>,
-    uncertainty: Option<f32>,
+// Display tessellation only; this is not a pitch-class or musical grid.
+const OCTAVE_BINS: usize = 96;
+
+fn circle_direction(phase: f32) -> Vec2 {
+    let angle = phase * std::f32::consts::TAU;
+    egui::vec2(angle.sin(), -angle.cos())
 }
 
-/// Draw listener-side meter and salience state as an at-a-glance mandala.
-///
-/// `entrain_phases` are the live voices' offset-removed rhythm phases and
-/// `entrain_order_r` their Kuramoto order; they are overlaid as dots on the
-/// subdivision ring with a mean-resultant vector so voice entrainment reads on
-/// the same compass as the listener meter.
-pub fn draw_listener_mandala(
-    ui: &mut egui::Ui,
-    listener: &crate::viewdata::ListenerFrame,
-    entrain_phases: &[f32],
-    entrain_order_r: Option<f32>,
-    size: Vec2,
-) {
-    let levels = ListenerMandalaLevels {
-        attention: listener
-            .has_fast_state
-            .then_some(listener.attention_level.clamp(0.0, 1.0)),
-        stability: listener
-            .has_state
-            .then_some(listener.stability_level.clamp(0.0, 1.0)),
-        uncertainty: listener
-            .prediction
-            .forecast
-            .and_then(|f| f.entropy_nats)
-            .map(|h| (h / 5.0_f32.ln()).clamp(0.0, 1.0)),
+fn supported_band(band: crate::core::meter::MeterBand) -> bool {
+    band.confidence >= METER_DISPLAY_CONFIDENCE_MIN
+        && band.phase.is_finite()
+        && band.freq_hz.is_finite()
+        && band.freq_hz > 0.0
+}
+
+/// The listener's measure as a discrete position, shown around the beat clock.
+/// The measure ratio can waver (for example 3 and 4 over a 2-against-3 texture),
+/// so it never drives the hand.
+struct MeasureMarks {
+    beats: u8,
+    current: u8,
+    confidence: f32,
+}
+
+struct MeterCircle {
+    /// Current beat phase in [0, 1); one turn of the hand is one beat.
+    phase: f32,
+    subdivision: Option<u8>,
+    measure: Option<MeasureMarks>,
+    current: [f32; STROBE_BINS],
+    earlier: [f32; STROBE_BINS],
+}
+
+fn meter_circle(
+    history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
+    window_end: f64,
+) -> Option<MeterCircle> {
+    let latest = history
+        .iter()
+        .rev()
+        .find(|hop| hop.time_sec <= window_end)?;
+    if latest.time_sec < window_end - crate::viewdata::RHYTHM_HISTORY_SEC
+        || !supported_band(latest.meter.beat)
+    {
+        return None;
+    }
+    // Display-only extrapolation from the latest observation to the display time.
+    let advance = |band: crate::core::meter::MeterBand| {
+        band.phase / std::f32::consts::TAU + band.freq_hz * (window_end - latest.time_sec) as f32
     };
-    draw_mandala(
-        ui,
-        &listener.meter,
-        size,
-        levels,
-        entrain_phases,
-        entrain_order_r,
-    );
+    let beat_now = advance(latest.meter.beat);
+    let measure = (matches!(latest.meter.measure_ratio, 2..=4)
+        && supported_band(latest.meter.measure))
+    .then(|| {
+        let beats = latest.meter.measure_ratio;
+        MeasureMarks {
+            beats,
+            current: ((advance(latest.meter.measure).rem_euclid(1.0) * beats as f32) as u8)
+                .min(beats - 1),
+            confidence: latest.meter.measure.confidence.clamp(0.0, 1.0),
+        }
+    });
+    let mut circle = MeterCircle {
+        phase: beat_now.rem_euclid(1.0),
+        subdivision: supported_subdivision(&latest.meter),
+        measure,
+        current: [0.0; STROBE_BINS],
+        earlier: [0.0; STROBE_BINS],
+    };
+    let mut previous = None;
+    for hop in history.iter().filter(|hop| {
+        hop.time_sec >= window_end - crate::viewdata::RHYTHM_HISTORY_SEC
+            && hop.time_sec <= window_end
+    }) {
+        if !supported_band(hop.meter.beat) {
+            // A lost beat cannot locate earlier flux in the current beat.
+            circle.current.fill(0.0);
+            circle.earlier.fill(0.0);
+            previous = None;
+            continue;
+        }
+        let phase = (hop.meter.beat.phase / std::f32::consts::TAU).rem_euclid(1.0);
+        if previous.is_some_and(|prev| phase - prev < -0.5) {
+            for (old, recent) in circle.earlier.iter_mut().zip(&mut circle.current) {
+                *old = old.max(*recent);
+                *recent = 0.0;
+            }
+        }
+        let bin = ((phase * STROBE_BINS as f32) as usize).min(STROBE_BINS - 1);
+        if hop.attention.flux.is_finite() {
+            circle.current[bin] = circle.current[bin].max(hop.attention.flux.max(0.0));
+        }
+        previous = Some(phase);
+    }
+    // Extrapolation may already have crossed into an as-yet unobserved beat.
+    if (latest.meter.beat.phase / std::f32::consts::TAU).rem_euclid(1.0)
+        + latest.meter.beat.freq_hz * (window_end - latest.time_sec) as f32
+        >= 1.0
+    {
+        for (old, recent) in circle.earlier.iter_mut().zip(&mut circle.current) {
+            *old = old.max(*recent);
+            *recent = 0.0;
+        }
+    }
+    Some(circle)
 }
 
-fn draw_mandala(
+pub(crate) fn draw_meter_circle(
     ui: &mut egui::Ui,
-    meter: &crate::core::meter::MeterState,
-    size: Vec2,
-    listener_levels: ListenerMandalaLevels,
-    entrain_phases: &[f32],
-    entrain_order_r: Option<f32>,
+    history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
+    window_end: f64,
+    side: f32,
 ) {
-    let side = size.x.min(size.y).clamp(80.0, 200.0);
-    let _scale = (side / 150.0).clamp(0.6, 1.2);
-    let (rect, _resp) = ui.allocate_exact_size(Vec2::splat(side), egui::Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(side), egui::Sense::hover());
+    response.on_hover_text("Presentation meter. One turn of the hand is one beat. Inner marks: subdivision. Bright blue: auditory flux in the current beat; dim blue: earlier beats in the retained 30 s, both normalized to the visible maximum. Outer segments: the beats of the listener's measure, the current one lit, opacity from measure confidence; gray when no measure is supported. A changing segment count shows the listener wavering between measure lengths.");
     let painter = ui.painter_at(rect);
-
-    let center = rect.center();
-    let radius = rect.width().min(rect.height()) * 0.39;
-    let start_angle = -std::f32::consts::FRAC_PI_2;
-    let wrap = |p: f32| {
-        let mut v = p % std::f32::consts::TAU;
-        if v < 0.0 {
-            v += std::f32::consts::TAU;
-        }
-        v
-    };
-
-    // Confidence (entrainment PLV) drives opacity/weight, not drive amplitude.
-    let get_visuals = |confidence: f32, color: Color32| {
-        let c = confidence.clamp(0.0, 1.0);
-        let alpha = 0.3 + 0.7 * c;
-        let weight = c;
-        (color.gamma_multiply(alpha), weight)
-    };
-
-    let color_beat = Color32::from_rgb(80, 180, 255);
-    let color_sub = Color32::from_rgb(70, 225, 135);
-    let color_measure = Color32::from_rgb(255, 215, 60);
-    let color_error = Color32::from_rgb(255, 110, 90);
-    let outer_r = radius * 1.15;
-
-    if let Some(attention) = listener_levels.attention {
-        let attention = attention.clamp(0.0, 1.0);
-        if attention > 0.01 {
-            let halo_r = outer_r * (1.12 + 0.12 * attention);
-            let halo_color =
-                Color32::from_rgb(90, 180, 230).gamma_multiply(0.06 + 0.20 * attention);
-            painter.circle_filled(center, halo_r, halo_color);
-        }
-    }
-
-    if let Some(uncertainty) = listener_levels.uncertainty {
-        let uncertainty = uncertainty.clamp(0.0, 1.0);
-        if uncertainty > 0.01 {
-            let uncertainty_color =
-                Color32::from_rgb(255, 95, 65).gamma_multiply(0.18 + 0.72 * uncertainty);
-            painter.circle_stroke(
-                center,
-                outer_r * 1.08,
-                Stroke::new(1.0 + 4.0 * uncertainty, uncertainty_color),
-            );
-            painter.circle_stroke(
-                center,
-                outer_r * 1.18,
-                Stroke::new(
-                    0.5 + 2.5 * uncertainty,
-                    uncertainty_color.gamma_multiply(0.45),
-                ),
-            );
-        }
-    }
-
-    // Beat (tactus): progress arc as the meter with confidence-driven opacity/width.
-    let beat_phase = wrap(meter.beat.phase);
-    let (d_color, d_weight) = get_visuals(meter.beat.confidence, color_beat);
-    painter.circle_stroke(
-        center,
-        outer_r,
-        Stroke::new(1.0_f32, d_color.gamma_multiply(0.2)),
+    // The title sits in the square's corner, outside the ring, to save a row.
+    painter.text(
+        rect.left_top(),
+        egui::Align2::LEFT_TOP,
+        "Meter",
+        egui::FontId::proportional(10.0),
+        ui.visuals().text_color(),
     );
-    if beat_phase > 0.01 {
-        let steps = (beat_phase * 12.0).max(2.0) as usize;
+    let center = rect.center();
+    let radius = side * 0.36;
+    let ring_inner = side * 0.40;
+    let ring_outer = side * 0.47;
+    let gray = ui.visuals().weak_text_color();
+    let blue = Color32::from_rgb(90, 180, 230);
+    let red = Color32::from_rgb(255, 110, 90);
+    painter.circle_stroke(center, radius, Stroke::new(1.0, gray));
+    let circle = meter_circle(history, window_end);
+    if let Some(circle) = &circle {
+        let subdivisions = circle.subdivision.unwrap_or(1) as usize;
+        for i in 0..subdivisions {
+            let direction = circle_direction(i as f32 / subdivisions as f32);
+            painter.line_segment(
+                [
+                    center + direction * radius,
+                    center + direction * (radius - if i == 0 { 7.0 } else { 4.0 }),
+                ],
+                Stroke::new(if i == 0 { 3.0 } else { 1.0 }, gray),
+            );
+        }
+        let maximum = circle
+            .current
+            .iter()
+            .chain(&circle.earlier)
+            .copied()
+            .fold(0.0_f32, f32::max);
+        if maximum > 0.0 {
+            for (values, color, width) in [
+                (&circle.earlier, blue.gamma_multiply(0.3), 1.0),
+                (&circle.current, blue, 2.0),
+            ] {
+                for (i, flux) in values.iter().enumerate().filter(|(_, flux)| **flux > 0.0) {
+                    let direction = circle_direction(i as f32 / STROBE_BINS as f32);
+                    painter.line_segment(
+                        [
+                            center + direction * radius,
+                            center + direction * (radius - radius * 0.35 * flux / maximum),
+                        ],
+                        Stroke::new(width, color),
+                    );
+                }
+            }
+        }
+    }
+    // Measure segments around the beat clock.
+    let measure = circle.as_ref().and_then(|c| c.measure.as_ref());
+    let segments = measure.map_or(1, |m| m.beats as usize);
+    for segment in 0..segments {
+        let (color, width) = match measure {
+            // Same confidence-to-opacity mapping as the meter's other displays.
+            Some(m) => (
+                red.gamma_multiply(
+                    (0.3 + 0.7 * m.confidence)
+                        * if segment == m.current as usize {
+                            1.0
+                        } else {
+                            0.25
+                        },
+                ),
+                if segment == m.current as usize {
+                    4.0
+                } else {
+                    2.0
+                },
+            ),
+            None => (gray.gamma_multiply(0.5), 2.0),
+        };
+        let gap = if segments > 1 { 0.03 } else { 0.0 };
+        let steps = 24;
         let points: Vec<egui::Pos2> = (0..=steps)
-            .map(|i| {
-                let angle = start_angle + (beat_phase * i as f32 / steps as f32);
-                center + egui::vec2(angle.cos(), angle.sin()) * outer_r
+            .map(|k| {
+                let t = (segment as f32 + gap + (1.0 - 2.0 * gap) * k as f32 / steps as f32)
+                    / segments as f32;
+                center + circle_direction(t) * (ring_inner + ring_outer) * 0.5
             })
             .collect();
-        let width = 1.0 + d_weight * 3.0;
-        painter.add(egui::Shape::line(points, Stroke::new(width, d_color)));
+        painter.add(egui::Shape::line(points, Stroke::new(width, color)));
     }
-    let beat_tip_angle = start_angle + beat_phase;
-    let beat_tip_pos = center + egui::vec2(beat_tip_angle.cos(), beat_tip_angle.sin()) * outer_r;
-    painter.circle_filled(beat_tip_pos, 2.0 + d_weight * 2.0, d_color);
-
-    // Subdivision (tatum): base ring plus a fast cursor.
-    let base_circle = Color32::from_gray(180);
-    painter.circle_stroke(center, radius, Stroke::new(2.5_f32, base_circle));
-    let (t_color, t_weight) = get_visuals(meter.subdivision.confidence, color_sub);
-    let sub_angle = start_angle + wrap(meter.subdivision.phase);
-    let sub_pos = center + egui::vec2(sub_angle.cos(), sub_angle.sin()) * radius;
-    let dot_radius = 2.0 + t_weight * 3.0;
-    painter.circle_filled(sub_pos, dot_radius, t_color);
-    painter.circle_stroke(
-        sub_pos,
-        dot_radius + 1.0,
-        Stroke::new(1.0_f32, t_color.gamma_multiply(0.5)),
-    );
-    let (center_radius, center_color) = if let Some(stability) = listener_levels.stability {
-        let stability = stability.clamp(0.0, 1.0);
-        (
-            2.8 + 3.8 * stability,
-            Color32::from_rgb(210, 255, 225).gamma_multiply(0.35 + 0.65 * stability),
-        )
-    } else {
-        (3.0, base_circle)
-    };
-    painter.circle_filled(center, center_radius, center_color);
-    painter.circle_stroke(
+    painter.arrow(
         center,
-        center_radius + 1.0,
-        Stroke::new(1.0_f32, center_color.gamma_multiply(0.7)),
+        circle_direction(circle.as_ref().map_or(0.0, |c| c.phase)) * radius * 0.86,
+        Stroke::new(
+            1.5,
+            if circle.is_some() {
+                Color32::WHITE
+            } else {
+                gray
+            },
+        ),
     );
+    painter.text(
+        center + egui::vec2(0.0, radius * 0.45),
+        egui::Align2::CENTER_CENTER,
+        match (&circle, measure) {
+            (None, _) => "beat lost",
+            (Some(_), None) => "measure ?",
+            (Some(_), Some(_)) => "1 turn = 1 beat",
+        },
+        egui::FontId::proportional(9.0),
+        gray,
+    );
+}
 
-    // Measure: a downbeat hand pointing at the measure phase, shown only when an
-    // accent grouping holds. Length and opacity track the measure confidence.
-    if meter.measure_ratio > 0 {
-        let measure_conf = meter.measure.confidence.clamp(0.0, 1.0);
-        let measure_vis = 0.25 + 0.75 * measure_conf;
-        let measure_color = color_measure.gamma_multiply(measure_vis);
-        let measure_width = 2.0 + 4.0 * measure_conf;
-        let measure_angle = start_angle + wrap(meter.measure.phase);
-        let measure_len = radius * (0.35 + 0.6 * measure_conf);
-        let tip = center + egui::vec2(measure_angle.cos(), measure_angle.sin()) * measure_len;
-        painter.line_segment([center, tip], Stroke::new(measure_width, measure_color));
-        painter.circle_filled(tip, 2.0 + 2.0 * measure_conf, measure_color);
+fn octave_bin(log2: f64) -> usize {
+    (log2.rem_euclid(1.0) * OCTAVE_BINS as f64).round() as usize % OCTAVE_BINS
+}
+
+fn fold_octaves(samples: impl Iterator<Item = (f64, f64)>) -> [f64; OCTAVE_BINS] {
+    let mut folded = [0.0; OCTAVE_BINS];
+    for (log2, weight) in samples {
+        if log2.is_finite() && weight.is_finite() && weight > 0.0 {
+            let bin = octave_bin(log2);
+            folded[bin] += weight;
+        }
     }
+    folded
+}
 
-    // Prediction error cross-grid: intensifies as beat entrainment confidence drops.
-    let error_mag = (1.0 - meter.beat.confidence).clamp(0.0, 1.0);
-    let error_vis = 0.2 + 0.8 * error_mag;
-    let error_color = color_error.gamma_multiply(error_vis);
-    let error_width = 1.5 + 6.0 * error_mag;
-    painter.line_segment(
-        [
-            center + egui::vec2(0.0, -radius),
-            center + egui::vec2(0.0, radius),
-        ],
-        Stroke::new(error_width, error_color),
-    );
-    painter.line_segment(
-        [
-            center + egui::vec2(-radius, 0.0),
-            center + egui::vec2(radius, 0.0),
-        ],
-        Stroke::new(error_width, error_color),
-    );
+fn circular_mean(folded: &[f64; OCTAVE_BINS]) -> Option<Vec2> {
+    let mass: f64 = folded.iter().sum();
+    if mass <= 0.0 {
+        return None;
+    }
+    let mut mean = [0.0; 2];
+    for (i, weight) in folded.iter().enumerate() {
+        let angle = i as f64 * std::f64::consts::TAU / OCTAVE_BINS as f64;
+        mean[0] += angle.sin() * weight / mass;
+        mean[1] -= angle.cos() * weight / mass;
+    }
+    let mean = egui::vec2(mean[0] as f32, mean[1] as f32);
+    Some(mean / mean.length().max(1.0))
+}
 
-    // Voice entrainment: each live Entrain voice's phase as a dot on the
-    // subdivision ring, plus the Kuramoto mean-resultant vector. Clustered dots
-    // and a long vector mean the voices are phase-locked. Distinct violet so it
-    // reads apart from the beat/subdivision/measure/error meter marks.
-    if !entrain_phases.is_empty() {
-        let voice_color = Color32::from_rgb(196, 150, 255);
-        let mut sx = 0.0f32;
-        let mut sy = 0.0f32;
-        let mut n = 0u32;
-        for &phase in entrain_phases {
-            if !phase.is_finite() {
-                continue;
+fn folded_support(support: &crate::core::harmonic_support::Snapshot) -> [f64; OCTAVE_BINS] {
+    let start = f64::from(support.geometry.root_start_log2);
+    let step = f64::from(support.geometry.space.step());
+    fold_octaves(
+        support
+            .p
+            .iter()
+            .enumerate()
+            .map(|(i, &p)| (start + i as f64 * step, p)),
+    )
+}
+
+fn harmonic_marks(root: f32) -> [f32; 4] {
+    [1.0_f32, 3.0, 5.0, 7.0].map(|harmonic| (root + harmonic.log2()).rem_euclid(1.0))
+}
+
+pub(crate) fn observe_harmony(
+    history: &mut VecDeque<(f64, Option<Vec2>)>,
+    frame: &crate::viewdata::UiFrame,
+) {
+    let time = frame.meta.time_sec;
+    if history.back().is_some_and(|&(last, _)| time < last) {
+        history.clear();
+    }
+    if history.back().is_some_and(|&(last, _)| time == last) {
+        history.pop_back();
+    }
+    let mean = frame
+        .landscape
+        .support
+        .as_deref()
+        .and_then(|s| circular_mean(&folded_support(s)));
+    history.push_back((time, mean));
+    while history
+        .front()
+        .is_some_and(|&(t, _)| t < time - super::windows::TIME_WINDOW_SEC)
+    {
+        history.pop_front();
+    }
+}
+
+pub(crate) fn draw_harmony_circle(
+    ui: &mut egui::Ui,
+    landscape: &crate::core::landscape::Landscape,
+    history: &VecDeque<(f64, Option<Vec2>)>,
+    side: f32,
+) {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(side), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.text(
+        rect.left_top(),
+        egui::Align2::LEFT_TOP,
+        "Harmony · habitat",
+        egui::FontId::proportional(10.0),
+        ui.visuals().text_color(),
+    );
+    let center = rect.center();
+    let radius = side * 0.35;
+    let gray = ui.visuals().weak_text_color();
+    let blue = Color32::from_rgb(90, 180, 230);
+    let gold = Color32::from_rgb(235, 200, 75);
+    painter.circle_stroke(center, radius, Stroke::new(1.0, gray));
+    for (phase, label) in [(0.0, "0"), (0.25, "¼"), (0.5, "½"), (0.75, "¾")] {
+        painter.text(
+            center + circle_direction(phase) * radius * 1.25,
+            egui::Align2::CENTER_CENTER,
+            label,
+            egui::FontId::proportional(10.0),
+            gray,
+        );
+    }
+    let heard = fold_octaves(
+        landscape
+            .space
+            .centers_log2
+            .iter()
+            .zip(&landscape.subjective_intensity)
+            .map(|(&f, &v)| (f64::from(f), f64::from(v))),
+    );
+    let maximum = heard.iter().copied().fold(0.0_f64, f64::max);
+    if maximum > 0.0 {
+        for (i, strength) in heard.iter().enumerate().filter(|(_, v)| **v > 0.0) {
+            let direction = circle_direction(i as f32 / OCTAVE_BINS as f32);
+            painter.line_segment(
+                [
+                    center + direction * radius * 0.86,
+                    center + direction * radius * (0.86 + 0.14 * (strength / maximum) as f32),
+                ],
+                Stroke::new(2.0, blue),
+            );
+        }
+    }
+    let support = landscape.support.as_deref();
+    if let Some(support) = support {
+        let folded = folded_support(support);
+        let maximum = folded.iter().copied().fold(0.0_f64, f64::max);
+        if maximum > 0.0 {
+            for (i, strength) in folded.iter().enumerate().filter(|(_, v)| **v > 0.0) {
+                let direction = circle_direction(i as f32 / OCTAVE_BINS as f32);
+                painter.line_segment(
+                    [
+                        center + direction * radius * 0.15,
+                        center + direction * radius * (0.15 + 0.58 * (strength / maximum) as f32),
+                    ],
+                    Stroke::new(2.0, gold.gamma_multiply(0.65)),
+                );
             }
-            let angle = start_angle + wrap(phase);
-            let dot = center + egui::vec2(angle.cos(), angle.sin()) * radius;
-            painter.circle_filled(dot, 2.2, voice_color.gamma_multiply(0.9));
-            sx += phase.cos();
-            sy += phase.sin();
-            n += 1;
+            let strongest = folded
+                .iter()
+                .enumerate()
+                .max_by(|a, b| a.1.total_cmp(b.1))
+                .unwrap()
+                .0;
+            for phase in harmonic_marks(strongest as f32 / OCTAVE_BINS as f32) {
+                painter.circle_filled(center + circle_direction(phase) * radius * 1.06, 1.8, gold);
+            }
         }
-        if n > 0 && (sx != 0.0 || sy != 0.0) {
-            let r = entrain_order_r.unwrap_or(0.0).clamp(0.0, 1.0);
-            let mean_angle = start_angle + wrap(sy.atan2(sx));
-            let tip = center + egui::vec2(mean_angle.cos(), mean_angle.sin()) * (radius * r);
-            painter.line_segment([center, tip], Stroke::new(2.0_f32, voice_color));
-            painter.circle_filled(tip, 2.8, voice_color);
+        let mut previous = None;
+        for &(time, mean) in history {
+            if let Some(mean) = mean {
+                let tip = center + mean * radius * 0.73;
+                if let Some(prev) = previous {
+                    let age = history.back().map_or(0.0, |&(now, _)| now - time);
+                    painter.line_segment(
+                        [prev, tip],
+                        Stroke::new(
+                            1.0,
+                            gold.gamma_multiply(
+                                (1.0 - age / super::windows::TIME_WINDOW_SEC).max(0.0) as f32 * 0.6,
+                            ),
+                        ),
+                    );
+                }
+                previous = Some(tip);
+            } else {
+                previous = None;
+            }
         }
+        if let Some(mean) = circular_mean(&folded) {
+            painter.arrow(
+                center,
+                mean * radius * 0.73,
+                Stroke::new(1.5, Color32::WHITE),
+            );
+        }
+    } else {
+        painter.text(
+            center,
+            egui::Align2::CENTER_CENTER,
+            "no support data",
+            egui::FontId::proportional(9.0),
+            gray,
+        );
     }
+    response.on_hover_ui(|ui| {
+        ui.label("habitat · clockwise frac(log2 Hz); top = 2ⁿ Hz. Outer blue: heard density. Inner gold: support p. Each is scaled to its own maximum.");
+        if let Some(pointer) = ui.ctx().pointer_hover_pos() {
+            let offset = pointer - center;
+            let fraction = offset.x.atan2(-offset.y).rem_euclid(std::f32::consts::TAU) / std::f32::consts::TAU;
+            let bin = (fraction * OCTAVE_BINS as f32).round() as usize % OCTAVE_BINS;
+            let strongest = landscape.space.centers_log2.iter().zip(&landscape.subjective_intensity)
+                .enumerate().filter(|(_, (log2, v))| {
+                    v.is_finite() && **v > 0.0 && (octave_bin(f64::from(**log2)) == bin)
+                }).max_by(|a, b| (a.1).1.total_cmp((b.1).1));
+            ui.label(format!("Angle: {fraction:.3} octave"));
+            if let Some((i, _)) = strongest {
+                ui.label(format!("Strongest heard component here: {:.1} Hz", landscape.space.centers_hz[i]));
+            } else {
+                ui.label("No heard component here");
+            }
+        }
+        if let Some(support) = support {
+            let length = circular_mean(&folded_support(support)).map_or(0.0, |m| m.length());
+            ui.label(format!("C = {:.3} · D = {:.3} · M = {:.3} · resultant = {length:.3}", support.focus, support.conflict, support.mass));
+        } else {
+            ui.label("no support data");
+        }
+        ui.label("Arrow: circular mean of folded p; length = resultant (0–1), not C. Trail: last 5 s of received frames.");
+        ui.label("Harmonic marks: positions of the harmonic series used by the H model (harmonics 1–8, octave duplicates merged). Inharmonic timbre partials can fall outside these marks even for a single sound source.");
+    });
 }
 
 #[cfg(test)]
@@ -878,6 +1177,162 @@ mod rhythm_tests {
         sample.meter.beat.freq_hz = 3.7;
         sample.attention.flux = flux;
         sample
+    }
+
+    #[test]
+    fn meter_circle_turns_with_the_beat_and_shows_the_measure_as_marks() {
+        let measure_hop = |time, beat_phase, measure_phase: f32, ratio| {
+            let mut sample = hop(time, beat_phase, 0.8, 1.0);
+            sample.meter.measure_ratio = ratio;
+            sample.meter.measure.confidence = 1.0;
+            sample.meter.measure.freq_hz = 0.5;
+            sample.meter.measure.phase = measure_phase * std::f32::consts::TAU;
+            sample
+        };
+        let mut history = VecDeque::from([
+            measure_hop(0.0, 0.875, 0.1, 3),
+            measure_hop(0.1, 0.0, 0.2, 4),
+            measure_hop(0.2, 0.25, 0.6, 4),
+        ]);
+        let circle = meter_circle(&history, 0.2).unwrap();
+        assert!((circle.phase - 0.25).abs() < 1e-5);
+        // The measure ratio flips 3 -> 4, yet the beat-folded flux and hand persist.
+        assert_eq!(circle.earlier[84], 0.8);
+        assert_eq!(circle.current[0], 0.8);
+        assert_eq!(circle.current[24], 0.8);
+        let marks = circle.measure.as_ref().unwrap();
+        assert_eq!((marks.beats, marks.current), (4, 2));
+        // The hand advances from the latest hop at the beat rate (hop() uses 3.7 Hz).
+        let ahead = meter_circle(&history, 0.25).unwrap();
+        assert!((ahead.phase - 0.435).abs() < 1e-4, "{}", ahead.phase);
+        // An unsupported measure keeps the beat clock and drops only the marks.
+        history.back_mut().unwrap().meter.measure.confidence = 0.079;
+        let unmeasured = meter_circle(&history, 0.2).unwrap();
+        assert!(unmeasured.measure.is_none());
+        assert_eq!(unmeasured.current[24], 0.8);
+        history.back_mut().unwrap().meter.measure.confidence = 1.0;
+        history.back_mut().unwrap().meter.measure_ratio = 0;
+        assert!(meter_circle(&history, 0.2).unwrap().measure.is_none());
+        // A lost beat draws no clock; hops outside the retained window are ignored.
+        history.back_mut().unwrap().meter.beat.confidence = 0.079;
+        assert!(meter_circle(&history, 0.2).is_none());
+        assert!(meter_circle(&history, -32.0).is_none());
+        assert!(meter_circle(&history, 31.0).is_none());
+    }
+
+    #[test]
+    fn meter_reacquisition_and_extrapolated_wrap_do_not_reuse_current_flux() {
+        let mut history = VecDeque::from([
+            hop(0.0, 0.5, 1.0, 1.0),
+            hop(0.1, 0.75, 1.0, 0.0),
+            hop(0.2, 0.875, 0.5, 1.0),
+        ]);
+        let reacquired = meter_circle(&history, 0.2).unwrap();
+        assert_eq!(reacquired.current[48], 0.0);
+        assert_eq!(reacquired.current[84], 0.5);
+        let wrapped = meter_circle(&history, 0.3).unwrap();
+        assert!(wrapped.current.iter().all(|&v| v == 0.0));
+        assert_eq!(wrapped.earlier[84], 0.5);
+        history.back_mut().unwrap().meter.beat.phase = f32::NAN;
+        assert!(meter_circle(&history, 0.2).is_none());
+    }
+
+    #[test]
+    fn support_octaves_use_the_root_grid_origin_and_resultant_is_bounded() {
+        let space = crate::core::log2space::Log2Space::new(55.0, 1760.0, 24);
+        let kernel =
+            crate::core::harmonicity_kernel::HarmonicityKernel::new(&space, Default::default());
+        let geometry = crate::core::harmonic_support::Geometry::new(&space, &kernel);
+        let mut support = crate::core::harmonic_support::Snapshot::new(geometry);
+        support.p[0] = 2.0;
+        support.p[24] = 3.0;
+        let folded = folded_support(&support);
+        let bin = (f64::from(support.geometry.root_start_log2).rem_euclid(1.0) * OCTAVE_BINS as f64)
+            .round() as usize
+            % OCTAVE_BINS;
+        assert_eq!(folded[bin], 5.0);
+        assert_eq!(folded.iter().filter(|&&p| p > 0.0).count(), 1);
+        let mean = circular_mean(&folded).unwrap();
+        assert!((mean.length() - 1.0).abs() < 1e-6);
+        assert!((mean - circle_direction(bin as f32 / OCTAVE_BINS as f32)).length() < 1e-6);
+        assert!(circular_mean(&[1.0; OCTAVE_BINS]).unwrap().length() < 1e-6);
+        assert!(circular_mean(&[0.0; OCTAVE_BINS]).is_none());
+        let folded = fold_octaves([(8.25, 1.0), (9.25, 2.0), (-0.75, 3.0)].into_iter());
+        assert_eq!(folded[24], 6.0);
+    }
+
+    #[test]
+    fn harmonic_marks_are_the_unique_octave_folds_of_harmonics_one_through_eight() {
+        let root = 0.83;
+        let marks = harmonic_marks(root);
+        for harmonic in 1..=8 {
+            let phase = (root + (harmonic as f32).log2()).rem_euclid(1.0);
+            assert!(marks.iter().any(|&m| (m - phase).abs() < 1e-6));
+        }
+        assert!((marks[0] - root).abs() < 1e-6);
+        assert!((harmonic_marks(0.0)[1] - 3.0_f32.log2().fract()).abs() < 1e-6);
+        assert_eq!(circle_direction(0.0), egui::vec2(0.0, -1.0));
+        assert!((circle_direction(0.25) - egui::vec2(1.0, 0.0)).length() < 1e-6);
+    }
+
+    #[test]
+    fn harmony_trail_is_frame_driven_bounded_and_keeps_missing_support_gaps() {
+        let mut frame = crate::viewdata::UiFrame::default();
+        let space = crate::core::log2space::Log2Space::new(55.0, 1760.0, 24);
+        let kernel =
+            crate::core::harmonicity_kernel::HarmonicityKernel::new(&space, Default::default());
+        let mut support = crate::core::harmonic_support::Snapshot::new(
+            crate::core::harmonic_support::Geometry::new(&space, &kernel),
+        );
+        support.p[0] = 1.0;
+        frame.landscape.support = Some(std::sync::Arc::new(support));
+        let mut history = VecDeque::new();
+        observe_harmony(&mut history, &frame);
+        frame.meta.time_sec = 1.0;
+        observe_harmony(&mut history, &frame);
+        frame.landscape.support = None;
+        frame.meta.time_sec = 2.0;
+        observe_harmony(&mut history, &frame);
+        assert!(history[0].1.is_some());
+        assert_eq!(history[2].1, None);
+        observe_harmony(&mut history, &frame);
+        assert_eq!(history.len(), 3);
+        frame.meta.time_sec = 6.0;
+        observe_harmony(&mut history, &frame);
+        assert_eq!(history.front().unwrap().0, 1.0);
+        frame.meta.time_sec = 0.0;
+        observe_harmony(&mut history, &frame);
+        assert_eq!(history.len(), 1);
+    }
+
+    #[test]
+    fn unsupported_circles_show_explicit_missing_labels() {
+        let frame = crate::viewdata::UiFrame::default();
+        let mut output = egui::Context::default().run_ui(Default::default(), |ui| {
+            draw_meter_circle(ui, &VecDeque::new(), 0.0, 108.0);
+            draw_harmony_circle(ui, &frame.landscape, &VecDeque::new(), 108.0);
+        });
+        output.textures_delta.clear();
+        for label in ["beat lost", "no support data"] {
+            assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::epaint::Shape::Text(text) if text.galley.text() == label)));
+        }
+    }
+
+    #[test]
+    fn playhead_advances_from_the_latest_hop_and_wraps_into_the_beat() {
+        // hop() uses a 3.7 Hz beat; 0.1 s later the phase has moved by 0.37 beats.
+        let history = VecDeque::from([hop(1.0, 0.75, 0.0, 1.0), hop(2.0, 0.5, 0.0, 1.0)]);
+        let ahead = strobe_playhead(&history, 2.1).unwrap();
+        assert!((ahead - 0.87).abs() < 1e-4, "{ahead}");
+        let wrapped = strobe_playhead(&history, 2.2).unwrap();
+        assert!((wrapped - 0.24).abs() < 1e-4, "{wrapped}");
+        // Only hops at or before the display time are used.
+        let earlier = strobe_playhead(&history, 1.1).unwrap();
+        assert!((earlier - 0.12).abs() < 1e-4, "{earlier}");
+        assert_eq!(strobe_playhead(&history, 0.5), None);
+        let lost = VecDeque::from([hop(2.0, 0.5, 0.0, 0.0)]);
+        assert_eq!(strobe_playhead(&lost, 2.1), None);
     }
 
     #[test]
@@ -967,6 +1422,22 @@ mod rhythm_tests {
         assert!(rows[0].unknown);
         assert!(rows[0].flux.iter().all(Option::is_none));
         assert!(!rows[1].unknown);
+    }
+
+    #[test]
+    fn strobe_labels_use_ratios_without_musical_counts() {
+        let mut sample = hop(0.0, 0.5, 1.0, 1.0);
+        sample.meter.subdivision_ratio = 3;
+        sample.meter.subdivision.confidence = 1.0;
+        let history = VecDeque::from([sample]);
+        let mut output = egui::Context::default().run_ui(Default::default(), |ui| {
+            beat_strobe_plot(ui, &history, 128.0, 0.0);
+        });
+        output.textures_delta.clear();
+        for label in ["0", "⅓", "⅔"] {
+            assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+                egui::epaint::Shape::Text(text) if text.galley.text() == label)));
+        }
     }
 
     #[test]

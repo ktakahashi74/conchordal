@@ -67,7 +67,6 @@ pub(super) fn build_initial_ui_frame(
             window_peak: [0.0; 2],
             kuramoto_order_r: None,
             kuramoto_active_count: 0,
-            entrain_phases: Vec::new(),
         },
         prediction: PredictionFrame::default(),
         voices: Vec::new(),
@@ -158,7 +157,6 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
             window_peak: [0.0; 2],
             kuramoto_order_r,
             kuramoto_active_count: entrain_phases.len(),
-            entrain_phases,
         },
         prediction: PredictionFrame {
             next_gate_tick_est: input.generator_model.next_gate_tick_est,

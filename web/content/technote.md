@@ -142,7 +142,7 @@ come from a separate, passive E0 predictor of the presentation mixture. It retri
 observed successors from a bounded acoustic history and predicts the first dominant
 support-cell change within one presentation-meter beat: unchanged, audible entry,
 lower cell, higher cell, or silence. The dashboard shows the arrival score and an
-uncertainty bar (conditional entropy divided by ln 5); the details menu lists the
+uncertainty bar (conditional entropy divided by ln 5); hovering either bar lists the
 target, horizon, entropy in nats, a separate coverage score and the surprise.
 Entropy uses the known conditional distribution p_known.
 The whole forecast q backs off by uncovered mass to the sequential marginal with
@@ -155,13 +155,48 @@ The weights are uncalibrated scores, not measured probabilities of human resolut
 The static diagnostics remain `nearby_improvement_level` and `static_pull_level`
 in reports and existing DCC. New prediction outputs never drive generation.
 
-The **Neural Rhythm** display folds hop-resolution auditory flux onto the
+Two circles separate the presentation meter from habitat harmony. In **Meter** one
+turn of the hand is one beat, because the beat phase is continuous while the
+listener's measure ratio can waver (for example between three and four over a
+two-against-three texture). The heavier mark is the beat start and thin marks locate
+supported subdivisions. The hand advances from the latest observed phase for display
+only. Hop-resolution flux folds onto the beat phase: bright blue marks the current
+beat and dim blue earlier beats, using one maximum across the visible history within
+the retained 30 seconds. Outer segments show the beats of a supported measure (two
+to four) with the current one lit and opacity from measure confidence; a changing
+segment count shows the listener wavering. Without a supported measure the segments
+are gray and the circle reads **measure ?**. A lost beat clears the folded history
+and leaves a gray hand and **beat lost**, without guessed phase bins.
+
+**Harmony · habitat** folds log2 frequency modulo one octave, clockwise from
+2ⁿ Hz at the top. Its ticks are octave fractions 0, ¼, ½ and ¾. The outer blue ring
+sums the habitat auditory density used by harmonic support; inner gold petals sum
+support p from the snapshot's actual root grid, including its lower halo. Each
+shape is scaled to its own maximum for display. A white arrow shows the circular
+mean of folded p; its length is the bounded resultant (0–1), not support focus C.
+The trail retains five seconds of received UI frames and breaks at missing support.
+Hover shows C, D and M, the angular octave fraction and the strongest heard density
+component's actual Hz in that angular bin. Edge dots fold harmonics 1–8 of the
+strongest petal, merging octave duplicates. They mark the harmonic series used by
+H's model: an inharmonic timbre's partials can miss these marks even for a single
+sound source. These dots only annotate the display. With the GUI, habitat support
+is computed in every scene, including when its valuation weights are zero; this
+does not activate harmonic temporal relations or change Voice/Flora choices.
+An absent snapshot reads **no support data**, without substituting presentation
+evidence. The four existing listener bars sit below the
+circles in two rows; the E0 details appear when hovering the uncertainty or arrival bar.
+
+The **Listener Meter** display folds hop-resolution auditory flux onto the
 presentation meter's observed beat phase (0–1). Each beat adds one strobe row;
 aligned events form vertical bands and drifting events form diagonals. Gray marks
 unsupported spans or unobserved bins; unsupported spans are not divided into
-guessed beats. Subdivision guides appear only for a supported ratio. Separate
-30-second plots show beat tempo, subdivision ratio and beat/subdivision/measure
-confidence. This window spans about five times the meter's slowest 6-second
+guessed beats. Subdivision guides appear only for a supported ratio, and the
+phase axis uses ratios (0 and ½; 0, ⅓ and ⅔; or 0, ¼, ½ and ¾). Tempo remains in BPM. A white
+playhead marks the current position inside the newest beat, extrapolated for
+display only from the latest observed phase. A one-line key shows what a row is
+and the aligned, drifting and pulse-free patterns. Separate 30-second plots show
+beat tempo, subdivision ratio and beat/subdivision/measure confidence, with each
+current value printed at the right edge. This window spans about five times the meter's slowest 6-second
 integration constant. The **Auditory salience** plot retains its 5-second window.
 Both time windows use stationary relative-time ticks and a display clock bounded
 by received observations. These views do not alter audio or listener computation.

@@ -6,6 +6,7 @@ use crate::core::nsgt_rt::RtNsgtKernelLog2;
 #[derive(Clone)]
 pub struct AnalysisStream {
     support_history_planned: bool,
+    support_display_planned: bool,
     analysis: SynchronousAnalysis,
     params: LandscapeParams,
     onset_habituation: Option<crate::core::onset_habituation::OnsetHabituation>,
@@ -37,6 +38,7 @@ impl AnalysisStream {
         );
         Self {
             support_history_planned: false,
+            support_display_planned: false,
             analysis,
             params,
             onset_habituation: None,
@@ -67,6 +69,10 @@ impl AnalysisStream {
                 geometry.clone(),
             ))
         }));
+    }
+
+    pub(crate) fn publish_support_for_display(&mut self) {
+        self.support_display_planned = true;
     }
 
     pub(crate) fn enable_tonal_context(
@@ -162,6 +168,7 @@ impl AnalysisStream {
     pub(crate) fn voice_observer(&self) -> Self {
         let mut observer = Self {
             support_history_planned: self.support_history_planned,
+            support_display_planned: false,
             analysis: self.analysis.clone(),
             params: self.params.clone(),
             onset_habituation: None,
@@ -177,6 +184,15 @@ impl AnalysisStream {
             tonal_context: None,
             pitch_set: None,
         };
+        // Display-only support belongs to the mixed habitat, not LOO consumers.
+        if self.support_display_planned {
+            observer.analysis.potentials.support_active = observer.support_buffers.is_some()
+                && (observer.analysis.landscape.support_weights.active()
+                    || observer.support_history_planned);
+            if !observer.analysis.potentials.support_active {
+                observer.analysis.landscape.support = None;
+            }
+        }
         observer.analysis.landscape.onset_habituation_state_scan = std::sync::Arc::from([]);
         observer.analysis.landscape.onset_habituation_known = false;
         // Voice observers consume H/R only, even when the mixed stream feeds Flora.
@@ -305,7 +321,8 @@ impl AnalysisStream {
                 self.analysis.landscape.support_weights.set(axis, value);
                 self.analysis.potentials.support_active = self.support_buffers.is_some()
                     && (self.analysis.landscape.support_weights.active()
-                        || self.support_history_planned);
+                        || self.support_history_planned
+                        || self.support_display_planned);
                 if !self.analysis.potentials.support_active {
                     self.analysis.landscape.support = None;
                 }
@@ -314,7 +331,8 @@ impl AnalysisStream {
         if upd.harmonic_relations_weight.is_some() || upd.harmonic_continuation_weight.is_some() {
             self.analysis.potentials.support_active = self.support_buffers.is_some()
                 && (self.analysis.landscape.support_weights.active()
-                    || self.support_history_planned);
+                    || self.support_history_planned
+                    || self.support_display_planned);
             if !self.analysis.potentials.support_active {
                 self.analysis.landscape.support = None;
             }

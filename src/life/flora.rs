@@ -502,6 +502,11 @@ struct FloraLaneTimingReport {
 
 impl Flora {
     #[cfg(test)]
+    pub(crate) fn rng_state_for_test(&self) -> u64 {
+        self.rng
+    }
+
+    #[cfg(test)]
     pub(crate) fn aud_m1_start_window(landscape: &Landscape) -> Vec<Self> {
         let mut states = Vec::new();
         for density in [0.02, 0.144, 1.0] {

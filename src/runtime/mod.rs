@@ -136,6 +136,9 @@ mod articulation_persistence_tests;
 mod tail_roughness_tests;
 
 #[cfg(test)]
+mod gui_support_tests;
+
+#[cfg(test)]
 #[path = "temporal_meter_tests.rs"]
 mod temporal_meter_tests;
 

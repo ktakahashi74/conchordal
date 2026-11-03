@@ -11868,6 +11868,16 @@ candidate at that opportunity must share W, and predicted and executed endpoints
 recorded separately. Merely replacing the current evaluator's endpoint is insufficient.
 No such extension, new author decision or performance gate is added in this revision.
 
+**Author audition deferred (2026-11-03).** The author-rule acceptance audition was attempted
+on Three Windows, seed 735, with the action comparison off and on; both renders matched the
+recorded HV-16 PCM. The author found both too sparse to judge. With the connection, every
+Voice including the anchored ground chose no onset in several spans, so the difference
+appeared as silences in an already thin texture. Undergrowth, which works as music, cannot
+discriminate the rule either, because beat-synchronised Flora opportunities stay neutral.
+The author therefore deferred the audition: it runs once when a dense Voice scene that works
+as music exists, or when beat-synchronised Flora opportunities become supported. The rule
+stays implemented with default zero; until then it is not an accepted author rule.
+
 <a id="listener-prediction-e0"></a>
 ### 9.3.125 2026-11-03: Presentation-only E0 and listener display (GUI-1)
 

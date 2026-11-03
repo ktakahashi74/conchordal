@@ -125,6 +125,7 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.121 2026-11-02: Vertical and temporal harmony acceptance (HV-6–HV-10)](#harmony-acceptance-20261102)
   - [§9.3.122 2026-11-02: Flora amplitude tracking and the rejected mixed-R growth rule](#flora-amplitude-and-mixed-roughness-20261102)
   - [§9.3.123 2026-11-03: Harmony decisions A1/B1/C1](#harmony-decisions-20261103)
+  - [§9.3.124 2026-11-03: C/N consequences in legal action comparisons (HV-16)](#harmony-action-consequences-20261103)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -11768,3 +11769,100 @@ issued-context freezing, calibration and transfer requirements come from DCC
 confidence. No new weight, learning rate, C upper bound or confidence multiplier
 is adopted. The decisions above are author policy, not new scientific acceptance
 or an audition result.
+
+<a id="harmony-action-consequences-20261103"></a>
+
+### 9.3.124 2026-11-03: C/N consequences in legal action comparisons (HV-16)
+
+C1 connects the existing Author-rule support-focus and related-novelty preferences to
+onset/wait, held continuation/release and birth/no-spawn decisions. The orchestrator derived
+the common next-decision-window time average from DCC §9.6 and the adopted FEP framework.
+Signed differences from the default action add to the existing score and bodily costs;
+C remains signed, N nonnegative, and both default to zero. Temporal continuation need not
+be enabled. D, the sensory definitions, growth, opportunity clocks and learned memory stay
+on their existing paths. No harmonic nondecrease constraint or new composer word is added.
+
+The local preview reuses heard support and the body's nominal partial density with issued
+Voice envelope/control state or Flora's existing slew/retirement trajectory. No-add has no
+new density. Holding and release retain sounding body/tail contributions. Unsupported
+observations, body projections or overlapping Voice trajectories are neutral rather than
+invented silence. This is not exact future mixed PCM. Midpoint integration starts from the
+body phase durations, checks the consumer's rank at half/double resolution, and refines
+when needed up to the supported integer sample grid. See
+[harmonic support: action consequences](harmonic-support.md#action-consequences-hv-16-2026-11-03)
+for the supported consumers and limits. HV-13 arrival/cadence remains observational.
+
+The HV-16 report separates implementation checks, the matched Three Windows/Undergrowth
+source-PCM comparison, ABBA resource evidence and any author audition. An absence of new
+onsets alone is not evidence of sustained focused tension. Existing listener defaults and
+sample weights are unchanged.
+
+Review correction: held comparisons consume the existing proposal/shared opportunities,
+including unchanged-pitch proposals, and use their next opportunity as W. Intervening hops
+do not introduce Off/On. Unpublished adaptive horizons are neutral. New-onset support is
+checked separately through the Tone prediction API; no issued birth plan means no C/N
+birth-action difference. Static birth-position preferences remain. Flora previews and
+executes the same selected lane target; rearticulate keeps an existing lane's actual pitch.
+
+Round 2 correction: Flora allocation supplies absolute W. Fallback ends at the next hop;
+beat/shared clocks require a published successor and supported current-hop body evolution.
+Unknown successors, possible intervening rest transitions, future unissued targets and
+unsupported residual bodies are neutral. Continuing/releasing lanes use one heard reference
+and the joint retained bodies/tails. Sequential birth subtracts the already selected joint
+trajectory from that trajectory plus the new lane. Density overlap is combined before N;
+N is not a sum of lane values. The choice witness includes release C/N, common baseline,
+absolute endpoints and tail-inclusive birth differences. No refractory rule or cap is added.
+
+Flora action previews require `residual(false)`: residual allocation may create a new
+noise body after tonal selection even when all residual lanes are currently silent.
+That future density is unsupported, so enabling residuals keeps C/N action differences
+neutral. Static lane-position preferences remain available.
+
+The initial joint evaluator failed declared-load ABBA through repeated all-lane previews.
+The evaluator reuses exact retirement curves, fixed-target slew deadlines and identical
+joint states at the registered midpoints. It retains the same W, midpoint refinement and
+nonlinear N. No new hold restriction or weight limit substitutes for the real-time requirement.
+Acceptance and failed performance attempts are recorded separately in the unit report.
+
+Round 3 cost disclosure: nonzero C/N adds body time integration and Flora joint lane/tail
+comparisons to static positioning. Work grows with individuals, lanes, candidates, supported
+windows and quadrature refinement; reducing a nonzero weight does not guarantee proportional
+CPU savings. The composer must check the whole scene's real-time cost on the intended machine.
+This is distinct from bodily cost in the choice score and introduces no weight upper bound.
+
+Final saved ABBA (`validation/timing-r2project-result.json` in the HV-16 unit report): 48 kHz,
+512 samples/hop, two fixed carriers plus two Voices and two Flora, 328 loaded hops per window.
+Both revisions used the same input and weights; this was not a zero/nonzero-weight toggle.
+
+| Window | Revision | Loaded p99 ms | Whole-run maximum ms | Over budget / deadline misses |
+|---|---|---:|---:|---:|
+| A1 | Baseline | 1.727 | 4.885 | 0 / 0 |
+| B1 | r2project | 7.617 | 8.487 | 0 / 0 |
+| B2 | r2project | 7.637 | 8.292 | 0 / 0 |
+| A2 | Baseline | 1.683 | 4.436 | 0 / 0 |
+
+The final loaded p99 was about 4.4–4.5 times the baseline; the 8.487 ms maximum used about
+80% of the 10.667 ms hop budget. Acceptance at this declared load remains successful, but
+substantial added cost remains. These are whole-hop ABBA measurements under external load;
+the roughly 5.9 ms p99 difference is not an isolated kernel CPU measurement. This does not
+guarantee real-time operation for arbitrary populations, machines or long-running scenes.
+See the HV-16 report for the retained measurements and their scope; no new performance gate
+is introduced by this documentation correction.
+
+Current support limit (round 3): beat-aligned Flora action comparisons are neutral when the
+trajectory to the next crossing is unsupported. Targets and normalization can change between
+crossings at each hop; pace and retirement decay can also change with observations. A clock's
+conditional next-time prediction alone does not support that body trajectory. In all three
+Undergrowth acquisitions, every beat crossing was neutral (`end=null`, `supported=false`),
+and all 8,095 supported C/N choices occurred at asynchronous fallback opportunities. The
+seed 1128749181177961461 had no C/N Flora action choices and its PCM matched the baseline.
+Thus the small scene-level effect is consistent with the added action comparison being
+limited to fallback, not with C/N having compared a whole beat period and chosen the same
+winner. Static lane-position preferences remain separate. The within-hop crossing regression
+uses two artificial opportunities and does not establish prediction across an actual beat.
+
+A future extension could use conditional clock predictions if the corresponding body
+trajectory's support and error are established under the existing acceptance criteria. Every
+candidate at that opportunity must share W, and predicted and executed endpoints must be
+recorded separately. Merely replacing the current evaluator's endpoint is insufficient.
+No such extension, new author decision or performance gate is added in this revision.

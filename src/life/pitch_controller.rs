@@ -77,6 +77,45 @@ impl PitchController {
         (fmin.max(min_range), fmax.min(max_range))
     }
 
+    pub(crate) fn next_proposal_tick(
+        &self,
+        at: u64,
+        pitch: &PitchControl,
+        rhythms: &NeuralRhythms,
+        fs: f32,
+        step: u64,
+    ) -> Option<u64> {
+        if self.harmonic_gate.is_some() {
+            return self.harmonic_next_tick.filter(|&next| next > at);
+        }
+        if pitch.dwell > 0. || !fs.is_finite() || fs <= 0. {
+            return None;
+        }
+        let interval = pitch.proposal_interval_sec.filter(|v| *v > 0.);
+        if interval.is_none() && rhythms.theta.mag > 0. {
+            // Adaptive theta has not published its next proposal sample.
+            return None;
+        }
+        let threshold = interval.unwrap_or(self.integration_window);
+        let dt = step.max(1) as f32 / fs;
+        if !threshold.is_finite() || threshold > dt * (1u64 << f32::MANTISSA_DIGITS) as f32 {
+            return None;
+        }
+        let mut phase = self.accumulated_time;
+        let mut next = at;
+        loop {
+            let advanced = phase + dt;
+            if !advanced.is_finite() || advanced == phase {
+                return None;
+            }
+            next = next.checked_add(step.max(1))?;
+            if advanced >= threshold {
+                return Some(next);
+            }
+            phase = advanced;
+        }
+    }
+
     pub(crate) fn integration_window_for_freq(freq_hz: f32) -> f32 {
         2.0 + 10.0 / freq_hz.max(1.0)
     }

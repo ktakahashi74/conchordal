@@ -141,7 +141,22 @@ impl Voice {
                 &salience,
                 self.harmonic_temperature_bonus,
             );
-            if at == now && !terminal && supported && !self.harmonic_waiting {
+            if self.phonation_engine.support_held_active() {
+                self.phonation_engine.held_next = self.pitch_ctl.harmonic_next_tick;
+                self.phonation_engine.held_window =
+                    (shared && legal && self.pitch_ctl.harmonic_evaluated)
+                        .then_some((at, self.pitch_ctl.harmonic_next_tick));
+            }
+            if (at == now
+                || (self.phonation_engine.support_held_active()
+                    && shared
+                    && self.pitch_ctl.harmonic_evaluated
+                    && !changed))
+                && !terminal
+                && supported
+                && !self.harmonic_waiting
+                && !(self.phonation_engine.support_held_active() && shared && changed && !initial)
+            {
                 self.phonation_engine.tick_with_arrival(
                     &ctx,
                     &state,
@@ -161,15 +176,24 @@ impl Voice {
                 && self.pitch_ctl.harmonic_evaluated
                 && (changed || self.harmonic_waiting)
             {
-                self.phonation_engine.rearticulate_hold(
+                let pitch = self.target_pitch_log2();
+                if let Some(context) = &mut self.phonation_engine.support_action {
+                    context.pitch = pitch;
+                }
+                let emitted = self.phonation_engine.rearticulate_hold(
                     &ctx,
                     &state,
                     &mut out.cmds,
                     &mut self.phonation_scratch.events,
                     &mut out.onsets,
                 );
-                self.body.set_pitch_log2(self.target_pitch_log2());
-                self.harmonic_waiting = false;
+                if emitted
+                    || self.phonation_engine.support_action.is_none()
+                    || self.phonation_engine.mode != PhonationMode::Hold
+                {
+                    self.body.set_pitch_log2(pitch);
+                    self.harmonic_waiting = false;
+                }
             }
             if shared && self.pitch_ctl.dwell_trace_enabled {
                 self.harmonic_events
@@ -217,6 +241,7 @@ impl Voice {
                 .min(ticks.get(opportunity).copied().unwrap_or(end));
         }
         self.harmonic_neighbors = (neighbors, salience);
+        self.phonation_engine.held_window = None;
         self.pitch_ctl.harmonic_gate = None;
         self.pitch_ctl.harmonic_next_tick = None;
         self.apply_phonation_onsets(

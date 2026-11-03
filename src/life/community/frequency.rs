@@ -151,30 +151,36 @@ impl Community {
         control: &crate::scenario::control::VoiceControl,
         frequency: f32,
     ) -> bool {
-        if landscape.harmonic_relations_weight == 0. && landscape.harmonic_continuation_weight == 0.
-        {
-            return true;
-        }
-        crate::temporal_cognition::harmonic_relations::runtime::record_opportunity(
-            landscape,
-            None,
-            landscape.harmonic_now_sample,
-        );
-        if landscape.harmonic_relations.is_none() {
-            return true;
-        }
-        let template = self.spawn_body_template(Some(control), landscape, frequency);
-        if !self.refresh_spawn_relations(landscape, Some(control), template) {
-            return true;
-        }
-        self.harmonic_spawn
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .choose_scored(2, 0, |i| {
-                ((i == 0).then_some(frequency.log2()), None, 0., i != 0)
-            })
-            == 0
+        let temporal_allowed = (|| {
+            if landscape.harmonic_relations_weight == 0.
+                && landscape.harmonic_continuation_weight == 0.
+            {
+                return true;
+            }
+            crate::temporal_cognition::harmonic_relations::runtime::record_opportunity(
+                landscape,
+                None,
+                landscape.harmonic_now_sample,
+            );
+            if landscape.harmonic_relations.is_none() {
+                return true;
+            }
+            let template = self.spawn_body_template(Some(control), landscape, frequency);
+            if !self.refresh_spawn_relations(landscape, Some(control), template) {
+                return true;
+            }
+            self.harmonic_spawn
+                .borrow()
+                .as_ref()
+                .unwrap()
+                .choose_scored(2, 0, |i| {
+                    ((i == 0).then_some(frequency.log2()), None, 0., i != 0)
+                })
+                == 0
+        })();
+        // Birth has no issued onset/participation plan yet. Its first hop cannot
+        // stand in for the later sound; C/N remains neutral until that opportunity.
+        temporal_allowed
     }
 
     pub(super) fn mix_spawn_weights<R: Rng + Clone>(

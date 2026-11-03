@@ -283,9 +283,38 @@ body partials and level for the candidate and current pitch. Without pitch self-
 it ignores this term and warns once for positive weights. Birth peak/tension selection
 uses score + V; density adds βV to log mass and preserves zero mass. Flora uses the term
 only for lane choices. Growth, habituation and ListenerTwin keep their existing inputs.
+Focus and related novelty also compare legal onsets, waits, held continuation, release
+and no-spawn using their time-averaged local body-partial consequences over the next
+consumer decision window. No-add contributes zero new density; sounding bodies and release
+tails remain in the preview. Held comparisons use existing proposal/shared opportunities,
+with W ending at the next opportunity; intervening hops add no Off/On. New-onset support is
+checked separately through the Tone prediction API. Voice birth has no issued onset plan,
+so its C/N action difference is neutral; static birth-position preferences remain. Flora
+uses the same selected target for preview and execution, keeping existing rearticulate
+lanes at their actual pitch. Its W starts at allocation and ends at the published next
+beat/shared opportunity, or the next hop in asynchronous fallback. Missing successors and
+unissued future body evolution are neutral. Comparisons include all retained lanes and tails
+against one heard reference. Sequential birth adds a lane to the already selected trajectory
+and subtracts that trajectory; overlapping partial densities are combined before N.
+Unsupported body trajectories and horizons are neutral. These differences
+add to native action scores and bodily costs independently of temporal continuation.
+They are local valuations, not a guarantee that the executed PCM preserves focus.
+Flora action previews require `residual(false)`: residual allocation may create a new
+noise body after tonal selection even when all residual lanes are currently silent.
+That future density is unsupported, so enabling residuals keeps C/N action differences
+neutral. Static lane-position preferences remain available.
 All three weights at zero bypass valuation and preserve existing decisions bit for bit.
 The UI separates global M/C/D and the selected Voice's first-order dC/dD and partial N
 from the ordinary Landscape.
+
+**C/N action computation cost.** Nonzero focus or related-novelty weights add body-trajectory
+time integration to static position evaluation at supported opportunities. Flora compares
+joint densities of all retained lanes and release tails. Cost increases with the number of
+individuals, lanes and candidates, the supported window and the quadrature refinement needed
+to resolve the choice. A smaller nonzero weight does not guarantee proportionally less work.
+The composer must check real-time cost for the whole scene on the intended machine. The
+score's bodily cost is separate from this CPU cost; computational expense introduces no
+weight clamp. The declared-load measurement is recorded in ledger §9.3.124 and the HV-16 report.
 
 `follow_harmonic_relations(w)` and `follow_harmonic_continuation(w)` are separate
 **author rules**, with finite signed dispositions in `[-1,1]`, both defaulting to zero,

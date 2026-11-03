@@ -195,6 +195,14 @@ pub struct PhonationEngine {
     pub mode: PhonationMode,
     measure_accent: f32,
     hold: HoldCore,
+    pub(crate) support_action: Option<crate::life::support_action::Context>,
+    pub(crate) support_held_enabled: bool,
+    pub(crate) held_window: Option<(Tick, Option<Tick>)>,
+    pub(crate) held_next: Option<Tick>,
+    held_consumed: Option<Tick>,
+    held_started: bool,
+    #[cfg(test)]
+    pub(crate) held_comparison: Option<(Tick, Tick)>,
     pub next_tone_id: ToneId,
     last_tick: Option<Tick>,
     active_notes: u32,
@@ -519,6 +527,14 @@ impl PhonationEngine {
             mode: config.mode,
             measure_accent: sanitize01(config.measure_accent),
             hold: HoldCore::default(),
+            support_action: None,
+            support_held_enabled: false,
+            held_window: None,
+            held_next: None,
+            held_consumed: None,
+            held_started: false,
+            #[cfg(test)]
+            held_comparison: None,
             next_tone_id: 0,
             last_tick: None,
             active_notes: 0,
@@ -533,6 +549,37 @@ impl PhonationEngine {
 
     pub fn has_active_notes(&self) -> bool {
         self.active_notes > 0
+    }
+
+    pub(crate) fn support_held_active(&self) -> bool {
+        self.support_held_enabled || self.support_action.is_some()
+    }
+
+    fn choose_held(
+        &mut self,
+        at: Tick,
+        baseline: crate::life::support_action::Action,
+    ) -> Option<crate::life::support_action::Action> {
+        use crate::life::support_action::Action;
+        if !self.support_held_active() {
+            return Some(baseline);
+        }
+        let window = self.held_window.filter(|(tick, _)| *tick == at);
+        let initial = !self.held_started && baseline == Action::Onset;
+        if self.held_consumed == Some(at) || (window.is_none() && !initial) {
+            return None;
+        }
+        self.held_started = true;
+        self.held_consumed = Some(at);
+        let next = window.map_or(self.held_next, |(_, end)| end);
+        self.held_next = next;
+        #[cfg(test)]
+        {
+            self.held_comparison = Some((at, next.unwrap_or(at)));
+        }
+        Some(self.support_action.as_ref().map_or(baseline, |context| {
+            context.choose(at, next.unwrap_or(at), baseline)
+        }))
     }
 
     fn tick_hold(
@@ -550,7 +597,36 @@ impl PhonationEngine {
             && min_allowed_onset_tick
                 .map(|min_tick| ctx.now_tick >= min_tick)
                 .unwrap_or(true);
-        if allow_onset && state.onset_allowed && state.is_alive && !self.hold.note_on_sent {
+        let baseline_onset =
+            allow_onset && state.onset_allowed && state.is_alive && !self.hold.note_on_sent;
+        if state.is_alive && self.support_held_active() {
+            use crate::life::support_action::Action;
+            let baseline = if baseline_onset {
+                Action::Onset
+            } else {
+                Action::Continue
+            };
+            let Some(selected) = self.choose_held(ctx.now_tick, baseline) else {
+                return;
+            };
+            if selected == Action::Release {
+                if let Some(tone_id) = self.hold.tone_id.take() {
+                    out_cmds.push(ToneCmd::Off {
+                        tone_id,
+                        off_tick: ctx.now_tick,
+                    });
+                    self.active_notes = self.active_notes.saturating_sub(1);
+                    self.hold.note_on_sent = false;
+                    let context = self.support_action.as_mut().unwrap();
+                    context.body = crate::life::support_action::Body::Unknown;
+                }
+                return;
+            }
+            if baseline_onset && selected == Action::Continue {
+                return;
+            }
+        }
+        if baseline_onset {
             let tone_id = self.next_tone_id;
             self.next_tone_id = self.next_tone_id.wrapping_add(1);
             self.hold.note_on_sent = true;
@@ -563,6 +639,9 @@ impl PhonationEngine {
                 kick: OnsetKick { strength: 1.0 },
             });
             self.active_notes = self.active_notes.saturating_add(1);
+            if let Some(context) = &mut self.support_action {
+                context.body = crate::life::support_action::Body::Unknown;
+            }
             out_events.push(ToneOnEvent {
                 tone_id,
                 onset_tick: ctx.now_tick,
@@ -598,14 +677,36 @@ impl PhonationEngine {
         out_cmds: &mut Vec<ToneCmd>,
         out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
-    ) {
+    ) -> bool {
         debug_assert!(matches!(self.mode, PhonationMode::Hold));
         // Release ignores a held-tone restart on another phonation mode.
         if !matches!(self.mode, PhonationMode::Hold) {
-            return;
+            return false;
         }
         if !state.is_alive || !state.onset_allowed {
-            return;
+            return false;
+        }
+        if self.support_held_active() {
+            use crate::life::support_action::Action;
+            let Some(chosen) = self.choose_held(ctx.now_tick, Action::Onset) else {
+                return false;
+            };
+            if chosen == Action::Continue {
+                return false;
+            }
+            if chosen == Action::Release {
+                if let Some(tone_id) = self.hold.tone_id.take() {
+                    out_cmds.push(ToneCmd::Off {
+                        tone_id,
+                        off_tick: ctx.now_tick,
+                    });
+                    self.active_notes = self.active_notes.saturating_sub(1);
+                    self.hold.note_on_sent = false;
+                }
+                let context = self.support_action.as_mut().unwrap();
+                context.body = crate::life::support_action::Body::Unknown;
+                return false;
+            }
         }
         if let Some(tone_id) = self.hold.tone_id.take() {
             out_cmds.push(ToneCmd::Off {
@@ -615,7 +716,15 @@ impl PhonationEngine {
             self.active_notes = self.active_notes.saturating_sub(1);
         }
         self.hold.note_on_sent = false;
+        if let Some(context) = &mut self.support_action {
+            context.body = crate::life::support_action::Body::Unknown;
+        }
+        let context = self.support_action.take();
+        let enabled = std::mem::replace(&mut self.support_held_enabled, false);
         self.tick_hold(ctx, state, None, out_cmds, out_events, out_onsets);
+        self.support_action = context;
+        self.support_held_enabled = enabled;
+        true
     }
 
     pub(crate) fn initial_participating_hold(
@@ -1034,6 +1143,58 @@ impl PhonationEngine {
                 .is_some_and(|rng| rng.random::<f32>() >= self.participation_activity)
     }
 
+    fn support_allows_candidate(
+        &self,
+        ctx: &CoreTickCtx,
+        c: &CandidatePoint,
+        step: &CandidateStep,
+        timing_grid: &mut ThetaGrid,
+        fixed_period: Option<f64>,
+    ) -> bool {
+        let Some(mut context) = self.support_action.clone() else {
+            return true;
+        };
+        let Some(end) = Self::tick_for_gate_pos(c.gate as f64 + 1., ctx, timing_grid, fixed_period)
+            .filter(|&end| end > c.tick)
+        else {
+            return true;
+        };
+        // Finite tones use the duration rule and the same gate map as materialization.
+        if !self.sustain_participation {
+            let Some(hold) = self
+                .duration_rule
+                .estimate_hold(step.exc_gate, step.exc_slope)
+            else {
+                return true;
+            };
+            let pos = c.gate as f64 + f64::from(hold);
+            let expression = match &self.clock {
+                PhonationClock::Coupling(clock)
+                    if clock.expression.is_some_and(|e| {
+                        c.tick >= (e.start * f64::from(ctx.fs)).round() as Tick
+                    }) =>
+                {
+                    clock.expression_gate_tick(pos, ctx.fs)
+                }
+                _ => None,
+            };
+            let Some(off) =
+                expression.or_else(|| Self::tick_for_gate_pos(pos, ctx, timing_grid, fixed_period))
+            else {
+                return true;
+            };
+            let Some(onset) = context.onset.as_mut() else {
+                return true;
+            };
+            onset.envelope.onset = c.tick;
+            onset.envelope = onset.envelope.with_release(off.max(c.tick));
+        }
+        context.replace = self.sustain_participation;
+        context.allow_release = false;
+        context.choose(c.tick, end, crate::life::support_action::Action::Onset)
+            == crate::life::support_action::Action::Onset
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn process_candidates(
         &mut self,
@@ -1116,6 +1277,7 @@ impl PhonationEngine {
                 && state.onset_allowed
                 && !self.sway_skips()
                 && let Some(mut kick) = self.onset_rule.on_candidate(&input, state)
+                && self.support_allows_candidate(ctx, c, &step, timing_grid, fixed_period)
             {
                 let measure = ctx.rhythms.measure;
                 if self.measure_accent > 0.0
@@ -1162,6 +1324,9 @@ impl PhonationEngine {
                     gap.on(c.tick, true);
                 }
                 out_cmds.push(ToneCmd::On { tone_id, kick });
+                if let Some(context) = &mut self.support_action {
+                    context.body = crate::life::support_action::Body::Unknown;
+                }
                 self.active_notes = self.active_notes.saturating_add(1);
                 out_events.push(ToneOnEvent {
                     tone_id,

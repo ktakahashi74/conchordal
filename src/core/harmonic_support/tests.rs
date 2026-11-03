@@ -16,6 +16,217 @@ fn geometry() -> Arc<Geometry> {
 }
 
 #[test]
+fn support_action_joint_dense_simd_matches_fixed_width_scalar() {
+    let g = geometry();
+    let mut snapshot = Snapshot::new(g.clone());
+    let e: Vec<_> = (0..g.space.n_bins())
+        .map(|i| (i % 11) as f32 / 16.)
+        .collect();
+    snapshot.observe(&e, 1e-12, 512);
+    let row: Vec<_> = (0..e.len()).map(|i| (i % 17) as f64 / 16.).collect();
+    let template: Vec<_> = (-13_isize..=15)
+        .map(|i| (i, (16 - i.abs()) as f32 / 32.))
+        .collect();
+    for start in 0..5 {
+        let expected = snapshot.joint_density_summary(
+            row[start..row.len() - start]
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(i, q)| (start + i, q)),
+        );
+        crate::core::for_each_simd_level!(|name, simd| {
+            let actual = snapshot.joint_density_lanes(simd, start, &row[start..row.len() - start]);
+            assert_eq!(
+                actual.map(f64::to_bits),
+                expected.map(f64::to_bits),
+                "{name}"
+            );
+        });
+    }
+    for (removed, added) in [
+        ((2, 0.3), (12, 0.7)),
+        ((45, 0.8), (45, 0.2)),
+        ((0, 0.), (110, 0.4)),
+        ((90, 0.5), (0, 0.)),
+        ((20, 0.3), (80, 0.9)),
+    ] {
+        let initial = snapshot.joint_density_summary(row.iter().copied().enumerate());
+        let bounds = |(bin, scale): (usize, f32)| {
+            if scale == 0. {
+                return (0, 0);
+            }
+            let start = bin as isize - 13;
+            (
+                start.clamp(0, row.len() as isize) as usize,
+                (start + template.len() as isize).clamp(0, row.len() as isize) as usize,
+            )
+        };
+        let (rlo, rhi) = bounds(removed);
+        let (alo, ahi) = bounds(added);
+        let mut edges = [rlo, rhi, alo, ahi];
+        edges.sort_unstable();
+        let mut sums = [[0.; 8]; 3];
+        let mut expected_row = row.clone();
+        for pair in edges.windows(2) {
+            let [lo, hi] = [pair[0], pair[1]];
+            let remove = lo >= rlo && hi <= rhi;
+            let add = lo >= alo && hi <= ahi;
+            if !remove && !add {
+                continue;
+            }
+            for i in lo..hi {
+                let r = if remove {
+                    f64::from(
+                        template[(i as isize - removed.0 as isize + 13) as usize].1 * removed.1,
+                    )
+                } else {
+                    0.
+                };
+                let a = if add {
+                    f64::from(template[(i as isize - added.0 as isize + 13) as usize].1 * added.1)
+                } else {
+                    0.
+                };
+                let old = row[i];
+                let new = (old - r).max(0.) + a;
+                let delta = new - old;
+                let e = f64::from(snapshot.density[i]);
+                let k = (i - lo) % 8;
+                sums[0][k] += delta * snapshot.g_c[i];
+                sums[1][k] += snapshot.k[i] * ((new - e).max(0.) - (old - e).max(0.));
+                sums[2][k] += delta;
+                expected_row[i] = new;
+            }
+        }
+        let expected: [f64; 3] = std::array::from_fn(|i| {
+            initial[i] + sums[i][1..].iter().fold(sums[i][0], |sum, &x| sum + x)
+        });
+        crate::core::for_each_simd_level!(|name, simd| {
+            let mut actual_row = row.clone();
+            let actual = snapshot.update_joint_dense(
+                simd,
+                &mut actual_row,
+                initial,
+                &template,
+                -13,
+                removed,
+                added,
+                true,
+            );
+            assert_eq!(actual_row, expected_row, "{name}");
+            assert_eq!(
+                actual.map(f64::to_bits),
+                expected.map(f64::to_bits),
+                "{name}"
+            );
+        });
+        let dense = snapshot.joint_density_summary(expected_row.iter().copied().enumerate());
+        for (a, b) in dense.into_iter().zip(expected) {
+            assert!((a - b).abs() < 1e-12);
+        }
+    }
+}
+
+#[test]
+fn support_action_joint_novelty_matches_dense_overlap_not_independent_addition() {
+    let g = geometry();
+    let mut snapshot = Snapshot::new(g.clone());
+    let mut e = vec![0.; g.space.n_bins()];
+    e[45] = 1.;
+    snapshot.observe(&e, 1e-12, 512);
+    let mut background = vec![0.; e.len()];
+    background[45] = 0.6;
+    background[70] = 0.4;
+    let template = [(0, 0.8), (25, 0.3)];
+    let summary = snapshot.density_summary(background.iter().enumerate().map(|(i, &q)| (i, q)));
+    let base = snapshot.add_template_features(&background, summary, 45, &template, 0.);
+    let added = snapshot.add_template_features(&background, summary, 45, &template, 1.);
+    let mut dense = background.clone();
+    for &(offset, q) in &template {
+        dense[(45 + offset) as usize] += q;
+    }
+    let expected = snapshot.candidate(&dense.iter().copied().enumerate().collect::<Vec<_>>());
+    for (a, b) in added.into_iter().zip(expected) {
+        assert!((a - b).abs() < 1e-12);
+    }
+    let independent = snapshot.template_features(45, &template);
+    assert!((added[2] - base[2] - independent[2]).abs() > 1e-6);
+    let joint_summary = [summary[0], summary[2], summary[3]];
+    let mut joint = background.iter().map(|&x| f64::from(x)).collect::<Vec<_>>();
+    let original = joint.clone();
+    let merged = snapshot.update_joint_density(
+        &mut joint,
+        joint_summary,
+        &template,
+        (0, 0.),
+        (45, 1.),
+        false,
+    );
+    assert_eq!(joint, original);
+    let features = [
+        merged[0],
+        4. * merged[1] / (snapshot.sum + merged[2]).powi(2),
+    ];
+    // The independent reference rounds two merged bin masses to f32.
+    for (a, b) in features.into_iter().zip([expected[0], expected[2]]) {
+        assert!((a - b).abs() < 4. * f64::from(f32::EPSILON));
+    }
+    let committed = snapshot.update_joint_density(
+        &mut joint,
+        joint_summary,
+        &template,
+        (0, 0.),
+        (45, 1.),
+        true,
+    );
+    assert_eq!(committed, merged);
+    let removed =
+        snapshot.update_joint_density(&mut joint, committed, &template, (45, 1.), (0, 0.), true);
+    for (a, b) in removed.into_iter().zip(joint_summary) {
+        assert!((a - b).abs() < 1e-12);
+    }
+    for (a, b) in joint.into_iter().zip(original) {
+        assert!((a - b).abs() < 1e-12);
+    }
+}
+
+#[test]
+fn action_partial_pairs_merge_overlap_before_novelty() {
+    let g = geometry();
+    let mut snapshot = Snapshot::new(g.clone());
+    let mut density = vec![0.; g.space.n_bins()];
+    density[45] = 0.7;
+    snapshot.observe(&density, 1e-12, 512);
+    let template = [(-3, 0.3), (0, 0.8), (3, 0.2)];
+    for parts in [
+        [(45, 0.4), (48, 0.9)],
+        [(0, 0.), (2, 0.5)],
+        [(45, 1.), (45, 0.)],
+    ] {
+        let mut merged = vec![0.; density.len()];
+        for (bin, scale) in parts {
+            for (offset, q) in template {
+                let i = bin as isize + offset;
+                if i >= 0 && i < merged.len() as isize {
+                    merged[i as usize] += q * scale;
+                }
+            }
+        }
+        let q: Vec<_> = merged
+            .into_iter()
+            .enumerate()
+            .filter(|(_, q)| *q > 0.)
+            .collect();
+        let expected = snapshot.candidate(&q);
+        let actual = snapshot.paired_template_features(&template, parts);
+        for (a, b) in actual.into_iter().zip(expected) {
+            assert!((a - b).abs() < 1e-14);
+        }
+    }
+}
+
+#[test]
 fn gradients_converge_to_finite_differences_and_n_reads_partials() {
     let g = geometry();
     let n = g.space.n_bins();

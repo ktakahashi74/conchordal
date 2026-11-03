@@ -634,6 +634,13 @@ fn a_footprint_is_representative_only_while_the_comparison_configures_it() {
 
 fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
     PhonationEngine {
+        support_action: None,
+        support_held_enabled: false,
+        held_window: None,
+        held_next: None,
+        held_consumed: None,
+        held_started: false,
+        held_comparison: None,
         phrase_boundary: None,
         expression_active: false,
         participation_activity: 1.0,
@@ -658,6 +665,84 @@ fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationE
         scratch_grid: ThetaGrid::default(),
         scratch_field: TimingField::default(),
     }
+}
+
+#[test]
+fn support_action_hold_waits_without_consuming_the_onset_latch_and_releases_a_live_tone() {
+    use crate::life::support_action::{Body, tests::fixture};
+    let mut engine = test_engine(
+        OnsetRule::Always { strength: 1. },
+        DurationRule::fixed_gate(1),
+    );
+    engine.mode = PhonationMode::Hold;
+    engine.support_action = Some(fixture());
+    engine.held_next = Some(1024);
+    let mut ctx = CoreTickCtx {
+        now_tick: 512,
+        frame_end: 1024,
+        fs: 48000.,
+        rhythms: Default::default(),
+    };
+    let state = CoreState {
+        is_alive: true,
+        onset_allowed: true,
+    };
+    let (mut commands, mut events, mut onsets) = (Vec::new(), Vec::new(), Vec::new());
+    engine.tick_hold(&ctx, &state, None, &mut commands, &mut events, &mut onsets);
+    assert!(commands.is_empty());
+    assert!(!engine.hold.note_on_sent);
+    assert_eq!(engine.next_tone_id, 0);
+    engine.support_action.as_mut().unwrap().weights.0[0] = -1.;
+    ctx.now_tick += 64;
+    engine.held_window = Some((ctx.now_tick, Some(1024)));
+    engine.tick_hold(&ctx, &state, None, &mut commands, &mut events, &mut onsets);
+    assert_eq!(onsets.len(), 1);
+    assert_eq!(engine.next_tone_id, 1);
+    let mut context = fixture();
+    context.body = Body::One {
+        pitch: context.pitch,
+        energy: context.onset.unwrap(),
+    };
+    engine.support_action = Some(context);
+    commands.clear();
+    events.clear();
+    onsets.clear();
+    ctx.now_tick = 1024;
+    ctx.frame_end = 1536;
+    engine.held_window = Some((1024, Some(1536)));
+    engine.tick_hold(&ctx, &state, None, &mut commands, &mut events, &mut onsets);
+    assert!(matches!(
+        commands.as_slice(),
+        [ToneCmd::Off {
+            tone_id: 0,
+            off_tick: 1024
+        }]
+    ));
+    assert!(onsets.is_empty());
+    assert_eq!(engine.active_notes, 0);
+    assert!(!engine.rearticulate_hold(&ctx, &state, &mut commands, &mut events, &mut onsets));
+    engine.tick_hold(&ctx, &state, None, &mut commands, &mut events, &mut onsets);
+    assert_eq!(
+        commands.len(),
+        1,
+        "a chosen release cannot restart inside the same window"
+    );
+    assert!(onsets.is_empty());
+    engine.support_held_enabled = true;
+    engine.support_action = None;
+    ctx.now_tick = 1536;
+    ctx.frame_end = 2048;
+    commands.clear();
+    engine.tick_hold(&ctx, &state, None, &mut commands, &mut events, &mut onsets);
+    assert!(
+        commands.is_empty(),
+        "missing observation must not reopen a released latch between opportunities"
+    );
+    engine.held_window = Some((2048, Some(3072)));
+    ctx.now_tick = 2048;
+    ctx.frame_end = 2560;
+    engine.tick_hold(&ctx, &state, None, &mut commands, &mut events, &mut onsets);
+    assert!(matches!(commands.as_slice(), [ToneCmd::On { .. }]));
 }
 
 #[test]

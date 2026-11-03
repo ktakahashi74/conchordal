@@ -103,6 +103,16 @@ pub(super) fn advance_population(
         }
     }
     for voice in &mut state.pop.voices {
+        if crate::life::support_action::active(state.current_landscape.support_weights) {
+            voice.support_renderer_phase3 = cfg.render_prototype;
+            voice.support_body = state.schedule_renderer.support_body(
+                voice.id(),
+                voice.metadata.generation,
+                now_tick,
+                &state.current_landscape.rhythm,
+                &voice.body_snapshot(),
+            );
+        }
         if let Some(phrase) = &mut voice.phonation_engine.phrase_boundary {
             phrase.finish_publication(now_tick);
             for boundary in phrase.trace.drain(..) {

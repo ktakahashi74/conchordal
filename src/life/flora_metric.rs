@@ -215,6 +215,36 @@ impl Flora {
             }
         } else if crossing || (!harmonic && !m.active) {
             self.harmonic_act_now = true;
+            let next = if let Some(ticks) = &self.harmonic_ticks {
+                ticks.iter().copied().find(|&t| t > tick)
+            } else if m.active {
+                m.crossings.iter().map(|c| c.tick).find(|&t| t > tick)
+            } else if self.span_gap.is_some()
+                && m.crossings
+                    .iter()
+                    .any(|c| c.tick > tick || (!crossing && c.tick == tick))
+            {
+                // A future rest transition can create an additional allocation.
+                None
+            } else {
+                Some(m.now + self.hop as u64)
+            };
+            self.support_window = Some(SupportWindow {
+                start: tick,
+                end: next,
+                hop_start: m.now,
+                kind: if harmonic {
+                    "shared"
+                } else if m.active {
+                    "crossing"
+                } else {
+                    "fallback"
+                },
+            });
+            let decay = (-0.5 * GROWTH_RATE * self.pace * METABOLISM / self.fs).exp();
+            for lane in &mut self.lanes {
+                lane.retirement_decay = decay;
+            }
             if let Some(use_relations) = &self.harmonic_use {
                 use_relations.set_sample(tick);
             }
@@ -268,13 +298,6 @@ impl Flora {
             }
             if let Some(use_relations) = self.harmonic_use.as_ref().filter(|u| u.active()) {
                 use_relations.set_sample(tick);
-                let next = if let Some(ticks) = &self.harmonic_ticks {
-                    ticks.iter().copied().find(|&t| t > tick)
-                } else if m.active {
-                    m.crossings.iter().map(|c| c.tick).find(|&t| t > tick)
-                } else {
-                    Some(m.now + self.hop as u64)
-                };
                 if let Some(next) = next {
                     self.harmonic_act_now = use_relations.allow_now(next);
                 }

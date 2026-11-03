@@ -348,6 +348,37 @@ impl Use {
         self.choose_conditioned(count, baseline, 0., 1., candidate)
     }
 
+    /// Add the existing deterministic Flora terms to a common action comparison.
+    pub(crate) fn action_difference(&self, pitch: Option<f32>, baseline: f32, retain: bool) -> f64 {
+        if !self.active() {
+            return 0.;
+        }
+        let mut work = self.work.borrow_mut();
+        work.references = [None; 2];
+        if retain {
+            self.continuation * self.consequence(1, pitch, None, Some(baseline), None, &mut work)
+        } else {
+            self.weight
+                * self.consequence(
+                    0,
+                    pitch,
+                    self.source,
+                    Some(baseline),
+                    self.source,
+                    &mut work,
+                )
+        }
+    }
+
+    pub(crate) fn no_add_difference(&self, pitch: f32) -> f64 {
+        if !self.active() || self.continuation == 0. {
+            return 0.;
+        }
+        let mut work = self.work.borrow_mut();
+        work.references = [None; 2];
+        self.continuation * self.consequence(1, None, None, Some(pitch), None, &mut work)
+    }
+
     pub(crate) fn choose_conditioned(
         &self,
         count: usize,

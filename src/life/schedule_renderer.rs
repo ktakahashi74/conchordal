@@ -75,6 +75,7 @@ struct ToneKey {
 }
 
 struct RoutedTone {
+    support_shape: Option<crate::life::sound::BodySnapshot>,
     harmonic_sounding: bool,
     tone: Tone,
     routing: Routing,
@@ -194,6 +195,46 @@ pub struct ScheduleRenderer {
 pub type SoundRenderer = ScheduleRenderer;
 
 impl ScheduleRenderer {
+    pub(crate) fn support_body(
+        &self,
+        id: u64,
+        generation: u32,
+        now: Tick,
+        rhythms: &NeuralRhythms,
+        shape: &crate::life::sound::BodySnapshot,
+    ) -> crate::life::support_action::Body {
+        use crate::life::support_action::Body;
+        let mut result = Body::Silent;
+        for (key, routed) in &self.tones {
+            if key.source_id != id
+                || routed.source_generation != generation
+                || !routed.routing.to_habitat
+                || routed.tone.is_done(now)
+            {
+                continue;
+            }
+            if !matches!(result, Body::Silent)
+                || !routed.tone.supports_self_model()
+                || routed.support_shape.as_ref() != Some(shape)
+            {
+                return Body::Unknown;
+            }
+            let (frequency, amplitude, envelope) = routed.tone.prediction_parameters(None);
+            result = Body::One {
+                pitch: frequency.log2(),
+                energy: crate::life::tone_energy::ToneEnergy {
+                    amplitude,
+                    envelope,
+                    control: Some(routed.tone.prediction_control(now, rhythms)),
+                    scheduled_release: None,
+                    sine: routed.tone.prediction_sine(now),
+                    bank: routed.tone.prediction_bank(now),
+                },
+            };
+        }
+        result
+    }
+
     pub(crate) fn prepare_rest_sources(&mut self, sources: impl Iterator<Item = (u64, u32)>) {
         for source in &mut self.rest_sources {
             source.used = false;
@@ -310,6 +351,7 @@ impl ScheduleRenderer {
                 (
                     *key,
                     RoutedTone {
+                        support_shape: routed.support_shape.clone(),
                         harmonic_sounding: false,
                         tone: routed.tone.clone(),
                         routing: routed.routing,
@@ -1092,6 +1134,7 @@ impl ScheduleRenderer {
                             self.tones.insert(
                                 key,
                                 RoutedTone {
+                                    support_shape: Some(spec.body.clone()),
                                     harmonic_sounding: false,
                                     tone,
                                     source_pcm_slot: None,
@@ -1720,6 +1763,7 @@ mod tests {
                     tone_id,
                 },
                 RoutedTone {
+                    support_shape: None,
                     harmonic_sounding: false,
                     tone: tone.clone(),
                     routing: Routing::default(),
@@ -2082,6 +2126,53 @@ mod tests {
         renderer.phrase_receipts.clear();
         renderer.render(&[], 200, &NeuralRhythms::default());
         assert!(renderer.phrase_receipts.is_empty());
+    }
+
+    #[test]
+    fn support_action_native_silence_is_not_new_onset_support() {
+        use crate::life::support_action::{Action, Body, tests::fixture};
+        let tb = Timebase { fs: 8000., hop: 64 };
+        let rhythms = NeuralRhythms::default();
+        let mut renderer = ScheduleRenderer::new(tb).with_prototype(true);
+        let batch = outcome_batch(BodyKind::Modal);
+        let shape = batch.tones[0].body.clone();
+        assert!(matches!(
+            renderer.support_body(2, 7, 0, &rhythms, &shape),
+            Body::Silent
+        ));
+        let mut preview = Tone::from_parts(
+            tb,
+            13,
+            80,
+            337.,
+            0.2,
+            Some(shape.clone()),
+            Some(batch.tones[0].render_modulator.clone()),
+            None,
+        )
+        .unwrap();
+        let mut context = fixture();
+        context.onset = preview.preview_new_energy(
+            tb,
+            13,
+            80,
+            0.2,
+            shape.amp_scale,
+            None,
+            batch.tones[0].render_modulator.clone(),
+            &rhythms,
+            true,
+        );
+        assert!(context.onset.is_none());
+        context.body = renderer.support_body(2, 7, 0, &rhythms, &shape);
+        assert_eq!(context.choose(512, 1024, Action::Onset), Action::Onset);
+        renderer.render(&[batch], 0, &rhythms);
+        context.body = renderer.support_body(2, 7, 64, &rhythms, &shape);
+        assert!(matches!(context.body, Body::Unknown));
+        assert_eq!(
+            context.choose(512, 1024, Action::Continue),
+            Action::Continue
+        );
     }
 
     fn outcome_batch(kind: BodyKind) -> PhonationBatch {

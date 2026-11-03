@@ -16,6 +16,9 @@ use fearless_simd::{Level, Simd, dispatch, f32x8, prelude::*};
 
 #[path = "flora_metric.rs"]
 mod metric;
+#[path = "flora_support.rs"]
+mod support;
+use support::{SupportChoice, SupportScratch, SupportWindow};
 #[path = "flora_span_gap.rs"]
 mod span_gap;
 use metric::MetricState;
@@ -167,7 +170,7 @@ enum Mode {
     Retiring,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct Lane {
     harmonic_hold: bool,
     harmonic_sounding: bool,
@@ -200,6 +203,17 @@ struct Lane {
 }
 
 impl Lane {
+    fn selected_target(&self, peak: &Peak, mode: PitchApplyMode, hold: bool) -> (f32, f32) {
+        (
+            peak.mass.sqrt(),
+            if mode == PitchApplyMode::Rearticulate || hold {
+                self.position
+            } else {
+                peak.position
+            },
+        )
+    }
+
     fn new(noisy: bool, position: f32) -> Self {
         Self {
             harmonic_sounding: false,
@@ -392,7 +406,16 @@ pub(crate) struct Flora {
     diffusion: f32,
     rng: u64,
     support_choice_scan: Vec<f64>,
+    support_native_scores: Vec<f64>,
+    support_window: Option<SupportWindow>,
+    support_scratch: std::cell::RefCell<SupportScratch>,
+    #[cfg(test)]
+    support_records: std::cell::RefCell<Option<Vec<SupportChoice>>>,
     support_active: bool,
+    support_action: Option<(
+        std::sync::Arc<crate::core::harmonic_support::Snapshot>,
+        crate::core::harmonic_support::Weights,
+    )>,
     support_template: std::sync::Arc<[(isize, f32)]>,
     support_ref_power: f32,
     support_loudness_exp: f32,
@@ -597,7 +620,13 @@ impl Flora {
             } else {
                 Vec::new()
             },
+            support_native_scores: if landscape.support_planned || landscape.support.is_some() {
+                vec![0.; landscape.space.n_bins()]
+            } else {
+                Vec::new()
+            },
             support_active: false,
+            support_action: None,
             support_template: std::sync::Arc::from([]),
             support_ref_power: landscape.support_ref_power,
             support_loudness_exp: landscape.support_loudness_exp,
@@ -615,6 +644,10 @@ impl Flora {
             consumption_rows: Vec::new(),
             consumption_weights: Vec::new(),
             cells: Vec::new(),
+            support_window: None,
+            support_scratch: Default::default(),
+            #[cfg(test)]
+            support_records: Default::default(),
             lanes: Vec::new(),
             tonal_len: 0,
             residual_end: 0,
@@ -742,6 +775,7 @@ impl Flora {
     pub(crate) fn on_space_change(&mut self, space: &Log2Space) {
         if !self.support_choice_scan.is_empty() {
             self.support_choice_scan.resize(space.n_bins(), 0.);
+            self.support_native_scores.resize(space.n_bins(), 0.);
         }
         self.support_active = false;
         if !self.biomass_mass_scan.is_empty() {
@@ -861,6 +895,11 @@ impl Flora {
                 lane.noise_index = self.noisy_len;
                 self.noisy_len += 1;
             }
+        }
+        if !self.support_choice_scan.is_empty() {
+            self.support_scratch
+                .get_mut()
+                .reserve(self.hop, self.space.n_bins(), self.lanes.len());
         }
         self.temporal
             .as_mut()
@@ -984,16 +1023,17 @@ impl Flora {
             active.weight = 0.;
         }
         self.support_active = false;
+        self.support_action = None;
         if landscape.support_weights.active() {
             let snapshot = if !self.needs_hr_observer() || self.rendered_samples == 0 {
-                landscape.support.as_deref()
+                landscape.support.as_ref()
             } else {
                 landscape
                     .flora_observations
                     .iter()
                     .find(|s| s.id == self.id && s.generation == 0)
                     .and_then(|s| s.perception.as_ref())
-                    .and_then(|s| s.support.as_deref())
+                    .and_then(|s| s.support.as_ref())
             };
             if let Some(snapshot) = snapshot {
                 tracing::trace!(
@@ -1011,6 +1051,9 @@ impl Flora {
                     .clamp(-f64::MAX, f64::MAX);
                 }
                 self.support_active = true;
+                if crate::life::support_action::active(landscape.support_weights) {
+                    self.support_action = Some((snapshot.clone(), landscape.support_weights));
+                }
             }
         }
 
@@ -1214,8 +1257,7 @@ impl Flora {
                 .then(a.cmp(&b))
         });
         for &i in &self.order {
-            let lane = &mut self.lanes[i];
-            lane.harmonic_hold = !self.harmonic_act_now;
+            let lane = &self.lanes[i];
             let mut nearest = self
                 .cells
                 .iter()
@@ -1227,7 +1269,176 @@ impl Flora {
                         .then_some((c, distance, peak.bin))
                 })
                 .min_by(|a, b| a.1.total_cmp(&b.1).then(a.2.cmp(&b.2)));
+            self.support_scratch.borrow_mut().reset_scores();
+            let mut selected_target = None;
+            let mut support_hold = false;
+            let mut support_release = false;
+            let mut support_selected = false;
             if self.harmonic_act_now
+                && self.support_action.is_some()
+                && let Some((c, _, _)) = nearest
+            {
+                if let Some(use_relations) = self.harmonic_use.as_mut() {
+                    use_relations.set_source(Some(
+                        crate::temporal_cognition::harmonic_relations::Source {
+                            kind: 1,
+                            id: self.id,
+                            generation: lane.generation,
+                        },
+                    ));
+                }
+                let peak = self.cells[c].peak.as_ref().unwrap();
+                let baseline_position = peak.position;
+                let baseline_distance = -f64::from((peak.position - lane.position).abs());
+                let mut follow = lane.clone();
+                (follow.target, follow.target_position) =
+                    lane.selected_target(peak, self.spec.pitch_apply_mode, false);
+                let mut hold = follow.clone();
+                hold.target_position = lane.position;
+                let mut release = lane.clone();
+                release.retire();
+                // Temporal evidence is fixed across quadrature refinements.
+                let temporal = |pitch, retain| {
+                    self.harmonic_use.as_ref().map_or(0., |u| {
+                        u.action_difference(pitch, baseline_position, retain)
+                    })
+                };
+                for cell in &self.cells {
+                    let Some(peak) = &cell.peak else { continue };
+                    if peak.stay
+                        && peak.claimed.is_none()
+                        && (peak.position - lane.position).abs() <= 50. / 1200.
+                    {
+                        self.support_native_scores[peak.bin] = temporal(Some(peak.position), false);
+                    }
+                }
+                let native_hold = temporal(Some(lane.position), true);
+                let native_release = temporal(None, true);
+                if let Some((selected, (target, base, chosen, release_value, cells), _)) =
+                    crate::life::support_action::resolved_choice(
+                        self.support_width().unwrap_or(0),
+                        |resolution| {
+                            let mut cells = self
+                                .support_cells(Some(i), Some(&release), resolution)?
+                                .max(self.support_cells(Some(i), Some(&follow), resolution)?);
+                            for cell in &self.cells {
+                                let Some(peak) = &cell.peak else { continue };
+                                if peak.stay
+                                    && peak.claimed.is_none()
+                                    && (peak.position - lane.position).abs() <= 50. / 1200.
+                                {
+                                    let mut candidate = follow.clone();
+                                    candidate.target = peak.mass.sqrt();
+                                    cells = cells.max(self.support_cells(
+                                        Some(i),
+                                        Some(&candidate),
+                                        resolution,
+                                    )?);
+                                }
+                            }
+                            let base = self.support_action_mean(Some(i), Some(&follow), cells)?;
+                            let release_value =
+                                self.support_action_mean(Some(i), Some(&release), cells)?;
+                            let weights = self.support_action.as_ref()?.1;
+                            let weighted = |value: [f64; 2]| {
+                                weights.value([value[0] - base[0], 0., value[1] - base[1]])
+                            };
+                            let mut chosen = base;
+
+                            let mut best = c;
+                            let mut score = 0.;
+                            let mut target = (follow.target, follow.target_position);
+                            for (j, cell) in self.cells.iter().enumerate() {
+                                let Some(peak) = &cell.peak else { continue };
+                                if !peak.stay
+                                    || peak.claimed.is_some()
+                                    || (peak.position - lane.position).abs() > 50. / 1200.
+                                {
+                                    continue;
+                                }
+                                let mut candidate = follow.clone();
+                                (candidate.target, candidate.target_position) =
+                                    lane.selected_target(peak, self.spec.pitch_apply_mode, false);
+                                let candidate_target =
+                                    (candidate.target, candidate.target_position);
+                                let value =
+                                    self.support_action_mean(Some(i), Some(&candidate), cells)?;
+                                let delta = weighted(value)
+                                    - f64::from((peak.position - lane.position).abs())
+                                    - baseline_distance
+                                    + self.support_native_scores[peak.bin];
+                                if delta > score {
+                                    best = j;
+                                    score = delta;
+                                    target = candidate_target;
+                                    chosen = value;
+                                }
+                            }
+                            for (j, candidate, native) in [
+                                (self.cells.len(), hold.clone(), native_hold),
+                                (self.cells.len() + 1, release.clone(), native_release),
+                            ] {
+                                let candidate_target =
+                                    (candidate.target, candidate.target_position);
+                                let value =
+                                    self.support_action_mean(Some(i), Some(&candidate), cells)?;
+                                let delta = weighted(value) + native;
+                                if delta > score {
+                                    best = j;
+                                    score = delta;
+                                    target = candidate_target;
+                                    chosen = value;
+                                }
+                            }
+                            Some((best, (target, base, chosen, release_value, cells)))
+                        },
+                    )
+                {
+                    let window = self.support_window.unwrap();
+                    self.record_support_choice(SupportChoice {
+                        action: if selected == self.cells.len() + 1 {
+                            "release"
+                        } else if selected == self.cells.len() {
+                            "hold"
+                        } else {
+                            "follow"
+                        },
+                        generation: lane.generation,
+                        position: lane.position,
+                        at: window.start,
+                        end: window.end,
+                        opportunity: window.kind,
+                        reference_end: self.support_action.as_ref().unwrap().0.end_sample,
+                        baseline: base,
+                        candidate: chosen,
+                        release: Some(release_value),
+                        delta: [chosen[0] - base[0], chosen[1] - base[1]],
+                        cells,
+                        retiring: self
+                            .lanes
+                            .iter()
+                            .filter(|l| l.mode == Mode::Retiring)
+                            .count(),
+                    });
+                    support_selected = true;
+                    selected_target = Some(target);
+                    support_hold = selected == self.cells.len();
+                    support_release = selected == self.cells.len() + 1;
+                    if selected < self.cells.len() {
+                        let peak = self.cells[selected].peak.as_ref().unwrap();
+                        nearest = Some((selected, (peak.position - lane.position).abs(), peak.bin));
+                    }
+                }
+            }
+            let lane = &mut self.lanes[i];
+            lane.harmonic_hold = !self.harmonic_act_now || support_hold;
+            if support_release {
+                lane.retire();
+                self.retirements += 1;
+                continue;
+            }
+            if self.harmonic_act_now
+                && !support_selected
                 && let Some(use_relations) = self.harmonic_use.as_mut().filter(|u| u.active())
                 && let Some((baseline, _, _)) = nearest
             {
@@ -1286,6 +1497,10 @@ impl Flora {
             if let Some((c, _, _)) = nearest {
                 self.cells[c].peak.as_mut().unwrap().claimed = Some(i);
                 lane.cell = Some(c);
+                let peak = self.cells[c].peak.as_ref().unwrap();
+                (lane.target, lane.target_position) = selected_target.unwrap_or_else(|| {
+                    lane.selected_target(peak, self.spec.pitch_apply_mode, lane.harmonic_hold)
+                });
             } else {
                 self.retirements += 1;
                 self.flapping += u64::from(lane.age_samples as f32 <= SLEW_SEC * self.fs);
@@ -1375,6 +1590,7 @@ impl Flora {
             self.flapping += u64::from(self.lanes[i].age_samples as f32 <= SLEW_SEC * self.fs);
             self.lanes[i].retire();
         }
+        self.support_scratch.borrow_mut().reset_scores();
         loop {
             let best = self
                 .cells
@@ -1404,6 +1620,7 @@ impl Flora {
             let Some(mut c) = best else {
                 break;
             };
+            let mut temporal_no_spawn = false;
             if let Some(use_relations) = self.harmonic_use.as_mut().filter(|u| u.active()) {
                 use_relations.set_source(None);
                 self.harmonic_cells.clear();
@@ -1439,9 +1656,13 @@ impl Flora {
                     }
                 });
                 if chosen == count {
-                    break;
+                    if self.support_action.is_none() {
+                        break;
+                    }
+                    temporal_no_spawn = true;
+                } else {
+                    c = self.harmonic_cells[chosen];
                 }
-                c = self.harmonic_cells[chosen];
             }
             let position = self.cells[c].peak.as_ref().unwrap().position;
             self.cells[c].peak.as_mut().unwrap().visited = true;
@@ -1475,6 +1696,63 @@ impl Flora {
             lane.retirement_decay = (-0.5 * GROWTH_RATE * self.pace * METABOLISM / self.fs).exp();
             lane.mode = Mode::Current;
             lane.cell = Some(c);
+            (lane.target, lane.target_position) = lane.selected_target(
+                self.cells[c].peak.as_ref().unwrap(),
+                self.spec.pitch_apply_mode,
+                false,
+            );
+            let no_add = if self.harmonic_weight != 0. {
+                self.harmonic_use
+                    .as_ref()
+                    .map_or(0., |u| u.no_add_difference(position))
+            } else {
+                0.
+            };
+            let declined = crate::life::support_action::resolved_choice(
+                self.support_width().unwrap_or(0),
+                |resolution| {
+                    let cells = self.support_cells(None, Some(&lane), resolution)?;
+                    let base = self.support_action_mean(None, None, cells)?;
+                    let added = self.support_action_mean(None, Some(&lane), cells)?;
+                    let value = self.support_action.as_ref()?.1.value([
+                        added[0] - base[0],
+                        0.,
+                        added[1] - base[1],
+                    ]);
+                    Some((usize::from(no_add > value), (value, base, added, cells)))
+                },
+            );
+            if let Some((selected, (_, base, added, cells), _)) = declined {
+                let window = self.support_window.unwrap();
+                self.record_support_choice(SupportChoice {
+                    action: if selected == 1 { "no_spawn" } else { "birth" },
+                    generation: self.births + 1,
+                    position,
+                    at: window.start,
+                    end: window.end,
+                    opportunity: window.kind,
+                    reference_end: self.support_action.as_ref().unwrap().0.end_sample,
+                    baseline: base,
+                    candidate: added,
+                    release: None,
+                    delta: [added[0] - base[0], added[1] - base[1]],
+                    cells,
+                    retiring: self
+                        .lanes
+                        .iter()
+                        .filter(|l| l.mode == Mode::Retiring)
+                        .count(),
+                });
+            }
+            if declined.map_or(temporal_no_spawn, |(selected, _, _)| selected == 1) {
+                tracing::trace!(
+                    flora_id = self.id,
+                    position,
+                    ?declined,
+                    "support action no-spawn"
+                );
+                continue;
+            }
             let angle = TAU * random_unit(&mut self.rng);
             let (sin, cos) = angle.sin_cos();
             lane.z = [cos, sin];
@@ -1489,14 +1767,6 @@ impl Flora {
         for lane in &mut self.lanes {
             if lane.tonal && lane.mode == Mode::Current {
                 let peak = self.cells[lane.cell.unwrap()].peak.as_ref().unwrap();
-                lane.target = peak.mass.sqrt();
-                lane.target_position = if self.spec.pitch_apply_mode == PitchApplyMode::Rearticulate
-                    || lane.harmonic_hold
-                {
-                    lane.position
-                } else {
-                    peak.position
-                };
                 lane.sigma = peak.sigma;
                 lane.window = peak.window.clone();
                 lane.pending_since = None;
@@ -2043,12 +2313,12 @@ mod tests {
                 hill(&mut f, 20, 1.);
                 hill(&mut f, 75, 1.);
                 allocate(&mut f);
-                let lane = f
+                let position = f
                     .lanes
                     .iter()
                     .find(|lane| lane.tonal && lane.mode == Mode::Current)
-                    .unwrap();
-                (lane.position, f.growth_level_scan.clone())
+                    .map(|lane| lane.position);
+                (position, f.growth_level_scan.clone())
             };
             l.support_weights.set(0, 1000.);
             let positive = run(&l);
@@ -2058,6 +2328,503 @@ mod tests {
             assert_eq!(positive.1, negative.1);
             assert_eq!(positive.1, l.consonance_field_level);
         }
+    }
+
+    fn joint_fixture() -> Flora {
+        let context = crate::life::support_action::tests::fixture();
+        let mut l = Landscape::new(context.snapshot.geometry.space.clone());
+        l.support_planned = true;
+        let mut specification = spec();
+        specification.residual = false;
+        specification.pitch_apply_mode = PitchApplyMode::Rearticulate;
+        let mut f = Flora::new(
+            7,
+            specification,
+            (55., 1760.),
+            FloraSeeding::Uniform,
+            42,
+            &l,
+            2000.,
+            100,
+        );
+        f.support_action = Some((context.snapshot, context.weights));
+        f.support_template = std::sync::Arc::from([(0, 1.)]);
+        f.amp.value = f.spec.amp;
+        f.gain.value = 1.;
+        f.temporal.as_mut().unwrap().now = 512;
+        f.biomass_mass_scan.fill(0.);
+        hill(&mut f, l.space.nearest_index(context.pitch.exp2()), 1.);
+        f.decompose();
+        f
+    }
+
+    #[test]
+    fn support_action_crossing_window_matches_actual_allocation_samples() {
+        use crate::life::phonation_engine::CandidatePoint;
+        let mut f = joint_fixture();
+        f.support_action.as_mut().unwrap().1.0[0] = -1.;
+        *f.support_records.get_mut() = Some(Vec::new());
+        let m = f.temporal.as_mut().unwrap();
+        m.active = true;
+        m.crossings.extend([
+            CandidatePoint { tick: 532, gate: 1 },
+            CandidatePoint { tick: 592, gate: 2 },
+        ]);
+        let mut output = vec![0.; f.hop];
+        let mut habitat = vec![0.; f.hop];
+        f.render_add(&mut output, &mut habitat);
+        let records = f.support_records.borrow();
+        let records = records.as_ref().unwrap();
+        assert!(records.iter().any(|r| r.action == "birth"));
+        assert!(
+            records
+                .iter()
+                .all(|r| (r.at, r.end, r.opportunity) == (532, Some(592), "crossing"))
+        );
+        assert_eq!(f.support_window.unwrap().start, 592);
+        assert_eq!(f.support_window.unwrap().end, None);
+        assert!(f.support_width().is_none());
+        assert!(habitat[..20].iter().all(|&x| x == 0.));
+        assert!(habitat[20..80].iter().any(|&x| x != 0.));
+    }
+
+    #[test]
+    fn support_action_fallback_and_crossing_rebirth_compare_the_selected_tail() {
+        use crate::life::phonation_engine::CandidatePoint;
+        for crossing in [false, true] {
+            let mut f = joint_fixture();
+            f.support_template = std::sync::Arc::from([(0, 4.)]);
+            f.support_loudness_exp = 0.3;
+            let snapshot = &f.support_action.as_ref().unwrap().0;
+            let bin = (1..f.space.n_bins() - 1)
+                .max_by(|&a, &b| {
+                    let score = |bin| {
+                        let features = snapshot.template_features(bin, &f.support_template);
+                        features[2] * features[0].abs()
+                    };
+                    score(a).total_cmp(&score(b))
+                })
+                .unwrap();
+            let c = snapshot.template_features(bin, &f.support_template)[0];
+            assert_ne!(c, 0.);
+            f.support_action.as_mut().unwrap().1.0[0] = -c.signum();
+            f.biomass_mass_scan.fill(0.);
+            hill(&mut f, bin, 1.);
+            f.decompose();
+            let cell = f.cells.iter().position(|c| c.peak.is_some()).unwrap();
+            let peak = f.cells[cell].peak.as_ref().unwrap();
+            let position = peak.position;
+            let mut old = Lane::new(false, position);
+            old.mode = Mode::Current;
+            old.cell = Some(cell);
+            old.generation = 1;
+            old.r = 0.15;
+            old.q = old.r * old.r;
+            old.target = peak.mass.sqrt();
+            old.age_samples = 200;
+            f.lanes[0] = old;
+            f.births = 1;
+            *f.support_records.get_mut() = Some(Vec::new());
+            let start = if crossing { 532 } else { 512 };
+            let end = if crossing { 592 } else { 612 };
+            if crossing {
+                let m = f.temporal.as_mut().unwrap();
+                m.active = true;
+                m.crossings.extend([
+                    CandidatePoint {
+                        tick: start,
+                        gate: 1,
+                    },
+                    CandidatePoint { tick: end, gate: 2 },
+                ]);
+            }
+            f.metric_allocate(crossing, (start - 512) as usize);
+            let records = f.support_records.borrow();
+            let records = records.as_ref().unwrap();
+            let release = records
+                .iter()
+                .find(|r| r.action == "release")
+                .expect("retirement candidate wins");
+            let birth = records
+                .iter()
+                .find(|r| {
+                    matches!(r.action, "birth" | "no_spawn")
+                        && r.position.to_bits() == position.to_bits()
+                })
+                .expect("same-position birth is compared, not prohibited");
+            assert_eq!((release.at, release.end), (start, Some(end)));
+            assert_eq!((birth.at, birth.end), (start, Some(end)));
+            assert_eq!(release.reference_end, birth.reference_end);
+            assert!(birth.retiring > 0 && f.lanes[0].r > 0.);
+            assert_ne!(birth.baseline, [0., 0.]);
+            assert_eq!(
+                birth.delta,
+                [
+                    birth.candidate[0] - birth.baseline[0],
+                    birth.candidate[1] - birth.baseline[1]
+                ]
+            );
+            assert_eq!(release.release, Some(release.candidate));
+            let witness = format!(
+                "HV16_R2_WITNESS {}\n",
+                serde_json::to_string(&serde_json::json!({
+                    "release": release, "birth": birth,
+                    "retiring_amplitude": f.lanes[0].r,
+                }))
+                .unwrap()
+            );
+            std::io::Write::write_all(&mut std::io::stderr().lock(), witness.as_bytes()).unwrap();
+            let mut born = Lane::new(false, position);
+            born.mode = Mode::Current;
+            born.target = f.cells[cell].peak.as_ref().unwrap().mass.sqrt();
+            let mut alone = f.clone();
+            alone.lanes.iter_mut().for_each(|l| {
+                l.mode = Mode::Free;
+                l.r = 0.;
+                l.q = 0.;
+                l.target = 0.;
+            });
+            alone.support_scratch.get_mut().cells = 0;
+            let standalone = alone
+                .support_action_mean(None, Some(&born), birth.cells)
+                .unwrap();
+            assert!(
+                (birth.delta[1] - standalone[1]).abs() > 1e-12,
+                "novelty must include the overlapping tail: {birth:?}, standalone={standalone:?}"
+            );
+            let mut tail = f.lanes[0].clone();
+            tail.slew(f.fs);
+            assert!(tail.r > 0.);
+        }
+    }
+
+    #[test]
+    fn support_action_joint_cache_matches_fresh_rebuild_after_selected_changes() {
+        let mut f = joint_fixture();
+        f.support_window = Some(SupportWindow {
+            start: 512,
+            end: Some(612),
+            hop_start: 512,
+            kind: "fallback",
+        });
+        let position = f.space.freq_of_index(70).log2();
+        f.support_template = std::sync::Arc::from([(-25, 2.), (0, 1.)]);
+        f.support_loudness_exp = 0.3;
+        for i in 0..3 {
+            let lane = &mut f.lanes[i];
+            *lane = Lane::new(false, position);
+            lane.mode = Mode::Current;
+            lane.r = 0.15;
+            lane.q = lane.r * lane.r;
+            lane.target = 0.3;
+        }
+        for turn in 0..32 {
+            f.support_window.as_mut().unwrap().end = Some(if turn == 0 {
+                560
+            } else if turn % 2 == 0 {
+                600
+            } else {
+                612
+            });
+            f.lanes[turn % 3].target = 0.2 + turn as f32 / 256.;
+            let mut candidate = f.lanes[0].clone();
+            if turn % 2 == 0 {
+                candidate.retirement_decay =
+                    (-0.5 * GROWTH_RATE * f.pace * METABOLISM / f.fs).exp();
+                candidate.retire();
+            }
+            for cells in [2, 4, 8, 16] {
+                let cached = f
+                    .support_action_mean(Some(0), Some(&candidate), cells)
+                    .unwrap();
+                let mut shifted = candidate.clone();
+                shifted.target_position += 0.1 * f.space.step();
+                let quantized = f
+                    .support_action_mean(Some(0), Some(&shifted), cells)
+                    .unwrap();
+                assert_eq!(cached, quantized);
+                let mut reference = f.clone();
+                reference
+                    .support_scratch
+                    .get_mut()
+                    .reserve(f.hop, f.space.n_bins(), f.lanes.len());
+                let fresh = reference
+                    .support_action_mean(Some(0), Some(&candidate), cells)
+                    .unwrap();
+                for (a, b) in cached.into_iter().zip(fresh) {
+                    assert!((a - b).abs() < 1e-12, "cache drift: {a} versus {b}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn support_action_stationary_joint_rows_keep_midpoint_weights() {
+        let mut f = joint_fixture();
+        f.support_window = Some(SupportWindow {
+            start: 512,
+            end: Some(612),
+            hop_start: 512,
+            kind: "fallback",
+        });
+        for lane in f.lanes.iter_mut().take(3) {
+            *lane = Lane::new(false, 440_f32.log2());
+            lane.mode = Mode::Current;
+            lane.r = 0.3;
+            lane.target = 0.3;
+            lane.slew_target = 0.3;
+        }
+        let candidate = f.lanes[0].clone();
+        let once = f.support_action_mean(Some(0), Some(&candidate), 1).unwrap();
+        for cells in [2, 25, 50, 100] {
+            let repeated = f
+                .support_action_mean(Some(0), Some(&candidate), cells)
+                .unwrap();
+            for (a, b) in once.into_iter().zip(repeated) {
+                assert!((a - b).abs() < 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn support_action_slew_deadline_projection_matches_renderer_sample_steps() {
+        for noisy in [false, true] {
+            for retiring in [false, true] {
+                for scale in [0.25, 1.] {
+                    let mut original = Lane::new(noisy, 440.0_f32.log2());
+                    original.mode = Mode::Current;
+                    original.r = 0.13;
+                    original.q = original.r * original.r;
+                    original.target = 0.4;
+                    original.target_position += 0.1;
+                    for _ in 0..17 {
+                        original.slew(48000.);
+                    }
+                    original.retirement_decay = 0.9998;
+                    if retiring {
+                        original.retire();
+                    }
+                    let mut actual = original.clone();
+                    actual.target *= scale;
+                    for t in 0_usize..512 {
+                        actual.slew(48000.);
+                        if actual.mode != Mode::Free {
+                            actual.age_samples += 1;
+                        }
+                        let offset = 23 + t;
+                        if offset.is_multiple_of(64) || actual.age_samples == 1 {
+                            actual.sounding_log2 = actual.position
+                                + (actual.target_position - actual.position) * (offset + 1) as f32
+                                    / 1024.;
+                        }
+                        let (r, position) =
+                            support::project(&original, t, 23, 1024, 48000., scale, None);
+                        assert_eq!(r.to_bits(), actual.r.to_bits(), "sample {t}");
+                        assert_eq!(
+                            position.to_bits(),
+                            actual.sounding_log2.to_bits(),
+                            "sample {t}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn support_action_residual_birth_is_unknown_before_and_after_sounding() {
+        let mut f = joint_fixture();
+        f.support_window = Some(SupportWindow {
+            start: 512,
+            end: Some(612),
+            hop_start: 512,
+            kind: "fallback",
+        });
+        assert!(f.support_width().is_some());
+        f.spec.residual = true;
+        assert!(f.lanes.iter().all(|lane| lane.r == 0.));
+        assert!(f.support_action_mean(None, None, 2).is_none());
+        let residual = f.lanes.iter_mut().find(|lane| !lane.tonal).unwrap();
+        residual.mode = Mode::Current;
+        residual.r = 0.1;
+        residual.target = 0.1;
+        assert!(f.support_action_mean(None, None, 2).is_none());
+    }
+
+    #[cfg(feature = "profile-alloc")]
+    #[test]
+    fn support_action_joint_preview_reuses_allocation_scratch() {
+        let mut f = joint_fixture();
+        f.support_window = Some(SupportWindow {
+            start: 512,
+            end: Some(612),
+            hop_start: 512,
+            kind: "fallback",
+        });
+        let mut born = Lane::new(false, 440_f32.log2());
+        born.mode = Mode::Current;
+        born.target = 0.3;
+        f.support_action_mean(None, Some(&born), 4).unwrap();
+        crate::runtime_profile::begin_allocations();
+        for _ in 0..64 {
+            let window = f.support_window.as_mut().unwrap();
+            window.start += f.hop as u64;
+            window.hop_start = window.start;
+            window.end = Some(window.start + f.hop as u64);
+            std::hint::black_box(f.support_action_mean(None, Some(&born), 4).unwrap());
+        }
+        let allocations = crate::runtime_profile::finish_allocations().unwrap();
+        assert_eq!((allocations.count, allocations.bytes), (0, 0));
+    }
+
+    #[test]
+    fn support_action_rearticulate_preview_is_the_selected_lane_target() {
+        let context = crate::life::support_action::tests::fixture();
+        let mut l = Landscape::new(context.snapshot.geometry.space.clone());
+        l.support_weights = context.weights;
+        l.support_planned = true;
+        let mut f = Flora::new(
+            7,
+            spec(),
+            (55., 1760.),
+            FloraSeeding::Uniform,
+            42,
+            &l,
+            2000.,
+            100,
+        );
+        f.spec.pitch_apply_mode = PitchApplyMode::Rearticulate;
+        f.support_window = Some(SupportWindow {
+            start: 512,
+            end: Some(512 + f.hop as u64),
+            hop_start: 512,
+            kind: "fallback",
+        });
+        f.support_scratch
+            .get_mut()
+            .reserve(f.hop, f.space.n_bins(), f.lanes.len());
+        f.spec.residual = false;
+        f.support_action = Some((
+            context.snapshot.clone(),
+            crate::core::harmonic_support::Weights([-1., 0., 0.]),
+        ));
+        f.support_template = std::sync::Arc::from([(0, 1.)]);
+        f.amp.value = f.spec.amp;
+        f.gain.value = 1.;
+        f.harmonic_act_now = true;
+        f.tonal_len = 1;
+        let bin = l.space.nearest_index(context.pitch.exp2());
+        let cell = f.cells.iter().position(|c| c.bins.contains(&bin)).unwrap();
+        let peak = Peak {
+            bin,
+            position: context.pitch + 0.02,
+            sigma: 0.,
+            window: bin..bin + 1,
+            mass: 1.,
+            enter: false,
+            stay: true,
+            claimed: None,
+            suppressed: false,
+            visited: false,
+        };
+        let mut lane = Lane::new(false, context.pitch);
+        lane.mode = Mode::Current;
+        lane.r = 0.5;
+        lane.target = 0.5;
+        lane.cell = Some(cell);
+        let expected = lane.selected_target(&peak, f.spec.pitch_apply_mode, false);
+        assert_eq!(expected.1, lane.position);
+        assert_ne!(expected.1, peak.position);
+        let mut preview = lane.clone();
+        (preview.target, preview.target_position) = expected;
+        assert!(f.support_action_mean(Some(0), Some(&preview), 2).is_some());
+        f.lanes[0] = lane;
+        f.cells[cell].peak = Some(peak);
+        f.update_tones();
+        assert_eq!(f.lanes[0].mode, Mode::Current);
+        assert_eq!((f.lanes[0].target, f.lanes[0].target_position), expected);
+        let born = Lane::new(false, context.pitch + 0.02);
+        assert_eq!(
+            born.selected_target(
+                f.cells[cell].peak.as_ref().unwrap(),
+                f.spec.pitch_apply_mode,
+                false
+            )
+            .1,
+            context.pitch + 0.02
+        );
+    }
+
+    #[test]
+    fn support_action_flora_birth_vs_no_spawn_and_retirement_keep_signed_midpoint_rank() {
+        let context = crate::life::support_action::tests::fixture();
+        let mut l = Landscape::new(context.snapshot.geometry.space.clone());
+        l.support_planned = true;
+        let mut f = flora(&l);
+        f.support_window = Some(SupportWindow {
+            start: 512,
+            end: Some(512 + f.hop as u64),
+            hop_start: 512,
+            kind: "fallback",
+        });
+        f.support_scratch
+            .get_mut()
+            .reserve(f.hop, f.space.n_bins(), f.lanes.len());
+        f.spec.residual = false;
+        f.support_action = Some((context.snapshot.clone(), context.weights));
+        f.support_template = std::sync::Arc::from([(0, 1.)]);
+        f.amp.value = f.spec.amp;
+        f.gain.value = 1.;
+        let mut born = Lane::new(false, context.pitch);
+        born.mode = Mode::Current;
+        born.target = 0.5;
+        let mut held = born.clone();
+        held.r = 0.5;
+        held.q = 0.25;
+        let mut released = held.clone();
+        released.retirement_decay = (-0.5 * GROWTH_RATE * f.pace * METABOLISM / f.fs).exp();
+        released.retire();
+        for subdivisions in [-1, 0, 1] {
+            let birth = f
+                .support_action_mean(
+                    None,
+                    Some(&born),
+                    f.support_cells(None, Some(&born), subdivisions).unwrap(),
+                )
+                .unwrap();
+            let hold = f
+                .support_action_mean(
+                    None,
+                    Some(&held),
+                    f.support_cells(None, Some(&held), subdivisions).unwrap(),
+                )
+                .unwrap();
+            let release = f
+                .support_action_mean(
+                    None,
+                    Some(&released),
+                    f.support_cells(None, Some(&released), subdivisions)
+                        .unwrap(),
+                )
+                .unwrap();
+            assert!(birth[0] < 0., "no-spawn has zero added C/N");
+            assert!(
+                release[0] < 0. && release[0] > hold[0],
+                "retirement retains the actual slew tail"
+            );
+        }
+        f.support_action.as_mut().unwrap().1.0[0] = -1.;
+        let birth = f.support_action_mean(None, Some(&born), 2).unwrap();
+        assert!(
+            f.support_action
+                .as_ref()
+                .unwrap()
+                .1
+                .value([birth[0], 0., birth[1]])
+                > 0.
+        );
+        f.support_action = None;
+        assert!(f.support_action_mean(None, Some(&held), 2).is_none());
     }
 
     #[test]

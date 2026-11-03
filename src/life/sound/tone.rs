@@ -73,6 +73,14 @@ pub struct Tone {
     radiated_amplitude: f32,
 }
 
+impl std::fmt::Debug for Tone {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Tone")
+            .field("envelope", &self.envelope)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Tone {
     #[cfg(test)]
     pub(crate) fn set_render_cost_oracle(&mut self, enabled: bool) {
@@ -201,37 +209,7 @@ impl Tone {
 
         let backend = AnyBackend::from_snapshot(time.fs, &snapshot).ok()?;
 
-        let (attack_ticks, decay_ticks, sustain_level, release_ticks) = if let Some(adsr) = adsr {
-            let attack = sec_to_tick_at_least_one(time, adsr.attack_sec.max(0.0));
-            let s = adsr.sustain_level.clamp(0.0, 1.0);
-            let decay = if s < 1.0 {
-                sec_to_tick_at_least_one(time, adsr.decay_sec.max(0.0))
-            } else {
-                0
-            };
-            let release = sec_to_tick_at_least_one(time, adsr.release_sec.max(0.0));
-            (attack, decay, s, release)
-        } else {
-            (
-                default_attack_ticks(time),
-                0,
-                1.0f32,
-                default_release_ticks(time),
-            )
-        };
-        let decay_lambda = if decay_ticks > 0 {
-            6.908 / decay_ticks as f32
-        } else {
-            0.0
-        };
-
-        let (hold_end, release_end) = if duration == Tick::MAX {
-            (Tick::MAX, Tick::MAX)
-        } else {
-            let hold_end = onset.saturating_add(duration);
-            let release_end = hold_end.saturating_add(release_ticks);
-            (hold_end, release_end)
-        };
+        let envelope = preview_envelope(time, onset, duration, adsr);
 
         let sample_dt = if time.fs.is_finite() && time.fs > 0.0 {
             1.0 / time.fs
@@ -258,17 +236,7 @@ impl Tone {
             backend,
             render_modulator: render_modulator.map(RenderModulator::from_spec),
             pending_impulse_energy: 0.0,
-            envelope: Envelope {
-                onset,
-                hold_end,
-                release_end,
-                attack_ticks,
-                decay_ticks,
-                sustain_level,
-                decay_lambda,
-                release_ticks,
-                replacement_level: None,
-            },
+            envelope,
             planned_kick_pending: None,
             // Pre-sized so the common worker_loop insert path does not reallocate.
             // Deeper queues still grow; the capacity is a budget, not a bound.
@@ -308,6 +276,41 @@ impl Tone {
 
     pub(crate) fn supports_self_model(&self) -> bool {
         self.excited.is_none() && self.phrase.is_none_or(|p| p.reservation.is_none())
+    }
+
+    /// Reuse a recipe-only tone; no PCM, phase draw, or backend allocation occurs here.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn preview_new_energy(
+        &mut self,
+        time: Timebase,
+        onset: Tick,
+        hold: Tick,
+        amp: f32,
+        amp_scale: f32,
+        adsr: Option<ToneAdsr>,
+        modulator: RenderModulatorSpec,
+        rhythms: &NeuralRhythms,
+        renderer_phase3: bool,
+    ) -> Option<crate::life::tone_energy::ToneEnergy> {
+        if renderer_phase3 || !self.supports_self_model() || hold == 0 {
+            return None;
+        }
+        self.envelope = preview_envelope(time, onset, hold, adsr);
+        self.current_amp = amp * amp_scale.clamp(0., 1.);
+        self.target_amp = self.current_amp;
+        self.render_modulator = Some(RenderModulator::from_spec(modulator));
+        self.note_on(onset);
+        self.schedule_planned_kick(OnsetKick { strength: 1. });
+        self.arm_onset_trigger(1.);
+        let (_, amplitude, envelope) = self.prediction_parameters(None);
+        Some(crate::life::tone_energy::ToneEnergy {
+            amplitude,
+            envelope,
+            control: Some(self.prediction_control(onset, rhythms)),
+            scheduled_release: None,
+            sine: None,
+            bank: None,
+        })
     }
 
     pub(crate) fn residual_bound(&self, now: Tick) -> Option<f64> {
@@ -1115,8 +1118,123 @@ fn default_body_snapshot() -> BodySnapshot {
     }
 }
 
+/// Share the renderer envelope law with local action previews.
+pub(crate) fn preview_envelope(
+    time: Timebase,
+    onset: Tick,
+    duration: Tick,
+    adsr: Option<ToneAdsr>,
+) -> Envelope {
+    let (attack_ticks, decay_ticks, sustain_level, release_ticks) = if let Some(adsr) = adsr {
+        let attack = sec_to_tick_at_least_one(time, adsr.attack_sec.max(0.0));
+        let s = adsr.sustain_level.clamp(0.0, 1.0);
+        let decay = if s < 1.0 {
+            sec_to_tick_at_least_one(time, adsr.decay_sec.max(0.0))
+        } else {
+            0
+        };
+        let release = sec_to_tick_at_least_one(time, adsr.release_sec.max(0.0));
+        (attack, decay, s, release)
+    } else {
+        (
+            default_attack_ticks(time),
+            0,
+            1.0f32,
+            default_release_ticks(time),
+        )
+    };
+    let decay_lambda = if decay_ticks > 0 {
+        6.908 / decay_ticks as f32
+    } else {
+        0.0
+    };
+
+    let (hold_end, release_end) = if duration == Tick::MAX {
+        (Tick::MAX, Tick::MAX)
+    } else {
+        let hold_end = onset.saturating_add(duration);
+        let release_end = hold_end.saturating_add(release_ticks);
+        (hold_end, release_end)
+    };
+
+    Envelope {
+        onset,
+        hold_end,
+        release_end,
+        attack_ticks,
+        decay_ticks,
+        sustain_level,
+        decay_lambda,
+        release_ticks,
+        replacement_level: None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn support_action_new_onset_uses_prediction_api_and_rejects_native_before_and_after_on() {
+        use crate::life::support_action::{Action, Body, tests::fixture};
+        let tb = Timebase {
+            fs: 48000.,
+            hop: 512,
+        };
+        let rhythms = NeuralRhythms::default();
+        let spec = RenderModulatorSpec::SeqGate { duration_sec: 1. };
+        let mut tone = Tone::from_parts(
+            tb,
+            512,
+            Tick::MAX,
+            220.,
+            0.2,
+            None,
+            Some(spec.clone()),
+            None,
+        )
+        .unwrap();
+        let known = tone
+            .preview_new_energy(
+                tb,
+                512,
+                Tick::MAX,
+                0.2,
+                1.,
+                None,
+                spec.clone(),
+                &rhythms,
+                false,
+            )
+            .unwrap();
+        assert_eq!(known.control.unwrap().starts_at, Some(512));
+        assert_eq!(known.at(511, None), Some(0.));
+        assert!(known.at(1024, None).unwrap() > 0.);
+        let mut context = fixture();
+        context.body = Body::Silent;
+        context.onset = tone.preview_new_energy(
+            tb,
+            512,
+            Tick::MAX,
+            0.2,
+            1.,
+            None,
+            spec.clone(),
+            &rhythms,
+            true,
+        );
+        assert!(context.onset.is_none());
+        assert_eq!(context.choose(512, 2048, Action::Onset), Action::Onset);
+        tone.enable_phase3();
+        tone.render_tick(512, tb.fs, 1. / tb.fs, &rhythms);
+        context.body = Body::Unknown;
+        context.onset =
+            tone.preview_new_energy(tb, 1024, Tick::MAX, 0.2, 1., None, spec, &rhythms, true);
+        assert!(context.onset.is_none());
+        assert_eq!(
+            context.choose(1024, 2048, Action::Continue),
+            Action::Continue
+        );
+    }
+
     #[test]
     fn phrase_boundary_gain_survives_updates_clone_reset_and_prediction() {
         use crate::life::tone_energy::ToneEnergy;

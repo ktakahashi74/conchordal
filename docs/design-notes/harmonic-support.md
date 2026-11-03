@@ -288,6 +288,13 @@ reuse them. FFT plans, halos, body templates, scans and double buffers are preal
 hop processing reuses scratch. Real-time acceptance is measured at a declared load
 (Voice count, body bases, self-exclusion count) within the 10.67 ms hop at 48 kHz / 512.
 Load beyond it is reported as capacity, not hidden by weight bounds.
+Nonzero C/N action preferences add body time integration and joint comparisons of Flora's
+retained lanes and tails. Work depends on individuals, lanes, candidates, the supported W
+and adaptive quadrature refinement. Reducing a nonzero weight does not guarantee proportional
+CPU savings. The composer must check real-time cost for the whole scene on the intended
+machine. This computational cost is separate from the score's bodily cost. The final
+whole-hop ABBA and its remaining cost increase are recorded in ledger §9.3.124 and the HV-16
+report; they are not an isolated kernel timing or a guarantee for arbitrary loads.
 
 ## Acceptance
 
@@ -325,3 +332,107 @@ reservation is a positioned script error. Finite scenes warn and ignore the decl
 retaining event pre-scanning for observer and source capacity. Observation does not
 activate either valuation weight. The declaration is an Author rule and does not
 change the existing 600-second rolling history or the supported event density.
+
+## Action consequences (HV-16, 2026-11-03)
+
+C1 extends C/N to legal onset, waiting, continuation, release and no-spawn comparisons.
+The orchestrator selected time averaging from the existing DCC §9.6 integration contract
+and the adopted FEP framework; it is not a new author choice of an endpoint objective.
+For a common next consumer decision window W and its frozen observed reference e,
+
+```
+C_a = mean_W sum_y gC_e(y) q_a(t,y)
+N_a = mean_W N(e, q_a(t))
+action_delta(a,a0) = wC (C_a-C_a0) + wN (N_a-N_a0)
+```
+
+The existing destination selector supplies the proposal and its native score. The new
+comparison keeps that score and bodily legality/cost, and compares the action consequences
+relative to the default action. No-spawn adds q=0; it does not inherit the birth's C/N.
+The temporal no-add consequence remains additive and is neutral when unavailable.
+`follow_harmonic_continuation(0)` does not disable C/N action comparisons. D remains on
+its existing path. No C nondecrease constraint, new musical threshold or weight clamp is added.
+
+Voice uses its matching actual-PCM LOO observation and the renderer's issued envelope and
+control state. The nominal self-report density is scaled by the projected energy ratio to
+the existing loudness exponent. This is a local body-partial preview, not a prediction of
+mixed-PCM density. Replacement adds the new body's contribution alongside the outgoing
+body's replacement tail; overlapping partials are merged before N is evaluated. A release
+keeps its ordinary tail. Missing observations, incompatible body shape, multiple rendered
+Tones whose combined trajectory is unsupported, and unavailable controls are neutral.
+New-onset support is separate from the existing Silent/One/Unknown body state. A cached
+recipe-only Tone obtains the planned envelope and control through the renderer prediction
+API; native excitation mode and reserved phrase trajectories are unsupported. Having no
+existing Tone does not imply support for the next one. No body-kind test is introduced in
+the ecological selector.
+
+Held phonation consumes initial onset, continuation, release and rearticulation at one
+opportunity owner. Ordinary held Voices use the existing pitch-proposal samples, including
+proposals with unchanged pitch; shared Voices use their published shared opportunities.
+W ends at that clock's next opportunity. Intervening hops only advance issued controls.
+An unpublished adaptive successor or an unsupported horizon contributes no C/N pressure.
+Clocked participation retains its existing next-gate map. No minimum holding time,
+hysteresis or hard C constraint is added.
+
+Voice birth has no issued onset/participation plan, so C/N is neutral at that selection;
+it never substitutes an immediate first-hop tone. Static birth-position preferences and
+the existing temporal no-spawn term remain available. The later actual onset opportunity
+can compare C/N when its plan is supported. Flora takes absolute W boundaries from the actual allocation opportunity. Asynchronous
+fallback uses the next hop boundary; beat crossings and shared opportunities use their
+published successor, never a substituted hop. An unpublished successor, a possible intervening
+rest transition, or a trajectory beyond issued current-hop targets/pace/ramps is neutral.
+The existing lane slew/retirement law includes amp/fade ramps and draws no candidate noise. Its selected
+(target, target_position) is shared by preview and execution. An existing rearticulate
+lane retains its actual pitch; a new lane begins at its own selected birth position.
+Holding, retiring and declining a new lane remain distinct consequences. Every comparison
+uses the same heard reference and W, including all retained lanes and tails of this Flora.
+Sequential birth compares the already selected trajectory plus the new lane against that
+same selected trajectory. Partial densities are summed before evaluating N; independent
+lane N values are not additive. Mixed references containing own sound and unsupported
+residual trajectories make action differences neutral. Choice records retain release C/N,
+the common baseline, absolute W and tail-inclusive birth differences. Growth is unchanged.
+A trajectory extending beyond W is truncated to W, not declared silent after W.
+
+Quadrature uses equal-weight midpoint samples. The initial count resolves each shortest
+nonconstant envelope phase with at least two cells and uses at least two points over W.
+Compare the decision at half, native and double resolution. If it changes, reuse the
+previous decisions and refine only the new finer grid; the body's integer sample grid is
+the final bound. This evaluates envelopes and partial fields, never candidate PCM.
+Flora applies the same rank refinement to its existing slew trajectory. It reuses the
+renderer-exact retirement curves, jumps fixed-target slew deadlines to each midpoint,
+and caches joint evaluations only for identical body states, references and grids.
+Pitch trajectories that occupy the same model bins share an evaluation without changing
+the selected renderer target. The joint density is summed before nonlinear N; candidate
+replacement and birth query that joint state. Joint density sums use f64 to limit
+cancellation during removal/addition, while amplitude evolution remains f32. Storage is
+reused. Dense C/N scans use fixed eight-lane SIMD reductions, checked bit-for-bit against
+the same scalar order on each available SIMD level. This changes neither the density
+model nor the quadrature grid. Zero C/N weights bypass action evaluation, random draws
+and preview preparation.
+
+Mechanism checks, zero-input equivalence, actual source-PCM acquisitions, declared-load
+ABBA timing and allocation results are separate evidence in the HV-16 orchestration report.
+No universal improvement of executed C or listener tension follows from the local score.
+
+Flora action previews require `residual(false)`: residual allocation may create a new
+noise body after tonal selection even when all residual lanes are currently silent.
+That future density is unsupported, so enabling residuals keeps C/N action differences
+neutral. Static lane-position preferences remain available.
+
+Current support limit (round 3): beat-aligned Flora action comparisons are neutral when the
+trajectory to the next crossing is unsupported. Targets and normalization can change between
+crossings at each hop; pace and retirement decay can also change with observations. A clock's
+conditional next-time prediction alone does not support that body trajectory. In all three
+Undergrowth acquisitions, every beat crossing was neutral (`end=null`, `supported=false`),
+and all 8,095 supported C/N choices occurred at asynchronous fallback opportunities. The
+seed 1128749181177961461 had no C/N Flora action choices and its PCM matched the baseline.
+Thus the small scene-level effect is consistent with the added action comparison being
+limited to fallback, not with C/N having compared a whole beat period and chosen the same
+winner. Static lane-position preferences remain separate. The within-hop crossing regression
+uses two artificial opportunities and does not establish prediction across an actual beat.
+
+A future extension could use conditional clock predictions if the corresponding body
+trajectory's support and error are established under the existing acceptance criteria. Every
+candidate at that opportunity must share W, and predicted and executed endpoints must be
+recorded separately. Merely replacing the current evaluator's endpoint is insufficient.
+No such extension, new author decision or performance gate is added in this revision.

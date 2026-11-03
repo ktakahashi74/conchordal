@@ -54,6 +54,12 @@ pub struct VoiceMetadata {
 
 #[derive(Debug)]
 pub struct Voice {
+    pub(crate) support_body: super::support_action::Body,
+    pub(crate) support_renderer_phase3: bool,
+    support_onset: Option<(BodySnapshot, crate::life::sound::Tone)>,
+    support_held_opportunities: Vec<(Tick, Option<Tick>)>,
+    support_clock_fs: f32,
+    support_clock_step: u64,
     pub(crate) harmonic_member: bool,
     pub(crate) harmonic_temperature_bonus: f32,
     pub(crate) harmonic_events: Vec<super::harmonic_rhythm::VoiceEvent>,
@@ -722,6 +728,12 @@ impl Voice {
 
         let mut voice = Voice {
             harmonic_member: false,
+            support_body: Default::default(),
+            support_renderer_phase3: false,
+            support_onset: None,
+            support_held_opportunities: Vec::new(),
+            support_clock_fs: 0.,
+            support_clock_step: 1,
             harmonic_temperature_bonus: 0.0,
             harmonic_events: Vec::new(),
             harmonic_waiting: false,
@@ -806,6 +818,8 @@ impl Voice {
     }
 
     pub(crate) fn configure_control_hop(&mut self, hop: usize, control_step: usize, fs: f32) {
+        self.support_clock_fs = fs;
+        self.support_clock_step = control_step.max(1) as u64;
         if (self.effective_control.pitch.mode == PitchMode::Free || self.sustain_participation)
             && matches!(self.phonation_engine.mode, PhonationMode::Hold)
         {
@@ -819,6 +833,7 @@ impl Voice {
                 deferred.reserve(capacity + 1);
             }
             self.participation_pitch.rearticulations.reserve(capacity);
+            self.support_held_opportunities.reserve(capacity);
             if let Some(shape) = self.phonation_engine.clock.shape_mut() {
                 shape.reserve(capacity, hop);
             }
@@ -874,6 +889,90 @@ impl Voice {
             .project_support_density(space, key.3, key.4, &signal);
         self.support_template = density.map(Into::into);
         self.support_template_key = Some(key);
+    }
+
+    pub(crate) fn refresh_support_actions(
+        &mut self,
+        landscape: &Landscape,
+        tb: &Timebase,
+        now: Tick,
+    ) {
+        use crate::life::support_action::{Context, active};
+        self.phonation_engine.support_action = None;
+        self.phonation_engine.support_held_enabled = active(landscape.support_weights)
+            && self.effective_control.pitch.leave_self_out
+            && self.effective_control.body.routing.to_habitat;
+        if !self.phonation_engine.support_held_enabled {
+            return;
+        }
+        let Some(snapshot) = landscape
+            .loo
+            .iter()
+            .find(|s| s.id == self.id && s.generation == self.metadata.generation)
+            .and_then(|s| s.support.clone())
+        else {
+            return;
+        };
+        self.refresh_support_template(landscape);
+        let shape = self.body_snapshot();
+        let spec = self
+            .articulation
+            .render_modulator_spec(if self.harmonic_member {
+                PhonationMode::Gated
+            } else {
+                self.phonation_engine.mode
+            });
+        if self
+            .support_onset
+            .as_ref()
+            .is_none_or(|(cached, _)| cached != &shape)
+        {
+            self.support_onset = crate::life::sound::Tone::from_parts(
+                *tb,
+                now,
+                Tick::MAX,
+                self.body.base_freq_hz(),
+                self.body.amp(),
+                Some(shape.clone()),
+                Some(spec.clone()),
+                self.voice_adsr,
+            )
+            .map(|tone| (shape.clone(), tone));
+        }
+        let amp = self.compute_target_amp();
+        let onset = self
+            .support_onset
+            .as_mut()
+            .filter(|_| self.phonation_engine.phrase_boundary.is_none())
+            .and_then(|(_, tone)| {
+                tone.preview_new_energy(
+                    *tb,
+                    now,
+                    Tick::MAX,
+                    amp,
+                    shape.amp_scale,
+                    self.voice_adsr,
+                    spec,
+                    &landscape.rhythm,
+                    self.support_renderer_phase3,
+                )
+            });
+        self.phonation_engine.support_action = Some(Context {
+            source: Some((self.id, self.metadata.generation)),
+            snapshot,
+            template: self.support_template.clone(),
+            single_density: landscape.support_single_density(self.body.amp()),
+            weights: landscape.support_weights,
+            loudness_exp: landscape.support_loudness_exp,
+            nominal_amp: self.body.amp(),
+            pitch: self.body.base_freq_hz().log2(),
+            onset,
+            body: self.support_body,
+            retention_bonus: 0.,
+            allow_release: true,
+            replace: self.phonation_engine.mode == PhonationMode::Hold
+                || self.phonation_engine.sustain_participation,
+        });
     }
 
     fn apply_body_runtime(&mut self) {
@@ -1227,6 +1326,25 @@ impl Voice {
             neighbor_salience,
             listener_pressure.temperature_bonus,
         );
+        if crate::life::support_action::active(landscape.support_weights)
+            && self.phonation_engine.mode == PhonationMode::Hold
+            && !self.sustain_participation
+            && let Some(at) = self.control_tick
+        {
+            if self.pitch_ctl.harmonic_evaluated || self.phonation_engine.held_next.is_none() {
+                self.phonation_engine.held_next = self.pitch_ctl.next_proposal_tick(
+                    at,
+                    &self.effective_control.pitch,
+                    rhythms,
+                    self.support_clock_fs,
+                    self.support_clock_step,
+                );
+            }
+            if self.pitch_ctl.harmonic_evaluated {
+                self.support_held_opportunities
+                    .push((at, self.phonation_engine.held_next));
+            }
+        }
         if self.participation_pitch.adopted {
             self.participation_pitch.application =
                 select_pitch_application(&self.effective_control.pitch, None);
@@ -1738,6 +1856,24 @@ impl Voice {
             );
             return;
         }
+        if !self.phonation_engine.support_held_active() {
+            self.support_held_opportunities.clear();
+        }
+        if self.phonation_engine.support_held_active()
+            && let Some(&(at, next)) = self.support_held_opportunities.first()
+        {
+            if at == now
+                && !self
+                    .participation_pitch
+                    .rearticulations
+                    .iter()
+                    .any(|r| r.at == now)
+            {
+                self.phonation_engine.held_window = Some((at, next));
+            } else {
+                self.phonation_engine.held_next = Some(at);
+            }
+        }
         self.phonation_engine.tick_with_arrival(
             &ctx,
             &state,
@@ -1750,6 +1886,53 @@ impl Voice {
             &mut self.phonation_scratch.events,
             &mut out.onsets,
         );
+        if self.phonation_engine.support_held_active() && !self.sustain_participation {
+            for &(at, next) in &self.support_held_opportunities {
+                self.phonation_engine.held_window = Some((at, next));
+                let request_ctx = CoreTickCtx {
+                    now_tick: at,
+                    ..ctx
+                };
+                let request = self
+                    .participation_pitch
+                    .rearticulations
+                    .iter()
+                    .find(|r| r.at == at);
+                if let Some(request) = request {
+                    if let Some(context) = self.phonation_engine.support_action.as_mut() {
+                        context.pitch = request.pitch_log2;
+                    }
+                    let emitted = self.phonation_engine.rearticulate_hold(
+                        &request_ctx,
+                        &state,
+                        &mut out.cmds,
+                        &mut self.phonation_scratch.events,
+                        &mut out.onsets,
+                    );
+                    if !emitted
+                        && let super::support_action::Body::One { pitch, .. } = self.support_body
+                    {
+                        self.body.set_pitch_log2(pitch);
+                    }
+                } else {
+                    self.phonation_engine.tick_with_arrival(
+                        &request_ctx,
+                        &state,
+                        social,
+                        social_coupling,
+                        extra_gate_gain,
+                        None,
+                        arrival,
+                        &mut out.cmds,
+                        &mut self.phonation_scratch.events,
+                        &mut out.onsets,
+                    );
+                }
+            }
+            self.support_held_opportunities.clear();
+            self.phonation_engine.held_window = None;
+            self.participation_pitch.rearticulations.clear();
+        }
         if self.reports_onset_pitch() {
             for request in &self.participation_pitch.rearticulations {
                 let in_hop = request.at >= now && request.at < frame_end;
@@ -1765,13 +1948,27 @@ impl Voice {
                     now_tick: request.at,
                     ..ctx
                 };
-                self.phonation_engine.rearticulate_hold(
+                let previous_pitch =
+                    self.phonation_engine
+                        .support_action
+                        .as_mut()
+                        .and_then(|context| {
+                            context.pitch = request.pitch_log2;
+                            match self.support_body {
+                                super::support_action::Body::One { pitch, .. } => Some(pitch),
+                                _ => None,
+                            }
+                        });
+                let emitted = self.phonation_engine.rearticulate_hold(
                     &request_ctx,
                     &state,
                     &mut out.cmds,
                     &mut self.phonation_scratch.events,
                     &mut out.onsets,
                 );
+                if !emitted && let Some(pitch) = previous_pitch {
+                    self.body.set_pitch_log2(pitch);
+                }
             }
             // Released tails must retain their pitch before surviving-note updates.
             self.prune_tracked_render_notes(&out.cmds);
@@ -2342,6 +2539,123 @@ mod tests {
             None,
             0,
         )
+    }
+
+    #[test]
+    fn support_action_held_uses_proposal_clock_and_common_next_window() {
+        use crate::life::support_action::{Body, tests::fixture};
+        let fixture = fixture();
+        let mut landscape = Landscape::new(fixture.snapshot.geometry.space.clone());
+        landscape.support_weights = fixture.weights;
+        let mut control = VoiceControl::default();
+        control.pitch.freq = fixture.pitch.exp2();
+        control.pitch.range_oct = 0.;
+        control.pitch.proposal_interval_sec = Some(0.02);
+        let mut voice = drone_voice_with_control(control);
+        let tb = Timebase {
+            fs: 48000.,
+            hop: 64,
+        };
+        voice.configure_control_hop(tb.hop, tb.hop, tb.fs);
+        let rhythms = NeuralRhythms::default();
+        let mut batch = PhonationBatch::default();
+        let mut opportunities = Vec::new();
+        let mut comparisons = Vec::new();
+        let mut transitions = Vec::new();
+        for at in (512..8512).step_by(tb.hop) {
+            voice.set_control_tick(at);
+            voice.decide_pitch_target(tb.hop as f32 / tb.fs, &rhythms, &landscape, &[], &[]);
+            let opportunity = voice.support_held_opportunities.first().copied();
+            if let Some((tick, _)) = opportunity {
+                opportunities.push(tick);
+            }
+            let mut context = fixture.clone();
+            let sounding = voice.phonation_engine.has_active_notes();
+            context.body = if sounding {
+                Body::One {
+                    pitch: context.pitch,
+                    energy: context.onset.unwrap(),
+                }
+            } else {
+                Body::Silent
+            };
+            context.weights.0[0] = if sounding { 1. } else { -1. };
+            voice.support_body = context.body;
+            voice.phonation_engine.support_action = Some(context);
+            voice.phonation_engine.held_comparison = None;
+            voice.tick_phonation_into(&tb, at, &rhythms, None, 0., 1., 0.5, &mut batch);
+            if let Some(window) = voice.phonation_engine.held_comparison {
+                if at != 512 {
+                    assert_eq!(Some(window), opportunity.map(|(t, end)| (t, end.unwrap())));
+                }
+                comparisons.push(window);
+            }
+            for cmd in &batch.cmds {
+                if matches!(cmd, ToneCmd::Off { .. } | ToneCmd::On { .. }) {
+                    assert!(
+                        at == 512 || opportunity.is_some(),
+                        "Off/On outside a proposal: {at}"
+                    );
+                    transitions.push(at);
+                }
+            }
+        }
+        assert!(
+            transitions.len() >= 4,
+            "exercise release and subsequent onset"
+        );
+        for &(at, end) in comparisons.iter().take(comparisons.len() - 1) {
+            assert_eq!(
+                opportunities.iter().copied().find(|&tick| tick > at),
+                Some(end)
+            );
+            assert!(end - at > tb.hop as u64);
+        }
+    }
+
+    #[test]
+    fn support_action_hold_keeps_issued_pitch_when_rearticulation_is_declined() {
+        use crate::life::support_action::{Body, tests::fixture};
+        let mut context = fixture();
+        let previous = context.pitch;
+        context.body = Body::One {
+            pitch: previous,
+            energy: context.onset.unwrap(),
+        };
+        context.allow_release = false;
+        let mut control = VoiceControl::default();
+        control.pitch.freq = previous.exp2();
+        control.pitch.pitch_apply_mode = PitchApplyMode::Rearticulate;
+        let mut voice = drone_voice_with_control(control);
+        let timebase = Timebase {
+            fs: 48_000.,
+            hop: 512,
+        };
+        let rhythms = NeuralRhythms::default();
+        let mut batch = PhonationBatch::default();
+        voice.tick_phonation_into(&timebase, 0, &rhythms, None, 0., 1., 0.5, &mut batch);
+        assert_eq!(batch.tones.len(), 1);
+        voice.support_body = context.body;
+        voice.phonation_engine.support_action = Some(context);
+        let proposed = previous + 1. / 1200.;
+        voice.body.set_pitch_log2(proposed);
+        voice
+            .participation_pitch
+            .rearticulations
+            .push(Rearticulation {
+                at: 1024,
+                pitch_log2: proposed,
+            });
+        voice.support_held_opportunities.push((1024, Some(1536)));
+        voice.tick_phonation_into(&timebase, 1024, &rhythms, None, 0., 1., 0.5, &mut batch);
+        assert!(batch.onsets.is_empty());
+        assert!(batch.cmds.iter().all(
+            |cmd| matches!(cmd, ToneCmd::Update { update, .. } if update.target_freq_hz.is_none())
+        ));
+        assert_eq!(
+            voice.body.base_freq_hz().to_bits(),
+            previous.exp2().to_bits()
+        );
     }
 
     #[test]

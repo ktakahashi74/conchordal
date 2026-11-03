@@ -668,8 +668,10 @@ impl Community {
                 clock.expression = self.expression.filter(|e| e.ritard > 0.0);
             }
             if voice.harmonic_member {
+                voice.refresh_support_actions(landscape, &tb, now);
                 voice.tick_harmonic(&tb, now, landscape, &self.harmonic_ticks, batch);
             } else {
+                voice.refresh_support_actions(landscape, &tb, now);
                 voice.tick_phonation_into_with_arrival(
                     &tb,
                     now,

@@ -26,7 +26,14 @@ Scope: the temporal part of the author's decision to extend harmonic valuation b
 13. Passing, neighboring, and appoggiatura relations: preceding/following trajectories and residence time.
 14. Harmonic rhythm and sequences: legal change opportunities, waiting times, and transformed recurrence.
 
-**[Principle]** These mechanisms do not establish culture-specific classifications. L3 familiarity is outside this implementation. No fixed key profiles, chord-progressions, scores, generated stylistic priors, or corpus priors enter the mainline.
+**[Principle]** These mechanisms do not establish culture-specific classifications.
+
+**[Author rule; A1 boundary]** Learning layer-3 preferences remains deferred;
+existing performance memories provide
+limited evidence for familiarity, as distinguished in
+[harmonic-support.md](harmonic-support.md#familiarity-evidence-carriers-and-limits).
+No fixed key profiles, chord-progressions, scores, generated stylistic priors, or
+corpus priors enter the mainline.
 
 **[Author rule]** Unless explicitly marked otherwise, the algorithms below are author rules, not validated perceptual models.
 
@@ -459,6 +466,85 @@ Zeros and unsupported comparisons do not fit a scale. The audition demo is not
 used to tune it. The 1e-6 floor is §9.6's numerical protection, not a musical
 threshold. The user-adopted HV-9 specialization applies this signed scaling to
 both columns; it does not import §9.6's separately calibrated ordinal heads.
+
+<a id="harmonic-closure-decision-20261103"></a>
+
+#### B1 decision and retained B2 design (2026-11-03)
+
+**B1, adopted by the author at 06:17 JST.** Keep the two existing generation
+columns and HV-13 predictive arrival/cadence observations. The predictive records
+combine issued successor evidence with observed retention, articulation, boundary
+or inactivity. Neither their truth values nor soft compatibility are a human
+closure rating, a probability that a current candidate will end a phrase, or
+DCC §9.6 uncertainty. They do not add a generation objective. Keep new ordinal
+ending/continuation and uncertainty columns disconnected; an unfitted or
+uncalibrated head contributes zero. This decision adds no head, API, default or
+acquisition. See [ledger §9.3.123](technote-ledger.md#harmony-decisions-20261103).
+
+**B2 is preserved as a separate, unadopted connection design.** Its first task,
+if resumed, is to inventory existing ratings and fitted/calibrated assets and
+check their source/model versions, feature maps, ownership and applicable inputs.
+Their availability and suitability have not been audited here. Reuse applicable
+assets before deciding whether additional human ratings are needed. The retained
+design follows [DCC §9.4](dcc-neurocognitive-hierarchy.md#94-phrase-continuation-boundary-and-closure)
+and [§9.6](dcc-neurocognitive-hierarchy.md#96-local-generation-from-contextual-opportunities):
+
+- Carry issued predictions, unknown mass, conditional scales/residuals,
+  compatibility and attribute masks with the same version, epoch, timestamp, bus
+  and source identity. Keep arrival, competition change, retention, boundary and
+  inactivity separate. Loss of a source alone does not establish resolution.
+- Map only supported evidence into the versioned DCC feature map. HV source IDs
+  are not auditory groups, HV expiration is not DCC episode availability, and
+  M/C/D cannot be renamed R/H/C. Missing groups, external futures, future boundaries
+  and unconfirmed ornaments remain unsupported. Silence or EOF is not a resolved
+  teacher label.
+- Treat closure as the inference target and ordinal ending as its rating output,
+  not two rewards. Ordinal continuation is a separate head, not `1-closure`.
+  Use the existing five-level mixture-rating, regularization, calibration and
+  backoff contract; do not fill missing fitted coefficients with constants.
+
+For candidate `a` and the existing selector's baseline `a0`, retain:
+
+```text
+E_close(a) = sum_{k=0..4} k * p_close(k | a, issued_context)
+close_delta(a,a0) = (E_close(a) - E_close(a0)) / 4
+continue_ordinal_delta(a,a0) = (E_continue(a) - E_continue(a0)) / 4
+U(a) = u_a + (1-u_a) * H(p_a) / log(N_a)
+uncertainty_delta(a,a0) = U(a) - U(a0)
+```
+
+Here `p_a` is the supported context/path interpretation distribution, `u_a` its
+unknown mass and `N_a` its number of interpretations, not the ordinal rating
+categories or an unexamined count of HV atoms. For `N_a <= 1`, the entropy term is
+zero; all-unknown has report value one and no unsupported generation contribution.
+HV-13 conditional successor variance and available-attribute coverage are not U.
+The rating range 0–4 and divisor 4 come from DCC; no confidence multiplier,
+learning rate or new musical threshold is introduced.
+
+Keep `a0` fixed before adding new columns. Add signed authored dispositions times
+the paired differences to the existing score, retaining bodily costs, habituation,
+native selectors, RNG and opportunity clocks. Both sides need support at the same
+coordinate/reference; missing, stale, expired or out-of-range evidence makes that
+column zero without renormalizing survivors. With all new weights zero, bypass
+additional previews and draws. Existing two-column IQRs are not ordinal scales.
+An ending column belongs to action/timing comparison; it must not become a hidden
+bias in the destination column or silently redefine existing continuation.
+
+Inventory each consumer's legal candidates and previewable attributes first.
+The current first-order support preview does not supply complete release tails,
+gaps or future occupancy. A new body preview would use actual envelopes on scratch
+state, with observed/projected/unsupported inputs distinguished and issued history,
+coverage and weights frozen. It cannot teach memory from its own hypothetical
+future. Before activation, verify transfer against counterfactual rendering and
+reanalysis, causal/zero-path behavior and operation on the declared load; observation
+timing alone does not cover a new head and preview.
+
+Ornament roles remain retrospective: confirm passing/return/delayed approach only
+after the successor is heard. A candidate may support a possible relation through
+the existing relation comparison, but is not already a successful ornament. Add
+no dedicated ornament reward or short-duration threshold, and do not infer closure
+from a return label. A1 reuse neither authorizes B2 nor requires it; B2 would not
+require cultural preference learning under A2.
 
 ### 7.3 PeakSampler
 

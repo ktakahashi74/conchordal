@@ -22,8 +22,9 @@ duplicate. The features below add those distinctions.
 ## Coverage of the harmonic system
 
 Each phenomenon is split across places. V = vertical features (this note). T = temporal DCC
-(HV-4). L3 = layer-3 familiarity. X = not represented, because it needs symbolic input or
-depends on pitch-class or spelling properties; the replacement is named.
+(HV-4). L3 = layer-3 valuation and priors concerning familiarity; its existing evidence
+carriers and their limits are distinguished below. X = not represented, because it needs
+symbolic input or depends on pitch-class or spelling properties; the replacement is named.
 
 1. Chord tones, triads, compound intervals: V (interference, integer-ratio support, support
    focus). X: chord names and degree numbers.
@@ -61,9 +62,50 @@ depends on pitch-class or spelling properties; the replacement is named.
 18. Keys, modes, scale membership, stylistic chord vocabulary: L3 (continuous distributions
     from listening experience). T. X: fixed pitch-name tables.
 
-L3 is not implemented under the current policy: fixed tables are presets and are removed,
-and learning layer 3 during a performance is deferred (§9.3.56). Implementing L3 needs a
-separate author policy decision.
+Learning layer-3 preferences from the population's sound remains deferred under
+ledger §9.3.56. This does not make the existing in-performance memories unimplemented.
+Fixed key, mode and chord-progression tables are authored harmony, not a substitute
+for that deferred research.
+
+## Familiarity: evidence carriers and limits
+
+**A1, adopted by the author on 2026-11-03 at 06:17 JST.** Reuse TC, PS-1, SQ, ME
+and HV for the evidence each actually holds. Do not create a unified familiarity
+score or interpret their combination as completed cultural preference learning.
+The decision and the alternatives are recorded in
+[ledger §9.3.123](technote-ledger.md#harmony-decisions-20261103).
+
+| Carrier | Evidence and existing use | What it cannot establish |
+|---|---|---|
+| TC | Actual-PCM IPEM local/global periodicity images and continuous-pitch probe affinity; scores existing stepwise sustained-pitch candidates, the baseline and dwell. | No learned key names, modes, chord vocabulary or functional grammar. Its numerical decoder table approximates a probe; it is not a fixed key profile. |
+| PS-1 | Cumulative duration occupancy of periodicity from actual mixed habitat PCM, including self, in absolute `log2(Hz)`; scores existing pitches and proposes legal strongest/nearest peaks. | No simultaneous chord distribution, order, function or octave equivalence. No forgetting means old exposure persists; this is not a modulation tracker. Its numerical spline table is not an authored scale. |
+| SQ | Per-individual PPM-Decay prediction of executed self-On interval sequences; adds the log-probability difference between existing candidates and the current target. | No learning of harmony from mixed sound. The 100-cent interval encoder neither quantizes output pitch nor fully remembers continuous microtonal relations. |
+| ME | Register and mobility estimated from the continuous-pitch prefix of executed self-On events; supplies an AR(1) candidate distribution and replaces movement cost/fixed-center gravity when certified. | No sequence grammar, chord vocabulary or auditory experience of other voices. SQ and ME share an execution producer but own independent state; neither input is a renderer receipt or actual PCM. |
+| HV | Observed support distributions, source trajectories and structural events; remembers contexts, correspondences and successors, and describes substitution, pivot, arrival and retrospectively identified ornament relations. Generation reads destination and continuation columns. | No learned cultural familiarity, human harmonic function or closure. Context IDs are not key names; predictive arrival/cadence are observations, not human ratings. |
+
+These carriers provide only parts of the evidence needed by the L3-marked phenomena
+above. Periodicity affinity or frequent exposure cannot establish a preference for
+a tension, an avoid-note prohibition, a scale-membership threshold or a stylistic
+chord vocabulary. Multiple support contexts do not establish multiple named keys.
+Own-melody history cannot replace a heard harmonic relation. Their use together
+has not established perceptual or cultural sufficiency.
+
+Under [ledger §9.3.56](technote-ledger.md#9356-layers-of-the-listener-model-what-is-fixed-and-who-sets-the-rest),
+updating evidence, expectations and habituation during a performance belongs to
+layer 4; choosing whether and how to value that evidence belongs to layer 3.
+Learning those preferences themselves remains deferred until timbre heredity shows
+generational change and a runaway measure is preregistered. Layers divide authority
+over quantities, not whole mechanisms. The existing Candidate/Author-rule parts
+retain their labels under [§9.3.104](technote-ledger.md#mechanism-evidence-and-composer-controls).
+
+Keep layer-1 sensation and layer-4 dynamics out of composer controls: TC local/global
+half-lives, PS cumulative occupancy, SQ PPM-Decay parameters, ME prefix estimation
+and HV retention/expiration remain model rules. A1 adds no learning rate, weight,
+API, default change or new consumer. A later consumer must check ownership,
+same-reference paired support, the zero path and duplicate contributions, with
+causal and declared-load evidence for that connection. In particular, a new
+listener-side PS owner needs its own listening history; it cannot inherit learned
+habitat state merely because both use PS.
 
 ## Representation
 

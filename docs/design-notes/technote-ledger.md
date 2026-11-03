@@ -124,6 +124,7 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.120 2026-11-02: Tail roughness aversion adopted as a composer word (VR-1)](#voice-rearticulation-roughness)
   - [§9.3.121 2026-11-02: Vertical and temporal harmony acceptance (HV-6–HV-10)](#harmony-acceptance-20261102)
   - [§9.3.122 2026-11-02: Flora amplitude tracking and the rejected mixed-R growth rule](#flora-amplitude-and-mixed-roughness-20261102)
+  - [§9.3.123 2026-11-03: Harmony decisions A1/B1/C1](#harmony-decisions-20261103)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -11695,3 +11696,75 @@ acceptance records. FA-1 remains adopted independently.
 Voice tail-roughness valuation and the author's correction of the proposed default
 change are recorded in [§9.3.120](#voice-rearticulation-roughness). Sources: FA-1,
 UG-2 and FR-1 `report.md`; DOC-1's brief records the final non-adoption of FR-1.
+
+<a id="harmony-decisions-20261103"></a>
+
+### 9.3.123 2026-11-03: Harmony decisions A1/B1/C1
+
+The author adopted the recommendations A1, B1 and C1 at 06:17 JST on 2026-11-03
+(「推奨」). These are independent decisions. This entry records their scope and
+the work excluded by the alternatives; it adds no runtime behavior, default,
+composer API or new numerical acceptance condition.
+
+**A1 — reuse existing evidence for each purpose.** TC periodicity context, PS-1
+heard-periodicity occupancy, SQ executed interval sequences, ME executed pitch
+prefixes and HV observed harmonic relations are existing, distinct memories.
+Use each within its supported consumer and ownership contract, rather than
+creating a unified familiarity score. Their [capability boundaries](harmonic-support.md#familiarity-evidence-carriers-and-limits)
+identify what each can and cannot establish. This preserves usable evidence
+without claiming learned cultural preferences, named keys/modes, functional
+grammar or human closure. Combining memories is not evidence of cultural sufficiency.
+
+Evidence updating during a performance belongs to layer 4; selecting its use and
+valuation belongs to layer 3. Learning layer-3 preferences from the population's
+sound remains deferred under §9.3.56, with its existing prerequisites of
+generational change through timbre heredity and a preregistered runaway measure.
+Layer-1 sensation and layer-4 decay/update dynamics remain outside composer
+controls. Evidence labels remain those of [§9.3.104](#mechanism-evidence-and-composer-controls),
+including mixed Candidate/Author-rule parts. A new consumer would need scoped
+ownership, paired-support, zero-path and duplicate-contribution checks, causal
+evidence and declared-load validation. Recording A1's boundaries needs no new
+learner or acquisition and does not repeat existing mechanism acceptance.
+
+**B1 — retain observation and the existing two generation columns.** HV-13's
+predictive arrival/cadence, compatibility and residual/scale evidence remain
+observations. They are neither human closure ratings nor probabilities that a
+current candidate will end a phrase. Keep new ordinal ending/continuation and
+uncertainty columns disconnected; an unfitted or uncalibrated head contributes
+zero. The [retained B2 design](harmonic-relations.md#harmonic-closure-decision-20261103)
+preserves the feature/mask/identity adapter, separate ordinal heads, uncertainty,
+paired additive comparisons, legal body previews and retrospective ornament
+boundary. Its first task if resumed is to inspect applicable existing ratings
+and fitted/calibrated assets, including source versions and feature/input support,
+before deciding whether new mixture ratings are needed. Their availability and
+suitability have not been established by this documentation work.
+
+**C1 — adopted; implementation is recorded separately in §9.3.124.**
+
+The alternatives not selected are:
+
+| Alternative | Reason and work excluded from the adopted scope |
+|---|---|
+| A2: add dedicated harmonic learning research | Prediction-statistic learning would be layer 4; learning preferences themselves would reopen the deferred layer-3 research. A1 needs neither. No dedicated learner, preference update, teacher/state acquisition, generational/long-duration feedback study or associated acceptance is commissioned here. |
+| A3: make no further familiarity connections | Not selected as a blanket restriction: A1 allows purpose-specific reuse with the checks above. A3 proposed no new code or acquisition of its own, so rejecting it cancels none; it also never proposed deleting TC/PS or the other existing memories. |
+| B2: connect ordinal ending and uncertainty to generation | Deferred as a separate choice. Compatibility alone cannot supply a calibrated human rating or validate transfer to a candidate's future. No new head/adapter/API, ratings acquisition, preview-transfer acquisition or new-head load measurement is commissioned. The design is retained, not discarded. |
+| C2: restrict work to retuning current pitch/birth ranking weights | Weight changes do not extend the comparisons available to a saturated candidate set. A weight-only repair and an automatic multiplier sweep are not commissioned; per-piece weights remain composer choices. C1's separate implementation work is not cancelled. |
+
+Human-authored key, mode or chord-progression tables are not adopted as a shortcut
+around A2. Under the author's 2026-10-27 rule they introduce authored harmony.
+TC decoder and PS spline tables are numerical approximations, not such stylistic
+presets. A1 does not authorize B2; B2 would not require A2; C1 does not wait for
+either research extension. B1 is not a declaration of comprehensive harmonic or
+perceptual completion.
+
+**Origins of numbers and conditions.** The layer boundary and deferral conditions
+come from §9.3.56; evidence tiers and control authority from §9.3.104; carrier
+semantics from §9.3.105 (SQ), §9.3.108 (ME), §9.3.110 (TC), §9.3.114 (PS-1) and
+[§9.3.121](#harmony-acceptance-20261102) (HV). The two columns, paired neutrality,
+zero bypass and frozen development scales retain harmonic-relations §7.2's
+existing consumer contract. B2's five ordinal ratings (0–4), divisor 4, U,
+issued-context freezing, calibration and transfer requirements come from DCC
+§9.4/§9.6; they are not new musical thresholds or a mapping of HV-13 variance to
+confidence. No new weight, learning rate, C upper bound or confidence multiplier
+is adopted. The decisions above are author policy, not new scientific acceptance
+or an audition result.

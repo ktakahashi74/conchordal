@@ -1,7 +1,7 @@
 # Listener Twin Design
 
-Status: Phases 1-4 implemented; in scope for v0.4.0 (Phase 5 deferred)
-Scope: conchordal architecture, DCC coupling, tension/resolution model
+Status: passive E0 mixed-support prediction and revised GUI implemented (GUI-1); slow context and stream attribution deferred
+Scope: presentation-side sensory diagnostics, empirical prediction, and the existing static DCC coupling
 
 
 Scope revision (2026-09-13): ListenerTwin models selected responses to the actual
@@ -31,6 +31,123 @@ the broad DCC position across time scales. This memo narrows the first
 implementation target to a listener-side view of acoustic feature stability and
 local pitch/field affordance. The resulting instantaneous tension was an early
 proxy; it supplies no evidence that a phrase has continued or closed.
+
+## GUI-1: presentation prediction and current display contract
+
+The current display separates **Sensory salience**, **Adapted stability**,
+**Arrival score**, and **Uncertainty**. Salience retains the flux response and
+40/180 ms attack/release smoothing. Adapted stability retains the component-mass
+weighted habituated `C_eff`. Neither is Bayesian precision or predictive confidence.
+The old static quantities remain as `nearby_improvement_level` and
+`static_pull_level=(1-stability)*nearby_improvement_level`: JSONL assays and the
+existing opt-in DCC coupler still consume them. They are not arrival or entropy.
+The older numbered phases below describe that original static design.
+
+E0 is an **Author rule**, a finite empirical successor model of the whole audible
+mixture. It has no source identity, score boundaries, key/chord labels, authored
+progression, stream attribution, or slow context posterior. It does not copy the
+habitat HV bank. Its support is the normalized ERB-integrated *auditory intensity*
+vector, not an HV common-root distribution or a separated fundamental. The dominant
+cell is the peak bin of the greatest-mass ascent component; ties choose the lowest
+bin. The resolution is the existing Log2Space analysis grid. Changes of that cell
+can reflect changing timbre or relative loudness, not only pitch motion.
+
+At issuance, fix a reference cell (or observed silence), the last completed outcome,
+the current presentation meter period, and TC correlation when that observer is
+active. The future window starts at the latest presentation PCM availability, never
+before issuance; the reference retains its own earlier analysis timestamp. Its
+length is one predicted beat, `ceil(fs / beat_hz / hop) * hop` samples. This is a
+prediction horizon and hop readout resolution, not a memory half-life or latent dwell.
+A positive finite beat confidence supports a meter window; confidence is not used
+as an event probability. No corroborated meter means N/A. The issued endpoint stays
+fixed if the meter subsequently changes. When analysis lags issuance, any observed
+reference-cell change in `(reference_sample,start_sample]` censors that forecast,
+including a change exactly at start. Its version and invalidating sample are
+reported; it is neither scored nor stored as a successor. A new reference may issue
+a new forecast, subject to the same rule. Missing evidence also censors rather than
+proving reference continuity.
+
+The categorical space, in JSONL array order, is:
+
+1. unchanged through the window;
+2. first audible entry from a silent reference;
+3. first dominant cell below the reference;
+4. first dominant cell above the reference;
+5. first observed silence after an audible reference.
+
+Only the first change is scored. Readout is at complete observed hops in
+`(start_sample,end_sample]`; unchanged is decided only at the endpoint. This is an
+acoustic decision window, not a claim of perceptual phrase or note segmentation.
+The arrival relation is the *next support change* entering a different audible
+dominant cell: entry/lower/higher. A subsequent change after a first silence is
+outside this single-successor target. Silence is a known outcome but not arrival
+or closure. Thus this score does not estimate eventual arrival through intermediate
+states.
+
+The last 256 completed windows retain their issuance features and actually observed
+successors in preallocated storage. This is a prototype resource cap, not a cognitive
+memory duration. Issuance fixes whether the reference is audible or silent. Both
+retrieval and the sequential marginal use only retained windows with that same
+reference audibility, and feature variances use this eligible subset. Silent
+references permit only unchanged/entry; audible references never permit entry.
+The condition combines squared
+Hellinger distance of the intensity support, period difference and available TC
+correlation difference, each standardized by its retained sample variance. A zero
+variance admits only equality; no epsilon creates tolerance. Recent outcome and
+TC availability must match. The kernel is `exp(-mean(standardized distances)/2)`;
+these features of the same PCM form one distance, not independent likelihoods.
+Each eligible endpoint has weight `1/N`, where N counts that supported subset. Unmatched or weak endpoints keep their mass unknown.
+There is no transformed/transposed successor extrapolation.
+
+Let `w_y` be the summed eligible endpoint weights and `c=sum(w_y)` (clamped to
+[0,1] only for summation roundoff). The known conditional distribution is
+`p_known(y)=w_y/c` when `c>0`. Report `H=-sum(p_known ln p_known)` in nats separately
+from **coverage score** c. The uncertainty bar alone scales H by `ln(5)`.
+All UNKNOWN has c=0 and N/A conditional entropy, not zero entropy.
+
+Separately freeze the whole point forecast
+`q(y)=c*p_known(y)+(1-c)*b(y)`, where b is the pre-update empirical marginal over
+that same reference-audibility subset. When c=0, q=b. When no eligible baseline
+exists at issuance, q, arrival and subsequent surprise are N/A for that version;
+future learning never changes that status. No pseudocount, epsilon, probability
+floor or coverage cutoff is added. A missing active TC feature censors the window
+rather than silently becoming zero correlation.
+
+Arrival is `q(entry)+q(lower)+q(higher)`, the event of the next support change
+entering a different audible cell. Surprise, highest confidence, categorical
+Brier/log loss and arrival evaluation all use the same immutable q, never p_known
+or unnormalized known-arrival mass. The model scores are not advertised as
+calibrated probabilities or a human response.
+
+After observing the endpoint, compute `-ln q(y)` before inserting the successor.
+A zero issued likelihood remains infinite surprise, including when b also assigns
+zero. In memory this is +infinity; JSON encodes the nonfinite number as null with
+`zero_likelihood=true`, distinct from issuance-unavailable N/A (null, false).
+The evaluator records infinite mean loss as the string `Infinity` and counts its
+occurrences; it never drops these windows or silently reports a finite mean.
+Each result includes the full issued forecast, reference/start/end sample clocks and
+version. Duplicate or out-of-order analysis does not learn again. Completed results
+may repeat in per-hop JSONL; consumers deduplicate by forecast version. A gap cancels
+an incomplete window and the recent relation; completed episodes remain retrievable.
+Grid reconfiguration clears incompatible history. EOF does not complete a window.
+
+`ListenerPrediction` is a value-only worker/UI/report contract. E0 has no RNG and no
+connection to generation, Landscape valuation, habituation, or DCC. The existing DCC
+path still reads only the renamed static pull, and defaults to zero coupling.
+History, support sums and scratch allocate at initial grid setup/reconfiguration;
+ordinary observations, retrieval, completion, eviction and gap use existing storage.
+The GUI details menu exposes q, reference censoring and last completed surprise.
+Dominant-peak search runs only when prediction is enabled, preserving the A bypass path.
+
+Calibration uses the same discrete outcomes and issued windows for E0 and its
+pre-update empirical marginal comparator. The evaluation population is all completed
+windows whose same-support baseline existed at issuance, including c=0 fallback
+windows. Baseline-unavailable completions and reported reference-censored versions are counted
+separately. Only prospectively fixed q is scored; zero likelihoods remain infinite.
+The GUI uses score language because the two-scene acquisition does not establish
+probability calibration; exact results and timing evidence are in GUI-1's report.
+E0 cannot distinguish contexts sharing the same recent outcome, mixed support,
+period and optional TC. It does not claim the DES-1 or DES-2 E1/G functionality.
 
 ## Problem
 
@@ -121,17 +238,17 @@ ListenerState {
   attention_level,
   neural_rhythms,
   stability_level,
-  resolvability_level,
-  tension_level
+  nearby_improvement_level,
+  static_pull_level
 }
 ```
 
 Recommended meanings:
 
 - `stability_level`: how stable / consonant the current audible presentation is.
-- `resolvability_level`: the available local improvement in the current
+- `nearby_improvement_level`: the available local improvement in the current
   presentation-derived consonance field, after movement cost.
-- `tension_level`: unstable now, but with an available path toward improvement.
+- `static_pull_level`: unstable now, but with an available path toward improvement.
 - `attention_level`: presentation-derived onset / spectral-flux salience.
 - `neural_rhythms`: presentation-derived listener-side rhythm model.
 
@@ -191,7 +308,7 @@ presentation-derived attention state, not from generator-side vitality.
 For harmonic tension, the clean first definition is:
 
 ```text
-tension_level = (1.0 - stability_level) * resolvability_level
+static_pull_level = (1.0 - stability_level) * nearby_improvement_level
 ```
 
 This is not the same as:
@@ -239,7 +356,7 @@ candidate_gain(c, j) =
 candidates_c = bins in the reachable window around p_c, excluding B_c
 best_positive_gain_c = max(0, max_(j in candidates_c)(candidate_gain(c, j)))
 resolution_gain = sum_c(W_c * best_positive_gain_c) / M
-resolvability_level = clamp(resolution_gain / gain_scale, 0, 1)
+nearby_improvement_level = clamp(resolution_gain / gain_scale, 0, 1)
 ```
 
 Compute gain once per component and average by `W_c`, using the same total mass
@@ -251,7 +368,7 @@ show that they need to be configurable.
 
 The search does not resynthesize a moved Voice or predict the resulting field.
 It also has no memory of a home root, preceding phrase, or expected return.
-Consequently, `tension_level` combines local instability and improvement potential;
+Consequently, `static_pull_level` combines local instability and improvement potential;
 it does not establish perceived homecoming, phrase closure, or fulfillment of
 an expectation. Stability can improve while tension rises if the available
 local gain increases enough. Those components must remain separately visible
@@ -397,8 +514,8 @@ Expected JSONL event:
   "theta_mag": 0.42,
   "theta_alpha": 0.74,
   "stability_level": 0.72,
-  "resolvability_level": 0.64,
-  "tension_level": 0.18
+  "nearby_improvement_level": 0.64,
+  "static_pull_level": 0.18
 }
 ```
 
@@ -470,7 +587,7 @@ former input's harmonic pruning. See `auditory-system.md` section 3.3.
 
 - Implemented as `src/dcc_coupler.rs`.
 - Reads `ListenerState` and computes:
-  `tension_pressure = tension_level * coupling_strength`.
+  `tension_pressure = static_pull_level * coupling_strength`.
   Listener tension already includes resolvability; the duplicate factor was
   removed on 2026-09-05. A fixed-presentation, moving-habitat fixture checks
   that nonzero coupling changes pitch while listener evidence stays identical.

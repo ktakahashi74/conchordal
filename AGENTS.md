@@ -282,8 +282,15 @@ source-matched versus original computation rule or §9.3.56's five listener laye
     runs the same projection per received listener frame; the default GUI has both
     paths. Explicitly disabling habituation skips these projections.
   - ListenerTwin groups bin masses into local-maximum components with cached mass,
-    component-mass and ascent-owner buffers. Initial observation and frequency-space
-    changes may allocate; ordinary observations reuse those buffers.
+    component-mass and ascent-owner buffers. Its presentation-only E0 predictor owns
+    256 completed acoustic windows and preallocated support/history scratch. Initial
+    observation and frequency-space changes may allocate; ordinary observations,
+    successor retrieval, completion, eviction, reference censoring and gap reuse storage.
+    Dominant-peak search runs only inside `prediction_enabled`. Retrieval and the
+    sequential marginal share the frozen audible/silent reference support. The
+    Copy snapshot freezes q (coverage backoff to that marginal) for surprise and
+    arrival; p_known and coverage separately describe conditional entropy. Prediction does not feed generation; the existing DCC path
+    reads only `static_pull_level` (formerly `tension_level`).
   - `build_runtime_ui_frame` (`src/runtime/ui_frame.rs`) clones the Landscape and
     builds spectrum, Voice, phase, and temporal/body snapshots. `send_runtime_ui_frame`
     rate-limits ordinary GUI frames with `UI_MIN_INTERVAL`; terminal delivery retains

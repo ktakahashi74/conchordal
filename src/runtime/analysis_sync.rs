@@ -182,6 +182,7 @@ pub(super) fn observe_listener_analysis_results(
                 *last_listener_analysis_frame = frame.as_ref().map(|_| analyzed_id);
                 let Some(mut frame) = frame else {
                     listener_twin.spectral_history = None;
+                    listener_twin.invalidate_prediction();
                     latest_state = Some(None);
                     continue;
                 };

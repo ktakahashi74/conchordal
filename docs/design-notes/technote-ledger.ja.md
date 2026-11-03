@@ -117,6 +117,7 @@
   - [§9.3.122 2026-11-02：Floraの振幅追従と、採らなかった混合Rの成長則](#flora-amplitude-and-mixed-roughness-20261102)
   - [§9.3.123 2026-11-03：和声の判断A1/B1/C1](#harmony-decisions-20261103)
   - [§9.3.124 2026-11-03：合法な行為の比較への C/N の接続（HV-16）](#harmony-action-consequences-20261103)
+  - [§9.3.125 2026-11-03：presentation専用E0と聴き手の表示（GUI-1）](#listener-prediction-e0)
 - [§9.4 整合と拡張の順序](#94-整合と拡張の順序)
 
 ---
@@ -8584,3 +8585,51 @@ crossing 回帰は人工的な二機会によるもので、実際の拍周期�
 拡張できる。その場合、同じ機会の全候補に共通 W を使い、予測終端と実行終端を分けて記録する。
 現在の evaluator の終端を差し替えるだけでは足りない。今回はこの拡張、新しい作者判断、
 新しい性能 gate を追加しない。
+
+<a id="listener-prediction-e0"></a>
+### 9.3.125 2026-11-03：presentation専用E0と聴き手の表示（GUI-1）
+
+作者はFEP-1 §2の表示改訂と、そのための有限なpresentation側E0試作を採択した。
+感覚的顕著性と慣れを含む安定度は式を保ち、英語表示をSensory salience、Adapted
+stabilityとする。従来の静的な改善余地と引力は、report・assay・既存の任意DCCで
+`nearby_improvement_level`、`static_pull_level`として残す。予測量とは区別する。
+
+**作者規則：** E0は独立したlistener ownerに、完了した音響的な判断窓を最大256件
+保持する。各窓の対象は、混合音の主成分のLog2Space cellが最初に示す維持・出現・
+下降・上昇・静寂である。期限はpresentation meterの1拍を解析hopへ切り上げて導く。
+参照観測には解析時刻を残し、窓は予測を発行できた時刻より前に始めない。予測分布を
+固定してから対応区間を観測し、驚きを算出してから学習する。gapは未完了窓を打ち切り、
+重複配送では再学習せず、grid変更では互換性のない履歴を捨てる。EOFを到達としない。
+解析が遅れ、(reference,start] の観測で参照cellが変わった予測は、start境界での変化も
+含めてcensoredと記録する。その窓は評価せず、偽の後続を履歴に入れない。
+
+検索にはERB積分した混合intensityの平方根表現、直前の結果、meter周期、TC有効時の
+相関を用いる。一つの標準化距離から経験的な重みを作り、同じPCMの特徴を独立証拠として
+掛け合わせない。発行時の参照の有音／静寂を固定し、検索・尺度の分散・逐次周辺分布bには
+同じ参照条件の履歴だけを使う。静寂参照は維持／出現だけ、有音参照の出現は常に0とする。
+分散0では一致だけを認める。固定和声profile、
+source ID、rendererのOn/Off、habitatとの可変bank共有はない。これは粗い混合音響baseline
+であり、HVの全対応graph、流れの帰属、共通根の追跡、DES-2の遅い文脈posteriorではない。
+
+GUIは既知部分に条件づけたentropy（nat、棒だけln 5で正規化）、coverage score、指定窓内の
+別の有音cellへのArrival scoreを表示する。entropyはp_known=w/cで求め、全UNKNOWNでは
+entropyをN/Aとする。別に全体予測q=c*p_known+(1-c)*bを発行時に固定し、c=0ならq=bとする。
+Arrivalはqの出現・下降・上昇の和であり、驚き・最高confidence・Brier・log loss・到達評価も
+すべて同じqから求める。qのN/Aは発行時にbaselineがない場合に固定する。疑似カウント、
+epsilon、確率floor、coverage閾値は置かない。驚きは詳細メニューに置く。
+モデル尤度0は無限の驚きとして明示し、有限値へ切り詰めない。JSONLは発行済み分布・時刻・
+versionを完了結果に保持し、hopごとの重複読出しはversionで除く。
+
+一つの較正取得で、既存HV-14のThree Windows／Undergrowth c1（seed 735）について、
+逐次log score、信頼度曲線、到達scoreの曲線を、同じ支持条件の更新前周辺分布と比較する。
+母集団は発行時にbaselineがある完了窓のすべてとし、全UNKNOWNのfallback窓も含める。
+baselineがない完了窓とcensored窓は別に数える。
+表示は未較正のscoreとし、人の終止感や一般的な確率較正の証拠としない。native ABBA再生、
+allocation検査、通常のソフトウェア検査はGUI-1報告に分けて記録する。256件は資源上限であり、
+認知的な記憶時間ではない。履歴はgrid設定時に確保し、定常の検索・完了・退避・censor・gapでは再利用する。
+review修正では主成分peak検索をE0有効分岐内へ移し、同じ登録のABBAと2場面・seed 735の
+較正を取り直した。修正前の取得記録も保持する。
+
+B1を維持する。E0から生成・Landscape評価・乱数・DCCへの接続はない。既存の任意DCCは
+静的引力だけを読み、既定の結合強度は0のままとする。式と境界は
+[Listener Twin Design](listener-twin.md#gui-1-presentation-prediction-and-current-display-contract)を参照。

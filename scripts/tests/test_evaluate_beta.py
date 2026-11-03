@@ -54,7 +54,7 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(timing["stats_us"]["elapsed_us"]["p95"], 39.5)
         self.assertEqual(timing["stats_us"]["elapsed_us"]["p99"], 39.9)
         self.assertIsNone(timing["underrun_frames_total"])
-        self.assertEqual(metrics["listener"]["stats"]["tension_level"]["count"], 1)
+        self.assertEqual(metrics["listener"]["stats"]["static_pull_level"]["count"], 1)
 
     def test_contour_report_preserves_unknown_evidence_and_signed_scores(self):
         contour = dict.fromkeys(beta.CONTOUR_FLOATS)
@@ -302,7 +302,7 @@ class ArtifactTests(unittest.TestCase):
             fixture = report_fixture()
             # Sample both sides of the resolution boundary and the exclusive end.
             times = [2.3, 11.69, 11.7, 14.99, 15.0, 20.29, 20.3, 23.59, 23.6, 24.9, 30.19, 30.2]
-            listener = [dict(fixture[1], time_sec=t, tension_level=t) for t in times]
+            listener = [dict(fixture[1], time_sec=t, static_pull_level=t) for t in times]
             confidence = dict(fixture[2], sample_count=len(listener))
             timings = [dict(fixture[3], frame_idx=i, time_sec=float(i)) for i in range(40)]
             report.write_text("".join(json.dumps(r) + "\n" for r in
@@ -325,7 +325,7 @@ class ArtifactTests(unittest.TestCase):
         self.assertEqual([(r["start_sec"], r["end_sec"]) for r in windows],
                          [(2.3, 11.7), (11.7, 15.0), (15.0, 20.3), (20.3, 23.6), (24.9, 30.2)])
         self.assertEqual([r["count"] for r in windows], [2] * 5)
-        self.assertAlmostEqual(windows[3]["stats"]["tension_level"]["mean"], (20.3 + 23.59) / 2)
+        self.assertAlmostEqual(windows[3]["stats"]["static_pull_level"]["mean"], (20.3 + 23.59) / 2)
 
         source.write_text(original.replace("wait(9.4)", "wait(9.5)"))
         failed = self.directory / "drifted"

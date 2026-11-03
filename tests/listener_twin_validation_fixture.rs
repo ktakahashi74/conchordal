@@ -53,10 +53,12 @@ impl ListenerStats {
     fn push(&mut self, record: &Value) {
         self.n += 1;
         self.stability_sum += required_f64(record, "stability_level");
-        self.resolvability_sum += required_f64(record, "resolvability_level");
-        self.tension_sum += required_f64(record, "tension_level");
+        self.resolvability_sum += required_f64(record, "nearby_improvement_level");
+        self.tension_sum += required_f64(record, "static_pull_level");
         self.attention_sum += required_f64(record, "attention_level");
-        self.max_tension = self.max_tension.max(required_f64(record, "tension_level"));
+        self.max_tension = self
+            .max_tension
+            .max(required_f64(record, "static_pull_level"));
     }
 
     fn avg_stability(&self) -> f64 {
@@ -170,13 +172,13 @@ fn dcc_feedback_uses_listener_tension_once_and_changes_pitch() {
         assert_eq!(listener.len(), pressures.len());
         for (state, pressure) in listener.iter().zip(&pressures) {
             assert_eq!(state["time_sec"], pressure["time_sec"]);
-            let expected = required_f64(state, "tension_level") * strength;
+            let expected = required_f64(state, "static_pull_level") * strength;
             assert!((required_f64(pressure, "tension_pressure") - expected).abs() < 1e-6);
             assert!((required_f64(pressure, "temperature_bonus") - expected * 10.0).abs() < 1e-5);
         }
         let tension: Vec<_> = listener
             .iter()
-            .map(|record| required_f64(record, "tension_level"))
+            .map(|record| required_f64(record, "static_pull_level"))
             .collect();
         assert!(tension.iter().any(|&level| level > 0.01));
         listener_traces.push(tension);

@@ -57,7 +57,7 @@ class ResolutionTests(unittest.TestCase):
             (output / "summary.json").write_text(json.dumps({"cases": cases}))
             records = [dict(type="spawn", time_sec=0.0, voice_id=1),
                        dict(type="population_step", time_sec=6.0, alive_count=8),
-                       dict(type="listener_state", time_sec=6.0, tension_level=.1),
+                       dict(type="listener_state", time_sec=6.0, static_pull_level=.1),
                        dict(type="respawn", time_sec=13.7, voice_id=19)]
             for index, label in enumerate(variants):
                 directory = output / label
@@ -110,7 +110,7 @@ class ResolutionTests(unittest.TestCase):
                                    mean_freq_hz=1400, mean_c_field_level=.1))
             row = resolution.window_metrics(listener, population, wav, "tension")
             self.assertEqual(row["listener_count"], 2)
-            self.assertAlmostEqual(row["listener_tension_level_mean"], .3)
+            self.assertAlmostEqual(row["listener_static_pull_level_mean"], .3)
             self.assertEqual(row["colony_alive_count_mean"], 1)
             self.assertEqual(row["colony_mean_freq_hz"], 220)
             self.assertEqual(row["colony_mean_c_field_level"], .8)
@@ -127,7 +127,7 @@ class ResolutionTests(unittest.TestCase):
                              **dict(zip(resolution.FACTORS, map(int, variant))),
                              **dict.fromkeys(resolution.MEASURES, value), "colony_mean_freq_hz": None})
         effects = {(r["variant"], r["seed"]): r for r in resolution.paired_effects(rows)}
-        key = "delta_minus_control_111_listener_tension_level_mean"
+        key = "delta_minus_control_111_listener_static_pull_level_mean"
         self.assertAlmostEqual(effects[("000", 1)][key], .2)
         self.assertAlmostEqual(effects[("000", 42)][key], -.3)
         self.assertEqual(effects[("111", 1)][key], 0)

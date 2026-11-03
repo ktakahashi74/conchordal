@@ -24,8 +24,51 @@ pub struct DorsalFrame {
     pub flux: f32,
 }
 
+/// E0 categories: unchanged, audible entry, lower peak, higher peak, silence.
+/// The point forecast q backs off to the supported marginal; p_known defines entropy.
+/// Model scores are not calibrated human probabilities.
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
+pub struct ListenerForecast {
+    pub version: u64,
+    pub start_sample: u64,
+    pub end_sample: u64,
+    pub reference_sample: u64,
+    pub reference_bin: Option<usize>,
+    pub horizon_sec: f32,
+    pub p_known: Option<[f32; 5]>,
+    pub q: Option<[f32; 5]>,
+    pub marginal: Option<[f32; 5]>,
+    pub entropy_nats: Option<f32>,
+    pub coverage_score: f32,
+    pub arrival_score: Option<f32>,
+    pub examples: usize,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
+pub struct ListenerOutcome {
+    pub forecast: ListenerForecast,
+    pub outcome: usize,
+    pub observed_sample: u64,
+    pub surprise_nats: Option<f32>,
+    pub zero_likelihood: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
+pub struct ListenerCensored {
+    pub forecast: ListenerForecast,
+    pub observed_sample: u64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize)]
+pub struct ListenerPrediction {
+    pub forecast: Option<ListenerForecast>,
+    pub completed: Option<ListenerOutcome>,
+    pub censored: Option<ListenerCensored>,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ListenerFrame {
+    pub prediction: ListenerPrediction,
     pub time_sec: f64,
     pub generated_frame_id: u64,
     pub analysis_frame_id: u64,
@@ -34,8 +77,8 @@ pub struct ListenerFrame {
     pub attention: DorsalFrame,
     pub meter: MeterState,
     pub stability_level: f32,
-    pub resolvability_level: f32,
-    pub tension_level: f32,
+    pub nearby_improvement_level: f32,
+    pub static_pull_level: f32,
     pub has_fast_state: bool,
     pub has_state: bool,
 }

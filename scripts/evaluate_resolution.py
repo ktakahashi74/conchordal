@@ -21,7 +21,7 @@ from sample12 import COLONY_POPULATION_ID, FACTORS, FLOW_START_SEC, RESERVE_RUNT
 
 STATE_RECORDS = {"spawn", "respawn", "death", "onset", "population_step", "rhythm_observation",
                  "listener_state", "dcc_pressure", "habituation", "phonation_gate_open"}
-LISTENER_FIELDS = ["tension_level", "stability_level", "resolvability_level", "attention_level", "beat_confidence"]
+LISTENER_FIELDS = ["static_pull_level", "stability_level", "nearby_improvement_level", "attention_level", "beat_confidence"]
 MEASURES = [f"listener_{key}_mean" for key in LISTENER_FIELDS] + [
     "audio_rms", "audio_peak", "audio_silence_fraction", "colony_alive_count_mean",
     "colony_mean_freq_hz", "colony_mean_c_field_level"]

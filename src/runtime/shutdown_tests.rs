@@ -1795,3 +1795,187 @@ fn harmonic_observer_reservation_cost() {
         "windows":results
     })).unwrap()).unwrap();
 }
+
+#[test]
+fn listener_prediction_is_invariant_to_hidden_habitat_and_hidden_id_renaming() {
+    let script = std::env::temp_dir().join(format!(
+        "conchordal-gui1-invariance-{}.rhai",
+        std::process::id()
+    ));
+    let mut traces = Vec::new();
+    let mut pcm_traces = Vec::new();
+    let mut id_traces = Vec::new();
+    for (hidden_hz, reserved, enabled) in [
+        (110., 0, true),
+        (440., 0, true),
+        (110., 1 << 20, true),
+        (110., 0, false),
+    ] {
+        std::fs::write(&script, format!(r#"
+seed(21);
+let hidden = harmonic().send(habitat_bus).sustain().anchor().amp(0.03);
+place(hidden, at({hidden_hz}));
+let audible = harmonic().brain("drone").send(presentation_bus).sustain().anchor().amp(0.06).adsr(0.005, 0.02, 0.8, 0.02);
+for i in 0..16 {{
+    let v = place(audible, at(if i % 2 == 0 {{ 220.0 }} else {{ 330.0 }}));
+    wait(0.12); release(v); wait(0.38);
+}}
+"#)).unwrap();
+        let mut scenario = compile_scenario_from_script(&script, Some(21)).unwrap();
+        for event in &mut scenario.events {
+            for action in &mut event.actions {
+                if let crate::scenario::Action::Spawn {
+                    ids: crate::scenario::SpawnIds::Assigned(ids),
+                    ..
+                } = action
+                {
+                    for id in ids {
+                        // Rename the habitat-only source; presentation PCM stays fixed.
+                        if *id == 1 {
+                            *id ^= reserved;
+                        }
+                    }
+                }
+            }
+        }
+        let mut opts = options();
+        opts.listener_forced = true;
+        opts.reserve_runtime_ids_through = reserved;
+        let rows = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let pcm = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let ids = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (capture, audio, identity) = (rows.clone(), pcm.clone(), ids.clone());
+        opts.offline_body_probe = Some(Box::new(move |state, _, _, buses| {
+            state.listener_twin.set_prediction_enabled(enabled);
+            if let Some(listener) = state.latest_listener_state {
+                capture.lock().unwrap().push(listener.prediction);
+            }
+            audio
+                .lock()
+                .unwrap()
+                .extend(buses[1].iter().map(|x| x.to_bits()));
+            identity
+                .lock()
+                .unwrap()
+                .extend(state.pop.voices.iter().map(|v| v.id));
+        }));
+        let wiring = wire_runtime(
+            &AppConfig::default(),
+            48000,
+            "GUI-1 invariance".into(),
+            scenario,
+            Arc::new(AtomicBool::new(false)),
+            opts,
+        )
+        .unwrap();
+        join(wiring).unwrap();
+        traces.push(rows.lock().unwrap().clone());
+        pcm_traces.push(pcm.lock().unwrap().clone());
+        id_traces.push(ids.lock().unwrap().clone());
+    }
+    std::fs::remove_file(script).unwrap();
+    assert!(
+        traces[0]
+            .iter()
+            .any(|p| p.completed.is_some_and(|d| d.forecast.q.is_some())),
+        "invariance must exercise supported predictions"
+    );
+    assert!(traces[0] == traces[1], "habitat-only intervention");
+    assert!(traces[0] == traces[2], "hidden renderer ID renaming");
+    assert!(
+        id_traces[0] != id_traces[2],
+        "the ID intervention must actually rename Voices"
+    );
+    assert!(traces[3].iter().all(|p| p.forecast.is_none()));
+    for other in &pcm_traces[1..] {
+        assert!(
+            pcm_traces[0] == *other,
+            "fixed presentation / passive predictor"
+        );
+    }
+}
+
+#[test]
+#[ignore = "GUI-1 ABBA replay: timing lock, GUI1_WAV and GUI1_COST_OUTPUT required"]
+fn gui1_listener_replay_cost() {
+    use std::io::Write;
+    let path = std::env::var("GUI1_WAV").unwrap();
+    let enabled = std::env::var("GUI1_E0").unwrap() == "1";
+    let output = std::env::var("GUI1_COST_OUTPUT").unwrap();
+    let config = AppConfig::default();
+    let core = build_analysis_runtime_core(&config, 48000);
+    let mut stream = AnalysisStream::new(core.lparams.clone(), core.nsgt).with_nsgt_power(true);
+    let mut twin = ListenerTwin::with_sample_rate(
+        48000.,
+        crate::listener_twin::ListenerTwinConfig {
+            prediction_enabled: enabled,
+            ..Default::default()
+        },
+    );
+    let mut hab = crate::core::habituation::HabituationField::new(
+        &core.lparams.habituation,
+        core.lparams.consonance_representation.theta,
+        core.landscape.space.n_bins(),
+    );
+    let mut reader = hound::WavReader::open(path).unwrap();
+    assert_eq!(reader.spec().sample_rate, 48000);
+    assert_eq!(reader.spec().bits_per_sample, 16);
+    let channels = reader.spec().channels as usize;
+    let capacity = reader.duration() as usize / 512;
+    let mut samples = reader.samples::<i16>();
+    let mut hop = [0.0_f32; 512];
+    let mut rows = Vec::with_capacity(capacity);
+    let mut frame = 0_u64;
+    loop {
+        let mut complete = true;
+        for x in &mut hop {
+            let Some(value) = samples.next() else {
+                complete = false;
+                break;
+            };
+            *x = f32::from(value.unwrap()) / 32768.;
+            for _ in 1..channels {
+                samples.next().unwrap().unwrap();
+            }
+        }
+        if !complete {
+            break;
+        }
+        let start = Instant::now();
+        let mut landscape = stream.process(&hop).clone();
+        let analysis = start.elapsed().as_secs_f64() * 1e6;
+        let start = Instant::now();
+        landscape.recompute_consonance(&core.lparams);
+        analysis_sync::drive_and_apply_habituation(
+            &mut landscape,
+            &mut hab,
+            &core.lparams,
+            512. / 48000.,
+        );
+        let habituation = start.elapsed().as_secs_f64() * 1e6;
+        let start = Instant::now();
+        crate::runtime_profile::begin_allocations();
+        twin.observe_presentation_audio(frame * 512, frame, &hop);
+        let state = twin.observe_presentation_landscape(
+            (frame + 1) as f64 * 512. / 48000.,
+            frame + 1,
+            frame,
+            &landscape,
+        );
+        let allocations = crate::runtime_profile::finish_allocations();
+        let listener = start.elapsed().as_secs_f64() * 1e6;
+        rows.push((
+            frame,
+            analysis,
+            habituation,
+            listener,
+            allocations,
+            state.prediction.forecast.map_or(0, |f| f.examples),
+        ));
+        frame += 1;
+    }
+    let mut out = std::io::BufWriter::new(std::fs::File::create(output).unwrap());
+    for (frame, analysis, habituation, listener, allocations, examples) in rows {
+        writeln!(out, "{}", serde_json::json!({"frame":frame, "analysis_us":analysis, "habituation_us":habituation, "listener_us":listener, "allocations":allocations, "examples":examples})).unwrap();
+    }
+}

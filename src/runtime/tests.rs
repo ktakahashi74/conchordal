@@ -523,7 +523,7 @@ fn listener_memory_is_independent_of_receive_batching() {
         assert!(update.is_none());
         assert_eq!(hab.state(), retained);
         let state = last_state.unwrap();
-        outcomes.push((retained, state.stability_level, state.tension_level));
+        outcomes.push((retained, state.stability_level, state.static_pull_level));
     }
     assert_eq!(outcomes[0], outcomes[1]);
     assert_eq!(outcomes[0], outcomes[2]);

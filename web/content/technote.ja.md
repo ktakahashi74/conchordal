@@ -128,7 +128,22 @@ $A_w$はA-weightingのpower利得、圧縮指数の既定値は0.23。この重�
 
 最後にS6のleaky平滑を施す。時定数は`analysis.tau_ms`で、既定値は10 ms。この`subjective_intensity`密度をHとRが共通して読む。積分値の`loudness_mass`、`roughness`、`roughness01_scalar`は算出式と型を保つが、入力の密度が変わるので数値も変わる。
 
-ListenerTwinは、正のbin質量を局所の山ごとに成分へまとめてから、安定さと改善の余地を重み付けする。成分の重みは所属するbinの質量の和、levelは山のbinの値とする。移動候補はその成分の外に限り、移動費用の距離は山から測る。これにより、二binに配られた一つの成分を一度だけ数える。gain scale、到達範囲、移動費用、tensionを定める積の式は保つ。
+ListenerTwinは、正のbin質量を局所の山ごとに成分へまとめてから、安定さと改善の余地を重み付けする。成分の重みは所属するbinの質量の和、levelは山のbinの値とする。移動候補はその成分の外に限り、移動費用の距離は山から測る。これにより、二binに配られた一つの成分を一度だけ数える。gain scale、近傍の探索範囲、移動費用、静的引力を定める積の式は保つ。
+
+
+聴き手の表示は、従来のflux応答を「Sensory salience」、慣れを含む感覚的な安定度を
+「Adapted stability」として残す。「Arrival score」と「Uncertainty」は、presentationの
+混合音を聴く独立したE0予測器から得る。有限の音響履歴から実測された後続を検索し、
+聴き手のmeterが予測する1拍の間に、主成分の支持cellが維持・出現・下降・上昇・静寂の
+どれへ最初に移るかを予測する。対象と期限、既知部分に条件づけたentropy（nat）、
+coverage scoreを併記し、驚きは詳細メニューに置く。entropyは既知部分のp_knownから求める。
+全体予測qは未支持の質量を、参照の有音／静寂を同じ条件とする逐次周辺分布へ戻す。
+到達と驚きは同じqを使う。全UNKNOWNでもbaselineがあればqを残し、entropyだけをN/Aとする。
+qのN/Aは発行時にbaselineがない場合に固定し、発行済みqの尤度0は無限の驚きとして残す。
+解析遅延により参照から窓開始までに起きた変化は、開始境界も含めて予測をcensoredとし、
+偽の後続を学習しない。実測静寂と欠測を区別する。重みは未較正のscoreであり、人の解決感の確率とは呼ばない。従来の静的な
+診断量はreportと既存DCCで`nearby_improvement_level`、`static_pull_level`として残す。
+新しい予測の出力は生成へ接続しない。
 
 ### 3.1.3 スペクトルのpower、履歴、時刻
 
@@ -420,7 +435,7 @@ $\eta_\varphi=0.6$、$\eta_p=0.1$はLarge & Jones（1999）のsimulationに由�
 
 分割の位相は$2\varphi,3\varphi,4\varphi$、小節の位相はアンラップした拍数を2・3・4で割ったものを使う。各層は位相の整合やアクセントの証拠を別々に保つ。拍帯域より速い入力は、帯域内の拍の分割として読む経路を持つ。整数比でない独立のtempoや、振動子間の結合の可塑性は実装していない。
 
-**知覚と生成。** ランタイムは同じ機構を二つのinstanceで使う。生成メーターはハビタットバスを聴き、Voiceの振る舞いを導く。`ListenerTwin`のメーターはプレゼンテーション音声を聴き、拍の確信度をUIとreportへ送る。DCCの圧力が直接使うのは、プレゼンテーション由来の協和性tensionである。
+**知覚と生成。** ランタイムは同じ機構を二つのinstanceで使う。生成メーターはハビタットバスを聴き、Voiceの振る舞いを導く。`ListenerTwin`のメーターはプレゼンテーション音声を聴き、拍の確信度をUIとreportへ送る。DCCの圧力が直接使うのは、プレゼンテーション由来の静的引力であり、新しい予測量ではない。
 
 
 ### habitatの連続再来
@@ -1000,7 +1015,7 @@ UIのmeterは元のbusの水準を保つ。既定値の+4.5 dBは同梱のtop-le
 3.  **ワーカースレッド**が解析結果を`Landscape`へマージし、base consonance表現を再計算する。次にecology側の`HabituationField`を進め、effective viewを書き込む。listener解析結果には別のhabituation stateを適用する。
 4.  **ワーカースレッド**がハビタットのオンセットフラックス（`DorsalStream`）とハビタットへ送られるボイスの発声オンセット強度で生成`MeterNetwork`を駆動し、結果の`MeterState`を`NeuralRhythms::from_meter_state`経由で`landscape.rhythm`へ射影する。
 5.  `Community`がeffective Landscapeを、ピッチ選択、代謝、spawn、respawn、Voiceのライフサイクルに使う。
-6.  DCC couplingが有効なら、`tension_pressure = tension_level * coupling_strength`から上限つきのtemperature bonusを作り、Voiceのpitch searchへ戻す。Listenerのtensionにはすでにresolvabilityが含まれるため、couplerでは重ねて掛けない。デフォルトのcoupling strengthは0であり、明示的に有効化しない限り挙動は変わらない。
+6.  DCC couplingが有効なら、`tension_pressure = static_pull_level * coupling_strength`から上限つきのtemperature bonusを作り、Voiceのpitch searchへ戻す。静的引力にはすでに近傍改善余地が含まれるため、couplerでは重ねて掛けない。デフォルトのcoupling strengthは0であり、明示的に有効化しない限り挙動は変わらない。
 7.  `PhonationEngine`が`ToneCmd` batchを生成し、`ScheduleRenderer`がToneの生成・更新・releaseを実行し、選んだ身体の応答を各busへ描く（5.1.3節）。
 8.  レンダリングされたpresentation audioを、**オーディオスレッド**が消費するロックフリーring bufferへpushする。
 
@@ -1383,7 +1398,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | `attack_cost_fraction` | `LifecycleConfig::Sustain` | 正規化エネルギー / attack | 最大強度アタックが消費する容量。 |
 | `attack_recharge_fraction` | `LifecycleConfig::Sustain` | 正規化エネルギー / attack | 完全に協和したアタックが回復する最大容量。 |
 | `dissonance_penalty` | `LifecycleConfig::Sustain` | Float ≥ 0 | ゼロ適合enduranceを保ったまま、良好な適合による寿命延長を形づくる。 |
-| `dcc.coupling_strength` | `DccConfig` | 0.0-1.0 | ListenerTwinのtension feedback強度。デフォルトは0.0（挙動上は無効）。 |
+| `dcc.coupling_strength` | `DccConfig` | 0.0-1.0 | ListenerTwinの静的引力のfeedback強度。デフォルトは0.0（挙動上は無効）。 |
 | `dcc.max_temperature_bonus` | `DccConfig` | Float ≥ 0 | listener pressureがpitch-search temperatureへ加える最大値（デフォルト 0.10）。 |
 | `attack_step` | `KuramotoCore` | Float | アタックエンベロープのステップサイズ。 |
 | `decay_rate` | `KuramotoCore` | Float | ディケイエンベロープのレート。 |

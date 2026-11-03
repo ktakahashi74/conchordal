@@ -133,7 +133,26 @@ weighting stability and reachable improvement. Each component contributes its
 total mass at its peak-bin field level. Improvement candidates must lie outside
 that component, with movement cost measured from the peak. This makes one
 component shared between two bins contribute once. Gain scale, reachable range,
-movement cost and the product defining tension retain their existing values.
+movement cost and the product defining static pull retain their existing values.
+
+
+The listener display keeps **Sensory salience** (the existing flux response) and
+**Adapted stability** (including habituation). **Arrival score** and **Uncertainty**
+come from a separate, passive E0 predictor of the presentation mixture. It retrieves
+observed successors from a bounded acoustic history and predicts the first dominant
+support-cell change within one presentation-meter beat: unchanged, audible entry,
+lower cell, higher cell, or silence. The display names the target and horizon,
+shows conditional entropy in nats and a separate coverage score, and places surprise
+in the details menu. Entropy uses the known conditional distribution p_known.
+The whole forecast q backs off by uncovered mass to the sequential marginal with
+the same audible/silent reference condition; arrival and surprise both use this q.
+All UNKNOWN gives N/A entropy but retains q when that baseline exists. Only baseline
+absence at issuance makes q N/A; zero issued likelihood remains infinite surprise.
+A reference change observed before or exactly at a delayed window's start censors
+the forecast instead of learning a false successor. Silence is not missing input.
+The weights are uncalibrated scores, not measured probabilities of human resolution.
+The static diagnostics remain `nearby_improvement_level` and `static_pull_level`
+in reports and existing DCC. New prediction outputs never drive generation.
 
 ### 3.1.3 Spectral Power, History and Timing
 
@@ -436,7 +455,7 @@ The first adoption anchors phase zero to its onset, clears evidence in the old c
 
 Subdivision phases are $2\varphi,3\varphi,4\varphi$; measure phases divide the unwrapped beat count by 2, 3 or 4. Each layer retains separate phase-coherence or accent evidence. Faster-than-band input can therefore be read as subdivision of an in-band beat. Independent noninteger tempi and adaptive inter-oscillator coupling are outside this implementation.
 
-**Perception vs production.** The runtime uses this same mechanism in two instances. The production meter listens to the habitat bus and guides Voice behavior. The `ListenerTwin` meter listens to presentation audio and supplies beat confidence to the UI and report. DCC pressure uses presentation-derived consonance tension, rather than beat confidence directly.
+**Perception vs production.** The runtime uses this same mechanism in two instances. The production meter listens to the habitat bus and guides Voice behavior. The `ListenerTwin` meter listens to presentation audio and supplies beat confidence to the UI and report. DCC pressure uses presentation-derived static pull, rather than the new predictive quantities or beat confidence.
 
 ### Continuous habitat recurrence
 
@@ -1237,7 +1256,7 @@ To maintain data consistency without locking the audio thread, Conchordal uses a
 3.  The **Worker Thread** merges the analysis result into the current `Landscape`, recomputes the base Consonance representations, advances the ecology's `HabituationField`, and writes the effective views. A separate habituation state is advanced on listener-analysis results.
 4.  The **Worker Thread** drives the production `MeterNetwork` with the habitat onset flux (`DorsalStream`) combined with the phonation onset strengths of habitat-routed voices; the resulting `MeterState` is projected into `landscape.rhythm` via `NeuralRhythms::from_meter_state`.
 5.  The `Community` evaluates the effective Landscape for pitch selection, metabolism, spawn, respawn, and Voice lifecycle.
-6.  When DCC coupling is enabled, `tension_pressure = tension_level * coupling_strength` produces a bounded temperature bonus that feeds the Voices' pitch search. Listener tension already includes resolvability; the coupler applies no second factor. The default coupling strength is zero, so this path is behaviorally inert unless explicitly enabled.
+6.  When DCC coupling is enabled, `tension_pressure = static_pull_level * coupling_strength` produces a bounded temperature bonus that feeds the Voices' pitch search. Static pull already includes nearby improvement; the coupler applies no second factor. The default coupling strength is zero, so this path is behaviorally inert unless explicitly enabled.
 7.  The `PhonationEngine` emits `ToneCmd` batches; the `ScheduleRenderer` creates, updates, or releases `Tone` instances accordingly and renders the selected body response into each bus (Section 5.1.3).
 8.  Rendered presentation audio is pushed into a lock-free ring buffer consumed by the **Audio Thread**.
 
@@ -1684,7 +1703,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | `attack_cost_fraction` | `LifecycleConfig::Sustain` | Normalized energy / attack | Capacity spent by a full-strength attack. |
 | `attack_recharge_fraction` | `LifecycleConfig::Sustain` | Normalized energy / attack | Maximum capacity restored by a fully consonant attack. |
 | `dissonance_penalty` | `LifecycleConfig::Sustain` | Float ≥ 0 | Extends well-fit lifetime while preserving the zero-fit endurance contract. |
-| `dcc.coupling_strength` | `DccConfig` | 0.0-1.0 | Strength of ListenerTwin tension feedback; default 0.0 (behaviorally off). |
+| `dcc.coupling_strength` | `DccConfig` | 0.0-1.0 | Strength of ListenerTwin static-pull feedback; default 0.0 (behaviorally off). |
 | `dcc.max_temperature_bonus` | `DccConfig` | Float ≥ 0 | Maximum pitch-search temperature added by listener pressure (default 0.10). |
 | `attack_step` | `KuramotoCore` | Float | Envelope attack step size. |
 | `decay_rate` | `KuramotoCore` | Float | Envelope decay rate. |

@@ -613,6 +613,7 @@ pub(super) fn emit_hop_reports(
     }
     if let Some(listener_state) = listener_state_update {
         let sample = ListenerStateSample {
+            prediction: listener_state.prediction,
             tonal_context: listener_state.tonal_context,
             tonal_context_end: listener_state.tonal_context_end,
             time_sec: listener_state.time_sec,
@@ -620,8 +621,8 @@ pub(super) fn emit_hop_reports(
             analysis_frame_id: listener_state.analysis_frame_id,
             analysis_lag_frames: listener_state.analysis_lag_frames,
             stability_level: listener_state.stability_level,
-            resolvability_level: listener_state.resolvability_level,
-            tension_level: listener_state.tension_level,
+            nearby_improvement_level: listener_state.nearby_improvement_level,
+            static_pull_level: listener_state.static_pull_level,
             attention_level: listener_state.attention_level,
             beat_hz: listener_state.beat_hz,
             beat_phase: listener_state.beat_phase,
@@ -893,6 +894,7 @@ pub(super) fn render_and_route_audio(
                 Err(TrySendError::Full(_)) => {
                     state.latest_listener_state = None;
                     state.listener_twin.spectral_history = None;
+                    state.listener_twin.invalidate_prediction();
                     state.last_listener_analysis_frame = None;
                     state.listener_min_valid_frame = state.frame_idx.saturating_add(1);
                     debug!("listener analysis backlog full; dropped presentation hop");
@@ -902,6 +904,7 @@ pub(super) fn render_and_route_audio(
                     channels.presentation_to_listener_tx = None;
                     state.latest_listener_state = None;
                     state.listener_twin.spectral_history = None;
+                    state.listener_twin.invalidate_prediction();
                 }
             }
         }

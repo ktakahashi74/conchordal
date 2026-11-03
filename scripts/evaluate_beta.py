@@ -29,7 +29,7 @@ RHYTHM_FIELDS = "time_sec window_start_sec window_end_sec onset_density_hz".spli
 RHYTHM_OPTIONAL = ("ioi_mean_sec ioi_cv beat_stability mean_plv kuramoto_order_mean "
                    "kuramoto_order_max sync_emergence_sec burstiness one_over_f_slope "
                    "ioi_one_over_f_slope").split()
-LISTENER_FLOATS = ("stability_level resolvability_level tension_level attention_level beat_hz "
+LISTENER_FLOATS = ("stability_level nearby_improvement_level static_pull_level attention_level beat_hz "
                    "beat_phase beat_confidence subdivision_confidence measure_hz "
                    "measure_confidence").split()
 LISTENER_INTS = ("generated_frame_id analysis_frame_id analysis_lag_frames subdivision_ratio "
@@ -440,7 +440,7 @@ def write_tables(output, cases, status):
             row.update({key: report["rhythm"]["global"][key] for key in
                         ("onset_count", "onset_density_hz", "ioi_cv", "beat_stability", "mean_plv",
                          "kuramoto_order_mean", "sync_emergence_sec")})
-            row["listener_tension_mean"] = report["listener"]["stats"]["tension_level"]["mean"]
+            row["listener_tension_mean"] = report["listener"]["stats"]["static_pull_level"]["mean"]
             row["listener_beat_confidence_peak"] = report["listener"]["stats"]["beat_confidence"]["max"]
             timing = report["hop_timing"]["stats_us"]
             for column, key, stat in [("hop_elapsed_p95_ms", "elapsed_us", "p95"),
@@ -622,7 +622,7 @@ def main(argv=None):
                                 raise ValueError(f"sample 12 window lacks listener observations: {label}")
                             windows.append({"label": label, "start_sec": lo, "end_sec": hi, "count": len(series),
                                             "stats": {key: stats([r[key] for r in series]) for key in
-                                                      ("tension_level", "beat_confidence", "analysis_lag_frames")}})
+                                                      ("static_pull_level", "beat_confidence", "analysis_lag_frames")}})
                         case["report"]["script_operation_windows"] = {
                             "scope": "script operation times, not validated perceptual phases", "windows": windows}
                     if sample["sample"] in DEFAULT_SAMPLES and case["audio"]["all_silent"]:

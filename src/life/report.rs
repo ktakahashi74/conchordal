@@ -68,6 +68,7 @@ pub struct RhythmObservation {
 /// depend on the perception layer's own state type.
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct ListenerStateSample {
+    pub(crate) prediction: crate::viewdata::ListenerPrediction,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) tonal_context: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,8 +78,8 @@ pub(crate) struct ListenerStateSample {
     pub(crate) analysis_frame_id: u64,
     pub(crate) analysis_lag_frames: u64,
     pub(crate) stability_level: f32,
-    pub(crate) resolvability_level: f32,
-    pub(crate) tension_level: f32,
+    pub(crate) nearby_improvement_level: f32,
+    pub(crate) static_pull_level: f32,
     pub(crate) attention_level: f32,
     pub(crate) beat_hz: f32,
     pub(crate) beat_phase: f32,
@@ -1911,6 +1912,7 @@ mod tests {
     #[test]
     fn listener_state_record_stays_flat_and_tagged() {
         let sample = ListenerStateSample {
+            prediction: Default::default(),
             tonal_context: None,
             tonal_context_end: None,
             time_sec: 1.25,
@@ -1918,8 +1920,8 @@ mod tests {
             analysis_frame_id: 5,
             analysis_lag_frames: 2,
             stability_level: 0.5,
-            resolvability_level: 0.125,
-            tension_level: 0.0625,
+            nearby_improvement_level: 0.125,
+            static_pull_level: 0.0625,
             attention_level: 0.75,
             beat_hz: 2.5,
             beat_phase: 0.375,
@@ -1933,7 +1935,7 @@ mod tests {
         let json = serde_json::to_string(&ReportRecord::ListenerState(&sample)).unwrap();
         assert_eq!(
             json,
-            r#"{"type":"listener_state","time_sec":1.25,"generated_frame_id":7,"analysis_frame_id":5,"analysis_lag_frames":2,"stability_level":0.5,"resolvability_level":0.125,"tension_level":0.0625,"attention_level":0.75,"beat_hz":2.5,"beat_phase":0.375,"beat_confidence":0.875,"subdivision_ratio":2,"subdivision_confidence":0.25,"measure_hz":0.625,"measure_ratio":4,"measure_confidence":0.1875}"#
+            r#"{"type":"listener_state","prediction":{"forecast":null,"completed":null,"censored":null},"time_sec":1.25,"generated_frame_id":7,"analysis_frame_id":5,"analysis_lag_frames":2,"stability_level":0.5,"nearby_improvement_level":0.125,"static_pull_level":0.0625,"attention_level":0.75,"beat_hz":2.5,"beat_phase":0.375,"beat_confidence":0.875,"subdivision_ratio":2,"subdivision_confidence":0.25,"measure_hz":0.625,"measure_ratio":4,"measure_confidence":0.1875}"#
         );
     }
 }

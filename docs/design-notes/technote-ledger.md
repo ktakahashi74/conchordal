@@ -126,6 +126,7 @@ See [evidence locations](../operations/evidence-locations.md) for historical ref
   - [§9.3.122 2026-11-02: Flora amplitude tracking and the rejected mixed-R growth rule](#flora-amplitude-and-mixed-roughness-20261102)
   - [§9.3.123 2026-11-03: Harmony decisions A1/B1/C1](#harmony-decisions-20261103)
   - [§9.3.124 2026-11-03: C/N consequences in legal action comparisons (HV-16)](#harmony-action-consequences-20261103)
+  - [§9.3.125 2026-11-03: Presentation-only E0 and listener display (GUI-1)](#listener-prediction-e0)
 - [§9.4 Alignment and Extension Sequence](#94-alignment-and-extension-sequence)
 
 ---
@@ -11866,3 +11867,62 @@ trajectory's support and error are established under the existing acceptance cri
 candidate at that opportunity must share W, and predicted and executed endpoints must be
 recorded separately. Merely replacing the current evaluator's endpoint is insufficient.
 No such extension, new author decision or performance gate is added in this revision.
+
+<a id="listener-prediction-e0"></a>
+### 9.3.125 2026-11-03: Presentation-only E0 and listener display (GUI-1)
+
+The author adopted the FEP-1 §2 display revision and a bounded presentation-side
+E0 prototype. Salience and habituation-aware stability retain their equations,
+under **Sensory salience** and **Adapted stability**. The old static resolution and
+tension values remain in reports/assays and opt-in DCC as
+`nearby_improvement_level` and `static_pull_level`. They are not predictive quantities.
+
+**Author rule:** E0 retains 256 completed acoustic decision windows in an independent
+listener owner. Each window predicts the first change of the dominant auditory
+intensity component's Log2Space cell: unchanged, entry, lower, higher, or silence.
+Its horizon is one presentation-meter period, rounded up to an analysis hop. The
+reference has its analysis timestamp; the window begins no earlier than issuance
+availability. The observed outcome is scored against the fixed distribution before
+learning. Gaps censor a window, duplicate delivery does not learn again, grid changes
+clear incompatible history, and EOF is not arrival. Delayed observations that change
+the frozen reference in (reference,start], including exactly start, explicitly
+censor the version; it is not scored or learned as a successor.
+
+Retrieval uses normalized ERB-integrated mixed intensity in a square-root embedding,
+recent outcome, meter period and TC correlation when active. A joint standardized
+distance supplies empirical endpoint weights; these PCM-derived features are not
+multiplied as independent evidence. Retained sample variances define the scales;
+zero variance admits only equality. Issuance fixes reference audibility. Retrieval,
+feature scales and the pre-update marginal b use only the same audible/silent
+reference subset: silent references permit only unchanged/entry; audible references
+never permit entry. There are no authored harmonic profiles, source
+IDs, renderer On/Off records, or shared mutable habitat banks. This is a deliberately
+coarse mixed acoustic baseline, not the full HV correspondence graph, stream
+attribution, common-root tracking, or DES-2's slow context posterior.
+
+The GUI displays conditional categorical entropy (nats; its bar scales by ln 5),
+coverage score, and **Arrival score** for entry into a different audible cell within
+the stated window. Entropy uses p_known=w/c; all UNKNOWN gives N/A entropy.
+Separately freeze q=c*p_known+(1-c)*b, with q=b at c=0. Arrival is q(entry/lower/higher).
+Surprise, highest confidence, Brier/log loss and arrival evaluation all use q.
+Only baseline absence at issuance makes q unavailable; no epsilon, pseudocount,
+probability floor or coverage threshold is added. Surprise is in the details menu; zero
+likelihood is explicit infinite surprise, not a clipped finite value. JSONL retains
+the issued distribution, timestamps and version with each completed outcome.
+Consumers deduplicate repeated per-hop completions by version.
+
+The single calibration acquisition compares the sequential categorical log score,
+confidence curve and arrival curve with the same-support pre-update marginal on all
+completed windows with baseline at issuance, including all-UNKNOWN fallback windows
+of the existing HV-14 Three Windows/Undergrowth c1 scenes (seed 735). The display uses
+**uncalibrated score** language; the acquisition is not evidence for human closure or
+universal calibration. Native ABBA listener replay, allocation checks and normal
+software checks have separate records in the GUI-1 report. The resource cap is not a
+cognitive memory duration. History storage allocates at grid setup; steady-state
+retrieval, completion, eviction, censoring and gap reuse it. The review correction
+moves dominant-peak search inside the E0 branch, then repeats the same registered
+ABBA and two-scene seed-735 calibration; prior acquisitions remain preserved.
+
+B1 remains in force: no E0 output feeds generation, Landscape valuation, RNG or DCC.
+The existing optional DCC coupling still reads only static pull and defaults to zero.
+Detailed equations and scope: [Listener Twin Design](listener-twin.md#gui-1-presentation-prediction-and-current-display-contract).

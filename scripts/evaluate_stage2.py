@@ -113,7 +113,7 @@ def resolution_time(listener, start_sec=.5):
     for row in listener:
         if row["time_sec"] < start_sec:
             continue
-        if row["tension_level"] > .05:
+        if row["static_pull_level"] > .05:
             elevated, low_start = True, None
         elif elevated:
             if low_start is None:
@@ -214,14 +214,14 @@ def analyze(case_dir, assay, sample, strength):
         if not states or len(states) != len(pressures):
             raise ValueError("missing DCC observations")
         for state, pressure in zip(states, pressures):
-            expected = state["tension_level"] * strength
+            expected = state["static_pull_level"] * strength
             if (state["time_sec"] != pressure["time_sec"]
                     or abs(pressure["tension_pressure"] - expected) > 1e-6
                     or abs(pressure["temperature_bonus"] - .1 * expected) > 1e-6
                     or not 0 <= pressure["temperature_bonus"] <= .1 * strength + 1e-6):
                 raise ValueError("DCC pressure formula, time or bound mismatch")
         result.update(temperature_bonus=beta.stats([r["temperature_bonus"] for r in pressures]),
-                      tension=beta.stats([r["tension_level"] for r in states]),
+                      tension=beta.stats([r["static_pull_level"] for r in states]),
                       time_to_low_tension_sec=(None if sample == "dcc_fixed_input" else resolution_time(states)),
                       pitch=pitch_metrics(rows, 5 if sample == "dcc_fixed_input" else 3))
     return result

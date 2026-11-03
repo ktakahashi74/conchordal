@@ -32,7 +32,7 @@ impl DccCoupler {
         };
         // Listener tension already includes resolvability; apply it only once.
         let tension_pressure =
-            sanitize01(finite_or(state.tension_level, 0.0)) * self.coupling_strength;
+            sanitize01(finite_or(state.static_pull_level, 0.0)) * self.coupling_strength;
         ListenerPressure {
             tension_pressure,
             temperature_bonus: tension_pressure * self.max_temperature_bonus,
@@ -44,8 +44,9 @@ impl DccCoupler {
 mod tests {
     use super::*;
 
-    fn listener_state(tension_level: f32, resolvability_level: f32) -> ListenerState {
+    fn listener_state(static_pull_level: f32, nearby_improvement_level: f32) -> ListenerState {
         ListenerState {
+            prediction: Default::default(),
             tonal_context: None,
             tonal_context_end: None,
             time_sec: 0.0,
@@ -53,8 +54,8 @@ mod tests {
             analysis_frame_id: 0,
             analysis_lag_frames: 0,
             stability_level: 0.5,
-            resolvability_level,
-            tension_level,
+            nearby_improvement_level,
+            static_pull_level,
             attention_level: 0.0,
             beat_hz: 0.0,
             beat_phase: 0.0,
@@ -86,6 +87,24 @@ mod tests {
 
         assert!((pressure.tension_pressure - 0.05).abs() < 1e-6);
         assert!((pressure.temperature_bonus - 0.01).abs() < 1e-6);
+    }
+
+    #[test]
+    fn predictive_outputs_cannot_change_generation_pressure() {
+        let coupler = DccCoupler::new(DccConfig {
+            coupling_strength: 1.0,
+            max_temperature_bonus: 0.1,
+        });
+        let mut state = listener_state(0.2, 0.5);
+        let expected = coupler.pressure(Some(state));
+        state.prediction.forecast = Some(crate::viewdata::ListenerForecast {
+            q: Some([0., 1., 0., 0., 0.]),
+            entropy_nats: Some(0.),
+            coverage_score: 1.,
+            arrival_score: Some(1.),
+            ..Default::default()
+        });
+        assert_eq!(coupler.pressure(Some(state)), expected);
     }
 
     #[test]

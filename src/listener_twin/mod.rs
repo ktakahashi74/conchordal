@@ -7,6 +7,7 @@ use crate::core::stream::dorsal::{DorsalMetrics, DorsalStream};
 use crate::core::timebase::Tick;
 
 mod contour;
+mod prediction;
 pub(crate) use contour::ContourEvent;
 use contour::ContourObserver;
 
@@ -17,6 +18,7 @@ const NEUTRAL_STABILITY_LEVEL: f32 = 0.5;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ListenerState {
+    pub(crate) prediction: crate::viewdata::ListenerPrediction,
     pub(crate) tonal_context: Option<f64>,
     pub(crate) tonal_context_end: Option<u64>,
     pub(crate) time_sec: f64,
@@ -24,8 +26,8 @@ pub(crate) struct ListenerState {
     pub(crate) analysis_frame_id: u64,
     pub(crate) analysis_lag_frames: u64,
     pub(crate) stability_level: f32,
-    pub(crate) resolvability_level: f32,
-    pub(crate) tension_level: f32,
+    pub(crate) nearby_improvement_level: f32,
+    pub(crate) static_pull_level: f32,
     pub(crate) attention_level: f32,
     pub(crate) beat_hz: f32,
     pub(crate) beat_phase: f32,
@@ -49,6 +51,7 @@ pub(crate) struct ListenerFastState {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ListenerTwinConfig {
+    pub(crate) prediction_enabled: bool,
     pub(crate) reachable_cents: f32,
     pub(crate) movement_cost_per_oct: f32,
     pub(crate) gain_scale: f32,
@@ -57,6 +60,7 @@ pub(crate) struct ListenerTwinConfig {
 impl Default for ListenerTwinConfig {
     fn default() -> Self {
         Self {
+            prediction_enabled: true,
             reachable_cents: 220.0,
             movement_cost_per_oct: 0.45,
             gain_scale: 0.20,
@@ -66,6 +70,9 @@ impl Default for ListenerTwinConfig {
 
 pub(crate) struct ListenerTwin {
     config: ListenerTwinConfig,
+    predictor: prediction::Predictor,
+    audio_end: u64,
+    audio_hop: usize,
     fast_stream: DorsalStream,
     meter: MeterNetwork,
     fast_state: ListenerFastState,
@@ -90,6 +97,9 @@ impl ListenerTwin {
         let fast_stream = DorsalStream::new(fs);
         Self {
             config,
+            predictor: prediction::Predictor::default(),
+            audio_end: 0,
+            audio_hop: 0,
             fast_stream,
             meter: MeterNetwork::new(),
             fast_state: ListenerFastState::default(),
@@ -127,6 +137,8 @@ impl ListenerTwin {
         generated_frame_id: u64,
         audio: &[f32],
     ) -> ListenerFastState {
+        self.audio_hop = audio.len();
+        self.audio_end = (generated_frame_id + 1) * audio.len() as u64;
         self.fast_stream.process(audio);
         let attention_metrics = self.fast_stream.last_metrics();
         let salience_level = bottom_up_salience_level_from_metrics(attention_metrics);
@@ -185,9 +197,10 @@ impl ListenerTwin {
             self.component_mass_scan.resize(space.n_bins(), 0.0);
             self.component_peak_bin.resize(space.n_bins(), usize::MAX);
             self.erb_grid_key = Some(key);
+            self.predictor.configure(space.n_bins());
         }
         space.assert_scan_len_named(&self.erb_du_scan, "listener_erb_du_scan");
-        let (stability_level, resolvability_level, tension_level) =
+        let (stability_level, nearby_improvement_level, static_pull_level) =
             if has_audible_evidence(landscape, &self.erb_du_scan) {
                 self.prepare_components(landscape);
                 let stability_level =
@@ -198,15 +211,40 @@ impl ListenerTwin {
                     &self.component_peak_bin,
                     &self.config,
                 );
-                let resolvability_level =
+                let nearby_improvement_level =
                     (resolution_gain / self.config.gain_scale.max(1e-6)).clamp(0.0, 1.0);
-                let tension_level = ((1.0 - stability_level) * resolvability_level).clamp(0.0, 1.0);
-                (stability_level, resolvability_level, tension_level)
+                let static_pull_level =
+                    ((1.0 - stability_level) * nearby_improvement_level).clamp(0.0, 1.0);
+                (stability_level, nearby_improvement_level, static_pull_level)
             } else {
+                self.mass_scan.fill(0.0);
+                self.component_mass_scan.fill(0.0);
                 (NEUTRAL_STABILITY_LEVEL, 0.0, 0.0)
             };
 
+        let prediction = if self.config.prediction_enabled {
+            let peak = self
+                .component_mass_scan
+                .iter()
+                .enumerate()
+                .filter(|(_, mass)| **mass > 0.0)
+                .max_by(|(i, a), (j, b)| a.total_cmp(b).then_with(|| j.cmp(i)))
+                .map(|(i, _)| i);
+            self.predictor.observe(
+                (analysis_frame_id + 1) * self.audio_hop as u64,
+                self.audio_end,
+                self.audio_hop as u64,
+                self.sample_rate,
+                &self.mass_scan,
+                peak,
+                landscape.tonal_context.as_ref().map(|state| state.observed),
+                self.fast_state.meter_state,
+            )
+        } else {
+            Default::default()
+        };
         ListenerState {
+            prediction,
             tonal_context: landscape.tonal_context.as_ref().and_then(|s| s.observed),
             tonal_context_end: landscape.tonal_context.as_ref().map(|s| s.end),
             time_sec,
@@ -214,8 +252,8 @@ impl ListenerTwin {
             analysis_frame_id,
             analysis_lag_frames: generated_frame_id.saturating_sub(analysis_frame_id),
             stability_level,
-            resolvability_level,
-            tension_level,
+            nearby_improvement_level,
+            static_pull_level,
             attention_level: self.fast_state.attention_level,
             beat_hz: sanitize_nonnegative_finite(self.fast_state.meter_state.beat.freq_hz),
             beat_phase: self.fast_state.meter_state.beat.phase,
@@ -236,6 +274,18 @@ impl ListenerTwin {
                 .confidence
                 .clamp(0.0, 1.0),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_prediction_enabled(&mut self, enabled: bool) {
+        self.config.prediction_enabled = enabled;
+        if !enabled {
+            self.predictor.gap();
+        }
+    }
+
+    pub(crate) fn invalidate_prediction(&mut self) {
+        self.predictor.gap();
     }
 
     fn prepare_components(&mut self, landscape: &Landscape) {
@@ -586,13 +636,14 @@ mod tests {
             &[(2, 0.0, 1.0), (3, 0.2, 0.0), (20, 0.0, 1.0), (21, 0.8, 0.0)],
         );
         let mut twin = ListenerTwin::new(ListenerTwinConfig {
+            prediction_enabled: true,
             reachable_cents: 100.0,
             movement_cost_per_oct: 0.0,
             gain_scale: 1.0,
         });
         let state = twin.observe_presentation_landscape(0.0, 0, 0, &landscape);
 
-        assert!((state.resolvability_level - 0.5).abs() < 1e-6);
+        assert!((state.nearby_improvement_level - 0.5).abs() < 1e-6);
     }
 
     #[test]
@@ -642,8 +693,8 @@ mod tests {
         let state = twin.observe_presentation_landscape(0.0, 10, 8, &landscape);
 
         assert!(state.stability_level > 0.89);
-        assert!(state.resolvability_level < 0.05);
-        assert!(state.tension_level < 0.05);
+        assert!(state.nearby_improvement_level < 0.05);
+        assert!(state.static_pull_level < 0.05);
         assert_eq!(state.analysis_lag_frames, 2);
     }
 
@@ -655,14 +706,15 @@ mod tests {
         let state = twin.observe_presentation_landscape(0.0, 0, 0, &landscape);
 
         assert_eq!(state.stability_level, NEUTRAL_STABILITY_LEVEL);
-        assert_eq!(state.resolvability_level, 0.0);
-        assert_eq!(state.tension_level, 0.0);
+        assert_eq!(state.nearby_improvement_level, 0.0);
+        assert_eq!(state.static_pull_level, 0.0);
     }
 
     #[test]
     fn nearby_stable_target_increases_resolvability() {
         let landscape = test_landscape(0.20, &[(12, 0.20, 1.0), (14, 0.90, 0.0)]);
         let mut twin = ListenerTwin::new(ListenerTwinConfig {
+            prediction_enabled: true,
             reachable_cents: 240.0,
             movement_cost_per_oct: 0.05,
             gain_scale: 0.20,
@@ -671,14 +723,15 @@ mod tests {
         let state = twin.observe_presentation_landscape(0.0, 0, 0, &landscape);
 
         assert!(state.stability_level < 0.25);
-        assert!(state.resolvability_level > 0.9);
-        assert!(state.tension_level > 0.7);
+        assert!(state.nearby_improvement_level > 0.9);
+        assert!(state.static_pull_level > 0.7);
     }
 
     #[test]
     fn unstable_without_reachable_target_is_not_tension() {
         let landscape = test_landscape(0.20, &[(12, 0.20, 1.0), (20, 0.90, 0.0)]);
         let mut twin = ListenerTwin::new(ListenerTwinConfig {
+            prediction_enabled: true,
             reachable_cents: 120.0,
             movement_cost_per_oct: 0.05,
             gain_scale: 0.20,
@@ -687,8 +740,8 @@ mod tests {
         let state = twin.observe_presentation_landscape(0.0, 0, 0, &landscape);
 
         assert!(state.stability_level < 0.25);
-        assert!(state.resolvability_level < 0.05);
-        assert!(state.tension_level < 0.05);
+        assert!(state.nearby_improvement_level < 0.05);
+        assert!(state.static_pull_level < 0.05);
     }
 
     #[test]
@@ -753,8 +806,8 @@ mod tests {
             1
         );
         assert_eq!(state.stability_level, 0.4);
-        assert_eq!(state.resolvability_level, 0.0);
-        assert_eq!(state.tension_level, 0.0);
+        assert_eq!(state.nearby_improvement_level, 0.0);
+        assert_eq!(state.static_pull_level, 0.0);
         assert!(bin_weighted_resolution_gain(&landscape, &du, &twin.config) > 0.0);
     }
 

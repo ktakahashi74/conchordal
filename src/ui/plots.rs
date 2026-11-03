@@ -548,7 +548,7 @@ pub fn spectrum_time_freq_axes(
 struct ListenerMandalaLevels {
     attention: Option<f32>,
     stability: Option<f32>,
-    tension: Option<f32>,
+    uncertainty: Option<f32>,
 }
 
 /// Draw listener-side meter and salience state as an at-a-glance mandala.
@@ -571,9 +571,11 @@ pub fn draw_listener_mandala(
         stability: listener
             .has_state
             .then_some(listener.stability_level.clamp(0.0, 1.0)),
-        tension: listener
-            .has_state
-            .then_some(listener.tension_level.clamp(0.0, 1.0)),
+        uncertainty: listener
+            .prediction
+            .forecast
+            .and_then(|f| f.entropy_nats)
+            .map(|h| (h / 5.0_f32.ln()).clamp(0.0, 1.0)),
     };
     draw_mandala(
         ui,
@@ -633,20 +635,23 @@ fn draw_mandala(
         }
     }
 
-    if let Some(tension) = listener_levels.tension {
-        let tension = tension.clamp(0.0, 1.0);
-        if tension > 0.01 {
-            let tension_color =
-                Color32::from_rgb(255, 95, 65).gamma_multiply(0.18 + 0.72 * tension);
+    if let Some(uncertainty) = listener_levels.uncertainty {
+        let uncertainty = uncertainty.clamp(0.0, 1.0);
+        if uncertainty > 0.01 {
+            let uncertainty_color =
+                Color32::from_rgb(255, 95, 65).gamma_multiply(0.18 + 0.72 * uncertainty);
             painter.circle_stroke(
                 center,
                 outer_r * 1.08,
-                Stroke::new(1.0 + 4.0 * tension, tension_color),
+                Stroke::new(1.0 + 4.0 * uncertainty, uncertainty_color),
             );
             painter.circle_stroke(
                 center,
                 outer_r * 1.18,
-                Stroke::new(0.5 + 2.5 * tension, tension_color.gamma_multiply(0.45)),
+                Stroke::new(
+                    0.5 + 2.5 * uncertainty,
+                    uncertainty_color.gamma_multiply(0.45),
+                ),
             );
         }
     }

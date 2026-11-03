@@ -60,7 +60,7 @@ class Stage2Tests(unittest.TestCase):
 
     def test_resolution_threshold_needs_prior_tension_and_a_full_second(self):
         def rows(values):
-            return [{"time_sec": i*.5, "tension_level": x} for i, x in enumerate(values)]
+            return [{"time_sec": i*.5, "static_pull_level": x} for i, x in enumerate(values)]
         self.assertIsNone(stage2.resolution_time(rows([0]*8)))
         self.assertIsNone(stage2.resolution_time(rows([.2]*8)))
         self.assertIsNone(stage2.resolution_time(rows([.2, .2, 0, .2, 0, 0])))

@@ -197,7 +197,7 @@ fn mandala_state_meter(ui: &mut egui::Ui, label: &str, value: Option<f32>, color
     let text = if value.is_some() {
         format!("{level:>4.2}")
     } else {
-        "--.--".to_string()
+        " N/A".to_string()
     };
     ui.vertical(|ui| {
         ui.label(egui::RichText::new(label).size(9.0).color(color));
@@ -230,7 +230,7 @@ fn draw_mandala_state_readout(ui: &mut egui::Ui, frame: &UiFrame) {
         ui.spacing_mut().item_spacing.y = 1.0;
         mandala_state_meter(
             ui,
-            "Attention",
+            "Sensory salience",
             frame
                 .listener
                 .has_fast_state
@@ -239,31 +239,65 @@ fn draw_mandala_state_readout(ui: &mut egui::Ui, frame: &UiFrame) {
         );
         mandala_state_meter(
             ui,
-            "Stability",
+            "Adapted stability",
             frame
                 .listener
                 .has_state
                 .then_some(frame.listener.stability_level),
             Color32::from_rgb(80, 200, 130),
         );
+        let prediction = frame.listener.prediction;
+        let forecast = prediction.forecast;
         mandala_state_meter(
-            ui,
-            "Resolvability",
-            frame
-                .listener
-                .has_state
-                .then_some(frame.listener.resolvability_level),
-            Color32::from_rgb(235, 200, 75),
+            ui, "Arrival score",
+            forecast.and_then(|f| f.arrival_score), Color32::from_rgb(235, 200, 75),
         );
         mandala_state_meter(
-            ui,
-            "Tension",
-            frame
-                .listener
-                .has_state
-                .then_some(frame.listener.tension_level),
+            ui, "Uncertainty H / ln 5",
+            forecast.and_then(|f| f.entropy_nats).map(|h| h / 5.0_f32.ln()),
             Color32::from_rgb(235, 95, 85),
         );
+        let (entropy, coverage, horizon) = forecast.map_or_else(
+            || ("H: N/A".to_owned(), "Coverage: N/A".to_owned(), "Δ: N/A".to_owned()),
+            |f| (
+                f.entropy_nats.map_or_else(|| "H: N/A".to_owned(), |h| format!("H: {h:.2} nat")),
+                format!("Coverage score: {:.3}", f.coverage_score),
+                format!("Δ: {:.3} s (1 beat)", f.horizon_sec),
+            ),
+        );
+        for text in [entropy, coverage, "Target: new audible cell".to_owned(), horizon] {
+            ui.label(egui::RichText::new(text).size(9.0));
+        }
+        ui.menu_button("E0 details", |ui| {
+            ui.set_max_width(400.0);
+            ui.label("Entropy uses p_known; all UNKNOWN has N/A entropy. Coverage is an uncalibrated support score.");
+            ui.label("E0 q = coverage × p_known + remaining mass × marginal · uncalibrated scores");
+            ui.label("Arrival target: the next support change enters a different audible cell. Later changes are outside this target.");
+            if let Some(f) = forecast {
+                ui.label(format!("Window: one predicted beat, Δ = {:.3} s", f.horizon_sec));
+                ui.label(format!("Samples: ({}, {}] · reference: {}", f.start_sample, f.end_sample, f.reference_sample));
+                ui.label(format!("Reference cell: {:?} · retained successors: {}", f.reference_bin, f.examples));
+                if let Some(p) = f.q {
+                    for (name, score) in ["Unchanged", "Audible entry", "Lower cell", "Higher cell", "Silence"].into_iter().zip(p) {
+                        ui.label(format!("{name}: {score:.3}"));
+                    }
+                } else {
+                    ui.label("Next event: N/A (no same-support marginal at issuance)");
+                }
+            } else {
+                ui.label("Prediction: N/A (meter or observation unavailable)");
+            }
+            if let Some(cancelled) = prediction.censored {
+                ui.label(format!("Censored window #{}: reference changed before or at start (sample {})", cancelled.forecast.version, cancelled.observed_sample));
+            }
+            if let Some(done) = prediction.completed {
+                let surprise = if done.zero_likelihood { "∞ (zero model likelihood)".to_owned() }
+                    else { done.surprise_nats.map_or_else(|| "N/A".to_owned(), |s| format!("{s:.3} nat")) };
+                ui.label(format!("Last completed window #{} · surprise: {surprise}", done.forecast.version));
+            } else {
+                ui.label("Surprise: N/A (no completed window)");
+            }
+        });
     });
 }
 
@@ -421,8 +455,8 @@ fn draw_listener_dashboard(
     window_end: f64,
     time_link_id: &str,
 ) {
-    let (left_width, _) = split_widths(ui, 0.10, 200.0, 220.0, 640.0);
-    let dashboard_height = 232.0;
+    let (left_width, _) = split_widths(ui, 0.10, 250.0, 270.0, 640.0);
+    let dashboard_height = 300.0;
     let audio_height = 60.0;
     let plot_height = 82.0;
     let neural_height = 82.0;

@@ -213,8 +213,9 @@ pub(super) fn listener_frame_from_states(
         frame.analysis_frame_id = state.analysis_frame_id;
         frame.analysis_lag_frames = state.analysis_lag_frames;
         frame.stability_level = state.stability_level;
-        frame.resolvability_level = state.resolvability_level;
-        frame.tension_level = state.tension_level;
+        frame.prediction = state.prediction;
+        frame.nearby_improvement_level = state.nearby_improvement_level;
+        frame.static_pull_level = state.static_pull_level;
         frame.has_state = true;
     }
     frame

@@ -38,14 +38,14 @@ class FlowAmplitudeTests(unittest.TestCase):
             records = [dict(type="spawn", time_sec=0.0, population_id=1),
                        dict(type="spawn", time_sec=15.0, population_id=3),
                        dict(type="population_step", time_sec=19.0, population_id=3, alive_count=9),
-                       dict(type="listener_state", time_sec=20.29, tension_level=.1)]
+                       dict(type="listener_state", time_sec=20.29, static_pull_level=.1)]
             for index, label in enumerate(variants):
                 directory = output / label
                 directory.mkdir()
                 with wave.open(str(directory / "audio.wav"), "wb") as stream:
                     stream.setparams((1, 2, 10, 0, "NONE", "not compressed"))
                     stream.writeframes(struct.pack("<240h", *([100] * 203 + [index] * 37)))
-                rows = records + [dict(type="listener_state", time_sec=20.3, tension_level=index)]
+                rows = records + [dict(type="listener_state", time_sec=20.3, static_pull_level=index)]
                 (directory / "report.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
             args = dict(end_sec=amplitude.INTERVENTION_SEC, pairs=[("unchanged", "reduced")],
                         filename="amplitude_pre_intervention.json")

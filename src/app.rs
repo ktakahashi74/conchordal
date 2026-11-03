@@ -10,7 +10,7 @@ use tracing::debug;
 
 use crate::audio::output::AudioOutput;
 use crate::config::AppConfig;
-use crate::viewdata::{DorsalFrame, PlaybackState, UiFrame};
+use crate::viewdata::{DorsalFrame, ListenerRhythmHop, PlaybackState, RHYTHM_HISTORY_SEC, UiFrame};
 
 pub use crate::runtime::{
     compile_scenario_from_script, run_compile_only, run_headless, run_render,
@@ -27,11 +27,75 @@ pub struct App {
     end_request: Arc<AtomicBool>,
     drop_started: Arc<AtomicBool>,
     runtime_failed: Arc<AtomicBool>,
-    listener_rhythm_history: VecDeque<(f64, crate::core::meter::MeterState)>,
+    listener_rhythm_history: VecDeque<ListenerRhythmHop>,
     listener_attention_history: VecDeque<(f64, DorsalFrame)>,
+    display_clock: DisplayClock,
     start_flag: Arc<AtomicBool>,
     level_history: VecDeque<(std::time::Instant, [f32; 2])>,
     show_raw_nsgt_power: bool,
+}
+
+/// Stream time shown by the scrolling plots. UiFrames arrive in irregular
+/// 33-43 ms steps; interpolating with wall time lets the plots advance on every
+/// repaint instead of jumping when a frame arrives.
+#[derive(Default)]
+struct DisplayClock {
+    /// (stream time, wall seconds since `epoch`) of recent frames.
+    arrivals: VecDeque<(f64, f64)>,
+    epoch: Option<std::time::Instant>,
+    shown: f64,
+}
+
+impl DisplayClock {
+    fn wall(&mut self) -> f64 {
+        let now = std::time::Instant::now();
+        now.duration_since(*self.epoch.get_or_insert(now))
+            .as_secs_f64()
+    }
+
+    fn observe(&mut self, stream_time: f64, wall: f64) {
+        self.arrivals.push_back((stream_time, wall));
+    }
+
+    /// Latest stream time whose data has certainly arrived if the next frame
+    /// keeps within the recent arrival pattern: the latest observed arrival
+    /// delay and the longest observed gap both come from the retained frames.
+    fn time(&mut self, wall: f64, running: bool) -> f64 {
+        let Some(&(latest, _)) = self.arrivals.back() else {
+            return 0.0;
+        };
+        if !running {
+            self.shown = latest;
+            return latest;
+        }
+        let mut offset = f64::INFINITY;
+        let mut gap = 0.0f64;
+        let mut prev_wall = None;
+        for &(t, w) in &self.arrivals {
+            offset = offset.min(t - w);
+            if let Some(p) = prev_wall {
+                gap = gap.max(w - p);
+            }
+            prev_wall = Some(w);
+        }
+        let estimate =
+            (wall + offset - gap).clamp(latest - crate::ui::windows::TIME_WINDOW_SEC, latest);
+        // Never step backward while running, except after a stream restart.
+        self.shown = if self.shown > latest {
+            estimate
+        } else {
+            estimate.max(self.shown)
+        };
+        self.shown
+    }
+}
+
+/// Drop entries before `start`, keeping the last one at or before it so a plot's
+/// left edge stays filled while the window slides.
+fn prune_before<T>(history: &mut VecDeque<(f64, T)>, start: f64) {
+    while history.len() >= 2 && history[1].0 <= start {
+        history.pop_front();
+    }
 }
 
 impl App {
@@ -103,6 +167,7 @@ impl App {
             runtime_failed,
             listener_rhythm_history: VecDeque::with_capacity(4096),
             listener_attention_history: VecDeque::with_capacity(4096),
+            display_clock: DisplayClock::default(),
             start_flag: rt.start_flag,
             level_history: VecDeque::with_capacity(256),
             show_raw_nsgt_power: false,
@@ -113,35 +178,21 @@ impl App {
         self.last_frame = frame;
 
         let t = self.last_frame.meta.time_sec;
-        if self.last_frame.meta.playback_state != PlaybackState::Finished
-            && self.last_frame.listener.has_fast_state
-        {
-            self.listener_rhythm_history
-                .push_back((t, self.last_frame.listener.meter));
+        for hop in &self.last_frame.listener_rhythm {
+            self.listener_rhythm_history.push_back(*hop);
             self.listener_attention_history
-                .push_back((t, self.last_frame.listener.attention));
+                .push_back((hop.time_sec, hop.attention));
         }
-
-        let t_last = self
+        while self
             .listener_rhythm_history
-            .back()
-            .map(|(t, _)| *t)
-            .or_else(|| self.listener_attention_history.back().map(|(t, _)| *t));
-        if let Some(t_last) = t_last {
-            while self
-                .listener_rhythm_history
-                .front()
-                .is_some_and(|(time, _)| *time < t_last - 5.0)
-            {
-                self.listener_rhythm_history.pop_front();
-            }
-            while self
-                .listener_attention_history
-                .front()
-                .is_some_and(|(time, _)| *time < t_last - 5.0)
-            {
-                self.listener_attention_history.pop_front();
-            }
+            .front()
+            .is_some_and(|hop| hop.time_sec < t - RHYTHM_HISTORY_SEC)
+        {
+            self.listener_rhythm_history.pop_front();
+        }
+        if let Some(latest) = self.last_frame.listener_rhythm.last() {
+            let wall = self.display_clock.wall();
+            self.display_clock.observe(latest.time_sec, wall);
         }
 
         // Track 1-second peak history for level meter.
@@ -202,11 +253,21 @@ impl eframe::App for App {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let running = matches!(
+            self.last_frame.meta.playback_state,
+            PlaybackState::Playing | PlaybackState::Ending
+        );
+        let wall = self.display_clock.wall();
+        let display_time = self.display_clock.time(wall, running);
+        let start = display_time - crate::ui::windows::TIME_WINDOW_SEC;
+        prune_before(&mut self.listener_attention_history, start);
+        prune_before(&mut self.display_clock.arrivals, start);
         crate::ui::windows::main_window(
             ui,
             &self.last_frame,
             &self.listener_rhythm_history,
             &self.listener_attention_history,
+            display_time,
             self.runtime_error.as_deref(),
             &self.exiting,
             &self.start_flag,
@@ -255,6 +316,53 @@ fn watch_for_close(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_clock_advances_with_wall_time_without_passing_arrived_data() {
+        let mut clock = DisplayClock::default();
+        let mut shown = f64::NEG_INFINITY;
+        // 40 ms frames whose delivery jitters by up to 12 ms, as with hop-quantized UiFrames.
+        for k in 0..200 {
+            let t = 0.04 * k as f64;
+            let wall = t + 0.003 * (k % 5) as f64;
+            clock.observe(t, wall);
+            let next_wall = 0.04 * (k + 1) as f64;
+            let mut prev: Option<(f64, f64)> = None;
+            for step in 0..8 {
+                let w = wall + (next_wall - wall) * step as f64 / 8.0;
+                let now = clock.time(w, true);
+                assert!(now <= t, "display {now} passed arrived data {t}");
+                assert!(now >= shown, "display stepped back: {shown} -> {now}");
+                if k > 10
+                    && let Some((pw, pt)) = prev
+                {
+                    assert!(
+                        (now - pt - (w - pw)).abs() < 1e-9,
+                        "display must advance with wall time between frames"
+                    );
+                }
+                prev = Some((w, now));
+                shown = now;
+            }
+        }
+    }
+
+    #[test]
+    fn display_clock_shows_latest_frame_when_not_running() {
+        let mut clock = DisplayClock::default();
+        clock.observe(1.0, 0.0);
+        clock.observe(1.04, 0.05);
+        assert_eq!(clock.time(10.0, false), 1.04);
+    }
+
+    #[test]
+    fn prune_before_keeps_the_sample_at_the_left_edge() {
+        let mut history: VecDeque<(f64, ())> = (0..10).map(|k| (k as f64, ())).collect();
+        prune_before(&mut history, 4.5);
+        assert_eq!(history.front().map(|(t, _)| *t), Some(4.0));
+        prune_before(&mut history, 9.0);
+        assert_eq!(history.len(), 1);
+    }
 
     #[test]
     fn close_watchdog_waits_for_finalization_and_observer_join_before_forcing_exit() {
@@ -333,6 +441,7 @@ mod tests {
             runtime_failed: Arc::clone(&failed),
             listener_rhythm_history: VecDeque::new(),
             listener_attention_history: VecDeque::new(),
+            display_clock: DisplayClock::default(),
             start_flag: Arc::new(AtomicBool::new(false)),
             level_history: VecDeque::new(),
             show_raw_nsgt_power: false,

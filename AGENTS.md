@@ -294,7 +294,10 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   - `build_runtime_ui_frame` (`src/runtime/ui_frame.rs`) clones the Landscape and
     builds spectrum, Voice, phase, and temporal/body snapshots. `send_runtime_ui_frame`
     rate-limits ordinary GUI frames with `UI_MIN_INTERVAL`; terminal delivery retains
-    one pending snapshot for retry. Headless and offline render pass `ui_tx = None`
+    one pending snapshot for retry. GUI frames also own the presentation-meter and
+    auditory-salience hop batch since the last successful delivery. A reused,
+    30-second-bounded worker buffer retains undelivered hops; only frame construction
+    copies the batch. Headless and offline render pass `ui_tx = None`
     and construct neither initial nor runtime UI frames.
   - Reporting allocates only when enabled, across `emit_hop_reports`, participation
     context/decision collection in `advance_population`, prediction/body/outcome paths

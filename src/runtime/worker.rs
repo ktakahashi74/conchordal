@@ -76,6 +76,7 @@ pub(super) struct WorkerState {
     pub(super) finished: bool,
     pub(super) finalized: bool,
     pub(super) pending_final_ui_frame: Option<UiFrame>,
+    pub(super) ui_rhythm_hops: std::collections::VecDeque<crate::viewdata::ListenerRhythmHop>,
     pub(super) failures: Vec<String>,
     pub(super) log_space: Log2Space,
     pub(super) frame_idx: u64,
@@ -275,6 +276,7 @@ impl WorkerState {
             finished: false,
             finalized: false,
             pending_final_ui_frame: None,
+            ui_rhythm_hops: Default::default(),
             failures: Vec::new(),
             log_space,
             frame_idx: 0,
@@ -899,6 +901,10 @@ pub(super) fn process_hop(
 
     let should_send_ui = channels.ui_tx.is_some()
         && (finished_now || state.last_ui_update.elapsed() >= UI_MIN_INTERVAL);
+
+    if channels.ui_tx.is_some() {
+        buffer_listener_rhythm_hop(state, cfg);
+    }
 
     let peak_level = state.monitor.max_peak.max(max_abs);
 

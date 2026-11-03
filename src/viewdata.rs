@@ -24,6 +24,16 @@ pub struct DorsalFrame {
     pub flux: f32,
 }
 
+pub(crate) const RHYTHM_HISTORY_SEC: f64 = 30.0;
+
+/// Presentation observations at hop resolution, before UI rate limiting.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ListenerRhythmHop {
+    pub time_sec: f64,
+    pub attention: DorsalFrame,
+    pub meter: MeterState,
+}
+
 /// E0 categories: unchanged, audible entry, lower peak, higher peak, silence.
 /// The point forecast q backs off to the supported marginal; p_known defines entropy.
 /// Model scores are not calibrated human probabilities.
@@ -158,6 +168,7 @@ pub struct UiFrame {
     pub wave: WaveFrame,
     pub spec: SpecFrame,
     pub listener: ListenerFrame,
+    pub(crate) listener_rhythm: Vec<ListenerRhythmHop>,
     pub landscape: Landscape,
     pub meta: SimulationMeta,
     pub prediction: PredictionFrame,

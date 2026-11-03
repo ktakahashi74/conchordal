@@ -43,6 +43,7 @@ pub(super) fn build_initial_ui_frame(
             amps: vec![0.0; current_landscape.space.n_bins()],
         },
         listener: ListenerFrame::default(),
+        listener_rhythm: Vec::new(),
         temporal: Default::default(),
         landscape: current_landscape.clone(),
         meta: SimulationMeta {
@@ -134,6 +135,7 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
         temporal: Arc::new(*input.temporal),
         spec,
         listener: listener_frame_from_states(input.listener_fast_state, input.listener_state),
+        listener_rhythm: Vec::new(),
         landscape: input.current_landscape.clone(),
         meta: SimulationMeta {
             script: input.conductor.score.as_ref().map(|s| s.stream.status()),
@@ -221,6 +223,38 @@ pub(super) fn listener_frame_from_states(
     frame
 }
 
+pub(super) fn buffer_listener_rhythm_hop(state: &mut WorkerState, cfg: &WorkerConfig) {
+    let Some(fast) = state
+        .latest_listener_fast_state
+        .filter(|fast| fast.has_state)
+    else {
+        return;
+    };
+    let hops = &mut state.ui_rhythm_hops;
+    let capacity =
+        (crate::viewdata::RHYTHM_HISTORY_SEC * cfg.fs as f64 / cfg.hop as f64).ceil() as usize;
+    if hops.capacity() == 0 {
+        hops.reserve(capacity);
+    }
+    while hops.len() >= capacity
+        || hops
+            .front()
+            .is_some_and(|hop| hop.time_sec < fast.time_sec - crate::viewdata::RHYTHM_HISTORY_SEC)
+    {
+        hops.pop_front();
+    }
+    hops.push_back(crate::viewdata::ListenerRhythmHop {
+        time_sec: fast.time_sec,
+        attention: DorsalFrame {
+            e_low: fast.attention_metrics.e_low,
+            e_mid: fast.attention_metrics.e_mid,
+            e_high: fast.attention_metrics.e_high,
+            flux: fast.attention_metrics.flux,
+        },
+        meter: fast.meter_state,
+    });
+}
+
 pub(super) fn send_runtime_ui_frame(
     state: &mut WorkerState,
     channels: &WorkerChannels,
@@ -253,6 +287,7 @@ pub(super) fn send_runtime_ui_frame(
         hop: cfg.hop,
         fs: cfg.fs,
     });
+    frame.listener_rhythm = state.ui_rhythm_hops.iter().copied().collect();
     frame.meta.slow_hops = state.monitor.slow_hops_total;
     if let Some(counters) = &cfg.audio_counters {
         frame.meta.audio_xruns = counters.xruns_total.load(Ordering::Relaxed);
@@ -261,10 +296,15 @@ pub(super) fn send_runtime_ui_frame(
     }
     // A newer terminal snapshot supersedes an undelivered one from the last hop.
     state.pending_final_ui_frame = None;
-    if let Err(crossbeam_channel::TrySendError::Full(frame)) = tx.try_send(frame)
-        && (state.playback_state == PlaybackState::Finished || cfg.exiting.load(Ordering::SeqCst))
-    {
-        state.pending_final_ui_frame = Some(frame);
+    match tx.try_send(frame) {
+        Ok(()) => state.ui_rhythm_hops.clear(),
+        Err(crossbeam_channel::TrySendError::Full(frame))
+            if state.playback_state == PlaybackState::Finished
+                || cfg.exiting.load(Ordering::SeqCst) =>
+        {
+            state.pending_final_ui_frame = Some(frame);
+        }
+        _ => {}
     }
     state.last_ui_update = Instant::now();
 }

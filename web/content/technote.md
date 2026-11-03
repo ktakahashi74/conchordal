@@ -141,9 +141,10 @@ The listener display keeps **Sensory salience** (the existing flux response) and
 come from a separate, passive E0 predictor of the presentation mixture. It retrieves
 observed successors from a bounded acoustic history and predicts the first dominant
 support-cell change within one presentation-meter beat: unchanged, audible entry,
-lower cell, higher cell, or silence. The display names the target and horizon,
-shows conditional entropy in nats and a separate coverage score, and places surprise
-in the details menu. Entropy uses the known conditional distribution p_known.
+lower cell, higher cell, or silence. The dashboard shows the arrival score and an
+uncertainty bar (conditional entropy divided by ln 5); the details menu lists the
+target, horizon, entropy in nats, a separate coverage score and the surprise.
+Entropy uses the known conditional distribution p_known.
 The whole forecast q backs off by uncovered mass to the sequential marginal with
 the same audible/silent reference condition; arrival and surprise both use this q.
 All UNKNOWN gives N/A entropy but retains q when that baseline exists. Only baseline
@@ -153,6 +154,17 @@ the forecast instead of learning a false successor. Silence is not missing input
 The weights are uncalibrated scores, not measured probabilities of human resolution.
 The static diagnostics remain `nearby_improvement_level` and `static_pull_level`
 in reports and existing DCC. New prediction outputs never drive generation.
+
+The **Neural Rhythm** display folds hop-resolution auditory flux onto the
+presentation meter's observed beat phase (0–1). Each beat adds one strobe row;
+aligned events form vertical bands and drifting events form diagonals. Gray marks
+unsupported spans or unobserved bins; unsupported spans are not divided into
+guessed beats. Subdivision guides appear only for a supported ratio. Separate
+30-second plots show beat tempo, subdivision ratio and beat/subdivision/measure
+confidence. This window spans about five times the meter's slowest 6-second
+integration constant. The **Auditory salience** plot retains its 5-second window.
+Both time windows use stationary relative-time ticks and a display clock bounded
+by received observations. These views do not alter audio or listener computation.
 
 ### 3.1.3 Spectral Power, History and Timing
 

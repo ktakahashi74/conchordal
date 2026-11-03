@@ -205,163 +205,249 @@ pub fn time_plot(
     });
 }
 
-/// Show magnitude history for neural rhythms to avoid phase aliasing.
-pub fn neural_activity_plot(
-    ui: &mut egui::Ui,
-    history: &VecDeque<(f64, crate::core::meter::MeterState)>,
-    height: f32,
-    window_start: f64,
+// Divisible by 2, 3 and 4; at the dashboard width each bin remains visible.
+const STROBE_BINS: usize = 96;
+const STROBE_ROW_HEIGHT: f32 = 6.0;
+const STROBE_AXIS_HEIGHT: f32 = 20.0;
+// Reuse the existing meter readout's confidence floor for supported display.
+pub(super) const METER_DISPLAY_CONFIDENCE_MIN: f32 = 0.08;
+
+struct StrobeRow {
+    start_sec: f64,
+    unknown: bool,
+    flux: [Option<f32>; STROBE_BINS],
+    subdivision_ratio: Option<u8>,
+}
+
+fn supported_subdivision(meter: &crate::core::meter::MeterState) -> Option<u8> {
+    (meter.beat.confidence >= METER_DISPLAY_CONFIDENCE_MIN
+        && meter.subdivision.confidence >= METER_DISPLAY_CONFIDENCE_MIN
+        && matches!(meter.subdivision_ratio, 2..=4))
+    .then_some(meter.subdivision_ratio)
+}
+
+/// Fold observed phases only. Unsupported spans occupy one unknown row without
+/// inventing beat boundaries; reacquisition starts a new, possibly partial beat.
+fn strobe_rows(
+    history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
     window_end: f64,
-    link_population: Option<&str>,
-) {
-    let fallback_history;
-    let history = if history.len() < 2 {
-        if let Some((t, meter)) = history.back() {
-            fallback_history = VecDeque::from([
-                ((*t - 0.1).max(window_start), *meter),
-                ((*t).min(window_end), *meter),
-            ]);
-            &fallback_history
-        } else {
-            ui.label("No meter data");
-            return;
+    max_rows: usize,
+) -> VecDeque<StrobeRow> {
+    let mut rows: VecDeque<StrobeRow> = VecDeque::new();
+    let mut previous_phase = None;
+    for hop in history.iter().filter(|hop| {
+        hop.time_sec >= window_end - crate::viewdata::RHYTHM_HISTORY_SEC
+            && hop.time_sec <= window_end
+    }) {
+        let supported = hop.meter.beat.confidence >= METER_DISPLAY_CONFIDENCE_MIN
+            && hop.meter.beat.phase.is_finite();
+        let phase = hop.meter.beat.phase.rem_euclid(std::f32::consts::TAU) / std::f32::consts::TAU;
+        let wrap = previous_phase.is_some_and(|prev| phase - prev < -0.5);
+        let new_row = rows.back().is_none_or(|row| row.unknown == supported) || (supported && wrap);
+        if new_row {
+            rows.push_back(StrobeRow {
+                start_sec: hop.time_sec,
+                unknown: !supported,
+                flux: [None; STROBE_BINS],
+                subdivision_ratio: None,
+            });
+            if rows.len() > max_rows {
+                rows.pop_front();
+            }
         }
-    } else {
-        history
-    };
-
-    let mut plot = Plot::new("neural_activity")
-        .height(height)
-        .allow_drag(false)
-        .allow_scroll(false)
-        .allow_zoom(false)
-        .allow_double_click_reset(false)
-        .include_y(0.0)
-        .include_y(1.0)
-        .include_x(window_start)
-        .include_x(window_end)
-        .default_x_bounds(window_start, window_end)
-        .y_axis_formatter(|_, _| String::new())
-        .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value));
-    if let Some(link) = link_population {
-        plot = plot.link_axis(Id::unique(link), Vec2b::new(true, false));
+        if supported && let Some(row) = rows.back_mut() {
+            let bin = ((phase * STROBE_BINS as f32) as usize).min(STROBE_BINS - 1);
+            if hop.attention.flux.is_finite() {
+                let flux = hop.attention.flux.max(0.0);
+                row.flux[bin] = Some(row.flux[bin].map_or(flux, |prev| prev.max(flux)));
+            }
+            row.subdivision_ratio = supported_subdivision(&hop.meter);
+        }
+        previous_phase = supported.then_some(phase);
     }
-    plot.show(ui, |plot_ui| {
-        plot_ui.set_plot_bounds_x(window_start..=window_end);
-        plot_ui.set_plot_bounds_y(0.0..=1.0);
-        let colors = [
-            (Color32::from_rgb(80, 180, 255), "Beat (Phase)"),
-            (Color32::from_rgb(70, 225, 135), "Sub (Phase)"),
-            (Color32::from_rgb(255, 215, 60), "Beat conf"),
-            (Color32::from_rgb(255, 110, 90), "Measure conf"),
-        ];
+    rows
+}
 
-        for (idx, (color, name)) in colors.iter().enumerate() {
-            let is_phase = idx <= 1;
-            let mut segments: Vec<(Vec<[f64; 2]>, Color32, f32)> = Vec::new();
-            let mut current_pts: Vec<[f64; 2]> = Vec::new();
-            let mut current_opacity: f32 = 1.0;
-            let mut prev_val = 0.0f64;
-            let mut prev_t = 0.0f64;
-            let mut has_prev = false;
-
-            for (t, m) in history {
-                let (val, mag) = match idx {
-                    0 => (
-                        (m.beat.phase as f64).rem_euclid(std::f64::consts::TAU)
-                            / std::f64::consts::TAU,
-                        m.beat.confidence.clamp(0.0, 1.0),
-                    ),
-                    1 => (
-                        (m.subdivision.phase as f64).rem_euclid(std::f64::consts::TAU)
-                            / std::f64::consts::TAU,
-                        m.subdivision.confidence.clamp(0.0, 1.0),
-                    ),
-                    2 => {
-                        let c = m.beat.confidence.clamp(0.0, 1.0);
-                        (c as f64, c)
-                    }
-                    3 => {
-                        let c = m.measure.confidence.clamp(0.0, 1.0);
-                        (c as f64, c)
-                    }
-                    _ => (0.0, 0.0),
-                };
-
-                let raw_opacity = 0.3 + 0.7 * mag.clamp(0.0, 1.0);
-                let new_opacity = (raw_opacity * 10.0).round() / 10.0;
-
-                if !has_prev {
-                    current_opacity = new_opacity;
-                    current_pts.push([*t, val]);
-                    prev_val = val;
-                    prev_t = *t;
-                    has_prev = true;
-                    continue;
-                }
-
-                let is_wrap = is_phase && (val - prev_val < -0.5);
-                let is_opacity_change = (new_opacity - current_opacity).abs() > 0.05;
-
-                if is_wrap {
-                    let dt = *t - prev_t;
-                    let v_diff = (val + 1.0) - prev_val;
-                    if v_diff > 1e-5 {
-                        let frac = (1.0 - prev_val) / v_diff;
-                        let t_cross = prev_t + dt * frac;
-                        current_pts.push([t_cross, 1.0]);
-                        segments.push((
-                            current_pts,
-                            color.gamma_multiply(current_opacity),
-                            0.8 + 2.2 * current_opacity,
-                        ));
-                        current_pts = vec![[t_cross, 0.0]];
-                    } else {
-                        segments.push((
-                            current_pts,
-                            color.gamma_multiply(current_opacity),
-                            0.8 + 2.2 * current_opacity,
-                        ));
-                        current_pts = Vec::new();
-                    }
-
-                    current_pts.push([*t, val]);
-                    current_opacity = new_opacity;
-                } else if is_opacity_change {
-                    segments.push((
-                        current_pts.clone(),
-                        color.gamma_multiply(current_opacity),
-                        0.8 + 2.2 * current_opacity,
-                    ));
-                    let last_pt = *current_pts.last().unwrap();
-                    current_pts = vec![last_pt, [*t, val]];
-                    current_opacity = new_opacity;
-                } else {
-                    current_pts.push([*t, val]);
-                }
-
-                prev_val = val;
-                prev_t = *t;
-            }
-
-            if !current_pts.is_empty() {
-                segments.push((
-                    current_pts,
-                    color.gamma_multiply(current_opacity),
-                    0.8 + 2.2 * current_opacity,
-                ));
-            }
-
-            for (seg_i, (pts, col, width)) in segments.into_iter().enumerate() {
-                let series = PlotPoints::from(pts);
-                let mut line = Line::new("", series).color(col).width(width);
-                if seg_i == 0 {
-                    line = line.name(*name);
-                }
-                plot_ui.line(line);
+pub(crate) fn beat_strobe_plot(
+    ui: &mut egui::Ui,
+    history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
+    height: f32,
+    window_end: f64,
+) {
+    let max_rows = ((height - STROBE_AXIS_HEIGHT) / STROBE_ROW_HEIGHT)
+        .floor()
+        .max(1.0) as usize;
+    let rows = strobe_rows(history, window_end, max_rows);
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), height),
+        egui::Sense::hover(),
+    );
+    response.on_hover_text("Each row is one observed beat; newest below. Blue: auditory flux, normalized over visible rows. Gray: unknown phase or unobserved bin. Unsupported spans are not divided into guessed beats.");
+    let painter = ui.painter_at(rect);
+    let left = rect.left() + 36.0;
+    let width = (rect.right() - left - 8.0).max(1.0);
+    let x = |phase: f32| left + width * phase;
+    let font = egui::FontId::monospace(10.0);
+    let ticks = rows
+        .back()
+        .and_then(|row| row.subdivision_ratio)
+        .unwrap_or(1);
+    for tick in 0..=ticks {
+        let phase = tick as f32 / ticks as f32;
+        // Keep the edge labels inside the strobe instead of clipping at its border.
+        let align = if tick == 0 {
+            egui::Align2::LEFT_TOP
+        } else if tick == ticks {
+            egui::Align2::RIGHT_TOP
+        } else {
+            egui::Align2::CENTER_TOP
+        };
+        painter.text(
+            egui::pos2(x(phase), rect.top() + 2.0),
+            align,
+            format!("{phase:.2}"),
+            font.clone(),
+            Color32::LIGHT_GRAY,
+        );
+    }
+    let max_flux = rows
+        .iter()
+        .flat_map(|row| row.flux.iter().flatten())
+        .copied()
+        .fold(0.0_f32, f32::max);
+    for (index, row) in rows.iter().enumerate() {
+        // Stack from just under the phase labels; a full strobe ends at the
+        // bottom, and a young one leaves no gap under the labels.
+        let y = rect.top() + STROBE_AXIS_HEIGHT + index as f32 * STROBE_ROW_HEIGHT;
+        let row_rect = egui::Rect::from_min_size(
+            egui::pos2(left, y),
+            Vec2::new(width, STROBE_ROW_HEIGHT - 1.0),
+        );
+        painter.rect_filled(
+            row_rect,
+            0.0,
+            Color32::from_gray(if row.unknown { 70 } else { 38 }),
+        );
+        for (bin, flux) in row.flux.iter().enumerate() {
+            if let Some(flux) = flux {
+                let intensity = if max_flux > 0.0 { flux / max_flux } else { 0.0 };
+                let cell = egui::Rect::from_min_max(
+                    egui::pos2(x(bin as f32 / STROBE_BINS as f32), y),
+                    egui::pos2(x((bin + 1) as f32 / STROBE_BINS as f32), row_rect.bottom()),
+                );
+                painter.rect_filled(
+                    cell,
+                    0.0,
+                    Color32::from_rgb(80, 180, 255).gamma_multiply(0.12 + 0.88 * intensity),
+                );
             }
         }
-    });
+        if let Some(ratio) = row.subdivision_ratio {
+            for tick in 1..ratio {
+                let x = x(tick as f32 / ratio as f32);
+                painter.line_segment(
+                    [egui::pos2(x, y), egui::pos2(x, row_rect.bottom())],
+                    Stroke::new(0.6, Color32::from_rgb(70, 225, 135)),
+                );
+            }
+        }
+    }
+    if let Some(row) = rows.front() {
+        painter.text(
+            egui::pos2(rect.left(), rect.top() + STROBE_AXIS_HEIGHT),
+            egui::Align2::LEFT_TOP,
+            format!("{:.0}s", row.start_sec - window_end),
+            font,
+            Color32::GRAY,
+        );
+    } else {
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "No meter observations",
+            font,
+            Color32::GRAY,
+        );
+    }
+}
+
+/// Slow meter quantities keep independent physical units on a fixed 30 s axis.
+pub(crate) fn rhythm_slow_plots(
+    ui: &mut egui::Ui,
+    history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
+    window_end: f64,
+) {
+    let blue = Color32::from_rgb(80, 180, 255);
+    let green = Color32::from_rgb(70, 225, 135);
+    let yellow = Color32::from_rgb(255, 215, 60);
+    let red = Color32::from_rgb(255, 110, 90);
+    for (panel, (id, axis, height, upper)) in [
+        ("rhythm_tempo", "BPM", 40.0, 240.0),
+        ("rhythm_ratio", "Sub ratio", 34.0, 4.0),
+        ("rhythm_confidence", "Confidence", 54.0, 1.0),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        Plot::new(id)
+            .height(height)
+            .allow_drag(false)
+            .allow_scroll(false)
+            .allow_zoom(false)
+            .allow_double_click_reset(false)
+            .y_axis_min_width(36.0)
+            .show_axes([panel == 2, true])
+            .x_axis_formatter(|mark, _| format!("{:.0} s", mark.value))
+            .show(ui, |plot_ui| {
+                plot_ui.set_plot_bounds_x(-crate::viewdata::RHYTHM_HISTORY_SEC..=0.0);
+                plot_ui.set_plot_bounds_y(0.0..=upper);
+                // A rotated axis title is taller than these short plots and overlaps
+                // its neighbors, so the quantity is named inside the plot instead.
+                plot_ui.text(
+                    egui_plot::Text::new(
+                        "",
+                        egui_plot::PlotPoint::new(-crate::viewdata::RHYTHM_HISTORY_SEC, upper),
+                        axis,
+                    )
+                    .anchor(egui::Align2::LEFT_TOP)
+                    .color(Color32::GRAY),
+                );
+                let traces: &[(Color32, &str)] = match panel {
+                    0 => &[(blue, "Beat tempo (BPM)")],
+                    1 => &[(yellow, "Subdivision ratio")],
+                    _ => &[
+                        (blue, "Beat confidence"),
+                        (green, "Subdivision confidence"),
+                        (red, "Measure confidence"),
+                    ],
+                };
+                for (trace, &(color, name)) in traces.iter().enumerate() {
+                    let mut points = Vec::new();
+                    for hop in history.iter().filter(|hop| hop.time_sec <= window_end) {
+                        let meter = hop.meter;
+                        let value = match panel {
+                            0 => (meter.beat.confidence >= METER_DISPLAY_CONFIDENCE_MIN
+                                && meter.beat.freq_hz > 0.0)
+                                .then_some(meter.beat.freq_hz as f64 * 60.0),
+                            1 => supported_subdivision(&meter).map(f64::from),
+                            _ => Some(match trace {
+                                0 => meter.beat.confidence,
+                                1 => meter.subdivision.confidence,
+                                _ => meter.measure.confidence,
+                            } as f64),
+                        };
+                        if let Some(value) = value.filter(|value| value.is_finite()) {
+                            points.push([hop.time_sec - window_end, value]);
+                        } else if !points.is_empty() {
+                            plot_ui.line(Line::new(name, std::mem::take(&mut points)).color(color));
+                        }
+                    }
+                    if !points.is_empty() {
+                        plot_ui.line(Line::new(name, points).color(color));
+                    }
+                }
+            });
+    }
 }
 
 /// Show current vs target frequency for each voice with target arrows.
@@ -456,17 +542,19 @@ pub fn spectrum_time_freq_axes(
         history
     };
 
+    // Relative seconds keep the time grid stationary.
+    let span = window_start - window_end;
     let mut plot = Plot::new("time_freq_spectrum")
         .height(height)
         .allow_drag(false)
         .allow_scroll(false)
         .allow_zoom(false)
         .allow_double_click_reset(false)
-        .include_x(window_start)
-        .include_x(window_end)
+        .include_x(span)
+        .include_x(0.0)
         .include_y(0.0)
         .include_y(3.0)
-        .default_x_bounds(window_start, window_end)
+        .default_x_bounds(span, 0.0)
         .default_y_bounds(0.0, 3.0)
         .x_axis_formatter(|mark, _| format!("{:.1} s", mark.value))
         .y_axis_formatter(|_, _| String::new());
@@ -475,12 +563,17 @@ pub fn spectrum_time_freq_axes(
     }
 
     plot.show(ui, |plot_ui| {
-        plot_ui.set_plot_bounds_x(window_start..=window_end);
+        plot_ui.set_plot_bounds_x(span..=0.0);
         plot_ui.set_plot_bounds_y(0.0..=3.0);
+        // The caller keeps one sample before the window; keep one after its end
+        // so both edge segments reach the plot border.
         let samples: Vec<(f64, crate::viewdata::DorsalFrame)> = history
             .iter()
-            .filter(|(t, _)| *t >= window_start && *t <= window_end)
-            .map(|(t, d)| (*t, *d))
+            .scan(f64::NEG_INFINITY, |prev, &(t, d)| {
+                let keep = *prev <= window_end;
+                *prev = t;
+                keep.then_some((t - window_end, d))
+            })
             .collect();
         if samples.len() < 2 {
             return;
@@ -769,5 +862,124 @@ fn draw_mandala(
             painter.line_segment([center, tip], Stroke::new(2.0_f32, voice_color));
             painter.circle_filled(tip, 2.8, voice_color);
         }
+    }
+}
+
+#[cfg(test)]
+mod rhythm_tests {
+    use super::*;
+    use crate::viewdata::ListenerRhythmHop;
+
+    fn hop(time_sec: f64, phase: f32, flux: f32, confidence: f32) -> ListenerRhythmHop {
+        let mut sample = ListenerRhythmHop::default();
+        sample.time_sec = time_sec;
+        sample.meter.beat.phase = phase * std::f32::consts::TAU;
+        sample.meter.beat.confidence = confidence;
+        sample.meter.beat.freq_hz = 3.7;
+        sample.attention.flux = flux;
+        sample
+    }
+
+    #[test]
+    fn observed_phase_folds_at_wrap_and_exact_beat_boundary() {
+        let history = VecDeque::from([
+            hop(0.0, -0.125, 0.2, 1.0),
+            hop(0.1, 0.0, 0.9, 1.0),
+            hop(0.2, 0.25, 0.5, 1.0),
+            hop(0.3, 0.875, 0.7, 1.0),
+            hop(0.4, 0.0, 0.8, 1.0),
+        ]);
+        let rows = strobe_rows(&history, 0.4, 10);
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].flux[84], Some(0.2));
+        assert_eq!(rows[1].flux[0], Some(0.9));
+        assert_eq!(rows[1].flux[24], Some(0.5));
+        assert_eq!(rows[1].flux[84], Some(0.7));
+        assert_eq!(rows[2].flux[0], Some(0.8));
+        // Frequency is deliberately inconsistent with the observed phases.
+        assert_eq!(rows[2].start_sec, 0.4);
+    }
+
+    #[test]
+    fn unsupported_span_never_invents_beats_or_phase_bins() {
+        let mut history = VecDeque::from([
+            hop(0.0, 0.75, 0.4, 1.0),
+            hop(0.1, 0.0, 1.0, 0.0),
+            hop(2.0, 0.9, 1.0, 0.0),
+            hop(4.0, 0.0, 1.0, 0.0),
+            hop(4.1, 0.25, 0.8, 1.0),
+        ]);
+        history[1].meter.subdivision_ratio = 3;
+        history[1].meter.subdivision.confidence = 1.0;
+        let rows = strobe_rows(&history, 4.1, 10);
+        assert_eq!(rows.len(), 3);
+        assert!(rows[1].unknown);
+        assert!(rows[1].flux.iter().all(Option::is_none));
+        assert_eq!(rows[1].subdivision_ratio, None);
+        assert_eq!(rows[2].flux[24], Some(0.8));
+        assert_eq!(rows[2].flux[0], None);
+        history[4].meter.beat.phase = f32::NAN;
+        assert!(strobe_rows(&history, 4.1, 10).back().unwrap().unknown);
+    }
+
+    #[test]
+    fn strobe_retains_visible_rows_within_thirty_seconds_and_hides_future() {
+        let history = VecDeque::from([
+            hop(0.0, 0.75, 1.0, 1.0),
+            hop(1.0, 0.0, 0.5, 1.0),
+            hop(30.0, 0.75, 0.4, 1.0),
+            hop(30.1, 0.0, 0.7, 1.0),
+            hop(30.2, 0.0, 0.8, 1.0),
+            hop(30.3, 0.75, 0.9, 1.0),
+            hop(30.4, 0.0, 1.0, 1.0),
+        ]);
+        let rows = strobe_rows(&history, 30.2, 10);
+        assert_eq!(rows.front().unwrap().start_sec, 1.0);
+        assert_eq!(rows.back().unwrap().flux[0], Some(0.8));
+        assert_eq!(rows.back().unwrap().flux[72], None);
+        assert_eq!(strobe_rows(&history, 30.4, 2).len(), 2);
+    }
+
+    #[test]
+    fn subdivision_marks_require_supported_beat_and_ratio() {
+        let mut sample = hop(0.0, 0.0, 0.5, 1.0);
+        sample.meter.subdivision_ratio = 3;
+        assert_eq!(supported_subdivision(&sample.meter), None);
+        sample.meter.subdivision.confidence = 0.079;
+        assert_eq!(supported_subdivision(&sample.meter), None);
+        sample.meter.subdivision.confidence = 0.4;
+        assert_eq!(supported_subdivision(&sample.meter), Some(3));
+        sample.meter.beat.confidence = 0.0;
+        assert_eq!(supported_subdivision(&sample.meter), None);
+        sample.meter.beat.confidence = 1.0;
+        sample.meter.subdivision_ratio = 0;
+        assert_eq!(supported_subdivision(&sample.meter), None);
+    }
+
+    #[test]
+    fn low_confidence_uses_the_existing_readout_floor_for_unknown_rows() {
+        let history = VecDeque::from([
+            hop(0.0, 0.5, 1.0, 0.079),
+            hop(0.1, 0.75, 1.0, METER_DISPLAY_CONFIDENCE_MIN),
+        ]);
+        let rows = strobe_rows(&history, 0.1, 10);
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].unknown);
+        assert!(rows[0].flux.iter().all(Option::is_none));
+        assert!(!rows[1].unknown);
+    }
+
+    #[test]
+    fn unsupported_strobe_row_is_painted_gray() {
+        let history = VecDeque::from([hop(0.0, 0.5, 1.0, 1.0), hop(0.1, 0.0, 1.0, 0.0)]);
+        let mut output = egui::Context::default().run_ui(Default::default(), |ui| {
+            beat_strobe_plot(ui, &history, 128.0, 0.1);
+            rhythm_slow_plots(ui, &history, 0.1);
+        });
+        output.textures_delta.clear();
+        assert!(output.shapes.iter().any(|shape| matches!(
+            &shape.shape,
+            egui::epaint::Shape::Rect(rect) if rect.fill == Color32::from_gray(70)
+        )));
     }
 }

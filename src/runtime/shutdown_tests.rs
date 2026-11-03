@@ -436,11 +436,66 @@ fn multiple_worker_failures_return_without_an_error_receiver() {
 #[test]
 fn no_ui_consumer_builds_no_frames() {
     let mut opts = options();
-    opts.offline_body_probe = Some(Box::new(|_, _, _, _| {
+    opts.offline_body_probe = Some(Box::new(|state, _, _, _| {
         UI_FRAME_BUILDS.with(|count| assert_eq!(count.get(), 0));
+        assert!(state.ui_rhythm_hops.is_empty());
+        assert_eq!(state.ui_rhythm_hops.capacity(), 0);
     }));
     let (wiring, _, dir) = fixture(opts, "seed(21); wait(0.03);");
     join(wiring).unwrap();
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn ui_rhythm_batch_retains_actual_hops_across_channel_backpressure() {
+    let (tx, rx) = bounded(1);
+    let mut opts = options();
+    opts.ui_tx = Some(tx);
+    let received = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let expected = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let frames = Arc::clone(&received);
+    let actual = Arc::clone(&expected);
+    let consumer = rx.clone();
+    opts.offline_body_probe = Some(Box::new(move |state, _, _, _| {
+        state.last_ui_update = Instant::now() - UI_MIN_INTERVAL;
+        if let Some(fast) = state.latest_listener_fast_state {
+            actual.lock().unwrap().push(fast);
+        }
+        if state.frame_idx == 3 {
+            assert_eq!(state.ui_rhythm_hops.len(), 3);
+            assert!(consumer.try_recv().unwrap().listener_rhythm.is_empty());
+        } else if state.frame_idx > 3 {
+            frames.lock().unwrap().extend(consumer.try_iter());
+        }
+    }));
+    let (wiring, _, dir) = fixture(opts, "seed(21); wait(0.065);");
+    join(wiring).unwrap();
+    let mut frames = received.lock().unwrap();
+    frames.extend(rx.try_iter());
+    assert_eq!(frames[0].listener_rhythm.len(), 4);
+    assert_eq!(
+        frames.last().unwrap().meta.playback_state,
+        PlaybackState::Finished
+    );
+    let hops: Vec<_> = frames
+        .iter()
+        .flat_map(|frame| &frame.listener_rhythm)
+        .collect();
+    let expected = expected.lock().unwrap();
+    assert_eq!(hops.len(), expected.len() + 1);
+    for (index, hop) in hops.iter().enumerate() {
+        assert_eq!(hop.time_sec, index as f64 * 512.0 / 48_000.0);
+        if let Some(fast) = expected.get(index) {
+            assert_eq!(
+                hop.meter.beat.phase.to_bits(),
+                fast.meter_state.beat.phase.to_bits()
+            );
+            assert_eq!(
+                hop.attention.flux.to_bits(),
+                fast.attention_metrics.flux.to_bits()
+            );
+        }
+    }
     std::fs::remove_dir_all(dir).unwrap();
 }
 

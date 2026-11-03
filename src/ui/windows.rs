@@ -1,13 +1,17 @@
 use crate::core::db::amp_to_db;
 use crate::ui::plots::{
-    draw_listener_mandala, draw_roughness_harmonicity, log2_plot_hz, neural_activity_plot,
-    plot_population_dynamics, spectrum_time_freq_axes, time_plot,
+    METER_DISPLAY_CONFIDENCE_MIN, beat_strobe_plot, draw_listener_mandala,
+    draw_roughness_harmonicity, log2_plot_hz, plot_population_dynamics, rhythm_slow_plots,
+    spectrum_time_freq_axes, time_plot,
 };
 use crate::viewdata::{PlaybackState, UiFrame};
 use egui::{CentralPanel, Color32, Panel, Vec2};
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Span of the scrolling listener plots, in stream seconds.
+pub const TIME_WINDOW_SEC: f64 = 5.0;
 
 fn consonance_field_score_axis_bounds(
     kernel: crate::core::consonance_kernel::ConsonanceKernel,
@@ -265,11 +269,13 @@ fn draw_mandala_state_readout(ui: &mut egui::Ui, frame: &UiFrame) {
                 format!("Δ: {:.3} s (1 beat)", f.horizon_sec),
             ),
         );
-        for text in [entropy, coverage, "Target: new audible cell".to_owned(), horizon] {
-            ui.label(egui::RichText::new(text).size(9.0));
-        }
+        // These readouts live in the menu so the left column does not set the
+        // dashboard height (the lower plots then fit the minimum window).
         ui.menu_button("E0 details", |ui| {
             ui.set_max_width(400.0);
+            for text in [&entropy, &coverage, "Target: new audible cell", &horizon] {
+                ui.label(text);
+            }
             ui.label("Entropy uses p_known; all UNKNOWN has N/A entropy. Coverage is an uncalibrated support score.");
             ui.label("E0 q = coverage × p_known + remaining mass × marginal · uncalibrated scores");
             ui.label("Arrival target: the next support change enters a different audible cell. Later changes are outside this target.");
@@ -303,7 +309,7 @@ fn draw_mandala_state_readout(ui: &mut egui::Ui, frame: &UiFrame) {
 
 fn meter_band_label(name: &str, band: crate::core::meter::MeterBand) -> String {
     let confidence = band.confidence.clamp(0.0, 1.0);
-    let freq_text = if confidence < 0.08 {
+    let freq_text = if confidence < METER_DISPLAY_CONFIDENCE_MIN {
         "--.--".to_string()
     } else {
         let freq_hz = if band.freq_hz.is_finite() {
@@ -449,7 +455,7 @@ fn draw_kuramoto_order(ui: &mut egui::Ui, frame: &UiFrame) {
 fn draw_listener_dashboard(
     ui: &mut egui::Ui,
     frame: &UiFrame,
-    rhythm_history: &VecDeque<(f64, crate::core::meter::MeterState)>,
+    rhythm_history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
     dorsal_history: &VecDeque<(f64, crate::viewdata::DorsalFrame)>,
     window_start: f64,
     window_end: f64,
@@ -459,10 +465,14 @@ fn draw_listener_dashboard(
     let dashboard_height = 300.0;
     let audio_height = 60.0;
     let plot_height = 82.0;
-    let neural_height = 82.0;
+    let strobe_height = 128.0;
     let mandala_side = 104.0;
 
-    ui.horizontal(|ui| {
+    // Top-align both columns; centering left the shorter column floating.
+    // `horizontal_top` would start the row at the full available height, which
+    // inside the page ScrollArea is the whole viewport.
+    let row_size = Vec2::new(ui.available_width(), ui.spacing().interact_size.y);
+    ui.allocate_ui_with_layout(row_size, egui::Layout::left_to_right(egui::Align::Min), |ui| {
         ui.allocate_ui_with_layout(
             Vec2::new(left_width, dashboard_height),
             egui::Layout::top_down(egui::Align::LEFT),
@@ -515,26 +525,19 @@ fn draw_listener_dashboard(
                 );
 
                 ui.separator();
-                let mandala_area_height = ui.available_height();
-                ui.allocate_ui_with_layout(
-                    Vec2::new(left_width, mandala_area_height),
-                    egui::Layout::top_down(egui::Align::LEFT),
-                    |ui| {
-                        ui.heading("Neural Mandala");
-                        let bottom_gap = (ui.available_height() - mandala_side).max(0.0);
-                        ui.add_space(bottom_gap);
-                        ui.horizontal_top(|ui| {
-                            draw_listener_mandala(
-                                ui,
-                                &frame.listener,
-                                &frame.meta.entrain_phases,
-                                frame.meta.kuramoto_order_r,
-                                Vec2::splat(mandala_side),
-                            );
-                            draw_mandala_state_readout(ui, frame);
-                        });
-                    },
-                );
+                // Size to content: inside the page ScrollArea the available height
+                // is unbounded, so filling it would push the lower plots away.
+                ui.heading("Neural Mandala");
+                ui.horizontal_top(|ui| {
+                    draw_listener_mandala(
+                        ui,
+                        &frame.listener,
+                        &frame.meta.entrain_phases,
+                        frame.meta.kuramoto_order_r,
+                        Vec2::splat(mandala_side),
+                    );
+                    draw_mandala_state_readout(ui, frame);
+                });
             },
         );
 
@@ -687,14 +690,21 @@ fn draw_listener_dashboard(
                         );
                     }
                 });
-                neural_activity_plot(
-                    ui,
-                    rhythm_history,
-                    neural_height,
-                    window_start,
-                    window_end,
-                    Some(time_link_id),
-                );
+                ui.columns(2, |columns| {
+                    columns[0].label("Beat strobe · newest below · gray: unknown");
+                    beat_strobe_plot(&mut columns[0], rhythm_history, strobe_height, window_end);
+                    columns[1].horizontal(|ui| {
+                        ui.label("30 s");
+                        for (name, color) in [
+                            ("Beat", Color32::from_rgb(80, 180, 255)),
+                            ("Sub", Color32::from_rgb(70, 225, 135)),
+                            ("Measure", Color32::from_rgb(255, 110, 90)),
+                        ] {
+                            ui.colored_label(color, name);
+                        }
+                    });
+                    rhythm_slow_plots(&mut columns[1], rhythm_history, window_end);
+                });
                 ui.spacing_mut().item_spacing = old_spacing;
             },
         );
@@ -706,8 +716,9 @@ fn draw_listener_dashboard(
 pub fn main_window(
     root_ui: &mut egui::Ui,
     frame: &UiFrame,
-    rhythm_history: &VecDeque<(f64, crate::core::meter::MeterState)>,
+    rhythm_history: &VecDeque<crate::viewdata::ListenerRhythmHop>,
     dorsal_history: &VecDeque<(f64, crate::viewdata::DorsalFrame)>,
+    display_time: f64,
     runtime_error: Option<&str>,
     exit_flag: &Arc<AtomicBool>,
     start_flag: &Arc<AtomicBool>,
@@ -785,13 +796,14 @@ pub fn main_window(
     });
 
     CentralPanel::default().show(root_ui, |ui| {
+        // Scroll so the lower plots stay reachable at the minimum window height.
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         if let Some(err) = runtime_error {
             ui.colored_label(egui::Color32::RED, err);
         }
         let time_link_id = "time_freq_link";
-        let x_max = rhythm_history.back().map(|(t, _)| *t).unwrap_or(0.0);
-        let window_start = x_max - 5.0;
-        let window_end = (window_start + 5.0).max(window_start + 0.1);
+        let window_end = display_time;
+        let window_start = window_end - TIME_WINDOW_SEC;
         draw_system_diagnostics(ui, frame);
         ui.separator();
         draw_listener_dashboard(
@@ -1112,6 +1124,7 @@ pub fn main_window(
                     .unwrap_or_else(|| "None".to_string());
                 ui.label(format!("pred_sync_mean={pred_sync}"));
             });
+        });
     });
 }
 
@@ -1132,5 +1145,51 @@ mod time_tests {
         ] {
             assert_eq!(format_time(seconds), expected);
         }
+    }
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::*;
+
+    /// The author asked for the Roughness/Harmonicity plot to fit the minimum window.
+    /// Inside the page ScrollArea a row that claims the available height would grow
+    /// the dashboard to the whole viewport and push the lower plots off screen.
+    #[test]
+    fn roughness_harmonicity_fits_the_minimum_window() {
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                Vec2::new(1200.0, 900.0),
+            )),
+            ..Default::default()
+        };
+        let frame = UiFrame::default();
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut raw = false;
+        let mut output = egui::Context::default().run_ui(input, |ui| {
+            main_window(
+                ui,
+                &frame,
+                &VecDeque::new(),
+                &VecDeque::new(),
+                0.0,
+                None,
+                &flag,
+                &flag,
+                &flag,
+                &mut raw,
+            )
+        });
+        output.textures_delta.clear();
+        let heading_bottom = output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::epaint::Shape::Text(text) if text.galley.text() == "Roughness / Harmonicity" => {
+                Some(text.pos.y + text.galley.size().y)
+            }
+            _ => None,
+        });
+        // 102 is the R/H plot height passed by `main_window`.
+        let bottom = heading_bottom.expect("R/H heading on screen") + 102.0;
+        assert!(bottom <= 900.0, "R/H plot ends at {bottom}");
     }
 }

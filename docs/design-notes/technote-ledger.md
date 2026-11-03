@@ -11916,7 +11916,8 @@ the stated window. Entropy uses p_known=w/c; all UNKNOWN gives N/A entropy.
 Separately freeze q=c*p_known+(1-c)*b, with q=b at c=0. Arrival is q(entry/lower/higher).
 Surprise, highest confidence, Brier/log loss and arrival evaluation all use q.
 Only baseline absence at issuance makes q unavailable; no epsilon, pseudocount,
-probability floor or coverage threshold is added. Surprise is in the details menu; zero
+probability floor or coverage threshold is added. Surprise appears in the hover details of the
+Uncertainty and Arrival bars; zero
 likelihood is explicit infinite surprise, not a clipped finite value. JSONL retains
 the issued distribution, timestamps and version with each completed outcome.
 Consumers deduplicate repeated per-hop completions by version.

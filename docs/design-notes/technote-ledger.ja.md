@@ -8624,7 +8624,7 @@ GUIは既知部分に条件づけたentropy（nat、棒だけln 5で正規化）
 entropyをN/Aとする。別に全体予測q=c*p_known+(1-c)*bを発行時に固定し、c=0ならq=bとする。
 Arrivalはqの出現・下降・上昇の和であり、驚き・最高confidence・Brier・log loss・到達評価も
 すべて同じqから求める。qのN/Aは発行時にbaselineがない場合に固定する。疑似カウント、
-epsilon、確率floor、coverage閾値は置かない。驚きは詳細メニューに置く。
+epsilon、確率floor、coverage閾値は置かない。驚きはUncertaintyとArrivalの棒のhover詳細に置く。
 モデル尤度0は無限の驚きとして明示し、有限値へ切り詰めない。JSONLは発行済み分布・時刻・
 versionを完了結果に保持し、hopごとの重複読出しはversionで除く。
 

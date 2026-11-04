@@ -3526,6 +3526,64 @@ mod tests {
     }
 
     #[test]
+    fn shared_habituation_alone_releases_a_greedy_voice_from_its_peak() {
+        use crate::core::consonance_kernel::ConsonanceRepresentationParams;
+        use rand::{SeedableRng, rngs::SmallRng};
+        for leave_self_out in [false, true] {
+            let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 12));
+            let n = landscape.space.n_bins();
+            let here_idx = n / 3;
+            let next_idx = here_idx + 2;
+            let here = landscape.space.centers_log2[here_idx];
+            let next = landscape.space.centers_log2[next_idx];
+            landscape.consonance_field_score.fill(-1.0);
+            landscape.consonance_field_score[here_idx] = 1.0;
+            landscape.consonance_field_score[next_idx] = 0.6;
+            let raw = landscape.consonance_field_score.clone();
+            let mut core = PitchHillClimbPitchCore::new((next - here) * 1200.0, here, 0.0);
+            core.set_temperature(0.0);
+            core.set_move_cost_coeff(0.0);
+            core.set_leave_self_out(leave_self_out);
+            core.loo_input.exact_score = Some(raw.clone().into());
+            let mut adaptation = test_adaptation(n);
+            let features = FeaturesNow {
+                density: vec![0.0; n],
+                mass: 0.0,
+            };
+            let mut rng = SmallRng::seed_from_u64(21);
+            for (erosion, expected) in [(0.0, here), (0.3, here), (0.8, next)] {
+                let mut state = vec![0.0; n];
+                state[here_idx] = erosion;
+                landscape.apply_habituation(
+                    &state,
+                    0.0,
+                    &ConsonanceRepresentationParams::default(),
+                );
+                for _ in 0..100 {
+                    let proposal = core.propose_target(
+                        here,
+                        here,
+                        here.exp2(),
+                        1.0,
+                        &landscape,
+                        &adaptation,
+                        &features,
+                        &[],
+                        &mut rng,
+                    );
+                    assert_eq!(
+                        proposal.target_pitch_log2, expected,
+                        "LOO={leave_self_out}, h={erosion}"
+                    );
+                    adaptation.update(&features, 0.2);
+                    assert_eq!(adaptation.score_adjustment(here_idx), 0.0);
+                    assert_eq!(landscape.consonance_field_score, raw);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn exact_loo_scan_is_eroded_by_habituation() {
         let mut landscape = Landscape::new(Log2Space::new(55.0, 1760.0, 12));
         let n = landscape.space.n_bins();

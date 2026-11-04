@@ -375,7 +375,7 @@ pub struct AdaptationControl {
     pub enabled: bool,
     pub adaptation: f32,
     pub novelty_bias: f32,
-    pub self_focus: f32,
+    pub environment_weight: f32,
 }
 
 impl Default for AdaptationControl {
@@ -384,7 +384,7 @@ impl Default for AdaptationControl {
             enabled: true,
             adaptation: 0.5,
             novelty_bias: 1.0,
-            self_focus: 0.15,
+            environment_weight: 1.0 - 0.15,
         }
     }
 }

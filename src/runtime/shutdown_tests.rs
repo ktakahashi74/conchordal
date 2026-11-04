@@ -1018,6 +1018,7 @@ fn ph1_offline_acquisition() {
     // Profiling follows the ordinary reporter path without command-probe overhead.
     if opts.profile.is_none() {
         opts.offline_body_probe = Some(Box::new(move |state, tick, count, pcm| {
+            assert!(pcm.into_iter().flatten().all(|x| x.is_finite()));
             if let (Some(writer), Some(trace)) = (
                 &mut execution,
                 &mut state.schedule_renderer.harmonic_execution,

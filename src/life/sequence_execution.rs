@@ -131,9 +131,6 @@ mod tests {
                 hop: 512,
             };
             let mut field = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
-            for (i, &pitch) in field.space.centers_log2.iter().enumerate() {
-                field.consonance_field_score_eff[i] = (pitch * 7.0).sin();
-            }
             for v in [&mut old, &mut causal, &mut learned] {
                 v.configure_control_hop(512, 64, tb.fs);
             }
@@ -145,6 +142,11 @@ mod tests {
             causal.prepare_phonation_batch(&mut b);
             for hop in 0..512 {
                 let at = hop * 512;
+                // Supply varying external input; private self exposure no longer moves the Voice.
+                for (i, &pitch) in field.space.centers_log2.iter().enumerate() {
+                    field.consonance_field_score_eff[i] =
+                        (pitch * 7.0 + (hop / 32) as f32 * 0.73).sin();
+                }
                 for (v, batch) in [
                     (&mut old, &mut a),
                     (&mut causal, &mut b),

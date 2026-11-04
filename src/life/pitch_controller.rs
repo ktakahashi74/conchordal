@@ -538,10 +538,9 @@ impl PitchController {
             }
             target_pitch_log2 = proposal.target_pitch_log2;
             self.last_target_salience = proposal.salience;
-            if self.adaptation_enabled
-                && let Some(idx) = landscape.space.index_of_log2(target_pitch_log2)
+            if self.adaptation_enabled && landscape.space.index_of_log2(target_pitch_log2).is_some()
             {
-                self.adaptation.update(idx, &features, elapsed);
+                self.adaptation.update(&features, elapsed);
             }
         }
 
@@ -775,10 +774,14 @@ mod dwell_tests {
         let mut ctl = controller(&pitch, &landscape.space);
         let mut reference =
             AdaptationContext::from_config(&AdaptationConfig::default(), landscape.space.n_bins());
-        let features = FeaturesNow::from_occupancy_scan(
+        let neighbors = [330.0_f32.log2()];
+        ctl.build_neighbor_occupancy(
             &landscape.space,
-            &vec![0.0; landscape.space.n_bins()],
+            &neighbors,
+            &[],
+            pitch.crowding_sigma_cents,
         );
+        let features = FeaturesNow::from_occupancy_scan(&landscape.space, &ctl.occupancy_scan);
         let mut real = 0.0;
         for _ in 0..100 {
             real += 0.13;
@@ -789,16 +792,12 @@ mod dwell_tests {
                 0.13,
                 &landscape,
                 &pitch,
-                &[],
+                &neighbors,
                 &[],
                 0.0,
             );
             if ctl.dwell_trace.len() > before {
-                let idx = landscape
-                    .space
-                    .index_of_log2(ctl.target_pitch_log2())
-                    .unwrap();
-                reference.update(idx, &features, real);
+                reference.update(&features, real);
                 real = 0.0;
                 for i in 0..landscape.space.n_bins() {
                     assert_eq!(

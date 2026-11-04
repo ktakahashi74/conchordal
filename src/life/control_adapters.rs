@@ -9,11 +9,11 @@ pub(crate) fn adaptation_config_from_control(control: &AdaptationControl) -> Ada
     let adaptation = control.adaptation.clamp(0.0, 1.0);
     let tau_fast = 0.1 + (1.0 - adaptation) * 0.8;
     let tau_slow = 5.0 + (1.0 - adaptation) * 30.0;
-    let (w_boredom, w_familiarity, rho_self) = if control.enabled {
+    let (w_boredom, w_familiarity, environment_weight) = if control.enabled {
         (
             control.novelty_bias,
             0.2,
-            control.self_focus.clamp(0.0, 1.0),
+            control.environment_weight.clamp(0.0, 1.0),
         )
     } else {
         (0.0, 0.0, 0.0)
@@ -23,9 +23,9 @@ pub(crate) fn adaptation_config_from_control(control: &AdaptationControl) -> Ada
         tau_slow: Some(tau_slow),
         w_boredom: Some(w_boredom),
         w_familiarity: Some(w_familiarity),
-        rho_self: Some(rho_self),
+        environment_weight: Some(environment_weight),
         boredom_gamma: Some(0.5),
-        self_smoothing_radius: Some(1),
+        candidate_smoothing_radius: Some(1),
         silence_mass_epsilon: Some(1e-6),
     }
 }

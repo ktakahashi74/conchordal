@@ -17,6 +17,14 @@
   単位のbriefやreport、試聴用の材料への参照は、そのmachineで所在を確認する必要がある。
   そこだけにある事実を現行計画の根拠に使う場合は、要点を追跡する文書へ写す。
 
+- **2026-11-04の片づけ。** ディスクの空きを作るため、`.worktrees` の作業木63個を消した。
+  消した作業木のtargetにあった証拠・試験記録・未commitの差分は `.orchestration/records/worktree-leftovers-20261104/<作業木名>/` へ移し、
+  `removed.tsv` に作業木名・branch・HEADを記録した。branchは残してある。
+  残した作業木と単位の中のcargo出力は、ビルドの中間生成物（deps・incremental・build・.fingerprint・examples）だけを消し、実行ファイルと証拠は元の場所に残した。
+  共有checkoutの `target/body-fitness-direct-model-20260929` は `.orchestration/records/` へ移し、元の場所にsymlinkを置いた。
+  単位の中の3日以上前の20 MBを超える `.jsonl` 2,435本は同じ場所で `.jsonl.gz` に圧縮した（一覧は `records/jsonl-gzip-20261104.tsv`）。
+  調査の一覧と使ったscriptは `records/disk-cleanup-20261104/` にある。
+
 計画は[現行計画](../roadmap/plan-current.md)、設計の記録は
 [台帳](../design-notes/technote-ledger.ja.md)と[設計ノートの索引](../design-notes/README.md)から辿る。
 この方針は過去の科学的判定を変更せず、消失した出力の回復も主張しない。

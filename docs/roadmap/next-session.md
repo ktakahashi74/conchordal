@@ -1,15 +1,16 @@
 # 次のセッションの始め方
 
-2026-11-03更新。実装は `origin/main` の `fc1e549b` まで、経過は同日22:24の統括記録までを反映した再開点である。
+2026-11-05更新。実装は `origin/main` の `3c3f15f4` まで、経過は同日のDEMO-B1までの統括記録を反映した再開点である。
 曲の段の目標はbetaデモ。新しいセッションで、古い「自己除外の比較試聴待ち」「残るのはv0.5.0公開だけ」へ戻さない。
 
 ## 最初に読むもの
 
 1. `AGENTS.md` と[現行計画](plan-current.md#current-stage)。承認された範囲、既定値、作者判断と科学的受入の区別を確認する。
 2. 台帳[§9.3.123](../design-notes/technote-ledger.ja.md#harmony-decisions-20261103)・[§9.3.124](../design-notes/technote-ledger.ja.md#harmony-action-consequences-20261103)。A1/B1/C1は採択済み、C1は実装済み・作者試聴保留という順序を読む。
-3. 台帳[§9.3.117〜118](../design-notes/technote-ledger.ja.md#incremental-endless-scores-20261031)。endlessの実装と、IP-ACQの受入を読む。V5未取得、V6合格、V7継続、V8の差分推定と実機再取得を混ぜない。
-4. 台帳[§9.3.125](../design-notes/technote-ledger.ja.md#listener-prediction-e0)と[Listener Twin Design](../design-notes/listener-twin.md#gui-1-presentation-prediction-and-current-display-contract)。E0は未較正の混合音響baselineであり、DES-1／DES-2全体の実装ではない。後続のGUIの到達点は `41133692`。
-5. [統括とhostの運用](../operations/orchestration.md)。単位記録の所在、既存job、timing lock、再取得の制約を確認する。必要な設計は[文書の入口](../README.md)・[設計ノート索引](../design-notes/README.md)から探す。
+3. 台帳[§9.3.117〜118](../design-notes/technote-ledger.ja.md#incremental-endless-scores-20261031)。endlessの実装と、IP-ACQの受入を読む。V5未取得、V6合格、V7取り直し中、V8の差分推定と実機再取得を混ぜない。
+4. 台帳[§9.3.126](../design-notes/technote-ledger.ja.md#voice-self-exposure-one-listener-20261104)・[§9.3.127](../design-notes/technote-ledger.ja.md#voice-melody-stop-20261105)と[現行計画のVoiceの節](plan-current.md)。VB-3は統合済み、TU-2／TU-3は統合しない。Voiceの旋律の生成は停止し、デモは方向Bで進める。
+5. 台帳[§9.3.125](../design-notes/technote-ledger.ja.md#listener-prediction-e0)と[Listener Twin Design](../design-notes/listener-twin.md#gui-1-presentation-prediction-and-current-display-contract)。E0は未較正の混合音響baselineであり、DES-1／DES-2全体の実装ではない。後続のGUIの到達点は `41133692`。
+6. [統括とhostの運用](../operations/orchestration.md)。単位記録の所在、既存job、timing lock、再取得の制約を確認する。必要な設計は[文書の入口](../README.md)・[設計ノート索引](../design-notes/README.md)から探す。
 
 ## 進行中の長い取得を先に確認する
 
@@ -17,26 +18,24 @@
 DOC-3からはuser busへ接続できず、実際の稼働・終了・freeze状態は確認できていない。
 既存取得の再起動や、別のsourceでの取り直しを始める前に、固定sourceとbinary、既存出力、真の終了状態を確かめる。
 
-- **IP-ACQ V7：推定器の精度。** 統合版 `ac5ad8d2` の固定binaryによる `conchordal-ipacq-v7-20261102`。
-  2026-11-03 22:16の記録は2×10⁷回・失敗0。台帳§9.3.118の正式集計は10⁶発行の合格までである。
+- **IP-ACQ V7：推定器の精度（取り直し中）。** 最初の取得 `conchordal-ipacq-v7-20261102` は2×10⁷ checkpointまで全件合格したが、
+  2026-11-04 03:32のuser systemdの終了で約2.64×10⁷発行のときに止まった。同じ固定binary（`IP-ACQ/pins/v7`）で0から取り直している
+  （`conchordal-ipacq-v7-r2-20261104`、label `full-r2`、出力 `IP-ACQ/v7/full-r2-*`、凍結のguardも再起動済み）。
   次は3×10⁷ checkpointと全出力のfailed／inconclusive／uncertified、凍結、真のexit、source対応を回収し、IP-ACQの報告へまとめる。
-  「途中で失敗0」を最終精度合格とはしない。旧IP-V7／V7bの旧土台や再起動中断分を統合版に数えない。
+  「途中で失敗0」を最終精度合格とはしない。旧IP-V7／V7bの旧土台や中断分を統合版に数えない。
 - **IP-ACQのV6・V8は取得済み。** V6は譜面132,000秒を合格、V8は計測交絡の限定切り分けと疑い2条件の実機再取得まで記録済み。
   V7が動いていることを理由に、V6/V8も未取得へ戻さない。V7の修理が必要になった場合は、登録条件に従って影響する取得を決める。
-- **C1-FB：試聴素材の適用可能性。** 同日22:16に、Open TimeでC1を判別できるかを保存記録で調べる単位が起動した。
-  22:24には候補位置の場scoreを取る診断binaryの不足で一度中断した後、統括が一時コピーへの受動診断patchを許可して再開した
-  （`conchordal-c1fb2-20261103`）。seed 21の重み0対照で接続なし／ありのPCM一致まで記録済み。
-  重みはHV-12の方法で導出する。非ゼロの重みでの判別の結論は未確認。報告を読んで、§9.3.124の試聴再開条件を満たすかを確認する。
-  調査の起動を、試聴再開の決定や作者の採択に読み替えない。
+- **方向Bのデモ。** 統括の叩き台は `.orchestration/units/DEMO-B1/draft.rhai`（記録は同じ単位のreport）。部品と形は作曲者の量であり、試聴で選ばせない。
+  Voiceの旋律の生成は作者の規則で停止した（PD-1／PD-2、§9.3.127）。同じ問題へ別の入口から自動で戻らない。
 
 外部負荷は続く前提である。計時の合否は登録済みのABBAと負荷記録を使い、静かな窓を待つ方式へ戻さない。
 別の単位がtiming lockを保持している間はcargo・test・renderを起動しない。既存の取得を勝手に停止・移動・再実行しない。
 
 ## 作者へ返す判断と再開条件
 
-**C1の試聴は保留を維持する。** Three Windows seed 735は両版とも疎で判定しにくく、Undergrowthは拍同期Floraの身体経過が未支持で中立になるため、規則を判別できなかった。
+**C1の試聴は保留を維持する。** Three Windows seed 735は両版とも疎で判定しにくく、Undergrowthは拍同期Floraの身体経過が未支持で中立になるため、規則を判別できなかった。Open Time（C1-FB）では、両版とも基底のVoiceの動きがランダムに聴こえ、判別できなかった。
 Voiceが厚く鳴り音楽として成り立つ場面、または拍同期Floraの機会が支持された構成で、一度だけ行う。
-C1-FBの結果がこの条件を満たすかを先に確認する。実装は既定0で残すが、追加した作者規則の受入完了とは記さない。
+Voiceの動きと音程の修理が統合された後に、条件を満たすかを確かめる。実装は既定0で残すが、追加した作者規則の受入完了とは記さない。
 材料と制約、宣言負荷での大きな費用増は§9.3.124にある。
 
 **版の判断は次版について行う。** V-050の記録ではv0.5.0 Alphaは2026-10-18にtag・Pre-release公開まで完了した（`310d064e`）。

@@ -11996,3 +11996,29 @@ The deviation is already present when the pitch is chosen; a partner's later mov
 explain it. The ratio list is a measurement reference for harmonic complex tones, where
 mistuned partial coincidences beat; it is not a compositional target. The cause is diagnosed
 separately.
+
+<a id="voice-melody-stop-20261105"></a>
+### 9.3.127 2026-11-05: Voice line randomness, contextual pitch selection and the stop of Voice melody generation
+
+**Observation.** After §9.3.126 the author heard every recent Voice audition as "notes merely sounding at random". The notes also seemed chosen to be "musically poor, boring", as if on purpose.
+
+**Records.**
+- JR-1 and FU-1 compared the 23 judged excerpts by interval classes, rhythm and beat alignment, synchrony, repetition, pitch-set stability, DFA and 8-second context correlation. No single quantity separated the author's judgments.
+- The decisive pair remains v6b and its percussion-only rendering. Their 224 onsets are identical, yet the first was judged random and the second not.
+- SOLO-1 rendered only the metal crossing of Open Time with the ecology unchanged; the author still heard it as random, so the cause lies inside one population's choices.
+- LINE-1 traced that line's micro re-attacks to two paths: habituation making the 12.5-cent neighbour best, and Metropolis acceptance of lower-scored candidates followed by a return.
+- SOLO-2 set every temperature to 0: the line's moves in 24–80 s fell from 59 to 7. Line motion therefore came mostly from stochastic acceptance, as the adopted "tension = temperature" design implies, rather than from any reason the listener could follow.
+
+**TU-1 to TU-3 (not integrated).**
+- Habituation eroded the centre of a consonance peak and moved the best point to its shoulder. The 96 bins/octave grid added up to 6 cents.
+- Separating basin choice from sub-bin landing (TU-2) and continuous intonation without re-attack (TU-3) lowered the sounding share of pairs at least 5 cents off simple ratios. In Open Time it fell from 0.36/0.39 to 0.13/0.13; in a harmonic-only scene it fell from 0.18 to 0.03.
+- Hop cost doubled within budget. The author still heard the result as random, so the changes stay unintegrated.
+
+**Contextual pitch selection (PD-1, PD-2).**
+- DCC §9.6 had left pitch on the instantaneous landscape path. The author adopted a root proposal to lift that restriction.
+- Pitch candidates join the action classes and are judged by one shared listener's relations: line continuation, return and transformation, harmonic relations, phrase position, and sensory consequences as one column. Temperature becomes fluctuation only.
+- The design passed independent review (PD-1R, second round). A prototype outside the engine then tested it once, with the author's prior rule to stop Voice melody generation if it failed.
+- The first run never sounded: harmonic continuation scored global silence as "keeping the relation". This defect was corrected once with the author's approval.
+- The second run sounded, but every onset stayed at the founder's 196 Hz, with no basin moves and no effect of context on destinations. At decision times the decayed one-shot bodies had left near-silence, and the learned context reinforced the founder unison. 38 of 72 pre-registered gates failed.
+
+**Decision.** Under the author's rule, Voice melody generation is stopped. This records that contextual selection was not established in this form and material; it does not refute it. The demo is to be built from parts the author has heard as music: Flora at pace 1, rain with 1/f sway, and held fields. Records and designs are in `.orchestration/units/` JR-1, FU-1, SOLO-1, LINE-1, SOLO-2, TU-1 to TU-3, PD-1, PD-1R, PD-2 and DEMO-B1.

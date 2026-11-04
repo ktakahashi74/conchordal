@@ -258,7 +258,12 @@ fn flora_closed_loop_acquisition() {
 fn fixture(
     mut opts: WiringOptions,
     source: &str,
-) -> (RuntimeWiring, Arc<AtomicBool>, std::path::PathBuf) {
+) -> (
+    RuntimeWiring,
+    Arc<AtomicBool>,
+    std::path::PathBuf,
+    super::test_output_directory::TestOutputDirectory,
+) {
     let dir = std::env::temp_dir().join(format!(
         "conchordal-q1-{}-{}",
         std::process::id(),
@@ -267,7 +272,7 @@ fn fixture(
             .unwrap()
             .as_nanos()
     ));
-    std::fs::create_dir(&dir).unwrap();
+    let output = super::test_output_directory::TestOutputDirectory::new(dir.clone());
     let script = dir.join("input.rhai");
     std::fs::write(&script, source).unwrap();
     let (scenario, score, _) = ScriptHost::load_incremental(
@@ -297,7 +302,7 @@ fn fixture(
         opts,
     )
     .unwrap();
-    (wiring, stop, dir)
+    (wiring, stop, dir, output)
 }
 
 fn join(wiring: RuntimeWiring) -> Result<(), String> {
@@ -366,7 +371,7 @@ fn final_report_is_written_once_while_waiting_for_user_exit() {
     opts.wait_user_exit = true;
     opts.ui_tx = Some(tx);
     opts.listener_forced = true;
-    let (wiring, stop, dir) = fixture(opts, "seed(21); wait(0.03);");
+    let (wiring, stop, dir, _output) = fixture(opts, "seed(21); wait(0.03);");
     loop {
         if rx
             .recv_timeout(Duration::from_secs(10))
@@ -410,7 +415,6 @@ fn final_report_is_written_once_while_waiting_for_user_exit() {
             "{kind}"
         );
     }
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[cfg(target_os = "linux")]
@@ -425,12 +429,11 @@ fn multiple_worker_failures_return_without_an_error_receiver() {
             state.failures.push("raw T2 producer disconnected".into());
         }
     }));
-    let (wiring, _, dir) = fixture(opts, "seed(21); wait(0.03);");
+    let (wiring, _, _, _output) = fixture(opts, "seed(21); wait(0.03);");
     let result = join(wiring).unwrap_err();
     assert!(result.contains("report"), "{result}");
     assert!(result.contains("profile"), "{result}");
     assert!(result.contains("raw T2 producer disconnected"), "{result}");
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -441,9 +444,8 @@ fn no_ui_consumer_builds_no_frames() {
         assert!(state.ui_rhythm_hops.is_empty());
         assert_eq!(state.ui_rhythm_hops.capacity(), 0);
     }));
-    let (wiring, _, dir) = fixture(opts, "seed(21); wait(0.03);");
+    let (wiring, _, _, _output) = fixture(opts, "seed(21); wait(0.03);");
     join(wiring).unwrap();
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -468,7 +470,7 @@ fn ui_rhythm_batch_retains_actual_hops_across_channel_backpressure() {
             frames.lock().unwrap().extend(consumer.try_iter());
         }
     }));
-    let (wiring, _, dir) = fixture(opts, "seed(21); wait(0.065);");
+    let (wiring, _, _, _output) = fixture(opts, "seed(21); wait(0.065);");
     join(wiring).unwrap();
     let mut frames = received.lock().unwrap();
     frames.extend(rx.try_iter());
@@ -496,7 +498,6 @@ fn ui_rhythm_batch_retains_actual_hops_across_channel_backpressure() {
             );
         }
     }
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -608,7 +609,7 @@ fn renderer_tail_does_not_bypass_ui_rate_limit_before_finish() {
         }
         state.last_ui_update = Instant::now();
     }));
-    let (wiring, _, dir) = fixture(
+    let (wiring, _, _, _output) = fixture(
         opts,
         "seed(21); let v = place(sine().brain(\"drone\").sustain().anchor().amp(0.03).adsr(0.001, 0.0, 1.0, 0.2), at(220.0)); wait(0.1);",
     );
@@ -620,7 +621,6 @@ fn renderer_tail_does_not_bypass_ui_rate_limit_before_finish() {
         frames.last().unwrap().meta.playback_state,
         PlaybackState::Finished
     );
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -651,7 +651,7 @@ fn private_body_worker_panic_fails_the_run_after_final_report_flush() {
         state.body_snapshot = Some(Box::new(capture.snapshot()));
         state.schedule_renderer.body_capture = Some(capture);
     }));
-    let (wiring, _, dir) = fixture(opts, "seed(21); wait(0.03);");
+    let (wiring, _, dir, _output) = fixture(opts, "seed(21); wait(0.03);");
     let result = join(wiring).unwrap_err();
     assert!(
         result.contains("private body analysis worker failed"),
@@ -667,7 +667,6 @@ fn private_body_worker_panic_fails_the_run_after_final_report_flush() {
         rows.iter()
             .any(|row| row["type"] == "body_observation" && row["state"] == "failed")
     );
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -680,14 +679,13 @@ fn counted_audio_callback_error_during_playback_does_not_fail_the_worker() {
     opts.offline_body_probe = Some(Box::new(move |_, _, _, _| {
         counter.callback_errors_total.store(1, Ordering::Relaxed);
     }));
-    let (wiring, _, dir) = fixture(opts, "seed(21); wait(0.2);");
+    let (wiring, _, dir, _output) = fixture(opts, "seed(21); wait(0.2);");
     join(wiring).unwrap();
     assert!(
         std::fs::read_to_string(dir.join("run.jsonl"))
             .unwrap()
             .contains("rhythm_summary")
     );
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -704,7 +702,7 @@ fn stalled_audio_ring_pauses_and_resumes_the_worker_and_stop_still_works() {
     opts.offline_body_probe = Some(Box::new(move |_, _, _, _| {
         observed.fetch_add(1, Ordering::Relaxed);
     }));
-    let (wiring, stop, dir) = fixture(opts, "seed(21); wait(10.0);");
+    let (wiring, stop, _, _output) = fixture(opts, "seed(21); wait(10.0);");
     let deadline = Instant::now() + Duration::from_secs(10);
     while consumer.occupied_len() < 512 {
         assert!(Instant::now() < deadline);
@@ -729,7 +727,6 @@ fn stalled_audio_ring_pauses_and_resumes_the_worker_and_stop_still_works() {
         thread::sleep(Duration::from_millis(1));
     }
     join(wiring).unwrap();
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -739,7 +736,7 @@ fn unsupported_recovery_after_finalization_fails_the_worker_result() {
     opts.listener_forced = true;
     opts.audio_counters = Some(Arc::clone(&counters));
     opts.wait_user_exit = true;
-    let (wiring, stop, dir) = fixture(opts, "seed(21); wait(0.03);");
+    let (wiring, stop, dir, _output) = fixture(opts, "seed(21); wait(0.03);");
     let deadline = Instant::now() + Duration::from_secs(10);
     while !std::fs::read_to_string(dir.join("run.jsonl"))
         .unwrap()
@@ -761,7 +758,6 @@ fn unsupported_recovery_after_finalization_fails_the_worker_result() {
         result.contains("audio stream configuration unsupported during recovery"),
         "{result}"
     );
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -775,7 +771,8 @@ fn final_ui_snapshot_is_retried_after_a_full_channel_becomes_available() {
     opts.ui_tx = Some(tx);
     opts.wait_user_exit = true;
     opts.listener_forced = true;
-    let (wiring, stop, dir) = fixture(opts, "temporal_mode(\"observe\"); seed(21); wait(0.03);");
+    let (wiring, stop, dir, _output) =
+        fixture(opts, "temporal_mode(\"observe\"); seed(21); wait(0.03);");
     let deadline = Instant::now() + Duration::from_secs(10);
     while !std::fs::read_to_string(dir.join("run.jsonl"))
         .unwrap()
@@ -799,7 +796,6 @@ fn final_ui_snapshot_is_retried_after_a_full_channel_becomes_available() {
     }
     stop.store(true, Ordering::SeqCst);
     join(wiring).unwrap();
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -1318,10 +1314,9 @@ fn open_queue_exhaustion_keeps_voices_and_respawn_running() {
                 ""
             }
         );
-        let (wiring, _, dir) = fixture(opts, &source);
+        let (wiring, _, _, _output) = fixture(opts, &source);
         join(wiring).unwrap();
         assert!(reached.load(Ordering::SeqCst));
-        std::fs::remove_dir_all(dir).unwrap();
     }
 }
 
@@ -1370,7 +1365,7 @@ fn duration_dispatches_due_events_then_releases_and_keeps_old_fades() {
             }
         }
     }));
-    let (wiring, _, dir) = fixture(
+    let (wiring, _, _, _output) = fixture(
         opts,
         r#"
         seed(21); endless();
@@ -1386,7 +1381,6 @@ fn duration_dispatches_due_events_then_releases_and_keeps_old_fades() {
     );
     join(wiring).unwrap();
     assert!(reached.load(Ordering::SeqCst));
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -1415,13 +1409,12 @@ fn human_end_discards_due_events_and_pending_scripted_finish() {
             observed.store(true, Ordering::SeqCst);
         }
     }));
-    let (wiring, _, dir) = fixture(
+    let (wiring, _, _, _output) = fixture(
         opts,
         "seed(21); section(\"active\", || {}); place(sine().anchor().sustain().adsr(0,0,1,0.05), at(220)); wait(512.0/48000.0); section(\"cancelled\", || {}); set_global_coupling(0.25); wait(100);",
     );
     join(wiring).unwrap();
     assert!(reached.load(Ordering::SeqCst));
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -1450,7 +1443,7 @@ fn end_during_recovery_exits_even_when_ring_is_full() {
         } else {
             counters.recovering.store(true, Ordering::Release);
         }
-        let (wiring, stop, dir) = fixture(
+        let (wiring, stop, _, _output) = fixture(
             opts,
             "seed(21); endless(); place(sine().sustain().adsr(0,0,1,10), at(220));",
         );
@@ -1468,7 +1461,6 @@ fn end_during_recovery_exits_even_when_ring_is_full() {
             completed,
             "end request must not wait for ring vacancy during recovery"
         );
-        std::fs::remove_dir_all(dir).unwrap();
     }
 }
 
@@ -1491,13 +1483,12 @@ fn open_harmonic_queue_does_not_finish_on_exhaustion() {
             observed.store(true, Ordering::SeqCst);
         }
     }));
-    let (wiring, _, dir) = fixture(
+    let (wiring, _, _, _output) = fixture(
         opts,
         "endless(); harmonic_rhythm(1); place(sine().sustain().seek_consonance().pitch_apply_mode(\"rearticulate\").rearticulate_above(0), at(220));",
     );
     join(wiring).unwrap();
     assert!(reached.load(Ordering::SeqCst));
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -1516,13 +1507,12 @@ fn duration_keeps_existing_rain_release_tail() {
             }
         }
     }));
-    let (wiring, _, dir) = fixture(
+    let (wiring, _, _, _output) = fixture(
         opts,
         "endless(); let r=place(rain().fade(0.4),random(300,6000)); wait(0.05); release(r);",
     );
     join(wiring).unwrap();
     assert!(reached.load(Ordering::SeqCst));
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -1554,7 +1544,7 @@ fn incremental_cycle_state_is_bounded_with_respawn_and_flora_v2() {
             }
         }
     }));
-    let (wiring, _, dir) = fixture(
+    let (wiring, _, _, _output) = fixture(
         opts,
         r#"
         seed(21); endless();
@@ -1576,7 +1566,6 @@ fn incremental_cycle_state_is_bounded_with_respawn_and_flora_v2() {
     assert_eq!(checkpoints[0], checkpoints[1]);
     assert_eq!(checkpoints[0].3, (1, 0, 0));
     assert_eq!(checkpoints[0].4, 1);
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -1611,7 +1600,7 @@ fn incremental_duration_reports_and_presynth_are_repeatable_v4() {
                 assert_eq!(state.conductor.current_scene.as_deref(), Some("bounded"));
             }
         }));
-        let (wiring, _, dir) = fixture(
+        let (wiring, _, dir, _output) = fixture(
             opts,
             r#"
             seed(21); endless();
@@ -1636,7 +1625,6 @@ fn incremental_duration_reports_and_presynth_are_repeatable_v4() {
             })
             .collect();
         results.push((snapshots.lock().unwrap().clone(), report));
-        std::fs::remove_dir_all(dir).unwrap();
     }
     assert!(!results[0].0.is_empty());
     assert!(!results[0].1.is_empty());
@@ -1672,13 +1660,12 @@ fn endless_onset_history_starts_before_future_consumers() {
             observed.store(true, Ordering::SeqCst);
         }
     }));
-    let (wiring, _, dir) = fixture(
+    let (wiring, _, _, _output) = fixture(
         opts,
         "endless(); place(sine().sustain(),at(440)); wait(1); place(sine().sustain().metric().rest_on_habituation(0.25),at(330)); wait(1);",
     );
     join(wiring).unwrap();
     assert!(reached.load(Ordering::SeqCst));
-    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -1757,10 +1744,9 @@ fn endless_harmonic_history_starts_before_future_consumers() {
         let source = format!(
             "endless(); {declaration} place(sine().sustain(),at(440)); wait(0.5); {control} wait(1);"
         );
-        let (wiring, _, dir) = fixture(opts, &source);
+        let (wiring, _, _, _output) = fixture(opts, &source);
         join(wiring).unwrap();
         assert!(reached.load(Ordering::SeqCst));
-        std::fs::remove_dir_all(dir).unwrap();
     }
 }
 
@@ -1800,9 +1786,8 @@ fn harmonic_observer_reservation_cost() {
             "follow_harmonic_relations(0.8)",
             "follow_harmonic_relations(0)",
         );
-    let (wiring, _, dir) = fixture(opts, &source);
+    let (wiring, _, dir, _output) = fixture(opts, &source);
     join(wiring).unwrap();
-    std::fs::remove_dir_all(dir).unwrap();
     let inputs = Arc::try_unwrap(inputs).unwrap().into_inner().unwrap();
     let max_own = inputs.iter().map(|(_, s)| s.len()).max().unwrap();
     assert_eq!(max_own, 4, "two Voice and two Flora H/R observers");

@@ -153,4 +153,4 @@ pub(crate) mod l1_probe;
 
 #[cfg(test)]
 #[path = "../../tests/support/test_output_directory.rs"]
-mod test_output_directory;
+pub(crate) mod test_output_directory;

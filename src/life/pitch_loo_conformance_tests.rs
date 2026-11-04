@@ -1384,19 +1384,31 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
             );
         }
     }
-    let directory = std::env::var_os("FLORA_LOO_REPORT_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::temp_dir().join(format!("conchordal-flora-loo-{}", std::process::id()))
-        });
-    std::fs::create_dir_all(&directory).unwrap();
-    let path = directory.join(if active_timing {
-        "active-timing.json"
+    let label = if active_timing {
+        "active-timing"
     } else if supported {
-        "supported.json"
+        "supported"
     } else {
-        "residual-supported.json"
-    });
+        "residual-supported"
+    };
+    // Records persist only under FLORA_LOO_REPORT_DIR; otherwise they are kept on failure.
+    let (directory, _output) = match std::env::var_os("FLORA_LOO_REPORT_DIR") {
+        Some(directory) => {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            (directory, None)
+        }
+        None => {
+            let directory = std::env::temp_dir().join(format!(
+                "conchordal-flora-loo-{label}-{}",
+                std::process::id()
+            ));
+            let output =
+                crate::runtime::test_output_directory::TestOutputDirectory::new(directory.clone());
+            (directory, Some(output))
+        }
+    };
+    let path = directory.join(format!("{label}.json"));
     std::fs::write(&path, serde_json::to_vec_pretty(&records).unwrap()).unwrap();
     println!("Flora LOO record: {}", path.display());
     assert!(

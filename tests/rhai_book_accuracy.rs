@@ -3,6 +3,9 @@
 use std::fs;
 use std::path::Path;
 
+#[path = "support/test_output_directory.rs"]
+mod test_output_directory;
+
 use clap::Parser;
 use conchordal::cli::Args;
 use walkdir::WalkDir;
@@ -300,8 +303,8 @@ fn prose_and_registry_details_only_name_registered_rhai_calls() {
 #[test]
 fn compile_only_prints_positioned_warnings_and_one_error_location() {
     use std::process::Command;
-    let dir = std::env::temp_dir().join(format!("q5_rhai_cli_{}", std::process::id()));
-    fs::create_dir_all(&dir).unwrap();
+    let dir = std::env::temp_dir().join(format!("conchordal-q5-rhai-cli-{}", std::process::id()));
+    let _output = test_output_directory::TestOutputDirectory::new(dir.clone());
     fs::write(dir.join("config.toml"), "").unwrap();
     let script = dir.join("warnings.rhai");
     fs::write(
@@ -341,5 +344,4 @@ fn compile_only_prints_positioned_warnings_and_one_error_location() {
     );
     assert_eq!(diagnostics.matches("line 2").count(), 1, "{diagnostics}");
     assert!(!String::from_utf8_lossy(&output.stdout).contains("Debug script error"));
-    fs::remove_dir_all(&dir).unwrap();
 }

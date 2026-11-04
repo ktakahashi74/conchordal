@@ -1,7 +1,11 @@
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+#[path = "support/test_output_directory.rs"]
+mod test_output_directory;
+use test_output_directory::TestOutputDirectory;
 
 // Test bounded, reproducible erosion and controlled recovery at fixed Log2Space
 // coordinates. Re-exposure is scripted; autonomous return remains a separate
@@ -9,23 +13,23 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 const SCENARIO: &str = "samples/research/habituation_field_assay.rhai";
 
-fn temp_path(tag: &str) -> PathBuf {
+fn output_directory(tag: &str) -> (PathBuf, TestOutputDirectory) {
     static NEXT_PATH: AtomicU64 = AtomicU64::new(0);
-    let mut p = std::env::temp_dir();
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
     let serial = NEXT_PATH.fetch_add(1, Ordering::Relaxed);
-    p.push(format!(
-        "conchordal_hab_{}_{nanos}_{serial}_{tag}",
+    let directory = std::env::temp_dir().join(format!(
+        "conchordal-hab-{}-{nanos}-{serial}-{tag}",
         std::process::id()
     ));
-    p
+    let output = TestOutputDirectory::new(directory.clone());
+    (directory, output)
 }
 
-fn write_config(enabled: bool) -> PathBuf {
-    let path = temp_path("cfg.toml");
+fn write_config(directory: &Path, enabled: bool) -> PathBuf {
+    let path = directory.join("cfg.toml");
     let mut f = std::fs::File::create(&path).expect("create config");
     write!(
         f,
@@ -68,8 +72,9 @@ fn hab_series(report: &PathBuf) -> Vec<(f32, f32)> {
 
 #[test]
 fn habituation_off_is_the_causal_control() {
-    let cfg = write_config(false);
-    let rep = temp_path("off.jsonl");
+    let (directory, _output) = output_directory("off");
+    let cfg = write_config(&directory, false);
+    let rep = directory.join("off.jsonl");
     run(&cfg, &rep, SCENARIO);
     let s = hab_series(&rep);
     assert!(!s.is_empty(), "no habituation records emitted");
@@ -79,14 +84,13 @@ fn habituation_off_is_the_causal_control() {
             "disabled path must keep h==0, got mean={mean_h} max={max_h}"
         );
     }
-    let _ = std::fs::remove_file(&rep);
-    let _ = std::fs::remove_file(&cfg);
 }
 
 #[test]
 fn habituation_on_erodes_and_stays_bounded() {
-    let cfg = write_config(true);
-    let rep = temp_path("on.jsonl");
+    let (directory, _output) = output_directory("on");
+    let cfg = write_config(&directory, true);
+    let rep = directory.join("on.jsonl");
     run(&cfg, &rep, SCENARIO);
     let s = hab_series(&rep);
     assert!(s.len() > 1000, "expected a long series, got {}", s.len());
@@ -100,15 +104,14 @@ fn habituation_on_erodes_and_stays_bounded() {
         peak_mean_h < 0.4,
         "erosion must stay localized/bounded (mean_h < 0.4), got {peak_mean_h}"
     );
-    let _ = std::fs::remove_file(&rep);
-    let _ = std::fs::remove_file(&cfg);
 }
 
 #[test]
 fn habituation_is_deterministic() {
-    let cfg = write_config(true);
-    let r1 = temp_path("det1.jsonl");
-    let r2 = temp_path("det2.jsonl");
+    let (directory, _output) = output_directory("det");
+    let cfg = write_config(&directory, true);
+    let r1 = directory.join("det1.jsonl");
+    let r2 = directory.join("det2.jsonl");
     run(&cfg, &r1, SCENARIO);
     run(&cfg, &r2, SCENARIO);
     let s1 = hab_series(&r1);
@@ -126,16 +129,14 @@ fn habituation_is_deterministic() {
             "habituation series diverged at record {i}: {a:?} vs {b:?}"
         );
     }
-    let _ = std::fs::remove_file(&r1);
-    let _ = std::fs::remove_file(&r2);
-    let _ = std::fs::remove_file(&cfg);
 }
 
 #[test]
 fn a_fixed_region_recovers_after_withdrawal_and_responds_to_reexposure() {
     let mut traces = Vec::new();
     for condition in ["off", "normal", "slow"] {
-        let cfg = write_config(condition != "off");
+        let (directory, _output) = output_directory(condition);
+        let cfg = write_config(&directory, condition != "off");
         if condition == "slow" {
             std::fs::write(
                 &cfg,
@@ -143,7 +144,7 @@ fn a_fixed_region_recovers_after_withdrawal_and_responds_to_reexposure() {
             )
             .unwrap();
         }
-        let report = temp_path("fixed-region.jsonl");
+        let report = directory.join("fixed-region.jsonl");
         run(
             &cfg,
             &report,
@@ -192,8 +193,6 @@ fn a_fixed_region_recovers_after_withdrawal_and_responds_to_reexposure() {
                 .unwrap()
         };
         traces.push([state_at(9.0), state_at(25.0), state_at(35.0)]);
-        std::fs::remove_file(report).unwrap();
-        std::fs::remove_file(cfg).unwrap();
     }
     let [exposed, recovered, reexposed] = traces[1];
     assert!(exposed > 0.15, "weak initial exposure: {traces:?}");

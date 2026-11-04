@@ -22,7 +22,36 @@ const { locale, lede, notFound = false } = Astro.props;
   </main>
   <Footer locale={locale} top />
   <Fragment slot="scripts">
-    <script is:inline src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-    <script is:inline src="/js/scripts.js"></script>
+    <script>
+      /*!
+       * Adapted from Start Bootstrap - Grayscale v7.0.6.
+       * Copyright 2013-2023 Start Bootstrap.
+       * MIT: https://github.com/StartBootstrap/startbootstrap-grayscale/blob/master/LICENSE
+       */
+      import Collapse from 'bootstrap/js/dist/collapse';
+      import ScrollSpy from 'bootstrap/js/dist/scrollspy';
+
+      document.addEventListener('DOMContentLoaded', () => {
+        const mainNav = document.querySelector('#mainNav');
+        if (mainNav) {
+          const shrinkNavbar = () => mainNav.classList.toggle('navbar-shrink', window.scrollY !== 0);
+          shrinkNavbar();
+          document.addEventListener('scroll', shrinkNavbar, { passive: true });
+          new ScrollSpy(document.body, { target: '#mainNav', rootMargin: '0px 0px -40%' });
+        }
+
+        const toggler = document.querySelector('.navbar-toggler');
+        const menu = document.querySelector('#navbarResponsive');
+        if (toggler && menu) {
+          document.querySelectorAll('#navbarResponsive .nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+              if (window.getComputedStyle(toggler).display !== 'none') {
+                Collapse.getOrCreateInstance(menu, { toggle: false }).hide();
+              }
+            });
+          });
+        }
+      });
+    </script>
   </Fragment>
 </BaseLayout>

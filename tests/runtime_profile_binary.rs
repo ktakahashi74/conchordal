@@ -279,6 +279,9 @@ fn requested_audio_cannot_silently_fall_back_to_device_free_execution() {
     )
     .unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_conchordal"))
+        // Hide native PipeWire before making the ALSA fallback unavailable.
+        .env_remove("PIPEWIRE_RUNTIME_DIR")
+        .env_remove("XDG_RUNTIME_DIR")
         .env("ALSA_CONFIG_PATH", alsa)
         .arg(dir.join("scenario.rhai"))
         .arg("--config")

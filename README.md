@@ -126,9 +126,12 @@ Install a current stable Rust toolchain. On Ubuntu, also install the native
 dependencies used by CI:
 
 ```bash
-sudo apt-get install libasound2-dev libudev-dev libwayland-dev \
-    libxkbcommon-dev libfontconfig1-dev pkg-config
+sudo apt-get install libasound2-dev libpipewire-0.3-dev libclang-dev \
+    libudev-dev libwayland-dev libxkbcommon-dev libfontconfig1-dev pkg-config
 ```
+
+Linux builds enable CPAL's native PipeWire backend. CPAL uses ALSA when
+PipeWire is unavailable.
 
 Then run a sample scenario in release mode (recommended for real-time DSP):
 

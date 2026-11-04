@@ -78,9 +78,10 @@ cpal = "0.18"
 hound = "3.5"
 
 ringbuf = "0.5"
-rhai = { version = "1.27", features = ["metadata"] }
+rhai = { version = "1.27", features = ["metadata", "compact_str"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+cpal = { version = "0.18", features = ["pipewire"] }
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]

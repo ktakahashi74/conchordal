@@ -412,7 +412,7 @@ previewには観測器、sample時刻、座標のversionが付く。Voiceは利�
 
 旧rendererの再出生の最終評価にも、全変動距離を0.1以下とする同じ作者規則を使う。保存された描画由来の候補scoreを従来のRandomとHereditaryの選択則へ通し、測定済みの7周波数を順に繰り返して16候補にした。対応する測定条件での最大TVは、それぞれ0.095963と0だった。PeakBiasedは、他者だけのHarmonic 330 Hz環境、440 Hz付近で従来の生成器が地形から作る16候補を使って検査した。親へのbiasと局所探索は既定設定を使い、探索半径は0.50半音、刻みは0.05半音である。48 kHz、hop 512で身体ごとに72 hopを観測し、条件ごとに158周波数を生成・解析した。比較には局所探索後の最終分布まで含めた。対応条件での最大TVは0.025876だった。保証はこれらの保存測定と有界のPeakBiasedの検査に限り、任意の設定、環境、候補集合には広げない。作者規則を超えた条件では点評価を維持する。方式ごとの対応範囲は5.1.1節に示す。
 
-この共有地形とは別に、Voiceごとの適応もある。`AdaptationContext`は共有された**基音占有場**に対する速いboredomと遅いfamiliarityを追跡し、pitch candidateごとのscoreを補正する。これは次節のLandscape-level habituationと併存する。adaptationはエージェント固有の記憶であり、habituationは共有された知覚地形の浸食である。
+この共有地形とは別に、Voiceごとの適応もある。`AdaptationContext`は共有された**基音占有場**のうち他のVoiceの占有に対して、速いboredomと遅いfamiliarityを追跡し、pitch candidateごとのscoreを補正する。Voice自身の位置への露出は私的には数えない。その効果は次節のLandscape-level habituationが担い、Voiceのleave-self-outのpitch scoreもこの浸食を受ける。adaptationは周りのVoiceについての記憶であり、habituationは共有された一つの知覚地形の浸食である。
 
 ## 3.5 Landscape-level habituation
 

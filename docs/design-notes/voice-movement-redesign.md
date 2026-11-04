@@ -409,3 +409,8 @@ on fundamentals; field and search separable) were robust across the strengths an
 efforts swept, but exact thresholds (σ, strength, decay, temperature) are not
 transferable and must be retuned and auditioned in the engine. The toy source used
 for the figures above lives at `target/toy/occ_toy.rs` (git-ignored).
+
+**Update 2026-11-04.** The self part of the temporal slice is removed: a Voice's
+exposure to its own position acts only through the shared listener habituation, which
+already erodes its leave-self-out score. The environment (other-Voice occupancy) slice
+remains. See [ledger §9.3.126](technote-ledger.md#voice-self-exposure-one-listener-20261104).

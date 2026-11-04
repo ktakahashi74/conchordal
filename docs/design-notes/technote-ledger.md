@@ -11937,3 +11937,62 @@ ABBA and two-scene seed-735 calibration; prior acquisitions remain preserved.
 B1 remains in force: no E0 output feeds generation, Landscape valuation, RNG or DCC.
 The existing optional DCC coupling still reads only static pull and defaults to zero.
 Detailed equations and scope: [Listener Twin Design](listener-twin.md#gui-1-presentation-prediction-and-current-display-contract).
+
+<a id="voice-self-exposure-one-listener-20261104"></a>
+### 9.3.126 2026-11-04: Voice self-exposure through the one listener's habituation (VB-3)
+
+**Observation.** The C/N action-comparison audition (§9.3.124) was retried on Open Time,
+the author's adopted Furnace and Braid version. Its initial pitches (165, 330 and 495 Hz)
+and sections are the author's composition; the ecology moves the pitches afterwards and no
+progression is written. The author heard all four excerpts, with the comparison off and on,
+as random. The records located the cause outside C1. In both conditions Voices changed pitch
+at almost every proposal: consecutive onsets kept the same pitch in 0–7% of steps, the median
+step was 110–375 cents, and the median onset interval equalled each Population's
+`proposal_interval`. The C1 audition stays deferred; this scene does not yet work as music.
+
+**Cause.** The private self-exposure term of `AdaptationContext` (2aad172b, 2025-12-29) had
+fast boredom with τ 0.5 s and weight 1.0. It was updated only at proposals, about every
+two seconds, so it always penalised the current position, while slow familiarity
+(τ 20 s, weight 0.2) pulled the Voice back. Since 2026-07-17 (34fefd5b, c4d6b954) the shared
+listener habituation already erodes each Voice's leave-self-out score at its own position.
+The private term counted the same exposure a second time, with weights of unstated origin.
+This was diagnosed on 2026-10-30 (VB-1, VB-2); the VB-2 change was not integrated then.
+
+**Change (principle).** The modelled listener is one listener (§9.3.56; DCC §2, §5). A Voice's
+exposure to its own position now acts only through that shared habituation. `AdaptationContext`
+keeps its environment term: the occupancy of other Voices' fundamentals, with the previous
+weight 1 − 0.15 = 0.85 and unchanged decay and evaluation order. The self accumulation and the
+silent-environment branch that gave the self term full weight are removed. Internal settings
+are renamed (`rho_self` → `environment_weight`, `self_smoothing_radius` →
+`candidate_smoothing_radius`); neither is a Rhai term. With habituation disabled, a Voice
+has no exposure effect at its own position; that follows from the listener setting. The
+remaining environment adaptation and the habituation constants stay existing author-rule
+defaults.
+
+**Records.** On `44269962`, the AMB-1 drone returned to its previous position in 0.314 of
+changes (registered bound 0.506), and the IPEM 8-second context correlation was 0.800 (bound
+0.55). In Open Time the share of proposals that held their position rose from 0.080 to 0.434
+(seed 21) and from 0.055 to 0.395 (seed 42). Seed 21 onsets fell from 1,395 to 815. No new
+all-zero second appeared and the limiter recorded no overs. The long-horizon pitch-set
+distance fell (AMB-1, 60 s 0.656 → 0.603, 120 s 0.807 → 0.749).
+
+**Author audition (2026-11-04).** On the same two Open Time excerpts, the author heard the
+old behaviour as out of tune, without harmonic sense and random. VB-3 gave a slight
+improvement, but randomness remained and the reduced movement became monotonous. Under the
+consequences fixed before the audition, the change enters the default and long-horizon
+change becomes a separate design problem.
+
+**Negative result: HS-2.** The harmonic-span author rule designed in HS-1 (`harmonic_span(B)`,
+`.follow_harmonic_span(w)`) was ported onto VB-3 and tested with the fixed configuration
+B = 120 beats, w = 1 on AMB-1. Default agreement, mechanism and real-time checks passed, but
+the minutes-scale distance decreased (60 s 0.603 → 0.561, 120 s 0.749 → 0.728) and the return
+rate rose to 0.5. The rule strengthened holding without adding change. It was closed without
+retuning and is not integrated.
+
+**Open: mistuning.** For harmonic-bodied Voices in Open Time, an interval to another sounding
+Voice was 5 cents or more from the nearest simple partial-coincidence ratio at the onset
+itself in 53% (seed 21) and 59% (seed 42) of pairs with VB-3, against 42% and 45% before.
+The deviation is already present when the pitch is chosen; a partner's later move does not
+explain it. The ratio list is a measurement reference for harmonic complex tones, where
+mistuned partial coincidences beat; it is not a compositional target. The cause is diagnosed
+separately.

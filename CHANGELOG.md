@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Remove the private Voice self-exposure term. A Voice's exposure to its own position
+  acts only through the shared listener habituation, which already erodes its
+  leave-self-out score; the other-Voice occupancy term is unchanged. Voices now hold
+  a position across proposals instead of moving at almost every proposal.
+
 - Add experimental `remember_pitch_set(w)`, neutral by default. Actual habitat
   periodicity supplies cumulative experience and legal peak proposals for free
   HillClimb Voices. IPEM observation is a candidate; memory and generation coupling

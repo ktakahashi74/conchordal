@@ -12022,3 +12022,8 @@ separately.
 - The second run sounded, but every onset stayed at the founder's 196 Hz, with no basin moves and no effect of context on destinations. At decision times the decayed one-shot bodies had left near-silence, and the learned context reinforced the founder unison. 38 of 72 pre-registered gates failed.
 
 **Decision.** Under the author's rule, Voice melody generation is stopped. This records that contextual selection was not established in this form and material; it does not refute it. The demo is to be built from parts the author has heard as music: Flora at pace 1, rain with 1/f sway, and held fields. Records and designs are in `.orchestration/units/` JR-1, FU-1, SOLO-1, LINE-1, SOLO-2, TU-1 to TU-3, PD-1, PD-1R, PD-2 and DEMO-B1.
+
+<a id="v7-acceptance-range-20261105"></a>
+### 9.3.128 2026-11-05: V7 accepted to 2·10⁷ issues
+
+The first integrated-binary V7 acquisition passed its 10⁶, 10⁷ and 2·10⁷ checkpoints with no failed, inconclusive or uncertified results. 2·10⁷ issues are about 55 hours of score. This range lies beyond the design's naive-accumulation crossover near 10⁷ issues, about one day. The registered 3·10⁷ checkpoint was a threefold engineering margin, and no consumer decision depends on it. After the run stopped with the user session, a restart from zero was begun and then stopped at the author's instruction not to run unnecessary tests. Endless estimator precision is accepted up to 55 hours of continuous score. Longer continuous performances remain unverified, and a longer run is acquired only when such a performance is required.

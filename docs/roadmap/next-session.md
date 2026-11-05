@@ -7,7 +7,7 @@
 
 1. `AGENTS.md` と[現行計画](plan-current.md#current-stage)。承認された範囲、既定値、作者判断と科学的受入の区別を確認する。
 2. 台帳[§9.3.123](../design-notes/technote-ledger.ja.md#harmony-decisions-20261103)・[§9.3.124](../design-notes/technote-ledger.ja.md#harmony-action-consequences-20261103)。A1/B1/C1は採択済み、C1は実装済み・作者試聴保留という順序を読む。
-3. 台帳[§9.3.117〜118](../design-notes/technote-ledger.ja.md#incremental-endless-scores-20261031)。endlessの実装と、IP-ACQの受入を読む。V5未取得、V6合格、V7取り直し中、V8の差分推定と実機再取得を混ぜない。
+3. 台帳[§9.3.117〜118](../design-notes/technote-ledger.ja.md#incremental-endless-scores-20261031)。endlessの実装と、IP-ACQの受入を読む。V5未取得、V6合格、V7は2×10⁷発行まで合格、V8の差分推定と実機再取得を混ぜない。
 4. 台帳[§9.3.126](../design-notes/technote-ledger.ja.md#voice-self-exposure-one-listener-20261104)・[§9.3.127](../design-notes/technote-ledger.ja.md#voice-melody-stop-20261105)と[現行計画のVoiceの節](plan-current.md)。VB-3は統合済み、TU-2／TU-3は統合しない。Voiceの旋律の生成は停止し、デモは方向Bで進める。
 5. 台帳[§9.3.125](../design-notes/technote-ledger.ja.md#listener-prediction-e0)と[Listener Twin Design](../design-notes/listener-twin.md#gui-1-presentation-prediction-and-current-display-contract)。E0は未較正の混合音響baselineであり、DES-1／DES-2全体の実装ではない。後続のGUIの到達点は `41133692`。
 6. [統括とhostの運用](../operations/orchestration.md)。単位記録の所在、既存job、timing lock、再取得の制約を確認する。必要な設計は[文書の入口](../README.md)・[設計ノート索引](../design-notes/README.md)から探す。
@@ -18,13 +18,10 @@
 DOC-3からはuser busへ接続できず、実際の稼働・終了・freeze状態は確認できていない。
 既存取得の再起動や、別のsourceでの取り直しを始める前に、固定sourceとbinary、既存出力、真の終了状態を確かめる。
 
-- **IP-ACQ V7：推定器の精度（取り直し中）。** 最初の取得 `conchordal-ipacq-v7-20261102` は2×10⁷ checkpointまで全件合格したが、
-  2026-11-04 03:32のuser systemdの終了で約2.64×10⁷発行のときに止まった。同じ固定binary（`IP-ACQ/pins/v7`）で0から取り直している
-  （`conchordal-ipacq-v7-r2-20261104`、label `full-r2`、出力 `IP-ACQ/v7/full-r2-*`、凍結のguardも再起動済み）。
-  次は3×10⁷ checkpointと全出力のfailed／inconclusive／uncertified、凍結、真のexit、source対応を回収し、IP-ACQの報告へまとめる。
-  「途中で失敗0」を最終精度合格とはしない。旧IP-V7／V7bの旧土台や中断分を統合版に数えない。
+- **IP-ACQ V7：推定器の精度。** 最初の取得で2×10⁷発行（演奏約55時間ぶん）まで全件合格。3×10⁷の取り直しは作者の指示で止めた（変わる判断を名指せない）。
+  取得も再開もしない。55時間を超える連続演奏が必要になった時に、その必要を消費者として取り直しを判断する。
 - **IP-ACQのV6・V8は取得済み。** V6は譜面132,000秒を合格、V8は計測交絡の限定切り分けと疑い2条件の実機再取得まで記録済み。
-  V7が動いていることを理由に、V6/V8も未取得へ戻さない。V7の修理が必要になった場合は、登録条件に従って影響する取得を決める。
+  V6/V8を未取得へ戻さない。
 - **方向Bのデモ。** 統括の叩き台は `.orchestration/units/DEMO-B1/draft.rhai`（記録は同じ単位のreport）。部品と形は作曲者の量であり、試聴で選ばせない。
   Voiceの旋律の生成は作者の規則で停止した（PD-1／PD-2、§9.3.127）。同じ問題へ別の入口から自動で戻らない。
 

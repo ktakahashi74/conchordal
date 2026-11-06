@@ -12063,3 +12063,30 @@ The first integrated-binary V7 acquisition passed its 10⁶, 10⁷ and 2·10⁷ 
   - The 55 hours of §9.3.128 are estimator precision only. Unattended operation and recovery have not been verified.
 
 **Decision.** Next, define the first work's promise and establish a finite live work. Records are in `.orchestration/units/` WASM-1, WP-0 to WP-4, DEMO-B1, DEMO-B2, ART-1 and ART-1C.
+
+<a id="browser-numerics-20261106"></a>
+### 9.3.130 2026-11-06: No native bit identity for the browser version
+
+**Findings (WP-4).** In the WASM-1 prototype, native and wasm PCM differed from the first hop. There are two independent causes.
+- **RNG.** `SmallRng` is Xoshiro256++ on 64-bit targets and Xoshiro128++ on 32-bit wasm. The first Drone and Rain values already differ.
+- **Math rounding.** For the same arguments, `log2`, `powf`, `sin` and others differ by 1 ULP. This reaches values the ecology reads, such as harmonicity projection positions and synthesis amplitudes.
+
+Aligning the RNG to Xoshiro256++ was not enough. With the math functions also routed through libm, the first 469 hops (about 5 s, before Flora placement) matched bit for bit, at about 4% native cost (ABBA on blanche).
+
+Native builds also disagree with themselves. rustfft's planner picks AVX, SSE or scalar per CPU, and the low bits of the Flora resource power differ between them: 560 of 774 bins between AVX and scalar. This is a counterexample to the rule that values reaching the ecology are bit-identical on every SIMD level.
+
+**Decision (author, 2026-11-06).** The browser version is not required to match native bit for bit.
+- It runs the same source. Its differences from native are limited to the RNG type and math rounding.
+- No consumer needs that identity:
+  - Browser performances are each unique, and nothing compares one with a native render.
+  - Work identity is not decided by seed or PCM (§9.3.129).
+  - Research and test baselines are native.
+- The browser version is accepted on three conditions: it runs the same source, its output is finite, and it plays with zero underruns.
+- The AGENTS.md SIMD rule now covers the SIMD levels of a native build.
+- The port keeps native output unchanged; native PCM must match bit for bit before and after. The wasm build alone may enable rustfft `wasm_simd`, which cut the total mean by about 7%.
+- If a work or study later needs cross-platform identity, do the following:
+  - Make the RNG type explicit.
+  - Align the math functions and the FFT operation structure.
+  - Recapture the seed-pinned baselines.
+
+**Open.** The per-CPU native FFT difference remains open. First check whether CI baselines or cross-machine reproduction of seed-pinned research depend on it, then either fix it or narrow the rule. Records are in `.orchestration/units/WP-4/`.

@@ -405,8 +405,12 @@ source-matched versus original computation rule or §9.3.56's five listener laye
 - **SIMD**: Explicit SIMD uses `fearless_simd`: select the level once per call
   (`dispatch!(Level::new(), ...)` or a `Level::as_*` token) and run generic
   `#[inline(always)]` kernels. Values that reach the ecology must be bit-identical on
-  every SIMD level (SSE2 to AVX-512, NEON, wasm): no `mul_add`, and any cross-lane
-  reduction uses a fixed logical width and order. Test each level a kernel runs on
+  every SIMD level of a native build (SSE2 to AVX-512, NEON): no `mul_add`, and any
+  cross-lane reduction uses a fixed logical width and order. The browser (wasm) build
+  runs the same source but need not match native bit for bit: its RNG type and math
+  rounding differ (author decision 2026-11-06, ledger §9.3.130). Known native
+  exception: rustfft picks AVX, SSE or scalar per CPU, and Flora resource power
+  differs in its low bits between them; this is open. Test each level a kernel runs on
   against a scalar reference (`core::roughness_kernel` row sums,
   `core::auditory_frontend` lanes). A kernel may run only on the levels where it is
   faster if the other levels keep a bit-identical path. Kernels called per sample

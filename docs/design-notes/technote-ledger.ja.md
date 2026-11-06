@@ -8750,3 +8750,30 @@ endlessの推定器の精度は、連続した譜面55時間まで受け入れ�
   - endlessの55時間（§9.3.128）は推定器の精度である。無人の運用と復旧は確かめていない。
 
 **決定。** 次は、最初の作品の約束を定め、有限のライブ作品を成立させる。記録は `.orchestration/units/` のWASM-1、WP-0〜WP-4、DEMO-B1、DEMO-B2、ART-1、ART-1Cにある。
+
+<a id="browser-numerics-20261106"></a>
+### 9.3.130 2026-11-06：browserの版にnativeとのbit一致を求めない
+
+**所見（WP-4）。** WASM-1の試作で、nativeとwasmのPCMは最初のhopから一致しなかった。原因は独立に二つある。
+- **乱数。** `SmallRng` が、64 bitではXoshiro256++、32 bitのwasmではXoshiro128++になる。DroneとRainの最初の値から異なる。
+- **数学関数の丸め。** 同じ引数で、`log2`・`powf`・`sin` などが1 ULP異なる。harmonicityの投影位置や合成の振幅など、生態に届く値にも現れる。
+
+乱数をXoshiro256++にそろえても一致しなかった。数学関数もlibmでそろえると、最初の469 hop（約5秒、Floraの配置の前）はbit一致した。その時のnativeの費用は約4%増である（blancheのABBA）。
+
+nativeの中でも、rustfftのplannerがCPUごとにAVX・SSE・scalarを選ぶ。経路ごとに、Floraが読む資源powerの下位bitが変わる（774 binのうち、AVXとscalarでは560 binが異なる）。これは「生態に届く値は全SIMD段でbit一致」という規約への反例である。
+
+**決定（作者、2026-11-06）。** browserの版に、nativeとのbit一致を求めない。
+- browserの版は同じsourceを動かす。nativeとの差は、乱数の型と数学関数の丸めに限られる。
+- この一致を要る消費者がない。
+  - browserの演奏は一回ごとに違うもので、nativeの書き出しと比べる利用がない。
+  - 作品が同じかどうかを、seedやPCMでは決めない（§9.3.129）。
+  - 研究とtestの基準はnativeで取っている。
+- browserの版の受入は、同じsourceで動くこと、出力が有限であること、音切れが0であることで判定する。
+- AGENTS.mdのSIMDの規約は、nativeのbuildの中のSIMD段の間に範囲を直した。
+- 移植では、nativeの出力を変えない（移植の前後でnativeのPCMがbit一致することを確かめる）。wasmのbuildだけ、rustfftの `wasm_simd` を有効にしてよい。全段の平均で約7%速くなる。
+- 一致を求める作品や研究が出てきた時は、次の作業を行う。
+  - 乱数の型を明示する。
+  - 数学関数とFFTの演算の形をそろえる。
+  - 固定したseedの基準を取り直す。
+
+**未決。** nativeのFFTがCPUごとに異なる件は開いたまま残す。CIの基準や、seedを固定した研究の機械間の再現が、これに頼っているかを確かめてから、直すか規約の範囲を直すかを決める。記録は `.orchestration/units/WP-4/`。

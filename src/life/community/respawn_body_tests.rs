@@ -794,7 +794,7 @@ fn n2_respawn_cost() {
                 pop.current_frame += 1;
                 for (enabled, model) in [(false, &legacy), (true, &pop)] {
                     let mut rng = SmallRng::seed_from_u64(7304 + sample);
-                    let started = std::time::Instant::now();
+                    let started = crate::clock::Instant::now();
                     for member in 0..count {
                         assert!(
                             std::hint::black_box(model.pick_respawn_candidate(

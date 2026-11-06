@@ -158,9 +158,9 @@ fn interpolation_control() {
 
 #[cfg(test)]
 fn replay(control: bool) {
+    use crate::clock::Instant;
     use std::collections::BTreeMap;
     use std::io::{BufRead, Read, Write};
-    use std::time::Instant;
     let root = std::path::PathBuf::from(std::env::var("TC1B_INPUT").unwrap());
     let mut decisions: Vec<acquisition::Decision> =
         std::io::BufReader::new(std::fs::File::open(root.join("decisions.jsonl")).unwrap())

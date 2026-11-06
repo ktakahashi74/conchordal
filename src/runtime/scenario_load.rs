@@ -13,6 +13,7 @@ pub(super) fn cmp_time_order(
         .then_with(|| a_order.cmp(&b_order))
 }
 
+#[cfg(feature = "native")]
 pub(super) fn validate_scenario_script_extension(script_path: &Path) -> Result<(), String> {
     let ext = script_path
         .extension()
@@ -28,6 +29,7 @@ pub(super) fn validate_scenario_script_extension(script_path: &Path) -> Result<(
     Ok(())
 }
 
+#[cfg(feature = "native")]
 pub fn compile_scenario_from_script(
     script_path: &Path,
     seed: Option<u64>,
@@ -113,6 +115,7 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "native")]
 pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
     let path = Path::new(&args.scenario_path);
     crate::life::modal::register_modal();
@@ -229,6 +232,7 @@ pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "native")]
 pub(super) fn load_scenario(
     path: &Path,
     seed: Option<u64>,

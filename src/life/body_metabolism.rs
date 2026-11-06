@@ -139,7 +139,7 @@ impl Evaluator {
         shared: &Landscape,
     ) -> Result<BodyFitness, Unavailable> {
         #[cfg(test)]
-        let started = std::time::Instant::now();
+        let started = crate::clock::Instant::now();
         #[cfg(test)]
         if self.reference_every_substep {
             return self.score_valid(pitch_log2, params, shared);
@@ -282,7 +282,7 @@ impl BodyMetabolism {
 
     pub(crate) fn prepare(&mut self, voices: &[Voice], now: Tick, params: &LandscapeParams) {
         #[cfg(test)]
-        let started = std::time::Instant::now();
+        let started = crate::clock::Instant::now();
         self.params.consonance_kernel = params.consonance_kernel;
         self.params.consonance_representation = params.consonance_representation;
         self.params.consonance_density_roughness_gain = params.consonance_density_roughness_gain;
@@ -469,7 +469,7 @@ impl BodyMetabolism {
 
     pub(crate) fn observe(&mut self, now: Tick, mixed: &[f32], params: &LandscapeParams) {
         #[cfg(test)]
-        let started = std::time::Instant::now();
+        let started = crate::clock::Instant::now();
         assert_eq!(mixed.len(), self.time.hop, "mixed PCM hop length");
         let Some(end) = now.checked_add(self.time.hop as Tick) else {
             self.valid = false;

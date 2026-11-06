@@ -219,7 +219,7 @@ struct StrobeRow {
     subdivision_ratio: Option<u8>,
 }
 
-fn supported_subdivision(meter: &crate::core::meter::MeterState) -> Option<u8> {
+fn supported_subdivision(meter: &super::model::MeterState) -> Option<u8> {
     (meter.beat.confidence >= METER_DISPLAY_CONFIDENCE_MIN
         && meter.subdivision.confidence >= METER_DISPLAY_CONFIDENCE_MIN
         && matches!(meter.subdivision_ratio, 2..=4))
@@ -732,7 +732,7 @@ fn circle_direction(phase: f32) -> Vec2 {
     egui::vec2(angle.sin(), -angle.cos())
 }
 
-fn supported_band(band: crate::core::meter::MeterBand) -> bool {
+fn supported_band(band: super::model::MeterBand) -> bool {
     band.confidence >= METER_DISPLAY_CONFIDENCE_MIN
         && band.phase.is_finite()
         && band.freq_hz.is_finite()
@@ -771,7 +771,7 @@ fn meter_circle(
         return None;
     }
     // Display-only extrapolation from the latest observation to the display time.
-    let advance = |band: crate::core::meter::MeterBand| {
+    let advance = |band: super::model::MeterBand| {
         band.phase / std::f32::consts::TAU + band.freq_hz * (window_end - latest.time_sec) as f32
     };
     let beat_now = advance(latest.meter.beat);
@@ -982,7 +982,7 @@ fn circular_mean(folded: &[f64; OCTAVE_BINS]) -> Option<Vec2> {
     Some(mean / mean.length().max(1.0))
 }
 
-fn folded_support(support: &crate::core::harmonic_support::Snapshot) -> [f64; OCTAVE_BINS] {
+fn folded_support(support: &super::model::Snapshot) -> [f64; OCTAVE_BINS] {
     let start = f64::from(support.geometry.root_start_log2);
     let step = f64::from(support.geometry.space.step());
     fold_octaves(
@@ -1025,7 +1025,7 @@ pub(crate) fn observe_harmony(
 
 pub(crate) fn draw_harmony_circle(
     ui: &mut egui::Ui,
-    landscape: &crate::core::landscape::Landscape,
+    landscape: &super::model::Landscape,
     history: &VecDeque<(f64, Option<Vec2>)>,
     side: f32,
 ) {
@@ -1164,7 +1164,7 @@ pub(crate) fn draw_harmony_circle(
     });
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod rhythm_tests {
     use super::*;
     use crate::viewdata::ListenerRhythmHop;

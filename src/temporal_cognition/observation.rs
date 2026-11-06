@@ -1,10 +1,11 @@
 //! Ordered auditory observations with optional group and periodic diagnostics.
 
+use crate::clock::Instant;
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "native")]
 use std::thread::JoinHandle;
-use std::time::Instant;
 
-use crossbeam_channel::{Sender, TrySendError};
+use crate::handoff::{Sender, TrySendError};
 use serde::Serialize;
 
 use super::{context, proposals::frontend, ridge};
@@ -113,7 +114,8 @@ enum Event {
 
 pub(crate) struct Tap {
     tx: Option<Sender<Event>>,
-    completed: Option<crossbeam_channel::Receiver<()>>,
+    completed: Option<crate::handoff::Receiver<()>>,
+    #[cfg(feature = "native")]
     handle: Option<JoinHandle<()>>,
     pub snapshot: Arc<Mutex<Snapshot>>,
     space: Arc<Log2Space>,
@@ -130,6 +132,7 @@ pub(crate) struct Tap {
 }
 
 impl Tap {
+    #[cfg(feature = "native")]
     pub fn spawn(
         bus: u8,
         sample_rate: u32,
@@ -139,9 +142,9 @@ impl Tap {
         options: Options,
     ) -> Self {
         assert!(bus < 2 && sample_rate > 0 && hop > 0 && window >= hop);
-        let (tx, rx) = crossbeam_channel::bounded(QUEUE_CAPACITY);
+        let (tx, rx) = crate::handoff::bounded(QUEUE_CAPACITY);
         let (completion_tx, completed) = if options.deterministic {
-            let (tx, rx) = crossbeam_channel::bounded(1);
+            let (tx, rx) = crate::handoff::bounded(1);
             (Some(tx), Some(rx))
         } else {
             (None, None)
@@ -532,6 +535,7 @@ impl Tap {
         self.observe_input(frame_id, power_scan, mono_energy, None);
     }
 
+    #[cfg(feature = "native")]
     pub fn observe_frame(
         &mut self,
         frame_id: u64,
@@ -542,6 +546,7 @@ impl Tap {
         self.observe_input(frame_id, power_scan, mono_energy, t2);
     }
 
+    #[cfg(feature = "native")]
     fn observe_input(
         &mut self,
         frame_id: u64,
@@ -620,6 +625,7 @@ impl Drop for Tap {
                 source_missing_samples: self.source_missing_samples,
             });
         }
+        #[cfg(feature = "native")]
         if let Some(handle) = self.handle.take()
             && handle.join().is_err()
         {
@@ -745,7 +751,7 @@ mod tests {
             for frame in 0..40 {
                 tap.observe(frame, &scan, 0.25);
             }
-            let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            let until = crate::clock::Instant::now() + std::time::Duration::from_secs(10);
             let before_eof = loop {
                 let snapshot = output.lock().unwrap();
                 if snapshot.support_end_sample == 40 * 512 {
@@ -758,7 +764,7 @@ mod tests {
                 }
                 drop(snapshot);
                 assert!(
-                    std::time::Instant::now() < until,
+                    crate::clock::Instant::now() < until,
                     "observer did not publish its final audio frame"
                 );
                 std::thread::sleep(std::time::Duration::from_millis(1));

@@ -56,6 +56,10 @@
     - `ui_frame.rs`: UI frame construction and `send_runtime_ui_frame`.
     - `monitor.rs`: `AudioMonitor` and `log_guard_meter`.
     - `scenario_load.rs`: Script compilation, validation, and compile-only diagnostics.
+    - `step.rs`: `StepEngine` for the browser (feature `web`): one call runs the
+      worker hop, ecology analysis and listener analysis in order on one thread.
+      It returns raw presentation PCM; the host applies `output_gain()` and the
+      Limiter. Endless scores and background-thread analyses are rejected.
   - `temporal_cognition/` (declared by `temporal_cognition.rs`): ordered auditory
     evidence, grouping, body observation, arrival, proposals, and opt-in T2 integration.
   - `listener_twin/` (listener-side model).
@@ -63,12 +67,22 @@
     voice control config, lifecycle config.
   - `viewdata.rs`: worker -> UI snapshot contract (`UiFrame` and friends). It is
     deliberately outside `ui/` so `runtime/` has no dependency on `ui/`.
+    `viewdata_web.rs` projects a `UiFrame` to the display-only snapshot that the
+    web GUI decodes (JSON envelope in `gui/src/frame.rs`).
+  - `clock.rs` / `handoff.rs`: wall-clock `Instant` (`web_time` on wasm) and the
+    directly owned handoff buffers that replace channels on the web path.
   - `config.rs` / `dcc_coupler.rs`: TOML config, DCC coupling.
   - `cli.rs`: Instrument CLI arguments.
   - `runtime_profile.rs`: Hop timing, run profiles, and `profile-alloc` instrumentation.
   - `bin/`: `render.rs` (conchordal-render) and `gen_rhai_defs.rs`.
 - Entrypoints: `src/main.rs` (instrument) and `src/app.rs` (GUI and shutdown
   ownership); engine/thread wiring lives in `wire_runtime` (`src/runtime/wiring.rs`).
+- Features: `native` (default) brings the GUI, cpal, CLI and WAV writer. The browser
+  engine builds with `--no-default-features --features web` and has no threads,
+  file system or audio I/O.
+- Browser version: `crates/conchordal-web/` holds the wasm-bindgen host, Web Worker,
+  AudioWorklet and measurement page (`build.sh`, `README.md`). `gui/` is the egui
+  web GUI; it shares `src/ui/` drawing with the native GUI.
 - `web/` (Astro site sources; build with `npm ci && npm run build` in `web/`) lives at the repository root, not under `src/`.
 - Samples: execution-test scripts live under `tests/scripts/`. Compile-only samples stay under `samples/`.
 
@@ -255,6 +269,9 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   (`src/bin/render.rs`), which shares the core engine but is not the instrument.
   The air-gap policy does not apply to `conchordal-render`.
 - Do not add `--wav` or any disk-write capability to the `conchordal` binary.
+- The browser version follows the same rule: no path saves or sends audio or
+  audio-derived values. Its page posts performance counters only (an explicit
+  allowlist in `crates/conchordal-web/www/page.js`).
 
 ## Coding Style & Naming Conventions
 - **Comments**:  All comments must be in concise English.  Do not use Japanese in code comments.

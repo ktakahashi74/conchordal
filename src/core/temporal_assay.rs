@@ -311,7 +311,7 @@ fn export_energy_forecast_assay() -> anyhow::Result<()> {
                 }
             }
             let mut observed = None;
-            let start = std::time::Instant::now();
+            let start = crate::clock::Instant::now();
             observer.process((step * window) as u64, audio, |row| observed = Some(row));
             elapsed += start.elapsed();
             let observed = observed.expect("one complete observation window");

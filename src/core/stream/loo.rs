@@ -1,7 +1,8 @@
 //! PCM self-removal before the shared nonlinear perception pipeline.
 use super::analysis::AnalysisStream;
 use crate::core::landscape::LandscapeParams;
-use crossbeam_channel::Sender;
+#[cfg(feature = "native")]
+use crate::handoff::Sender;
 use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,9 +22,11 @@ pub(crate) struct SourcePcm {
 
 pub(crate) struct PcmPacket {
     pub sources: Vec<SourcePcm>,
+    #[cfg(feature = "native")]
     pub recycle: Sender<Vec<SourcePcm>>,
 }
 
+#[cfg(feature = "native")]
 impl Drop for PcmPacket {
     fn drop(&mut self) {
         let _ = self.recycle.try_send(std::mem::take(&mut self.sources));
@@ -293,8 +296,8 @@ mod tests {
     #[test]
     #[ignore = "F-19b cost acquisition requires the machine timing lock"]
     fn flora_voice_observer_cost() {
+        use crate::clock::Instant;
         use std::hint::black_box;
-        use std::time::Instant;
         let (params, kernel, hop) = crate::runtime::birth_surrogate_assay_core(
             &crate::config::AppConfig::default(),
             48_000,
@@ -433,7 +436,7 @@ mod tests {
         for _ in 0..64 {
             observer.process(&mix, &own);
         }
-        let start = std::time::Instant::now();
+        let start = crate::clock::Instant::now();
         crate::runtime_profile::begin_allocations();
         for _ in 0..1024 {
             observer.process(&mix, &own);

@@ -1,0 +1,30 @@
+[package]
+name = "conchordal-web-ui"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+browser = ["dep:eframe", "dep:egui", "dep:egui_plot", "dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys", "dep:web-sys"]
+
+[dependencies]
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow"], optional = true }
+egui = { version = "0.37", optional = true }
+egui_plot = { version = "0.38", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", features = ["HtmlCanvasElement", "Performance", "Window"], optional = true }
+
+[lints.clippy]
+field_reassign_with_default = "allow"
+needless_range_loop = "allow"
+type_complexity = "allow"

@@ -1,12 +1,15 @@
 //! Private routed PCM capture and acoustic descriptors. Never feeds passive relation inputs.
 
+use crate::clock::Instant;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "native")]
 use std::thread::JoinHandle;
-use std::time::Instant;
 
-use crossbeam_channel::{Receiver, Sender, bounded};
+#[cfg(feature = "native")]
+use crate::handoff::bounded;
+use crate::handoff::{Receiver, Sender};
 use serde::Serialize;
 
 use super::{features, observables, resources, ridge::Handle};
@@ -76,7 +79,7 @@ pub struct Snapshot {
     pub outside_voice_hops: u64,
     pub processing_us: u64,
     pub max_processing_us: u64,
-    pub worker_resources: resources::Snapshot,
+    pub(crate) worker_resources: resources::Snapshot,
     pub finished: bool,
 }
 
@@ -114,6 +117,7 @@ pub(crate) struct Capture {
     free: Receiver<Box<Frame>>,
     tx: Option<Sender<Box<Frame>>>,
     completed: Option<Receiver<()>>,
+    #[cfg(feature = "native")]
     handle: Option<JoinHandle<()>>,
     snapshot: Arc<Mutex<Snapshot>>,
     deterministic: bool,
@@ -305,6 +309,7 @@ impl Lane {
 }
 
 impl Capture {
+    #[cfg(feature = "native")]
     pub(crate) fn spawn(
         nsgt: RtNsgtKernelLog2,
         config: TemporalBodyConfig,
@@ -527,6 +532,7 @@ impl Capture {
         })
     }
 
+    #[cfg(feature = "native")]
     pub(crate) fn begin(&mut self, now: u64) {
         self.current_end = now + self.hop as u64;
         self.frame = if self.deterministic {
@@ -575,6 +581,7 @@ impl Capture {
         }
     }
 
+    #[cfg(feature = "native")]
     pub(crate) fn end(&mut self) {
         self.clock.store(self.current_end, Ordering::Release);
         if let Some(mut frame) = self.frame.take()
@@ -620,6 +627,7 @@ impl Capture {
 
     pub(crate) fn finish(&mut self) {
         self.tx.take();
+        #[cfg(feature = "native")]
         if let Some(handle) = self.handle.take() {
             let failed = handle.join().is_err();
             let mut snapshot = self.snapshot.lock().unwrap_or_else(|poisoned| {

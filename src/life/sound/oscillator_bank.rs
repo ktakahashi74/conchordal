@@ -1103,7 +1103,7 @@ mod tests {
                 let (s, c) = 0.001_f32.sin_cos();
                 for corrected in [false, true, true, false] {
                     let mut bank = initial.clone();
-                    let began = std::time::Instant::now();
+                    let began = crate::clock::Instant::now();
                     for _ in 0..2_000_000 {
                         if corrected {
                             bank.advance_norm_correction();

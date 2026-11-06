@@ -51,7 +51,7 @@ pub struct ScriptWarning {
     pub position: Position,
 }
 
-pub(super) type ScriptWarnings = Arc<Mutex<score::WarningStore>>;
+pub(super) type ScriptWarnings = Arc<Mutex<super::diagnostics::WarningStore>>;
 
 #[derive(Debug, Clone)]
 pub(super) struct ScopeFrame {}
@@ -60,6 +60,7 @@ pub(super) struct ScopeFrame {}
 pub struct ScriptContext {
     pub(super) tonal_observation_position: Option<Position>,
     pub(super) harmonic_observation_position: Option<Position>,
+    #[cfg(feature = "native")]
     pub(super) stream: Option<Arc<score::ScoreStream>>,
     pub(super) emission_error: Option<ScriptError>,
     pub(super) emitted_any_event: bool,
@@ -88,7 +89,11 @@ pub struct ScriptContext {
 
 impl Default for ScriptContext {
     fn default() -> Self {
-        Self::with_seed(random::<u64>())
+        #[cfg(feature = "native")]
+        let seed = random::<u64>();
+        #[cfg(not(feature = "native"))]
+        let seed = 0;
+        Self::with_seed(seed)
     }
 }
 
@@ -116,6 +121,7 @@ impl ScriptContext {
             listener_profile: DEFAULT_LISTENER_PROFILE,
             profile_section: None,
             explicit_expression: false,
+            #[cfg(feature = "native")]
             stream: None,
             emission_error: None,
             emitted_any_event: false,
@@ -371,6 +377,7 @@ impl ScriptContext {
     fn fail_emission(&mut self, error: ScriptError) {
         if self.emission_error.is_none() {
             self.emission_error = Some(error.clone());
+            #[cfg(feature = "native")]
             if let Some(stream) = &self.stream {
                 stream.finish(Some(error));
                 stream
@@ -420,6 +427,7 @@ impl ScriptContext {
         self.emitted_any_event = true;
         let order = self.next_event_order;
         self.next_event_order += 1;
+        #[cfg(feature = "native")]
         if self.scenario.end == ScenarioEnd::Open && self.stream.is_some() {
             if let Some((a, b)) = self.scenario.meter_shaping.basin_hz {
                 let (lo, hi) = sane_basin(a, b);
@@ -441,7 +449,9 @@ impl ScriptContext {
                 error.position = Some(position);
                 self.fail_emission(error);
             }
-        } else {
+            return;
+        }
+        {
             self.scenario.events.push(TimedEvent {
                 time: time_sec,
                 order,
@@ -453,6 +463,7 @@ impl ScriptContext {
     pub(super) fn push_scene_marker(&mut self, name: &str, position: Position) {
         let order = self.next_event_order;
         self.next_event_order += 1;
+        #[cfg(feature = "native")]
         if self.scenario.end == ScenarioEnd::Open
             && let Some(stream) = &self.stream
         {
@@ -471,7 +482,9 @@ impl ScriptContext {
                 error.position = Some(position);
                 self.fail_emission(error);
             }
-        } else {
+            return;
+        }
+        {
             self.scenario.scene_markers.push(SceneMarker {
                 name: name.to_string(),
                 time: self.cursor,
@@ -541,11 +554,14 @@ impl ScriptContext {
     }
 
     fn collect_actions(&mut self, depth: Option<usize>, position: Position) {
+        #[cfg(feature = "native")]
         let capacity = if self.scenario.end == ScenarioEnd::Open {
             self.stream.as_ref().map(|stream| stream.capacity)
         } else {
             None
         };
+        #[cfg(not(feature = "native"))]
+        let capacity: Option<super::diagnostics::Credit> = None;
         let mut actions = Vec::new();
         let mut payload = 0;
         let mut append = |action: Action| -> Result<(), ScriptError> {
@@ -1135,6 +1151,7 @@ impl ScriptContext {
             let population = self.populations.get(&id).expect("inserted population");
             let respawn = !matches!(population.respawn_policy, RespawnPolicy::None);
             let action_count = if respawn { 3 } else { 2 };
+            #[cfg(feature = "native")]
             if let Some(stream) = &self.stream
                 && self.scenario.end == ScenarioEnd::Open
                 && (action_count > stream.capacity.actions
@@ -1263,10 +1280,12 @@ impl ScriptContext {
     }
 
     pub(super) fn wait(&mut self, sec: f64, position: Position) -> Result<(), Box<EvalAltResult>> {
+        #[cfg(feature = "native")]
         use std::sync::atomic::Ordering;
         self.emit_pending_actions(position);
         self.check_emission()?;
         let next = self.cursor + sec.max(0.0);
+        #[cfg(feature = "native")]
         if self.scenario.end == ScenarioEnd::Open
             && let Some(stream) = &self.stream
         {
@@ -1293,9 +1312,9 @@ impl ScriptContext {
                     EvalAltResult::ErrorTerminated("stopped".into(), Position::NONE).into(),
                 );
             }
-        } else {
-            self.cursor = next;
+            return Ok(());
         }
+        self.cursor = next;
         Ok(())
     }
 

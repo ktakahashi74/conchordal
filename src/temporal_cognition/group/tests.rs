@@ -159,8 +159,8 @@ fn full_member_inventory_respects_896_distance_cap_and_descriptor_storage_bound(
 #[test]
 #[ignore = "release saved-member assignment cost; excludes lifecycle, audio and full O04"]
 fn group_assignment_cost_probe() {
+    use crate::clock::Instant;
     use std::hint::black_box;
-    use std::time::Instant;
     let settings = config();
     for (group_count, member_count, current_count) in [(1, 1, 1), (7, 8, 8)] {
         let members: Vec<_> = (0..member_count)
@@ -230,8 +230,8 @@ fn group_assignment_cost_probe() {
 #[test]
 #[ignore = "release group-energy scan cost; excludes NSGT, grouping, queues and full O04"]
 fn group_energy_cost_probe() {
+    use crate::clock::Instant;
     use std::hint::black_box;
-    use std::time::Instant;
     let assignment = Assignment {
         end_sample: 20,
         group_handles: std::array::from_fn(|i| Some(handle(i as u64 + 100))),

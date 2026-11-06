@@ -14,14 +14,17 @@ categories = ["multimedia::audio"]
 [[bin]]
 name = "conchordal"
 path = "src/main.rs"
+required-features = ["native"]
 
 [[bin]]
 name = "conchordal-render"
 path = "src/bin/render.rs"
+required-features = ["native"]
 
 [[bin]]
 name = "gen_rhai_defs"
 path = "src/bin/gen_rhai_defs.rs"
+required-features = ["native"]
 
 [profile.dev]
 opt-level = 1
@@ -44,22 +47,23 @@ needless_range_loop = "allow"
 type_complexity = "allow"
 
 [dependencies]
+conchordal-web-ui = { path = "gui", default-features = false }
 anyhow = "1.0"
 
-clap = { version = "4.6", features = ["derive"]}
-ctrlc = "3.5"
+clap = { version = "4.6", features = ["derive"], optional = true }
+ctrlc = { version = "3.5", optional = true }
 
 # GUI
-egui = "0.37"
-egui_plot = "0.38"
+egui = { version = "0.37", optional = true }
+egui_plot = { version = "0.38", optional = true }
 
 # Concurrency
-crossbeam-channel = "0.5"
+crossbeam-channel = { version = "0.5", optional = true }
 
 # DSP / Math
 fearless_simd = "1.1.0"
 rustfft = "6"
-rand = "0.10"
+rand = { version = "0.10", default-features = false, features = ["std", "std_rng"] }
 plotters = { version = "0.3", optional = true, default-features = false, features = ["bitmap_backend", "bitmap_encoder", "line_series", "ttf"] }
 
 # Config (TOML)
@@ -71,24 +75,30 @@ toml = "1.1"
 
 # Logging / tracing (optional)
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"], optional = true }
 
 # Audio I/O
-cpal = "0.18"
-hound = "3.5"
+cpal = { version = "0.18", optional = true }
+hound = { version = "3.5", optional = true }
 
-ringbuf = "0.5"
-rhai = { version = "1.27", features = ["metadata", "compact_str"] }
+ringbuf = { version = "0.5", optional = true }
+rhai = { version = "1.27", default-features = false, features = ["std", "metadata", "compact_str"] }
+web-time = { version = "1.1", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-cpal = { version = "0.18", features = ["pipewire"] }
-eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
+cpal = { version = "0.18", features = ["pipewire"], optional = true }
+eframe = { version = "0.37", optional = true, default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
 
 [target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
-eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow"] }
+eframe = { version = "0.37", optional = true, default-features = false, features = ["default_fonts", "glow"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+rustfft = { version = "6", features = ["wasm_simd"] }
 
 [features]
-default = []
+default = ["native"]
+native = ["dep:ringbuf", "dep:clap", "dep:ctrlc", "dep:egui", "dep:egui_plot", "dep:eframe", "dep:cpal", "dep:hound", "dep:crossbeam-channel", "dep:tracing-subscriber", "rand/thread_rng", "rhai/default"]
+web = ["dep:web-time", "rhai/no_time"]
 profile-alloc = []
 # Temporary proposal replay for the isolated T-31 prototype.
 loo-diagnostic = []

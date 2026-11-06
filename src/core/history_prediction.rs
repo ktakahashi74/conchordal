@@ -1020,7 +1020,7 @@ mod tests {
         let mut predictor = HistoryEnergyPrediction::new();
         let history = AuditoryHistory::new(HISTORY_AGES_SEC).snapshot();
         predictor.issue(1, [0.1; 3], &history);
-        let start = std::time::Instant::now();
+        let start = crate::clock::Instant::now();
         for step in 2..=10001 {
             let energy = [0.01 * (1.0 + (step as f32 * 0.031).sin()); 3];
             predictor.observe(step, energy, |_| {});

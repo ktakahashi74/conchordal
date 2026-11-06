@@ -5,7 +5,7 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use crossbeam_channel::Receiver;
+use crate::handoff::Receiver;
 use tracing::debug;
 
 use crate::audio::output::AudioOutput;
@@ -32,7 +32,7 @@ pub struct App {
     harmony_history: VecDeque<(f64, Option<egui::Vec2>)>,
     display_clock: DisplayClock,
     start_flag: Arc<AtomicBool>,
-    level_history: VecDeque<(std::time::Instant, [f32; 2])>,
+    level_history: VecDeque<(crate::clock::Instant, [f32; 2])>,
     show_raw_nsgt_power: bool,
 }
 
@@ -43,13 +43,13 @@ pub struct App {
 struct DisplayClock {
     /// (stream time, wall seconds since `epoch`) of recent frames.
     arrivals: VecDeque<(f64, f64)>,
-    epoch: Option<std::time::Instant>,
+    epoch: Option<crate::clock::Instant>,
     shown: f64,
 }
 
 impl DisplayClock {
     fn wall(&mut self) -> f64 {
-        let now = std::time::Instant::now();
+        let now = crate::clock::Instant::now();
         now.duration_since(*self.epoch.get_or_insert(now))
             .as_secs_f64()
     }
@@ -110,7 +110,7 @@ impl App {
         let end_request = args.end_request.clone();
         let drop_started = Arc::new(AtomicBool::new(false));
         let rt = crate::runtime::init_runtime(args, config, stop_flag.clone());
-        let (runtime_result_tx, runtime_result_rx) = crossbeam_channel::bounded(1);
+        let (runtime_result_tx, runtime_result_rx) = crate::handoff::bounded(1);
         let drop_watch = Arc::clone(&drop_started);
         let failed_watch = Arc::clone(&runtime_failed);
         let repaint_ctx = cc.egui_ctx.clone();
@@ -199,7 +199,7 @@ impl App {
         }
 
         // Track 1-second peak history for level meter.
-        let now = std::time::Instant::now();
+        let now = crate::clock::Instant::now();
         self.level_history
             .push_back((now, self.last_frame.meta.channel_peak));
         while let Some((t, _)) = self.level_history.front() {
@@ -374,10 +374,10 @@ mod tests {
             let stop = Arc::new(AtomicBool::new(true));
             let drop_started = Arc::new(AtomicBool::new(false));
             let forced = Arc::new(AtomicBool::new(false));
-            let (finish_tx, finish_rx) = crossbeam_channel::bounded(0);
-            let (observer_tx, observer_rx) = crossbeam_channel::bounded(0);
-            let (close_tx, close_rx) = crossbeam_channel::bounded(0);
-            let (joined_tx, joined_rx) = crossbeam_channel::bounded(0);
+            let (finish_tx, finish_rx) = crate::handoff::bounded(0);
+            let (observer_tx, observer_rx) = crate::handoff::bounded(0);
+            let (close_tx, close_rx) = crate::handoff::bounded(0);
+            let (joined_tx, joined_rx) = crate::handoff::bounded(0);
             let worker = std::thread::spawn(move || {
                 finish_rx.recv().unwrap();
                 Ok(())
@@ -430,8 +430,8 @@ mod tests {
             assert!(dropped.load(Ordering::SeqCst));
             panic!("shutdown panic fixture");
         });
-        let (_, ui_frame_rx) = crossbeam_channel::bounded(1);
-        let (_, runtime_result_rx) = crossbeam_channel::bounded(1);
+        let (_, ui_frame_rx) = crate::handoff::bounded(1);
+        let (_, runtime_result_rx) = crate::handoff::bounded(1);
         drop(App {
             ui_frame_rx,
             last_frame: UiFrame::default(),

@@ -19,7 +19,7 @@ pub(super) struct WorkerConfig {
     pub(super) guard_meter: Option<Arc<LimiterMeter>>,
     pub(super) underrun_frames: Option<Arc<AtomicU64>>,
     pub(super) telemetry: bool,
-    pub(super) audio_counters: Option<Arc<crate::audio::output::AudioCallbackCounters>>,
+    pub(super) audio_counters: Option<Arc<crate::audio::telemetry::AudioCallbackCounters>>,
     pub(super) dcc_coupler: DccCoupler,
     pub(super) hop: usize,
     pub(super) hop_duration: Duration,
@@ -36,6 +36,7 @@ pub(super) struct WorkerChannels {
     pub(super) temporal_snapshots:
         [Option<Arc<std::sync::Mutex<crate::temporal_cognition::observation::Snapshot>>>; 2],
     pub(super) ui_tx: Option<Sender<UiFrame>>,
+    #[cfg(feature = "native")]
     pub(super) audio_prod: Option<ringbuf::HeapProd<f32>>,
     pub(super) wav_tx: Option<Sender<Arc<[f32]>>>,
     pub(super) audio_to_analysis_tx: Option<Sender<analysis_worker::AnalysisHop>>,
@@ -52,10 +53,13 @@ pub(super) struct WorkerState {
     pub(super) loo_populations: Vec<u64>,
     pub(super) harmonic_relations:
         Option<crate::temporal_cognition::harmonic_relations::runtime::Runtime>,
+    #[cfg(feature = "native")]
     pub(super) loo_recycle: (
         Sender<Vec<crate::core::stream::loo::SourcePcm>>,
         Receiver<Vec<crate::core::stream::loo::SourcePcm>>,
     ),
+    #[cfg(not(feature = "native"))]
+    pub(super) loo_storage: Option<Vec<crate::core::stream::loo::SourcePcm>>,
     #[cfg(test)]
     pub(super) offline_body_probe: Option<OfflineBodyProbe>,
     pub(super) body_snapshot: Option<Box<crate::temporal_cognition::body::Snapshot>>,
@@ -202,6 +206,7 @@ impl WorkerState {
         pop.expression = expression;
         pop.harmonic_rhythm = cfg.harmonic_rhythm > 0;
         let mut current_landscape: Landscape = landscape;
+        #[cfg(feature = "native")]
         let harmonic_relations = cfg.harmonic_relations.as_ref().map(|(geometry, sources)| {
             let runtime = crate::temporal_cognition::harmonic_relations::runtime::Runtime::new(
                 geometry.clone(),
@@ -212,6 +217,8 @@ impl WorkerState {
             current_landscape.harmonic_recorder = Some(runtime.recorder.clone());
             runtime
         });
+        #[cfg(not(feature = "native"))]
+        let harmonic_relations = None;
         let log_space = current_landscape.space.clone();
         let timebase = crate::core::timebase::Timebase {
             fs: cfg.fs,
@@ -307,17 +314,21 @@ impl WorkerState {
             generator_model,
             hab_ecology,
             hab_listener,
+            #[cfg(feature = "native")]
             loo_recycle: {
                 let (tx, rx) = bounded(1);
                 tx.send(Vec::new()).expect("initial LOO capture storage");
                 (tx, rx)
             },
+            #[cfg(not(feature = "native"))]
+            loo_storage: Some(Vec::new()),
             schedule_renderer: ScheduleRenderer::new(timebase)
                 .with_prototype(cfg.render_prototype)
                 .with_expression(expression),
             scenario_end_tick: None,
             phonation_batches_buf: Vec::new(),
             body_snapshot: None,
+            #[cfg(feature = "native")]
             footprint_worker: cfg.onset_comparison.map(|_| {
                 let mut worker = crate::life::onset_footprint::Worker::new();
                 if cfg.deterministic_footprints {
@@ -325,10 +336,13 @@ impl WorkerState {
                 }
                 worker
             }),
+            #[cfg(not(feature = "native"))]
+            footprint_worker: None,
         }
     }
 }
 
+#[cfg(feature = "native")]
 pub(super) fn worker_loop(
     cfg: WorkerConfig,
     mut channels: WorkerChannels,
@@ -404,7 +418,7 @@ pub(super) fn worker_loop(
         if state.finished && cfg.wait_user_exit {
             if let Some(frame) = state.pending_final_ui_frame.take()
                 && let Some(tx) = &channels.ui_tx
-                && let Err(crossbeam_channel::TrySendError::Full(frame)) = tx.try_send(frame)
+                && let Err(crate::handoff::TrySendError::Full(frame)) = tx.try_send(frame)
             {
                 state.pending_final_ui_frame = Some(frame);
             }
@@ -481,6 +495,7 @@ pub(super) fn worker_loop(
     }
 }
 
+#[cfg(feature = "native")]
 pub(super) fn finish_run(
     cfg: &WorkerConfig,
     channels: &mut WorkerChannels,
@@ -579,8 +594,8 @@ pub(super) fn finish_run(
                 for _ in inbox.rx.try_iter() {}
                 match channels.analysis_result_rx.try_recv() {
                     Ok(_) => {}
-                    Err(crossbeam_channel::TryRecvError::Disconnected) => break,
-                    Err(crossbeam_channel::TryRecvError::Empty) => {
+                    Err(crate::handoff::TryRecvError::Disconnected) => break,
+                    Err(crate::handoff::TryRecvError::Empty) => {
                         thread::sleep(Duration::from_micros(200))
                     }
                 }
@@ -697,17 +712,21 @@ pub(super) fn process_hop(
         begin_allocations();
     }
     let frame_idx = state.frame_idx;
+    #[cfg(feature = "native")]
     let buffer_capacity = channels
         .audio_prod
         .as_ref()
         .map(|prod| prod.capacity().get())
         .unwrap_or(cfg.hop);
+    #[cfg(feature = "native")]
     let occupancy = channels
         .audio_prod
         .as_ref()
         .map(|prod| buffer_capacity.saturating_sub(prod.vacant_len()))
         .unwrap_or(0);
 
+    #[cfg(not(feature = "native"))]
+    let (buffer_capacity, occupancy) = (cfg.hop, 0);
     let now_tick = state.timebase.frame_start_tick(state.frame_idx);
     let now_sec = state.timebase.tick_to_sec(now_tick);
     state.generator_model.advance_to(now_tick);
@@ -807,6 +826,7 @@ pub(super) fn process_hop(
         (!state.loo_populations.is_empty() || state.pop.has_placed_flora).then(|| {
             crate::core::stream::loo::PcmPacket {
                 sources: std::mem::take(&mut state.schedule_renderer.loo_pcm),
+                #[cfg(feature = "native")]
                 recycle: state.loo_recycle.0.clone(),
             }
         });
@@ -894,6 +914,7 @@ pub(super) fn process_hop(
     if finished_now {
         state.playback_state = PlaybackState::Finished;
     }
+    #[cfg(feature = "native")]
     if finished_now && channels.wav_tx.is_some() {
         channels.wav_tx.take();
         info!("[t={:.6}] WAV closed.", state.current_time());
@@ -952,6 +973,7 @@ pub(super) fn process_hop(
         cfg.underrun_frames.as_deref(),
         state.finish_begun,
         cfg.telemetry,
+        #[cfg(feature = "native")]
         state
             .conductor
             .score

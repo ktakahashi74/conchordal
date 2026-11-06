@@ -1,7 +1,7 @@
 //! One raw producer, with independent bounded meter delivery.
 use super::{CHANNELS, Frame, Producer};
 use crate::core::meter::{RECURRENCE_HISTORY_SECONDS, TemporalPacket};
-use crossbeam_channel::{Receiver, Sender, TrySendError};
+use crate::handoff::{Receiver, Sender, TrySendError};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
@@ -152,9 +152,10 @@ impl Inbox {
         self.diagnostics.terminal = Some(*self.final_state.lock().expect("raw T2 final state"));
     }
 }
+#[cfg(feature = "native")]
 pub(crate) fn channel(fs: u32, hop: u64) -> (Output, Inbox) {
     let capacity = (RECURRENCE_HISTORY_SECONDS * fs as f64 / hop as f64).ceil() as usize + 4 + 2;
-    let (tx, rx) = crossbeam_channel::bounded(capacity);
+    let (tx, rx) = crate::handoff::bounded(capacity);
     let final_state = Arc::new(Mutex::new(Terminal::default()));
     (
         Output {

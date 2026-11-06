@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Run the instrument in the browser. A new `web` feature builds the engine without
+  threads, file system or audio I/O, and `StepEngine` advances the worker, ecology
+  analysis and listener analysis one hop at a time. `crates/conchordal-web` plays it
+  through a Web Worker and an AudioWorklet, and `gui/` draws the existing GUI with
+  WebGL. Nothing in the browser saves or sends audio. Native output is unchanged;
+  the browser build is not bit-identical to native (ledger §9.3.130).
+
 - Remove the private Voice self-exposure term. A Voice's exposure to its own position
   acts only through the shared listener habituation, which already erodes its
   leave-self-out score; the other-Voice occupancy term is unchanged. Voices now hold

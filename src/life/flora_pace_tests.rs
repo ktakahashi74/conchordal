@@ -203,8 +203,8 @@ fn pace_one_explicit_matches_default_state() {
 #[test]
 #[ignore = "exclusive timing acquisition; full default extent, identical states"]
 fn flora_pace_advance_cost() {
+    use crate::clock::Instant;
     use std::hint::black_box;
-    use std::time::Instant;
     let (terrain, original) = fixed_flora(512);
     for k in [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0] {
         let mut f = original.clone();

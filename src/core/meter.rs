@@ -97,36 +97,10 @@ fn ioi_window<T: rustfft::num_traits::Float>(period: T) -> T {
 }
 
 /// One metrical level's reported state.
-#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
-pub struct MeterBand {
-    /// Wrapped oscillator phase in [-pi, pi].
-    pub phase: f32,
-    /// Current frequency in Hz.
-    pub freq_hz: f32,
-    /// Limit-cycle amplitude (presence). Not salience.
-    pub amplitude: f32,
-    /// Entrainment confidence in [0, 1] from phase and pattern recurrence. This is the
-    /// salience: a clean quiet beat reads high, a loud wandering beat reads low.
-    pub confidence: f32,
-}
+pub use conchordal_web_ui::frame::MeterBand;
 
 /// Listener-side meter state.
-#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
-pub struct MeterState {
-    /// Tactus (delta-rate beat).
-    pub beat: MeterBand,
-    /// Tatum (theta-rate), mode-locked to the beat at the emergent ratio.
-    pub subdivision: MeterBand,
-    /// Measure: a slow subharmonic of the beat, induced by periodic accent.
-    pub measure: MeterBand,
-    /// Onset / flux drive salience (the force term), kept distinct from
-    /// confidence so reports and UI never blur drive with entrainment.
-    pub attention_level: f32,
-    /// Emergent integer subdivision ratio (2, 3, or 4); 0 when none is detected.
-    pub subdivision_ratio: u8,
-    /// Emergent beats-per-measure (2, 3, or 4); 0 when no accent grouping holds.
-    pub measure_ratio: u8,
-}
+pub use conchordal_web_ui::frame::MeterState;
 
 /// Composer-set terrain shaping for the production meter. These are soft priors
 /// on how a pulse forms, never a schedule: emergence (onset entrainment, accent

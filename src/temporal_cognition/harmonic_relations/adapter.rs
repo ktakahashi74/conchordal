@@ -209,8 +209,8 @@ mod tests {
     #[test]
     #[ignore = "bounded actual-producer integration cost diagnostic; timing lock required"]
     fn hv7_actual_producer_search_cost() {
+        use crate::clock::Instant;
         use crate::core::stream::analysis::AnalysisStream;
-        use std::time::Instant;
         let begin = Instant::now();
         let (nsgt, params) = crate::runtime::body_metabolism_test_core();
         let geometry = Geometry::new(nsgt.space(), &params.harmonicity_kernel);

@@ -211,7 +211,7 @@ fn render_birth_metabolism_flags(
             pcm,
         });
     });
-    let (wav_tx, _wav_rx) = crossbeam_channel::unbounded();
+    let (wav_tx, _wav_rx) = crate::handoff::unbounded();
     let wiring = wire_runtime(
         &config,
         48_000,

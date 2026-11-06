@@ -47,7 +47,10 @@ pub(super) fn build_initial_ui_frame(
         temporal: Default::default(),
         landscape: current_landscape.clone(),
         meta: SimulationMeta {
+            #[cfg(feature = "native")]
             script: conductor.score.as_ref().map(|s| s.stream.status()),
+            #[cfg(not(feature = "native"))]
+            script: None,
             time_sec: now_tick as f64 / fs as f64,
             end: conductor.end(),
             population_count: pop.population_count(),
@@ -137,7 +140,10 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
         listener_rhythm: Vec::new(),
         landscape: input.current_landscape.clone(),
         meta: SimulationMeta {
+            #[cfg(feature = "native")]
             script: input.conductor.score.as_ref().map(|s| s.stream.status()),
+            #[cfg(not(feature = "native"))]
+            script: None,
             time_sec: input.current_time,
             end: input.conductor.end(),
             population_count: input.pop.population_count(),
@@ -296,7 +302,7 @@ pub(super) fn send_runtime_ui_frame(
     state.pending_final_ui_frame = None;
     match tx.try_send(frame) {
         Ok(()) => state.ui_rhythm_hops.clear(),
-        Err(crossbeam_channel::TrySendError::Full(frame))
+        Err(crate::handoff::TrySendError::Full(frame))
             if state.playback_state == PlaybackState::Finished
                 || cfg.exiting.load(Ordering::SeqCst) =>
         {

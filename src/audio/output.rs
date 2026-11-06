@@ -1,7 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::{
     Arc,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
 };
 
 use crate::audio::limiter::{Limiter, LimiterMeter, LimiterMode};
@@ -9,15 +9,15 @@ use crate::audio::limiter::{Limiter, LimiterMeter, LimiterMode};
 use anyhow::{Context, ensure};
 use ringbuf::traits::*;
 use ringbuf::{HeapCons, HeapProd, HeapRb};
-use serde::Serialize;
 use tracing::{debug, info};
 
 #[path = "recovery.rs"]
 mod recovery;
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crate::clock::Instant;
+use crate::handoff::{Receiver, Sender, bounded};
+pub(crate) use recovery::StreamState;
 use recovery::{Recovery, stream_lost};
-pub(crate) use recovery::{STATS_INTERVAL, StreamState};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const PREFERRED_OUTPUT_SAMPLE_RATE: u32 = 48_000;
 
@@ -138,27 +138,7 @@ pub struct AudioOutput {
     recovery: Recovery,
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub(crate) struct AudioDeviceInfo {
-    pub(crate) backend: String,
-    pub(crate) device_name: String,
-    pub(crate) sample_rate: u32,
-    pub(crate) channels: u16,
-    pub(crate) ring_capacity_frames: usize,
-}
-
-#[derive(Default)]
-pub(crate) struct AudioCallbackCounters {
-    pub(crate) callback_count: AtomicU64,
-    pub(crate) callback_frames_total: AtomicU64,
-    pub(crate) underrun_frames: Arc<AtomicU64>,
-    pub(crate) callback_errors_total: AtomicU64,
-    pub(crate) xruns_total: AtomicU64,
-    pub(crate) rebuilds_total: AtomicU64,
-    pub(crate) recovering: AtomicBool,
-    pub(crate) failed: AtomicBool,
-    stream_lost: AtomicBool,
-}
+pub(crate) use super::telemetry::{AudioCallbackCounters, AudioDeviceInfo};
 
 struct CallbackState {
     consumer: HeapCons<f32>,

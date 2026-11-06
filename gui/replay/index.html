@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conchordal — display replay</title>
+<style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#1b1b1b}canvas{width:100%;height:100%;display:block}#status{position:absolute;top:50%;left:25%;color:white;font:16px sans-serif}</style>
+<canvas id="canvas"></canvas><div id="status">Loading display snapshots…</div>
+<script type="module">
+import init, { WebGui } from './pkg/conchordal_web_ui.js';
+try {
+  await init();
+  const gui = new WebGui();
+  await gui.start(document.querySelector('canvas'));
+  const response = await fetch('./frames.jsonl');
+  if (!response.ok) throw new Error(`Snapshots: HTTP ${response.status}`);
+  const encoder = new TextEncoder();
+  const packets = [], times = [];
+  function retain(line) {
+    if (!line.trim()) return;
+    packets.push(encoder.encode(line));
+    // Only read the timestamp from parsed JSON; retain original bytes for u64 IDs.
+    times.push(JSON.parse(line).frame.meta.time_sec);
+  }
+  let pending = '';
+  for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
+    pending += chunk;
+    let newline;
+    while ((newline = pending.indexOf('\n')) >= 0) {
+      retain(pending.slice(0, newline)); pending = pending.slice(newline + 1);
+    }
+  }
+  retain(pending);
+  if (!packets.length) throw new Error('No display snapshots');
+  document.querySelector('#status').remove();
+  let index = 0, running = true, start = performance.now(), offset = times[0];
+  window.gui = gui;
+  window.packets = packets;
+  window.commands = [];
+  window.pauseReplay = () => { running = false; };
+  window.replay = { frames: packets.length, times, finished: false };
+  gui.push_snapshot(packets[index++]);
+  function tick() {
+    for (const command of JSON.parse(gui.take_commands())) {
+      window.commands.push(command);
+      if (command === 'exit' || command === 'end') running = false;
+      if (command === 'start') { running = true; start = performance.now(); offset = times[index] ?? times[0]; }
+    }
+    if (running) {
+      const time = offset + (performance.now() - start) / 1000;
+      while (index < packets.length && times[index] <= time) gui.push_snapshot(packets[index++]);
+      window.replay.finished = index === packets.length;
+    }
+    requestAnimationFrame(tick);
+  }
+  window.feedAll = async function() {
+    running = false;
+    gui.set_measurement(true);
+    const raf = [];
+    let previous = performance.now();
+    for (const packet of packets) {
+      await new Promise(requestAnimationFrame);
+      const now = performance.now(); raf.push(now - previous); previous = now;
+      gui.push_snapshot(packet);
+    }
+    await new Promise(requestAnimationFrame);
+    return { ...JSON.parse(gui.metrics()), raf_ms: raf, layout: JSON.parse(gui.layout_check()), frames: packets.length };
+  };
+  window.codecAll = function() {
+    gui.set_measurement(true);
+    for (const packet of packets) gui.benchmark_codec(packet);
+    return JSON.parse(gui.metrics());
+  };
+  requestAnimationFrame(tick);
+} catch (error) {
+  const status = document.querySelector('#status') ?? document.body.appendChild(Object.assign(document.createElement('div'), { id: 'status' }));
+  status.textContent = String(error);
+  window.replayError = String(error);
+}
+</script>
+</html>

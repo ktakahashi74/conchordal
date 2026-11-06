@@ -1,3 +1,4 @@
+use crate::clock::Instant;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::temporal_expectation::{AcousticTemporalExpectation, OwnSoundHistory};
 use crate::core::timebase::{Tick, Timebase};
@@ -8,7 +9,6 @@ use crate::life::sound::Tone;
 use crate::life::voice::PhonationBatch;
 use crate::scenario::control::Routing;
 use std::collections::BTreeMap;
-use std::time::Instant;
 use tracing::debug;
 
 #[derive(Clone, Default)]
@@ -592,6 +592,7 @@ impl ScheduleRenderer {
         let mut checkpoint = self.profile.as_ref().map(|_| Instant::now());
         self.profile = self.profile.map(|_| RenderProfile::default());
         let hop = self.time.hop;
+        #[cfg(feature = "native")]
         if let Some(capture) = self.body_capture.as_mut() {
             capture.begin(now);
         }
@@ -794,6 +795,7 @@ impl ScheduleRenderer {
         }
         let history_us = profile_lap(&mut checkpoint);
 
+        #[cfg(feature = "native")]
         if let Some(capture) = self.body_capture.as_mut() {
             capture.end();
         }

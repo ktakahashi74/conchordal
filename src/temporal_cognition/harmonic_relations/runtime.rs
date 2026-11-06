@@ -1,13 +1,16 @@
 //! Executed-record adapter and an independent, nonblocking prediction worker.
 use super::{adapter::Adapter, consumer::Decision, *};
+use crate::clock::Instant;
 use crate::core::harmonic_support::{Geometry, Snapshot, preview::Observer};
-use crossbeam_channel::{Receiver, Sender, TrySendError, bounded};
+#[cfg(feature = "native")]
+use crate::handoff::bounded;
+use crate::handoff::{Receiver, Sender, TrySendError};
 use std::sync::{
     Arc,
     atomic::{AtomicU64, Ordering},
 };
+#[cfg(feature = "native")]
 use std::thread::JoinHandle;
-use std::time::Instant;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Record {
@@ -127,6 +130,7 @@ pub(crate) struct Recorder {
     latest_received_query: Arc<AtomicU64>,
 }
 impl Recorder {
+    #[cfg(feature = "native")]
     pub(crate) fn channel() -> (Self, Receiver<Record>) {
         let (sender, records) = bounded(UMAX);
         let recorder = Self {
@@ -253,6 +257,7 @@ pub(crate) struct Runtime {
     input: Option<Sender<Input>>,
     output: Receiver<Publication>,
     metrics: Arc<WorkMetrics>,
+    #[cfg(feature = "native")]
     thread: Option<JoinHandle<()>>,
     expected_query: u64,
     requested_query: Arc<AtomicU64>,
@@ -276,13 +281,14 @@ pub(crate) struct Runtime {
 }
 
 impl Runtime {
+    #[cfg(feature = "native")]
     pub(crate) fn new(
         geometry: Arc<Geometry>,
         sample_rate: u32,
         hop: usize,
         sources: usize,
     ) -> Self {
-        let startup = std::time::Instant::now();
+        let startup = crate::clock::Instant::now();
         let (recorder, records) = Recorder::channel();
         let (input, receiver) = bounded(UMAX);
         let (publication, output) = bounded(1);
@@ -487,7 +493,7 @@ impl Runtime {
                     if needs_prediction && query != requested.load(Ordering::Acquire) {
                         skipped.fetch_add(1, Ordering::Relaxed);
                     } else if needs_prediction {
-                        let query_start = std::time::Instant::now();
+                        let query_start = crate::clock::Instant::now();
                         match model.predict_latest(next as f64 / f64::from(sample_rate), query) {
                             Ok(prediction) => {
                                 let mut decision = Decision::new(
@@ -612,6 +618,7 @@ impl Runtime {
         }
     }
 
+    #[cfg(feature = "native")]
     pub(crate) fn finish(&mut self) {
         if self.thread.is_none() {
             return;
@@ -621,6 +628,7 @@ impl Runtime {
         if let Some(input) = self.input.take() {
             let _ = input.send(Input::Finish);
         }
+        #[cfg(feature = "native")]
         if let Some(thread) = self.thread.take()
             && thread.join().is_err()
         {
@@ -631,6 +639,7 @@ impl Runtime {
             .store(join_start.elapsed().as_nanos() as u64, Ordering::Relaxed);
     }
 
+    #[cfg(feature = "native")]
     pub(crate) fn summary(&self) -> serde_json::Value {
         let memory = |r: Resources| {
             serde_json::json!({
@@ -909,6 +918,7 @@ impl Runtime {
 
 impl Drop for Runtime {
     fn drop(&mut self) {
+        #[cfg(feature = "native")]
         self.finish();
     }
 }
@@ -1069,9 +1079,9 @@ mod tests {
             trajectory: None,
         });
         runtime.collect(1024);
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let deadline = crate::clock::Instant::now() + std::time::Duration::from_secs(5);
         let prediction = loop {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            let remaining = deadline.saturating_duration_since(crate::clock::Instant::now());
             let decision = runtime
                 .output
                 .recv_timeout(remaining)

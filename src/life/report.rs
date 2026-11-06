@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(feature = "native")]
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
@@ -15,7 +16,10 @@ use crate::scenario::{ScaffoldConfig, SceneMarker};
 
 #[derive(Debug)]
 pub struct JsonlReporter {
+    #[cfg(feature = "native")]
     writer: BufWriter<File>,
+    #[cfg(not(feature = "native"))]
+    writer: BufWriter<Vec<u8>>,
     rhythm_onsets: Vec<OnsetSample>,
     rhythm_observations: Vec<RhythmObservation>,
     listener_beat_confidence: Vec<(f64, f32)>,
@@ -496,6 +500,7 @@ impl JsonlReporter {
         Ok(())
     }
 
+    #[cfg(feature = "native")]
     pub fn create(path: &str) -> Result<Self, String> {
         let file = File::create(path).map_err(|err| format!("create report {path}: {err}"))?;
         Ok(Self {

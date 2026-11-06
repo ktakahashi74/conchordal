@@ -1,6 +1,6 @@
 //! Named AMT16 component composition, before author-defined event mapping.
+use crate::clock::Instant;
 use std::f64::consts::PI;
-use std::time::Instant;
 
 pub(crate) const CHANNELS: usize = 30;
 pub(crate) const MODEL: &str = "amt16-t2-limit10-lp2.5-bp5-bp10-bp50over3-v1";

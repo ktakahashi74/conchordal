@@ -1,10 +1,11 @@
+#[cfg(feature = "native")]
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::sync::{Arc, atomic::Ordering};
 
 use serde::Serialize;
 
-use crate::audio::output::{AudioCallbackCounters, AudioDeviceInfo};
+use crate::audio::telemetry::{AudioCallbackCounters, AudioDeviceInfo};
 
 pub(crate) const PROFILE_HOP_CAPACITY: usize = 100_000;
 
@@ -85,6 +86,7 @@ pub(crate) struct BackgroundProfile {
 #[derive(Serialize)]
 pub(crate) struct RunProfile {
     #[serde(skip)]
+    #[cfg(feature = "native")]
     file: File,
     #[serde(skip)]
     audio_counters: Option<Arc<AudioCallbackCounters>>,
@@ -112,6 +114,7 @@ pub(crate) struct RunProfile {
 
 impl RunProfile {
     #[allow(clippy::too_many_arguments)]
+    #[cfg(feature = "native")]
     pub(crate) fn create(
         path: &str,
         seed: u64,
@@ -178,6 +181,7 @@ impl RunProfile {
         }
     }
 
+    #[cfg(feature = "native")]
     pub(crate) fn write(mut self) -> Result<(), String> {
         if let (Some(audio), Some(counters)) = (&mut self.audio, &self.audio_counters) {
             audio.callback_count = counters.callback_count.load(Ordering::Relaxed);

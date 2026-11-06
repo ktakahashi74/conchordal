@@ -236,8 +236,8 @@ fn long_mixed_lifecycle_stays_bounded_without_duplicating_generation_or_link_wei
 #[test]
 #[ignore = "release ridge update cost; no fitted acoustic scale or full O04 workload"]
 fn ridge_update_cost_probe() {
+    use crate::clock::Instant;
     use std::hint::black_box;
-    use std::time::Instant;
 
     for count in [1, 7] {
         let mut t = tracker();

@@ -1,13 +1,23 @@
+use crate::clock::Instant;
+#[cfg(feature = "native")]
 use std::path::Path;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
+#[cfg(feature = "native")]
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tracing::*;
 
-use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
+#[cfg(feature = "native")]
+use crate::handoff::bounded;
+#[cfg(feature = "native")]
+use crate::handoff::{Receiver, Sender};
+#[cfg(not(feature = "native"))]
+use crate::handoff::{Slot as Receiver, Slot as Sender};
+use crate::handoff::{TryRecvError, TrySendError};
+#[cfg(feature = "native")]
 use ringbuf::traits::Observer;
 
 use crate::audio::limiter::{LimiterMeter, LimiterMode};
@@ -44,9 +54,7 @@ use crate::viewdata::{
     DorsalFrame, ListenerFrame, PlaybackState, PredictionFrame, SimulationMeta, SpecFrame, UiFrame,
     VoiceStateInfo, WaveFrame,
 };
-use crate::{
-    audio::output::AudioOutput, config::AppConfig, core::harmonicity_kernel::HarmonicityParams,
-};
+use crate::{config::AppConfig, core::harmonicity_kernel::HarmonicityParams};
 
 const MAX_LANDSCAPE_LAG_FRAMES: u64 = 1;
 #[cfg(test)]
@@ -61,6 +69,7 @@ mod analysis_sync;
 mod monitor;
 mod phases;
 mod scenario_load;
+pub mod step;
 mod ui_frame;
 mod wiring;
 mod worker;
@@ -74,8 +83,11 @@ use ui_frame::*;
 use wiring::*;
 use worker::*;
 
+#[cfg(feature = "native")]
 pub use scenario_load::{compile_scenario_from_script, run_compile_only};
+#[cfg(feature = "native")]
 pub(crate) use wiring::{init_runtime, join_runtime, join_thread};
+#[cfg(feature = "native")]
 pub use wiring::{run_headless, run_render};
 
 fn report_try<F>(reporter: &mut Option<JsonlReporter>, label: &str, f: F)
@@ -154,3 +166,6 @@ pub(crate) mod l1_probe;
 #[cfg(test)]
 #[path = "../../tests/support/test_output_directory.rs"]
 pub(crate) mod test_output_directory;
+
+#[cfg(feature = "native")]
+use crate::audio::output::AudioOutput;

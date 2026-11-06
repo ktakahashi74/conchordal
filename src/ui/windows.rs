@@ -1,4 +1,4 @@
-use crate::core::db::amp_to_db;
+use super::model::amp_to_db;
 use crate::ui::plots::{
     METER_DISPLAY_CONFIDENCE_MIN, beat_strobe_legend, beat_strobe_plot, draw_harmony_circle,
     draw_meter_circle, draw_roughness_harmonicity, log2_plot_hz, plot_population_dynamics,
@@ -13,9 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Span of the scrolling listener plots, in stream seconds.
 pub const TIME_WINDOW_SEC: f64 = 5.0;
 
-fn consonance_field_score_axis_bounds(
-    kernel: crate::core::consonance_kernel::ConsonanceKernel,
-) -> (f64, f64) {
+fn consonance_field_score_axis_bounds(kernel: super::model::ConsonanceKernel) -> (f64, f64) {
     let mut y_min = -1.0f32;
     let mut y_max = 1.0f32;
 
@@ -354,7 +352,7 @@ fn e0_details(ui: &mut egui::Ui, prediction: &crate::viewdata::ListenerPredictio
     }
 }
 
-fn meter_band_label(name: &str, band: crate::core::meter::MeterBand) -> String {
+fn meter_band_label(name: &str, band: super::model::MeterBand) -> String {
     let confidence = band.confidence.clamp(0.0, 1.0);
     let freq_text = if confidence < METER_DISPLAY_CONFIDENCE_MIN {
         "--.--".to_string()
@@ -369,7 +367,7 @@ fn meter_band_label(name: &str, band: crate::core::meter::MeterBand) -> String {
     format!("{name} {freq_text}Hz c{confidence:>4.2}")
 }
 
-fn meter_ratio_labels(meter: &crate::core::meter::MeterState) -> (String, String) {
+fn meter_ratio_labels(meter: &super::model::MeterState) -> (String, String) {
     let sub = if meter.subdivision_ratio > 0 {
         format!("Sub ratio  x{}", meter.subdivision_ratio)
     } else {
@@ -524,236 +522,155 @@ fn draw_listener_dashboard(
     // `horizontal_top` would start the row at the full available height, which
     // inside the page ScrollArea is the whole viewport.
     let row_size = Vec2::new(ui.available_width(), ui.spacing().interact_size.y);
-    ui.allocate_ui_with_layout(row_size, egui::Layout::left_to_right(egui::Align::Min), |ui| {
-        ui.allocate_ui_with_layout(
-            Vec2::new(left_width, dashboard_height),
-            egui::Layout::top_down(egui::Align::LEFT),
-            |ui| {
-                ui.spacing_mut().item_spacing.y = 2.0;
-                ui.horizontal(|ui| {
-                    ui.heading("Audio");
-                    ui.separator();
-                    ui.label("Peak level:");
-                    fixed_text_label(
-                        ui,
-                        peak_level_text(frame.meta.peak_level),
-                        68.0,
-                        peak_level_color(ui, frame.meta.peak_level),
+    ui.allocate_ui_with_layout(
+        row_size,
+        egui::Layout::left_to_right(egui::Align::Min),
+        |ui| {
+            ui.allocate_ui_with_layout(
+                Vec2::new(left_width, dashboard_height),
+                egui::Layout::top_down(egui::Align::LEFT),
+                |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    ui.horizontal(|ui| {
+                        ui.heading("Audio");
+                        ui.separator();
+                        ui.label("Peak level:");
+                        fixed_text_label(
+                            ui,
+                            peak_level_text(frame.meta.peak_level),
+                            68.0,
+                            peak_level_color(ui, frame.meta.peak_level),
+                        );
+                    });
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(left_width, audio_height),
+                        egui::Layout::left_to_right(egui::Align::Min),
+                        |ui| {
+                            draw_level_meters(
+                                ui,
+                                frame.meta.channel_peak[0],
+                                frame.meta.window_peak[0],
+                                frame.meta.channel_peak[1],
+                                frame.meta.window_peak[1],
+                                audio_height,
+                                0.45,
+                            );
+
+                            ui.separator();
+                            let available_wave_width = ui.available_width().max(0.0);
+                            let wave_width = (available_wave_width * 0.5)
+                                .max(120.0)
+                                .min(available_wave_width);
+                            ui.allocate_ui_with_layout(
+                                Vec2::new(wave_width, audio_height),
+                                egui::Layout::top_down(egui::Align::LEFT),
+                                |ui| {
+                                    time_plot(
+                                        ui,
+                                        "Current Hop Wave",
+                                        frame.wave.fs as f64,
+                                        frame.wave.samples.as_ref(),
+                                        audio_height,
+                                        false,
+                                    );
+                                },
+                            );
+                        },
                     );
-                });
-                ui.allocate_ui_with_layout(
-                    Vec2::new(left_width, audio_height),
-                    egui::Layout::left_to_right(egui::Align::Min),
-                    |ui| {
-                        draw_level_meters(
-                            ui,
-                            frame.meta.channel_peak[0],
-                            frame.meta.window_peak[0],
-                            frame.meta.channel_peak[1],
-                            frame.meta.window_peak[1],
-                            audio_height,
-                            0.45,
-                        );
 
-                        ui.separator();
-                        let available_wave_width = ui.available_width().max(0.0);
-                        let wave_width = (available_wave_width * 0.5)
-                            .max(120.0)
-                            .min(available_wave_width);
-                        ui.allocate_ui_with_layout(
-                            Vec2::new(wave_width, audio_height),
-                            egui::Layout::top_down(egui::Align::LEFT),
-                            |ui| {
-                                time_plot(
-                                    ui,
-                                    "Current Hop Wave",
-                                    frame.wave.fs as f64,
-                                    frame.wave.samples.as_ref(),
-                                    audio_height,
-                                    false,
-                                );
-                            },
-                        );
-                    },
-                );
-
-                ui.separator();
-                ui.horizontal(|ui| {
-                    draw_meter_circle(ui, rhythm_history, window_end, circle_side);
-                    draw_harmony_circle(ui, &frame.landscape, harmony_history, circle_side);
-                });
-                draw_listener_state_readout(ui, frame);
-            },
-        );
-
-        ui.separator();
-        let right_width = ui.available_width().max(0.0);
-        ui.allocate_ui_with_layout(
-            Vec2::new(right_width, dashboard_height),
-            egui::Layout::top_down(egui::Align::LEFT),
-            |ui| {
-
-                if let Some(body) = &frame.body {
-                    ui.heading("Private body descriptors (uncalibrated)");
-                    if let Some(version) = body.prototype_model_version {
-                        ui.label(format!("Prototype model {:02x}{:02x}{:02x}{:02x} (diagnostic)", version[0], version[1], version[2], version[3]));
-                    }
-                    ui.label(format!("{} frames · {} capture drops · {} outside-capacity voice hops · {} invalid bus hops",
-                        body.processed_frames, body.capture_drops, body.outside_voice_hops, body.invalid_hops));
-                    for (index, record) in body.records.iter().enumerate().filter(|(_, r)| r.active).take(4) {
-                        ui.label(format!("Voice {} / {} · body {} · bus {} · support {}..{} · mask {:06b}",
-                            record.source_id, record.source_generation, record.body_generation, record.bus,
-                            record.start, record.end, record.mask));
-                        if body.prototype_model_version.is_some() {
-                            if let Some(assignment) = body.prototype_assignments[index] {
-                                ui.label(format!("Descriptive medoid {} · distance {:.3} · {} coordinates", assignment.key.0, assignment.distance, assignment.common_coordinates));
-                            } else {
-                                ui.label("Descriptive medoid: unsupported");
-                            }
-                        }
-                    }
                     ui.separator();
-                }
-                ui.heading("Listener Twin");
-                if frame.temporal.iter().any(|s| {
-                    s.state != crate::temporal_cognition::observation::ObservationState::Off
-                }) {
-                    ui.label("Temporal context: observing; relations unavailable");
-                    for observation in frame.temporal.iter() {
-                        let bus = if observation.bus == 0 {
-                            "Habitat"
-                        } else {
-                            "Presentation"
-                        };
-                        ui.label(format!(
-                            "{bus}: {:?} · {} frames · {} dropped",
-                            observation.state,
-                            observation.received_frames,
-                            observation.delivery_dropped_frames
-                        ));
-                        if let Some(trajectories) = observation.trajectories {
-                            ui.label(format!(
-                                "{} spectral peaks · residual energy {:.3e}",
-                                trajectories.peak_bins.iter().flatten().count(),
-                                trajectories.energy[7]
-                            ));
-                        }
-                        if observation.ridge_failed {
-                            ui.label("Ridge diagnostics: failed for this source epoch");
-                        } else if let Some(ridges) = observation.ridges {
-                            if ridges.observed {
-                                ui.label(format!(
-                                    "{} acoustic ridges · research scales, uncalibrated",
-                                    ridges.current.iter().flatten().count()
-                                ));
-                            } else {
-                                ui.label("Ridge diagnostics: awaiting supported audio");
+                    ui.horizontal(|ui| {
+                        draw_meter_circle(ui, rhythm_history, window_end, circle_side);
+                        draw_harmony_circle(ui, &frame.landscape, harmony_history, circle_side);
+                    });
+                    draw_listener_state_readout(ui, frame);
+                },
+            );
+
+            ui.separator();
+            let right_width = ui.available_width().max(0.0);
+            ui.allocate_ui_with_layout(
+                Vec2::new(right_width, dashboard_height),
+                egui::Layout::top_down(egui::Align::LEFT),
+                |ui| {
+                    for diagnostic in super::model::diagnostics(frame) {
+                        match diagnostic {
+                            super::model::Diagnostic::Heading(text) => {
+                                ui.heading(text);
+                            }
+                            super::model::Diagnostic::Label(text) => {
+                                ui.label(text);
+                            }
+                            super::model::Diagnostic::Separator => {
+                                ui.separator();
                             }
                         }
-                        if let Some(context) = observation.group_prototypes {
-                            ui.label(format!("Prototype/group matches: {} · {} descriptors · support end {}",
-                                context.assignments.iter().flatten().count(), context.descriptors.iter().flatten().count(), context.end_sample));
-                        }
-
-
-
-                        if observation.acoustic_failed {
-                            ui.label("Acoustic diagnostics: failed for this source epoch");
-                        } else if let Some(acoustic) = observation.acoustic {
-                            ui.label(format!(
-                                "{} sound groups · {} raw descriptors · {} accents · uncalibrated",
-                                acoustic.retained_groups.iter().flatten().count(),
-                                acoustic.features.iter().flatten().count(),
-                                acoustic
-                                    .features
-                                    .iter()
-                                    .flatten()
-                                    .filter(|f| { f.detector.is_some_and(|d| d.accent.is_some()) })
-                                    .count(),
-                            ));
-                        }
-                        if let Some(error) = observation.context_error {
-                            ui.label(format!("Observed context: {error}"));
-                        } else if let Some(context) = observation.context {
-                            ui.label(format!("Observed context · coverage {:.0}% · {} groups{}",
-                                100. * context.observed_coverage,
-                                context.groups.iter().flatten().count(),
-                                if context.censored { " · censored" } else { "" }));
-                            for g in context.groups.iter().flatten() {
-                                ui.label(format!("Group {} · {} hops · {} accents · weight {:.3} · arrival {:?}",
-                                    g.group.generation, g.history_hops, g.accents, g.acoustic_weight,
-                                    g.arrival_probability));
-                            }
-                        }
-                        if let Some(error)=observation.period_error {
-                            ui.label(format!("Period / arrival diagnostics: {error}"));
-                        } else if let Some(period)=observation.period {
-                            for group in period.groups.iter().flatten().filter(|g|g.active) {
-                                ui.label(format!("Group {}: {} accents · {} period alternatives · uncalibrated",group.ledger.group.generation,group.ledger.retained_accents,group.peaks.iter().flatten().count()));
-                                if let Some(f)=group.forecast {
-                                    ui.label(format!("{:?} arrival {:?} · elapsed {:?} s · reset unknown {} · forecast {}–{} · evidence {}–{} / available {}",f.model,f.probability,f.elapsed_seconds,f.reset_unknown,f.issued_at,f.horizon_end,f.source_start,f.source_end,f.available));
-                                }
-                            }
-                        }
-
-
                     }
-                }
-                let old_spacing = ui.spacing().item_spacing;
-                ui.spacing_mut().item_spacing.y = 0.0;
-                ui.label("Auditory salience");
-                spectrum_time_freq_axes(
-                    ui,
-                    dorsal_history,
-                    plot_height,
-                    window_start,
-                    window_end,
-                    Some(time_link_id),
-                );
-                ui.separator();
-                ui.horizontal(|ui| {
-                    ui.label("Listener Meter");
-                    if frame.listener.has_fast_state {
-                        let meter = frame.listener.meter;
-                        let (sub_label, measure_label) = meter_ratio_labels(&meter);
-                        ui.separator();
-                        fixed_rhythm_label(
-                            ui,
-                            meter_band_label("Beat", meter.beat),
-                            egui::Color32::from_rgb(80, 180, 255),
-                        );
-                        fixed_rhythm_label(
-                            ui,
-                            meter_band_label("Sub", meter.subdivision),
-                            egui::Color32::from_rgb(70, 225, 135),
-                        );
-                        fixed_rhythm_label(ui, sub_label, egui::Color32::from_rgb(255, 215, 60));
-                        fixed_rhythm_label(
-                            ui,
-                            measure_label,
-                            egui::Color32::from_rgb(255, 110, 90),
-                        );
-                    }
-                });
-                ui.columns(2, |columns| {
-                    beat_strobe_legend(&mut columns[0]);
-                    beat_strobe_plot(&mut columns[0], rhythm_history, strobe_height, window_end);
-                    columns[1].horizontal(|ui| {
-                        ui.label("30 s");
-                        for (name, color) in [
-                            ("Beat", Color32::from_rgb(80, 180, 255)),
-                            ("Sub", Color32::from_rgb(70, 225, 135)),
-                            ("Measure", Color32::from_rgb(255, 110, 90)),
-                        ] {
-                            ui.colored_label(color, name);
+                    let old_spacing = ui.spacing().item_spacing;
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    ui.label("Auditory salience");
+                    spectrum_time_freq_axes(
+                        ui,
+                        dorsal_history,
+                        plot_height,
+                        window_start,
+                        window_end,
+                        Some(time_link_id),
+                    );
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        ui.label("Listener Meter");
+                        if frame.listener.has_fast_state {
+                            let meter = frame.listener.meter;
+                            let (sub_label, measure_label) = meter_ratio_labels(&meter);
+                            ui.separator();
+                            fixed_rhythm_label(
+                                ui,
+                                meter_band_label("Beat", meter.beat),
+                                egui::Color32::from_rgb(80, 180, 255),
+                            );
+                            fixed_rhythm_label(
+                                ui,
+                                meter_band_label("Sub", meter.subdivision),
+                                egui::Color32::from_rgb(70, 225, 135),
+                            );
+                            fixed_rhythm_label(
+                                ui,
+                                sub_label,
+                                egui::Color32::from_rgb(255, 215, 60),
+                            );
+                            fixed_rhythm_label(
+                                ui,
+                                measure_label,
+                                egui::Color32::from_rgb(255, 110, 90),
+                            );
                         }
                     });
-                    rhythm_slow_plots(&mut columns[1], rhythm_history, window_end);
-                });
-                ui.spacing_mut().item_spacing = old_spacing;
-            },
-        );
-    });
+                    ui.columns(2, |columns| {
+                        beat_strobe_legend(&mut columns[0]);
+                        beat_strobe_plot(
+                            &mut columns[0],
+                            rhythm_history,
+                            strobe_height,
+                            window_end,
+                        );
+                        columns[1].horizontal(|ui| {
+                            ui.label("30 s");
+                            for (name, color) in [
+                                ("Beat", Color32::from_rgb(80, 180, 255)),
+                                ("Sub", Color32::from_rgb(70, 225, 135)),
+                                ("Measure", Color32::from_rgb(255, 110, 90)),
+                            ] {
+                                ui.colored_label(color, name);
+                            }
+                        });
+                        rhythm_slow_plots(&mut columns[1], rhythm_history, window_end);
+                    });
+                    ui.spacing_mut().item_spacing = old_spacing;
+                },
+            );
+        },
+    );
 }
 
 /// === Main window ===
@@ -986,14 +903,8 @@ pub fn main_window(
                         .show_ui(ui, |ui| { for voice in &frame.voices { ui.selectable_value(&mut selected, voice.id, format!("Voice {}", voice.id)); } });
                     ui.ctx().data_mut(|data| data.insert_temp(id, selected));
                     if let Some(voice) = frame.voices.iter().find(|v| v.id == selected) {
-                        if let Some(reference) = &voice.support {
+                        if let Some(scans) = super::model::support_scans(voice, frame.landscape.space.n_bins()) {
                             ui.label(if voice.support_template.is_some() { "Body partials reading first-order fields; PCM self-excluded reference" } else { "Single partial at the nominal pitch and level (no spectral self-report); PCM self-excluded reference." });
-                            let mut scans = std::array::from_fn(|_| vec![0.; frame.landscape.space.n_bins()]);
-                            if let Some(template) = &voice.support_template {
-                                for i in 0..frame.landscape.space.n_bins() {
-                                    for (scan, value) in scans.iter_mut().zip(reference.template_features(i, template)) { scan[i] = value; }
-                                }
-                            } else { reference.single_partial_scan(voice.support_single_density, &mut scans); }
                             for (name, scan) in ["dC (first order)", "dD (first order)", "N"].into_iter().zip(scans) {
                                 let values: Vec<_> = scan.into_iter().map(|v| v as f32).collect();
                                 let lo = values.iter().copied().fold(0., f32::min);

@@ -1,7 +1,9 @@
 use crate::core::nsgt_kernel::KernelAlign;
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "native")]
 use std::fs;
+#[cfg(feature = "native")]
 use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -776,13 +778,23 @@ impl AppConfig {
         self
     }
 
+    /// Parse, validate and round configuration supplied by a host. Empty input uses defaults.
+    pub fn from_toml(source: &str) -> Result<Self> {
+        let mut config: Self = toml::from_str(source).context("failed to parse configuration")?;
+        config.validate()?;
+        config.round_f32_inplace();
+        Ok(config)
+    }
+
     /// Loads an explicit path, or creates config.toml when no path was given.
     /// An existing but unreadable or malformed file (including unknown keys)
     /// is a hard error: a mistyped key must not silently fall back to a default.
+    #[cfg(feature = "native")]
     pub fn load_or_default(path: Option<&str>) -> Result<Self> {
         Self::load_config(path.unwrap_or("config.toml"), path.is_none())
     }
 
+    #[cfg(feature = "native")]
     fn load_config(path: &str, create_default: bool) -> Result<Self> {
         let path_obj = Path::new(path);
         if path_obj.exists() {

@@ -17,6 +17,7 @@ macro_rules! numeric_overloads {
 use super::*;
 
 impl ScriptHost {
+    #[cfg(feature = "native")]
     pub(crate) fn start_source(
         source: String,
         seed: Option<u64>,
@@ -74,6 +75,7 @@ impl ScriptHost {
         }
     }
 
+    #[cfg(feature = "native")]
     pub(crate) fn load_incremental(
         path: &str,
         seed: Option<u64>,
@@ -129,6 +131,7 @@ impl ScriptHost {
 
     pub fn create_engine(ctx: Arc<Mutex<ScriptContext>>) -> Engine {
         let mut engine = Engine::new();
+        #[cfg(feature = "native")]
         if let Some(stream) = ctx.lock().unwrap().stream.clone() {
             engine.on_progress(move |_| {
                 use std::sync::atomic::Ordering;
@@ -177,6 +180,7 @@ impl ScriptHost {
                 ).into());
             }
             ctx.scenario.end = ScenarioEnd::Open;
+            #[cfg(feature = "native")]
             if let Some(stream) = ctx.stream.clone() {
                 for marker in std::mem::take(&mut ctx.scenario.scene_markers) {
                     stream.push(score::ScoreItem::Marker(marker)).map_err(|error|
@@ -2733,6 +2737,7 @@ impl ScriptHost {
     /// Loads and evaluates a scenario script. `seed`, when given, seeds the
     /// fresh scenario before evaluation; a script-level `seed()` call still
     /// wins, since it runs during evaluation and overwrites it.
+    #[cfg(feature = "native")]
     pub fn load_script(path: &str, seed: Option<u64>) -> Result<Scenario, ScriptError> {
         let (scenario, warnings) = Self::load_script_with_warnings(path, seed)?;
         for warning in warnings {
@@ -2745,20 +2750,57 @@ impl ScriptHost {
     }
 
     /// Evaluate the script and return positioned diagnostics to CLI and test consumers.
+    #[cfg(feature = "native")]
     pub fn load_script_with_warnings(
         path: &str,
         seed: Option<u64>,
     ) -> Result<(Scenario, Vec<ScriptWarning>), ScriptError> {
         let src = fs::read_to_string(path)
             .map_err(|err| ScriptError::new(format!("{path}: {err}"), None))?;
+        Self::evaluate_source(&src, seed, Some(path), false)
+    }
+
+    /// Evaluate a finite scene without accessing files or starting a score producer.
+    pub fn compile_source(
+        source: &str,
+        seed: Option<u64>,
+    ) -> Result<(Scenario, Vec<ScriptWarning>), ScriptError> {
+        Self::evaluate_source(source, seed, None, true)
+    }
+
+    fn evaluate_source(
+        source: &str,
+        seed: Option<u64>,
+        path: Option<&str>,
+        finite_only: bool,
+    ) -> Result<(Scenario, Vec<ScriptWarning>), ScriptError> {
+        #[cfg(not(feature = "native"))]
+        if seed.is_none() {
+            return Err(ScriptError::new(
+                "provide a seed or host entropy for web execution",
+                None,
+            ));
+        }
         let ctx = Arc::new(Mutex::new(match seed {
             Some(seed) => ScriptContext::with_seed(seed),
             None => ScriptContext::default(),
         }));
-        let engine = Self::create_engine(ctx.clone());
+        let mut engine = Self::create_engine(ctx.clone());
+        if finite_only {
+            engine.register_fn(
+                "endless",
+                |call: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
+                    Err(EvalAltResult::ErrorRuntime(
+                        "endless is unavailable in a step engine".into(),
+                        call.call_position(),
+                    )
+                    .into())
+                },
+            );
+        }
         let value = engine
-            .eval::<Dynamic>(&src)
-            .map_err(|err| ScriptError::from_eval(err, Some(path)))?;
+            .eval::<Dynamic>(source)
+            .map_err(|err| ScriptError::from_eval(err, path))?;
         let mut ctx = ctx.lock().expect("lock script context");
         if ctx.scenario.end != ScenarioEnd::Open && !value.is_unit() {
             return Err(ScriptError::from_eval(
@@ -2768,7 +2810,7 @@ impl ScriptHost {
                     Position::NONE,
                 )
                 .into(),
-                Some(path),
+                path,
             ));
         }
         ctx.finish();

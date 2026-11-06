@@ -542,7 +542,7 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
             seen[1] |= state.listener_twin.spectral_history.is_some();
             previous.copy_from_slice(reference.process_hop(pcm[0]));
         }));
-        let (ui_tx, ui_rx) = crossbeam_channel::unbounded();
+        let (ui_tx, ui_rx) = crate::handoff::unbounded();
         if kind == "gui" {
             opts.ui_tx = Some(ui_tx);
         }
@@ -671,7 +671,7 @@ fn private_body_worker_panic_fails_the_run_after_final_report_flush() {
 
 #[test]
 fn counted_audio_callback_error_during_playback_does_not_fail_the_worker() {
-    let counters = Arc::new(crate::audio::output::AudioCallbackCounters::default());
+    let counters = Arc::new(crate::audio::telemetry::AudioCallbackCounters::default());
     let counter = Arc::clone(&counters);
     let mut opts = options();
     opts.listener_forced = true;
@@ -692,7 +692,7 @@ fn counted_audio_callback_error_during_playback_does_not_fail_the_worker() {
 fn stalled_audio_ring_pauses_and_resumes_the_worker_and_stop_still_works() {
     use ringbuf::traits::{Consumer, Split};
     let (producer, mut consumer) = ringbuf::HeapRb::<f32>::new(512).split();
-    let counters = Arc::new(crate::audio::output::AudioCallbackCounters::default());
+    let counters = Arc::new(crate::audio::telemetry::AudioCallbackCounters::default());
     counters.recovering.store(true, Ordering::Release);
     let hops = Arc::new(AtomicU64::new(0));
     let observed = Arc::clone(&hops);
@@ -731,7 +731,7 @@ fn stalled_audio_ring_pauses_and_resumes_the_worker_and_stop_still_works() {
 
 #[test]
 fn unsupported_recovery_after_finalization_fails_the_worker_result() {
-    let counters = Arc::new(crate::audio::output::AudioCallbackCounters::default());
+    let counters = Arc::new(crate::audio::telemetry::AudioCallbackCounters::default());
     let mut opts = options();
     opts.listener_forced = true;
     opts.audio_counters = Some(Arc::clone(&counters));
@@ -1426,7 +1426,7 @@ fn end_during_recovery_exits_even_when_ring_is_full() {
             assert_eq!(producer.push_slice(&[0.0; 512]), 512);
         }
         let end_request = Arc::new(AtomicBool::new(false));
-        let counters = Arc::new(crate::audio::output::AudioCallbackCounters::default());
+        let counters = Arc::new(crate::audio::telemetry::AudioCallbackCounters::default());
         let request = end_request.clone();
         let recovering = counters.clone();
         let mut opts = options();

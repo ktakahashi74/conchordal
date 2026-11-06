@@ -157,7 +157,7 @@ impl Limiter {
     }
 
     /// Apply fixed output gain before any guard, including the disabled guard.
-    pub(crate) fn with_input_gain(mut self, gain: f32) -> Self {
+    pub fn with_input_gain(mut self, gain: f32) -> Self {
         self.input_gain = gain;
         self
     }

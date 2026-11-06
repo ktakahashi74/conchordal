@@ -60,7 +60,7 @@ fn offline_delivery_waits_for_publication_while_live_delivery_stays_nonblocking(
         if deterministic {
             assert_eq!(
                 done_rx.recv_timeout(Duration::from_millis(20)),
-                Err(crossbeam_channel::RecvTimeoutError::Timeout)
+                Err(crate::handoff::RecvTimeoutError::Timeout)
             );
         } else {
             done_rx.recv_timeout(Duration::from_secs(5)).unwrap();

@@ -191,3 +191,65 @@ fn gui_support_timing_acquisition() {
     .unwrap();
     assert_eq!(receiver.join().unwrap() > 0, !disabled);
 }
+
+/// Explicit acquisition: the instrument itself has no snapshot-file option.
+#[test]
+#[ignore = "WP-3 native DEMO-B1 display snapshot acquisition"]
+fn capture_web_gui_frames() {
+    use std::io::Write;
+    let input = std::env::var("WP3_SCRIPT").expect("WP3_SCRIPT");
+    let output = std::env::var("WP3_FRAMES").expect("WP3_FRAMES");
+    let statistics = std::env::var("WP3_CAPTURE_STATS").ok();
+    let (tx, rx) = bounded::<UiFrame>(UI_CHANNEL_CAPACITY);
+    let exiting = Arc::new(AtomicBool::new(false));
+    let stop = exiting.clone();
+    let receiver = thread::spawn(move || {
+        let mut out = std::io::BufWriter::new(std::fs::File::create(output).unwrap());
+        let mut count = 0;
+        let mut rows = Vec::new();
+        for frame in rx {
+            let started = Instant::now();
+            let snapshot = frame.web_snapshot();
+            let projected = Instant::now();
+            let bytes = snapshot.encode().unwrap();
+            if statistics.is_some() {
+                rows.push(
+                    serde_json::json!({"time_sec":frame.meta.time_sec,"bytes":bytes.len(),
+                    "projection_ms":(projected-started).as_secs_f64()*1000.,
+                    "encode_ms":projected.elapsed().as_secs_f64()*1000.}),
+                );
+            }
+            out.write_all(&bytes).unwrap();
+            out.write_all(b"\n").unwrap();
+            count += 1;
+            if count == 512 {
+                stop.store(true, Ordering::SeqCst);
+            }
+        }
+        out.flush().unwrap();
+        if let Some(path) = statistics {
+            std::fs::write(path, serde_json::to_vec(&rows).unwrap()).unwrap();
+        }
+        count
+    });
+    let wiring = wire_runtime(
+        &AppConfig::default(),
+        48_000,
+        "DEMO-B1".into(),
+        compile_scenario_from_script(std::path::Path::new(&input), Some(21)).unwrap(),
+        exiting,
+        options(Some(tx)),
+    )
+    .unwrap();
+    join_runtime(
+        Some(wiring.worker_handle),
+        [
+            ("analysis", Some(wiring.analysis_handle)),
+            ("listener", wiring.listener_analysis_handle),
+        ],
+    )
+    .unwrap();
+    let count = receiver.join().unwrap();
+    println!("WP3 captured {count} GUI frames");
+    assert!(count >= 200, "need hundreds of actual UI frames");
+}

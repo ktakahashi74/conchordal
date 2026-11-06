@@ -80,7 +80,7 @@ fn loo_observation_delivery_steady_state_allocates_nothing() {
     }
     community.update_loo_ownership(&landscape);
     crate::runtime_profile::begin_allocations();
-    let start = std::time::Instant::now();
+    let start = crate::clock::Instant::now();
     for _ in 0..300 {
         community.update_loo_ownership(std::hint::black_box(&landscape));
         for voice in &mut community.voices {

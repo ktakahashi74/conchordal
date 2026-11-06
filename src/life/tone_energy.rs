@@ -667,7 +667,7 @@ mod coherent_tests {
             for count in [1, 4, 16, 64] {
                 let mut nanos = Vec::new();
                 for repetition in 0..257 {
-                    let start = std::time::Instant::now();
+                    let start = crate::clock::Instant::now();
                     for k in 0..32 {
                         let mut window = CoherentWindow::new();
                         for i in 0..count {

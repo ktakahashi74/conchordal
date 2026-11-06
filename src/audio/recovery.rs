@@ -1,6 +1,7 @@
-use std::time::{Duration, Instant};
+use crate::clock::Instant;
+use std::time::Duration;
 
-pub(crate) const STATS_INTERVAL: Duration = Duration::from_secs(1);
+pub(crate) use crate::audio::telemetry::STATS_INTERVAL;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum StreamState {

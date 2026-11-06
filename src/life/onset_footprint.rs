@@ -3,6 +3,9 @@
 
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
+use crate::handoff::{Receiver, Sender};
+#[cfg(feature = "native")]
+use crate::handoff::{bounded, select};
 use crate::life::energy_window::project_window;
 use crate::life::phonation_engine::OnsetKick;
 use crate::life::schedule_renderer::modal_phase_seed;
@@ -11,11 +14,11 @@ use crate::life::sound::{
     Tone, ToneAdsr,
 };
 use crate::life::tone_energy::ToneEnergy;
-use crossbeam_channel::{Receiver, Sender, bounded, select};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(feature = "native")]
 use std::thread::JoinHandle;
 
 /// Registered representative values (i11-onset-comparison §4.2).
@@ -237,7 +240,7 @@ pub(crate) struct Record {
 }
 
 pub(crate) fn compute(request: &Request) -> Record {
-    let started = std::time::Instant::now();
+    let started = crate::clock::Instant::now();
     let recipe = &request.recipe;
     let seed = modal_phase_seed(request.identity.source_id, 0, 0);
     let cap = (CAP_SECONDS * recipe.fs) as u64;
@@ -396,12 +399,14 @@ pub(crate) struct Worker {
     footprints_in_flight: usize,
     owners: Vec<Option<Owner>>,
     next_generation: u32,
+    #[cfg(feature = "native")]
     handle: Option<JoinHandle<()>>,
     counters: Arc<[AtomicU64; 2]>,
     pub stats: Stats,
 }
 
 impl Worker {
+    #[cfg(feature = "native")]
     pub(crate) fn new() -> Self {
         let (footprint_input, requests) = bounded(CAPACITY);
         let (replies, footprint_output) = bounded(CAPACITY);
@@ -507,6 +512,7 @@ impl Worker {
         self.deterministic_footprints = true;
     }
 
+    #[cfg(feature = "native")]
     pub(crate) fn drain_footprints(&mut self, now: u64) -> impl Iterator<Item = Record> + '_ {
         std::iter::from_fn(move || {
             let mut record = if self.deterministic_footprints {
@@ -549,6 +555,7 @@ impl Worker {
 
     pub(crate) fn finish(&mut self) {
         self.footprint_input.take();
+        #[cfg(feature = "native")]
         if let Some(handle) = self.handle.take() {
             self.stats.worker_failed = handle.join().is_err();
         }
@@ -938,8 +945,8 @@ mod tests {
     }
 
     fn poll_until(worker: &mut Worker, done: impl Fn(&Worker) -> bool) -> bool {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
-        while std::time::Instant::now() < deadline {
+        let deadline = crate::clock::Instant::now() + std::time::Duration::from_secs(20);
+        while crate::clock::Instant::now() < deadline {
             worker.poll();
             if done(worker) {
                 return true;

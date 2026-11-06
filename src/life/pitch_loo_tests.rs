@@ -273,7 +273,7 @@ fn redistribution_steady_state_allocates_nothing() {
     let cache = prepare_loo_scratch(&l, &mut scratch);
     let mut density = l.subjective_intensity.clone();
     crate::runtime_profile::begin_allocations();
-    let start = std::time::Instant::now();
+    let start = crate::clock::Instant::now();
     for _ in 0..300 {
         density.copy_from_slice(&l.subjective_intensity);
         std::hint::black_box(redistribute_loo_density(&l, &input, cache, &mut density));

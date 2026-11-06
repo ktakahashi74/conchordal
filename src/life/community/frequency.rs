@@ -1357,8 +1357,8 @@ mod tests {
     // Preserve the runtime profile guard so debug builds still compile this ignored assay.
     #[allow(clippy::assertions_on_constants)]
     fn birth_surrogate_release_cost() {
+        use crate::clock::Instant;
         use crate::scenario::control::BodyMethod;
-        use std::time::Instant;
         assert!(!cfg!(debug_assertions), "release profile required");
         let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
         landscape.consonance_density_mass_eff.fill(0.5);

@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 
-pub(super) fn elapsed_ns(started: std::time::Instant) -> u64 {
+pub(super) fn elapsed_ns(started: crate::clock::Instant) -> u64 {
     started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64
 }
 

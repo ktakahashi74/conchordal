@@ -92,8 +92,8 @@ mod tests {
     #[test]
     #[ignore = "release kernel timing probe; excludes queues, NSGT and other workers"]
     fn trajectory_kernel_cost_probe() {
+        use crate::clock::Instant;
         use std::hint::black_box;
-        use std::time::Instant;
 
         for bins_per_oct in [128, 512, 2048] {
             let space = Log2Space::new(1.0, 2.0, bins_per_oct);

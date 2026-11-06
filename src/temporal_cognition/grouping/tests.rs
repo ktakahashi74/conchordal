@@ -339,8 +339,8 @@ fn independent_oracles_cover_pearson_windows_and_exhaustive_three_member_graphs(
 #[test]
 #[ignore = "release physical-window and bundle cost; excludes other lifecycle and full O04"]
 fn grouping_window_cost_probe() {
+    use crate::clock::Instant;
     use std::hint::black_box;
-    use std::time::Instant;
     let handles: Vec<_> = (1..=8).map(handle).collect();
     for samples in [6000, 12000, 24000] {
         let mut window = Window::new(0, 2, 0, 512, samples, 8, 0.9).unwrap();

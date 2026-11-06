@@ -17,6 +17,7 @@ pub(super) fn advance_population(
     if cfg.end_request.load(Ordering::SeqCst) {
         state.request_end(now_tick);
     }
+    #[cfg(feature = "native")]
     if let Some(session) = &state.conductor.score {
         let stream = session.stream.clone();
         stream.publish_pace(now_tick, state.timebase);
@@ -437,6 +438,7 @@ pub(super) fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tic
 
 /// Route returned footprints to the Voice that asked for them (I11-1 §4.2).
 /// A reply the full queue dropped releases the request, and the Voice resends it next hop.
+#[cfg(feature = "native")]
 pub(super) fn route_body_footprints(
     voices: &mut [crate::life::voice::Voice],
     worker: &mut crate::life::onset_footprint::Worker,
@@ -674,17 +676,27 @@ pub(super) fn render_and_route_audio(
     let synthesis_start = state.profile.as_ref().map(|_| Instant::now());
     if !state.loo_populations.is_empty() || state.pop.has_placed_flora {
         // Reuse one owned packet. Backpressure is included in the audio deadline.
-        state.schedule_renderer.loo_pcm =
-            match state.loo_recycle.1.recv_timeout(Duration::from_secs(1)) {
-                Ok(sources) => sources,
-                Err(error) => {
-                    state
-                        .failures
-                        .push(format!("LOO capture recycling failed: {error}"));
-                    cfg.exiting.store(true, Ordering::SeqCst);
-                    Vec::new()
-                }
-            };
+        #[cfg(feature = "native")]
+        let recycled = state
+            .loo_recycle
+            .1
+            .recv_timeout(Duration::from_secs(1))
+            .map_err(|e| e.to_string());
+        #[cfg(not(feature = "native"))]
+        let recycled = state
+            .loo_storage
+            .take()
+            .ok_or_else(|| "inline LOO storage is missing".to_string());
+        state.schedule_renderer.loo_pcm = match recycled {
+            Ok(sources) => sources,
+            Err(error) => {
+                state
+                    .failures
+                    .push(format!("LOO capture recycling failed: {error}"));
+                cfg.exiting.store(true, Ordering::SeqCst);
+                Vec::new()
+            }
+        };
         let sources = &mut state.schedule_renderer.loo_pcm;
         sources.retain(|source| match source.kind {
             crate::core::stream::loo::SourceKind::Voice => state
@@ -786,6 +798,7 @@ pub(super) fn render_and_route_audio(
         }
     }
 
+    #[cfg(feature = "native")]
     if let Some(prod) = channels.audio_prod.as_mut() {
         let reset_underrun_frames = if state.frame_idx == 0 {
             cfg.underrun_frames.as_deref()
@@ -846,6 +859,7 @@ pub(super) fn render_and_route_audio(
             });
         }
     }
+    #[cfg(feature = "native")]
     if let Some(worker) = state.footprint_worker.as_mut() {
         route_body_footprints(&mut state.pop.voices, worker, &mut state.reporter, now_tick);
     }
@@ -1034,13 +1048,19 @@ pub(super) fn drive_production_meter(
                         break;
                     }
                 }
-                Err(crossbeam_channel::TryRecvError::Empty) => {
+                Err(crate::handoff::TryRecvError::Empty) => {
                     if !cfg.deterministic_analysis || cfg.exiting.load(Ordering::SeqCst) {
                         break;
                     }
+                    #[cfg(feature = "native")]
                     thread::sleep(Duration::from_micros(200));
+                    #[cfg(not(feature = "native"))]
+                    {
+                        failure = Some("inline T2 delivery is unsupported");
+                        break;
+                    }
                 }
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                Err(crate::handoff::TryRecvError::Disconnected) => {
                     failure = Some("raw T2 producer disconnected");
                     break;
                 }

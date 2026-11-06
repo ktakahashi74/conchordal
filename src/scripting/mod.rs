@@ -1,6 +1,8 @@
 mod context;
+mod diagnostics;
+#[cfg(feature = "native")]
 pub(crate) mod score;
-pub(crate) use score::ScriptStatus;
+pub use diagnostics::ScriptStatus;
 pub mod defs_gen;
 pub(crate) mod docs;
 mod engine;
@@ -18,9 +20,11 @@ use spec::{
 pub use spec::{PopulationHandle, PopulationSpecHandle};
 
 use std::collections::BTreeMap;
+#[cfg(feature = "native")]
 use std::fs;
 use std::sync::{Arc, Mutex};
 
+#[cfg(feature = "native")]
 use rand::random;
 use rhai::{Array, Dynamic, Engine, EvalAltResult, FLOAT, FnPtr, INT, NativeCallContext, Position};
 

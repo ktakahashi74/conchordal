@@ -1,8 +1,9 @@
 use super::score::*;
 use super::*;
+use crate::clock::Instant;
 use crate::core::timebase::Timebase;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 fn timebase() -> Timebase {
     Timebase {

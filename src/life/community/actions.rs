@@ -470,7 +470,7 @@ mod tests {
         );
         let budget = std::time::Duration::from_secs_f64(512.0 / 48000.0);
         let mut count = 0usize;
-        let start = std::time::Instant::now();
+        let start = crate::clock::Instant::now();
         loop {
             for i in 0..64 {
                 let patch = ControlUpdate {

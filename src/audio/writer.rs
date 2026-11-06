@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crossbeam_channel::Receiver;
+use crate::handoff::Receiver;
 use hound::{SampleFormat, WavSpec, WavWriter};
 
 use crate::audio::limiter::{Limiter, LimiterMeter, LimiterMode, LimiterStats};
@@ -114,7 +114,7 @@ mod tests {
     fn wav_limit_finalizes_valid_header_before_the_overflowing_sample() {
         let path =
             std::env::temp_dir().join(format!("conchordal-ipu3-wav-{}.wav", std::process::id()));
-        let (tx, rx) = crossbeam_channel::bounded(2);
+        let (tx, rx) = crate::handoff::bounded(2);
         tx.send(Arc::from([0.1, -0.1])).unwrap();
         tx.send(Arc::from([0.2, -0.2, 0.3])).unwrap();
         drop(tx);
@@ -151,7 +151,7 @@ mod tests {
     fn wav_exact_limit_succeeds_and_io_errors_are_returned() {
         let path =
             std::env::temp_dir().join(format!("conchordal-ipu3-exact-{}.wav", std::process::id()));
-        let (tx, rx) = crossbeam_channel::bounded(1);
+        let (tx, rx) = crate::handoff::bounded(1);
         tx.send(Arc::from([0.0; 4])).unwrap();
         drop(tx);
         WavOutput::write(
@@ -166,7 +166,7 @@ mod tests {
         .unwrap();
         assert_eq!(hound::WavReader::open(&path).unwrap().duration(), 4);
         std::fs::remove_file(&path).unwrap();
-        let (tx, rx) = crossbeam_channel::bounded(1);
+        let (tx, rx) = crate::handoff::bounded(1);
         drop(tx);
         assert!(
             WavOutput::write(

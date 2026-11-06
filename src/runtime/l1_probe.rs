@@ -1,5 +1,6 @@
 //! Opt-in acquisition instrumentation; absent from instrument and render builds.
-use std::time::{Duration, Instant};
+use crate::clock::Instant;
+use std::time::Duration;
 
 thread_local! {
     static BIRTHS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };

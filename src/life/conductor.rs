@@ -27,6 +27,7 @@ struct SceneInfo {
 #[derive(Debug)]
 pub struct Conductor {
     pub(crate) expression: Option<crate::scenario::expression::Expression>,
+    #[cfg(feature = "native")]
     pub(crate) score: Option<crate::scripting::score::ScriptSession>,
     pub(crate) current_scene: Option<String>,
     event_queue: VecDeque<QueuedEvent>,
@@ -71,6 +72,7 @@ impl Conductor {
         let end = s.end.duration_sec();
         Self {
             expression: s.expression,
+            #[cfg(feature = "native")]
             score: None,
             current_scene: None,
             event_queue: events.into(),
@@ -114,6 +116,7 @@ impl Conductor {
     }
 
     pub fn discard_pending(&mut self) {
+        #[cfg(feature = "native")]
         if let Some(session) = &self.score {
             session.stream.close("stopped");
         }
@@ -136,12 +139,15 @@ impl Conductor {
     }
 
     pub fn pending_events(&self) -> usize {
-        self.score.as_ref().map_or(self.event_queue.len(), |s| {
-            s.stream.state.lock().unwrap().ring.len()
-        })
+        #[cfg(feature = "native")]
+        if let Some(session) = &self.score {
+            return session.stream.state.lock().unwrap().ring.len();
+        }
+        self.event_queue.len()
     }
 
     pub fn current_scene_name(&self, tick: Tick) -> Option<String> {
+        #[cfg(feature = "native")]
         if self.score.is_some() {
             return self.current_scene.clone();
         }

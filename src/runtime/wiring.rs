@@ -1,5 +1,6 @@
 use super::*;
 
+#[cfg(feature = "native")]
 pub(crate) struct RuntimeInit {
     pub(crate) ui_frame_rx: Option<Receiver<UiFrame>>,
     pub(crate) worker_handle: Option<std::thread::JoinHandle<Result<(), String>>>,
@@ -94,6 +95,7 @@ pub(super) fn build_analysis_runtime_core(
     }
 }
 
+#[cfg(feature = "native")]
 pub(super) fn spawn_analysis_worker(
     name: &'static str,
     analysis_stream: AnalysisStream,
@@ -138,6 +140,7 @@ pub(super) fn resolve_limiter_mode(config: &AppConfig) -> LimiterMode {
 /// Path-specific wiring knobs. Every field is an actual difference between the
 /// GUI/headless path (`init_runtime`) and the offline render path (`run_render`).
 pub(super) struct WiringOptions {
+    #[cfg(feature = "native")]
     pub(super) score: Option<crate::scripting::score::ScriptSession>,
     pub(super) end_request: Arc<AtomicBool>,
     pub(super) duration_sec: Option<f64>,
@@ -150,6 +153,7 @@ pub(super) struct WiringOptions {
     pub(super) listener_forced: bool,
     pub(super) wait_user_exit: bool,
     pub(super) start_playing: bool,
+    #[cfg(feature = "native")]
     pub(super) audio_prod: Option<ringbuf::HeapProd<f32>>,
     pub(super) wav_tx: Option<Sender<Arc<[f32]>>>,
     pub(super) reporter: Option<JsonlReporter>,
@@ -162,9 +166,10 @@ pub(super) struct WiringOptions {
     pub(super) reserve_runtime_ids_through: u64,
     pub(super) profile: Option<RunProfile>,
     pub(super) telemetry: bool,
-    pub(super) audio_counters: Option<Arc<crate::audio::output::AudioCallbackCounters>>,
+    pub(super) audio_counters: Option<Arc<crate::audio::telemetry::AudioCallbackCounters>>,
 }
 
+#[cfg(feature = "native")]
 pub(super) struct RuntimeWiring {
     pub(super) start_flag: Arc<AtomicBool>,
     pub(super) worker_handle: thread::JoinHandle<Result<(), String>>,
@@ -179,15 +184,95 @@ thread_local! {
 
 /// Wiring shared by both runtime paths: analysis core, channels, analysis
 /// worker threads, Community/Conductor setup, and the worker thread spawn.
+#[cfg(feature = "native")]
 pub(super) fn wire_runtime(
+    config: &AppConfig,
+    runtime_sample_rate: u32,
+    scenario_label: String,
+    scenario: Scenario,
+    stop_flag: Arc<AtomicBool>,
+    opts: WiringOptions,
+) -> Result<RuntimeWiring, String> {
+    let prepared = prepare_runtime(
+        config,
+        runtime_sample_rate,
+        scenario_label,
+        scenario,
+        stop_flag,
+        opts,
+        false,
+    )?;
+    let PreparedRuntime {
+        cfg,
+        channels,
+        state,
+        analysis_handle,
+        listener_analysis_handle,
+    } = prepared;
+    let start_flag = cfg.start_flag.clone();
+    let worker_handle = thread::Builder::new()
+        .name("worker".into())
+        .spawn(move || {
+            // Observer identities and update phases belong to the worker thread.
+            let state = state(&cfg);
+            worker_loop(cfg, channels, state)
+        })
+        .expect("spawn worker");
+    Ok(RuntimeWiring {
+        start_flag,
+        worker_handle,
+        analysis_handle: analysis_handle.into_thread(),
+        listener_analysis_handle: listener_analysis_handle.map(AnalysisExecution::into_thread),
+    })
+}
+
+pub(super) struct PreparedRuntime<S = WorkerState> {
+    pub(super) cfg: WorkerConfig,
+    pub(super) channels: WorkerChannels,
+    pub(super) state: S,
+    pub(super) analysis_handle: AnalysisExecution,
+    pub(super) listener_analysis_handle: Option<AnalysisExecution>,
+}
+
+pub(super) enum AnalysisExecution {
+    #[cfg(feature = "native")]
+    Thread(thread::JoinHandle<()>),
+    #[cfg(feature = "native")]
+    Inline(Box<dyn FnMut() -> bool>),
+    #[cfg(not(feature = "native"))]
+    Inline(Box<analysis_worker::AnalysisState>),
+}
+
+impl AnalysisExecution {
+    #[cfg(feature = "native")]
+    fn into_thread(self) -> thread::JoinHandle<()> {
+        match self {
+            Self::Thread(handle) => handle,
+            Self::Inline(_) => unreachable!("native wiring"),
+        }
+    }
+    #[cfg(feature = "native")]
+    pub(super) fn step(&mut self) -> bool {
+        match self {
+            Self::Inline(step) => step(),
+            #[cfg(feature = "native")]
+            Self::Thread(_) => unreachable!("step wiring"),
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn prepare_runtime(
     config: &AppConfig,
     runtime_sample_rate: u32,
     scenario_label: String,
     mut scenario: Scenario,
     stop_flag: Arc<AtomicBool>,
     opts: WiringOptions,
-) -> Result<RuntimeWiring, String> {
+    inline: bool,
+) -> Result<PreparedRuntime<impl FnOnce(&WorkerConfig) -> WorkerState + use<>>, String> {
     let WiringOptions {
+        #[cfg(feature = "native")]
         score,
         end_request,
         duration_sec,
@@ -199,6 +284,7 @@ pub(super) fn wire_runtime(
         listener_forced,
         wait_user_exit,
         start_playing,
+        #[cfg(feature = "native")]
         audio_prod,
         wav_tx,
         mut reporter,
@@ -228,10 +314,21 @@ pub(super) fn wire_runtime(
     }
     let lparams_runtime = core.lparams.clone();
 
+    #[cfg(feature = "native")]
     let (analysis_update_tx, analysis_update_rx) = bounded::<LandscapeUpdate>(8);
+    #[cfg(feature = "native")]
     let (audio_to_analysis_tx, audio_to_analysis_rx) = bounded::<analysis_worker::AnalysisHop>(64);
+    #[cfg(feature = "native")]
     let (analysis_result_tx, analysis_result_rx) = bounded::<analysis_worker::AnalysisResult>(4);
 
+    #[cfg(not(feature = "native"))]
+    let analysis_update_tx = crate::handoff::Slot::new(8);
+    #[cfg(not(feature = "native"))]
+    let audio_to_analysis_tx = crate::handoff::Slot::new(1);
+    #[cfg(not(feature = "native"))]
+    let analysis_result_rx = crate::handoff::Slot::new(4);
+
+    #[cfg(feature = "native")]
     let (raw_output, t2_inbox) = if config.temporal_meter_t2 {
         let (output, inbox) =
             crate::temporal_cognition::t2::runtime_input::channel(runtime_sample_rate, hop as u64);
@@ -245,10 +342,13 @@ pub(super) fn wire_runtime(
     } else {
         (None, None)
     };
+    #[cfg(not(feature = "native"))]
+    let t2_inbox = None;
     // NSGT-RT based audio analysis thread.
     let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
     let arrival_enabled = config.temporal_onset_comparison.is_some_and(|c| c.arrival);
     let mut temporal_snapshots = [None, None];
+    #[cfg(feature = "native")]
     let mut taps = std::array::from_fn::<_, 2, _>(|bus| {
         (observing || ((arrival_enabled || config.temporal_t2.is_some()) && bus == 0)).then(|| {
             let tap = crate::temporal_cognition::observation::Tap::spawn(
@@ -280,6 +380,7 @@ pub(super) fn wire_runtime(
             tap
         })
     });
+    #[cfg(feature = "native")]
     let body_capture = if observing || arrival_enabled {
         config.temporal_body.map(|body| {
             crate::temporal_cognition::body::Capture::spawn(
@@ -294,6 +395,10 @@ pub(super) fn wire_runtime(
     } else {
         None
     };
+    #[cfg(not(feature = "native"))]
+    let taps: [Option<crate::temporal_cognition::observation::Tap>; 2] = [None, None];
+    #[cfg(not(feature = "native"))]
+    let body_capture: Option<crate::temporal_cognition::body::Capture> = None;
     let resource_power = scenario.end == crate::scenario::ScenarioEnd::Open
         || scenario
             .events
@@ -386,7 +491,9 @@ pub(super) fn wire_runtime(
     if resource_power {
         analysis_stream.enable_resource_power();
     }
-    let analysis_handle = spawn_analysis_worker(
+    #[cfg(feature = "native")]
+    let analysis_handle = start_analysis(
+        inline,
         "field-analysis",
         analysis_stream,
         audio_to_analysis_rx,
@@ -395,6 +502,13 @@ pub(super) fn wire_runtime(
         analysis_worker::AnalysisDelivery::Latest(analysis_result_rx.clone()),
         (taps[0].take(), raw_output),
     );
+
+    #[cfg(not(feature = "native"))]
+    let analysis_handle = AnalysisExecution::Inline(Box::new(analysis_worker::AnalysisState::new(
+        analysis_stream,
+        None,
+        None,
+    )));
 
     let dcc_coupler = DccCoupler::new(config.dcc);
     let listener_analysis_enabled =
@@ -414,24 +528,39 @@ pub(super) fn wire_runtime(
         if let Some(decoder) = &tonal_decoder {
             listener_stream.enable_tonal_context(decoder.clone());
         }
-        let (presentation_tx, presentation_rx) = bounded::<analysis_worker::AnalysisHop>(64);
-        let (result_tx, result_rx) = bounded::<analysis_worker::AnalysisResult>(4);
-        let (update_tx, update_rx) = bounded::<LandscapeUpdate>(8);
-        let handle = spawn_analysis_worker(
-            "listener-analysis",
-            listener_stream,
-            presentation_rx,
-            result_tx,
-            update_rx,
-            analysis_worker::AnalysisDelivery::Ordered,
-            (taps[1].take(), None),
-        );
-        (
-            Some(presentation_tx),
-            Some(result_rx),
-            Some(update_tx),
-            Some(handle),
-        )
+        #[cfg(feature = "native")]
+        {
+            let (presentation_tx, presentation_rx) = bounded::<analysis_worker::AnalysisHop>(64);
+            let (result_tx, result_rx) = bounded::<analysis_worker::AnalysisResult>(4);
+            let (update_tx, update_rx) = bounded::<LandscapeUpdate>(8);
+            let handle = start_analysis(
+                inline,
+                "listener-analysis",
+                listener_stream,
+                presentation_rx,
+                result_tx,
+                update_rx,
+                analysis_worker::AnalysisDelivery::Ordered,
+                (taps[1].take(), None),
+            );
+            (
+                Some(presentation_tx),
+                Some(result_rx),
+                Some(update_tx),
+                Some(handle),
+            )
+        }
+        #[cfg(not(feature = "native"))]
+        {
+            (
+                Some(crate::handoff::Slot::new(1)),
+                Some(crate::handoff::Slot::new(4)),
+                Some(crate::handoff::Slot::new(8)),
+                Some(AnalysisExecution::Inline(Box::new(
+                    analysis_worker::AnalysisState::new(listener_stream, None, None),
+                ))),
+            )
+        }
     } else {
         (None, None, None, None)
     };
@@ -560,7 +689,10 @@ pub(super) fn wire_runtime(
     let mut conductor =
         Conductor::from_scenario(scenario, crate::core::timebase::Timebase { fs, hop });
 
-    conductor.score = score;
+    #[cfg(feature = "native")]
+    {
+        conductor.score = score;
+    }
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
@@ -594,6 +726,7 @@ pub(super) fn wire_runtime(
         t2_inbox,
         temporal_snapshots,
         ui_tx,
+        #[cfg(feature = "native")]
         audio_prod,
         wav_tx,
         audio_to_analysis_tx: Some(audio_to_analysis_tx),
@@ -604,38 +737,71 @@ pub(super) fn wire_runtime(
         listener_analysis_update_tx,
     };
 
-    let worker_handle = thread::Builder::new()
-        .name("worker".into())
-        .spawn(move || {
-            let mut state = WorkerState::new(
-                pop,
-                conductor,
-                landscape,
-                lparams_runtime,
-                dorsal,
-                reporter,
-                &cfg,
-            );
-            state.loo_populations = loo_populations;
-            state.body_snapshot = body_capture.as_ref().map(|c| Box::new(c.snapshot()));
-            state.schedule_renderer.body_capture = body_capture;
-            state.profile = profile;
-            #[cfg(test)]
-            {
-                state.offline_body_probe = offline_body_probe;
-            }
-            worker_loop(cfg, channels, state)
-        })
-        .expect("spawn worker");
-
-    Ok(RuntimeWiring {
-        start_flag,
-        worker_handle,
+    let state = move |cfg: &WorkerConfig| {
+        let mut state = WorkerState::new(
+            pop,
+            conductor,
+            landscape,
+            lparams_runtime,
+            dorsal,
+            reporter,
+            cfg,
+        );
+        state.loo_populations = loo_populations;
+        state.body_snapshot = body_capture.as_ref().map(|c| Box::new(c.snapshot()));
+        state.schedule_renderer.body_capture = body_capture;
+        state.profile = profile;
+        #[cfg(test)]
+        {
+            state.offline_body_probe = offline_body_probe;
+        }
+        state
+    };
+    Ok(PreparedRuntime {
+        cfg,
+        channels,
+        state,
         analysis_handle,
         listener_analysis_handle,
     })
 }
 
+#[allow(clippy::too_many_arguments)]
+#[cfg(feature = "native")]
+fn start_analysis(
+    inline: bool,
+    name: &'static str,
+    stream: AnalysisStream,
+    input: Receiver<analysis_worker::AnalysisHop>,
+    output: Sender<analysis_worker::AnalysisResult>,
+    updates: Receiver<LandscapeUpdate>,
+    delivery: analysis_worker::AnalysisDelivery,
+    temporal: (
+        Option<crate::temporal_cognition::observation::Tap>,
+        Option<crate::temporal_cognition::t2::runtime_input::Output>,
+    ),
+) -> AnalysisExecution {
+    #[cfg(feature = "native")]
+    if !inline {
+        return AnalysisExecution::Thread(spawn_analysis_worker(
+            name, stream, input, output, updates, delivery, temporal,
+        ));
+    }
+    {
+        let mut step = analysis_worker::make_step(
+            stream,
+            input.clone(),
+            output,
+            updates,
+            analysis_worker::AnalysisDelivery::Ordered,
+            temporal.0,
+            temporal.1,
+        );
+        AnalysisExecution::Inline(Box::new(move || input.try_recv().is_ok_and(&mut step)))
+    }
+}
+
+#[cfg(feature = "native")]
 pub(crate) fn init_runtime(
     args: crate::cli::Args,
     config: AppConfig,
@@ -799,6 +965,7 @@ pub(crate) fn init_runtime(
             listener_forced: !args.nogui || args.report.is_some(),
             wait_user_exit: config.playback.wait_user_exit,
             start_playing: !config.playback.wait_user_start,
+            #[cfg(feature = "native")]
             audio_prod,
             wav_tx: None,
             reporter,
@@ -841,6 +1008,7 @@ pub(crate) fn init_runtime(
     }
 }
 
+#[cfg(feature = "native")]
 pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<AtomicBool>) {
     let mut rt = init_runtime(args, config, stop_flag.clone());
     rt.start_flag.store(true, Ordering::SeqCst);
@@ -871,6 +1039,7 @@ pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<At
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(feature = "native")]
 pub fn run_render(
     scenario_path: &str,
     wav_path: String,
@@ -976,6 +1145,7 @@ pub fn run_render(
     }
 }
 
+#[cfg(feature = "native")]
 pub(crate) fn join_runtime(
     worker: Option<thread::JoinHandle<Result<(), String>>>,
     observers: impl IntoIterator<Item = (&'static str, Option<thread::JoinHandle<()>>)>,
@@ -1000,6 +1170,7 @@ pub(crate) fn join_runtime(
     }
 }
 
+#[cfg(feature = "native")]
 pub(crate) fn join_thread<T>(name: &str, handle: thread::JoinHandle<T>) -> Result<T, String> {
     handle.join().map_err(|payload| {
         let detail = if let Some(msg) = payload.downcast_ref::<&str>() {

@@ -65,9 +65,9 @@ impl AudioMonitor {
         underrun_frames: Option<&AtomicU64>,
         finish_begun: bool,
         telemetry: bool,
-        score: Option<&crate::scripting::score::ScoreStream>,
+        #[cfg(feature = "native")] score: Option<&crate::scripting::score::ScoreStream>,
         pop: &mut Community,
-        audio_counters: Option<&crate::audio::output::AudioCallbackCounters>,
+        audio_counters: Option<&crate::audio::telemetry::AudioCallbackCounters>,
     ) {
         self.min_occupancy = Some(
             self.min_occupancy
@@ -79,6 +79,7 @@ impl AudioMonitor {
         self.hop_count += 1;
         self.hop_total += chunk_elapsed;
         self.hop_max = self.hop_max.max(chunk_elapsed);
+        #[cfg(feature = "native")]
         let watermark_margin = if telemetry {
             score.and_then(|stream| {
                 let score = stream.state.lock().unwrap();
@@ -90,6 +91,8 @@ impl AudioMonitor {
         } else {
             None
         };
+        #[cfg(not(feature = "native"))]
+        let watermark_margin: Option<f64> = None;
         self.min_watermark_margin_sec = watermark_margin.map(|margin| {
             self.min_watermark_margin_sec
                 .map_or(margin, |minimum| minimum.min(margin))
@@ -122,7 +125,7 @@ impl AudioMonitor {
             self.slow_hops_total += 1;
         }
 
-        if self.last_stats_log.elapsed() >= crate::audio::output::STATS_INTERVAL {
+        if self.last_stats_log.elapsed() >= crate::audio::telemetry::STATS_INTERVAL {
             if underrun_frames.is_some() && self.slow_chunks > 0 {
                 warn!(
                     "[t={:.6}] Audio hop slow: {} hops over budget {:?} in stats interval",
@@ -330,7 +333,7 @@ mod tests {
             fs: 48_000.0,
             hop: 512,
         });
-        let counters = crate::audio::output::AudioCallbackCounters::default();
+        let counters = crate::audio::telemetry::AudioCallbackCounters::default();
         counters.rebuilds_total.store(2, Ordering::Relaxed);
         let mut update =
             |monitor: &mut AudioMonitor,
@@ -362,7 +365,7 @@ mod tests {
         update(&mut monitor, 5.0, Some(&stream));
         update(&mut monitor, 2.0, Some(&stream));
         assert_eq!(monitor.min_watermark_margin_sec, Some(-1.0));
-        monitor.last_stats_log = Instant::now() - crate::audio::output::STATS_INTERVAL;
+        monitor.last_stats_log = Instant::now() - crate::audio::telemetry::STATS_INTERVAL;
         update(&mut monitor, 2.0, Some(&stream));
         assert_eq!(monitor.min_watermark_margin_sec, None);
         assert_eq!(monitor.hop_count, 0);

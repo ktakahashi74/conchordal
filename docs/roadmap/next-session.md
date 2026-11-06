@@ -1,6 +1,6 @@
 # 次のセッションの始め方
 
-2026-11-05更新。実装は `origin/main` の `3c3f15f4` まで、経過は同日のDEMO-B1までの統括記録を反映した再開点である。
+2026-11-06更新。実装は `origin/main` の `4741619b` まで、経過は同日のART-1C（芸術の形態として確立する経路の点検）までの統括記録を反映した再開点である。
 曲の段の目標はbetaデモ。新しいセッションで、古い「自己除外の比較試聴待ち」「残るのはv0.5.0公開だけ」へ戻さない。
 
 ## 最初に読むもの
@@ -9,6 +9,7 @@
 2. 台帳[§9.3.123](../design-notes/technote-ledger.ja.md#harmony-decisions-20261103)・[§9.3.124](../design-notes/technote-ledger.ja.md#harmony-action-consequences-20261103)。A1/B1/C1は採択済み、C1は実装済み・作者試聴保留という順序を読む。
 3. 台帳[§9.3.117〜118](../design-notes/technote-ledger.ja.md#incremental-endless-scores-20261031)。endlessの実装と、IP-ACQの受入を読む。V5未取得、V6合格、V7は2×10⁷発行まで合格、V8の差分推定と実機再取得を混ぜない。
 4. 台帳[§9.3.126](../design-notes/technote-ledger.ja.md#voice-self-exposure-one-listener-20261104)・[§9.3.127](../design-notes/technote-ledger.ja.md#voice-melody-stop-20261105)と[現行計画のVoiceの節](plan-current.md)。VB-3は統合済み、TU-2／TU-3は統合しない。Voiceの旋律の生成は停止し、デモは方向Bで進める。
+   台帳[§9.3.129](../design-notes/technote-ledger.ja.md#art-form-path-20261106)で、芸術の形態としての経路、ライブのみで録音を公開しないこと、browserの版を既定の配布の候補とすること、共有世界とAir-Gapの範囲を読む。
 5. 台帳[§9.3.125](../design-notes/technote-ledger.ja.md#listener-prediction-e0)と[Listener Twin Design](../design-notes/listener-twin.md#gui-1-presentation-prediction-and-current-display-contract)。E0は未較正の混合音響baselineであり、DES-1／DES-2全体の実装ではない。後続のGUIの到達点は `41133692`。
 6. [統括とhostの運用](../operations/orchestration.md)。単位記録の所在、既存job、timing lock、再取得の制約を確認する。必要な設計は[文書の入口](../README.md)・[設計ノート索引](../design-notes/README.md)から探す。
 
@@ -22,7 +23,14 @@ DOC-3からはuser busへ接続できず、実際の稼働・終了・freeze状�
   取得も再開もしない。55時間を超える連続演奏が必要になった時に、その必要を消費者として取り直しを判断する。
 - **IP-ACQのV6・V8は取得済み。** V6は譜面132,000秒を合格、V8は計測交絡の限定切り分けと疑い2条件の実機再取得まで記録済み。
   V6/V8を未取得へ戻さない。
-- **方向Bのデモ。** 統括の叩き台は `.orchestration/units/DEMO-B1/draft.rhai`（記録は同じ単位のreport）。部品と形は作曲者の量であり、試聴で選ばせない。
+- **方向Bのデモ。** 有限のライブ作品とする。
+  - 統括の叩き台は `.orchestration/units/DEMO-B1/draft.rhai` と `DEMO-B2/draft.rhai`（記録は各単位のreport）。
+  - 次は作者が作品の約束を定める。
+  - 部品と形は作曲者の量であり、試聴で選ばせない。
+- **browserの版（WP）。** 計画は `.orchestration/units/WP-0/plan.md`。
+  - 2026-11-06にWP-1〜WP-4を並行で起動した（systemd `conchordal-wp{1..4}-20261106`、worktree `.worktrees/wp{1..4}-*-20261106`、commitなし）。
+  - 新セッションでは、まず各単位のreportと終了状態を確かめる。
+  - 統合はWP-1 → WP-4 → WP-2・WP-3 → WP-5の順に行う。
   Voiceの旋律の生成は作者の規則で停止した（PD-1／PD-2、§9.3.127）。同じ問題へ別の入口から自動で戻らない。
 
 外部負荷は続く前提である。計時の合否は登録済みのABBAと負荷記録を使い、静かな窓を待つ方式へ戻さない。

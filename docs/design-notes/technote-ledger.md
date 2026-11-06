@@ -12027,3 +12027,39 @@ separately.
 ### 9.3.128 2026-11-05: V7 accepted to 2·10⁷ issues
 
 The first integrated-binary V7 acquisition passed its 10⁶, 10⁷ and 2·10⁷ checkpoints with no failed, inconclusive or uncertified results. 2·10⁷ issues are about 55 hours of score. This range lies beyond the design's naive-accumulation crossover near 10⁷ issues, about one day. The registered 3·10⁷ checkpoint was a threefold engineering margin, and no consumer decision depends on it. After the run stopped with the user session, a restart from zero was begun and then stopped at the author's instruction not to run unnecessary tests. Endless estimator precision is accepted up to 55 hours of continuous score. Longer continuous performances remain unverified, and a longer run is acquired only when such a performance is required.
+
+<a id="art-form-path-20261106"></a>
+### 9.3.129 2026-11-06: The path to an established art form, and demo release and distribution decisions
+
+**Author decisions (2026-11-05 to 06).**
+- Long-term temporal DCC (memory and generation of phrases, sections and whole pieces) has not been reached. For now the demo therefore aims at drama and acoustic richness, and Bach-like constructiveness is dropped.
+- The demo is performed live. Recordings are not published, and works are distributed as scores.
+- A browser version is planned that runs the instrument on each listener's machine (WebAssembly). The plan is `.orchestration/units/WP-0/plan.md`. WP-1 to WP-4 (core, browser audio, web GUI, numerics) run in parallel.
+  - WASM-1 ran the DEMO-B1 scene on one thread: worker, then ecology-side analysis, then listener-side analysis. On blanche's Node/V8 the per-hop p99 was 3.22–3.41 ms, against 1.65 ms for native on the same single thread and a 10.667 ms budget.
+  - Native and wasm PCM differ from the first hop; WP-4 investigates this.
+- The first work is a finite live piece.
+
+**Path check (ART-1, ART-1C).**
+- The author asked for the path to an established art form to be rebuilt from Conchordal's principles and checked against earlier conclusions.
+  - ART-1: Astra derived the path without being told the earlier conclusions.
+  - The orchestrator rebuilt the path independently before reading ART-1.
+  - ART-1C: a separate Astra session checked both against the June 2026 discussion (2026-06-02 to 03) and the orchestrator's assessment. Verdict: REVISE.
+- The shared main line has four steps:
+  1. Define the work's promise: what must be kept for it to be the same work, and what may change.
+  2. Establish a live work from the materials that already work: Flora, rain and held fields.
+  3. Confirm how listeners enter it, and hand scores and run conditions to others.
+  4. Show succession and continuity of works, composition methods and venues by example.
+
+  Long-term DCC, Voice melody, biosignals and remote participation are branches for when a specific work needs them. None is a precondition for the first work.
+- **The browser version is a default-distribution candidate.** It is adopted only after target machines, the real browser audio path, stop and resume, and differences from native have been checked. The principles do not imply wasm first; it is a priority set by the footing that already exists.
+- **A shared world is a separate candidate.** In it many listeners hear one ecosystem at the same time, and each machine synthesizes sound locally from a control stream.
+  - Without listener input it is still a legitimate form: shared listening to one ongoing generation.
+  - Making it participatory is the author's choice. Manual control and biosignal closed loops are separate contracts.
+  - Cutting the synthesis boundary is not assumed cheap, because Flora and rain state, timing and late joining have not been examined. It is not part of the current port.
+- **Scope of the Air-Gap.** The Air-Gap is the boundary on the instrument's disk output. It does not decide whether non-stored audio transmission is allowed, and neither does the policy of not publishing recordings. The browser version must still be checked to have no path that saves or sends audio.
+- **The endless form stays a Manifesto commitment** ("Alongside finite works, Conchordal envisages an acoustic ecosystem running without a predetermined end").
+  - Its vehicle is chosen later: native at home, the browser, an installation at a site, or a shared world.
+  - An installation at a site fits both dwelling together and biosignal closed loops, which makes it a strong candidate.
+  - The 55 hours of §9.3.128 are estimator precision only. Unattended operation and recovery have not been verified.
+
+**Decision.** Next, define the first work's promise and establish a finite live work. Records are in `.orchestration/units/` WASM-1, WP-0 to WP-4, DEMO-B1, DEMO-B2, ART-1 and ART-1C.

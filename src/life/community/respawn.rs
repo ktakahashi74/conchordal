@@ -94,12 +94,9 @@ pub(super) fn peak_bias_candidate_bins(
     candidate_count: usize,
 ) -> Vec<usize> {
     let candidate_count = candidate_count.max(1);
-    let min_hz = min_hz
-        .min(max_hz)
-        .clamp(landscape.space.fmin.max(1e-6), landscape.space.fmax);
-    let max_hz = max_hz
-        .max(min_hz)
-        .clamp(min_hz, landscape.space.fmax.max(min_hz));
+    let (voice_min, voice_max) = landscape.space.voice_pitch_bounds();
+    let min_hz = min_hz.min(max_hz).clamp(voice_min.max(1e-6), voice_max);
+    let max_hz = max_hz.max(min_hz).clamp(min_hz, voice_max.max(min_hz));
     let mut weights = vec![0.0f32; landscape.space.n_bins()];
     for (idx, &freq_hz) in landscape.space.centers_hz.iter().enumerate() {
         if !freq_hz.is_finite() || freq_hz < min_hz || freq_hz > max_hz {
@@ -416,7 +413,7 @@ impl Community {
             .strategy
             .as_ref()
             .map(SpawnStrategy::freq_range_hz)
-            .unwrap_or_else(|| landscape.freq_bounds());
+            .unwrap_or_else(|| landscape.space.voice_pitch_bounds());
         let lo = min_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
         let hi = max_hz.clamp(lo, MAX_FREQ_HZ);
         let candidate_count = RESPAWN_CANDIDATE_COUNT;
@@ -638,7 +635,7 @@ impl Community {
                                 .strategy
                                 .as_ref()
                                 .map(SpawnStrategy::freq_range_hz)
-                                .unwrap_or_else(|| landscape.freq_bounds());
+                                .unwrap_or_else(|| landscape.space.voice_pitch_bounds());
                             let lo = min_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
                             let hi = max_hz.clamp(lo, MAX_FREQ_HZ);
                             2.0f32.powf(child_log2).clamp(lo, hi)

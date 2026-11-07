@@ -61,7 +61,7 @@ impl PitchController {
         current_pitch_log2: f32,
         landscape: &Landscape,
     ) -> (f32, f32) {
-        let (fmin, fmax) = landscape.freq_bounds_log2();
+        let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
         let center_log2 = if pitch.freq.is_finite() && pitch.freq > 0.0 {
             pitch.freq.log2()
         } else {
@@ -248,7 +248,7 @@ impl PitchController {
         };
         if let AnyPitchCore::PitchHillClimb(core) = &mut self.core {
             if landscape.pitch_set_weight > 0. {
-                let (lo, hi) = landscape.freq_bounds_log2();
+                let (lo, hi) = landscape.space.voice_pitch_bounds_log2();
                 let center = if pitch.freq.is_finite() && pitch.freq > 0. {
                     pitch.freq.log2()
                 } else {
@@ -278,7 +278,7 @@ impl PitchController {
                     .tonal_context
                     .clone()
                     .filter(|s| self.control_tick.is_some_and(|at| s.end <= at));
-                let (fmin, fmax) = landscape.freq_bounds_log2();
+                let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
                 let center = if pitch.freq.is_finite() && pitch.freq > 0. {
                     pitch.freq.log2()
                 } else {
@@ -556,7 +556,7 @@ impl PitchController {
             self.last_target_salience = 1.0;
             return false;
         }
-        let (fmin, fmax) = landscape.freq_bounds_log2();
+        let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
         let (min, max) = Self::target_bounds(pitch, current_pitch_log2, landscape);
         let clamped = if min <= max {
             target_pitch_log2.clamp(min, max)
@@ -937,5 +937,35 @@ mod dwell_tests {
             ctl.loo_input_mut().exact_score = Some(vec![invalid; n].into());
             assert_eq!(ctl.core.dwell_level(&landscape, 220.0, true).0, 0.5);
         }
+    }
+    #[test]
+    fn autonomous_continuous_upper_bound_keeps_7980_hz_and_lock_keeps_10000() {
+        let landscape = Landscape::new(crate::core::log2space::production_space(48_000));
+        for frequency in [7980.0_f32, 8000.0] {
+            let pitch = PitchControl {
+                freq: frequency,
+                range_oct: 0.0,
+                ..Default::default()
+            };
+            let bounds = PitchController::target_bounds(&pitch, frequency.log2(), &landscape);
+            assert_eq!(bounds, (frequency.log2(), frequency.log2()));
+        }
+        let pitch = PitchControl {
+            mode: PitchMode::Lock,
+            freq: 10000.0,
+            ..Default::default()
+        };
+        let mut ctl = controller(&pitch, &landscape.space);
+        ctl.update_pitch_target(
+            10000.0,
+            &NeuralRhythms::default(),
+            1.0,
+            &landscape,
+            &pitch,
+            &[],
+            &[],
+            0.0,
+        );
+        assert_eq!(ctl.target_pitch_log2, 10000.0_f32.log2());
     }
 }

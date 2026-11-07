@@ -15,12 +15,33 @@ pub struct Log2Space {
 }
 
 /// Shared production grid for runtime analysis and body fallbacks.
-pub(crate) fn production_space() -> Log2Space {
+pub(crate) fn production_space(_sample_rate: u32) -> Log2Space {
     // About 30 Hz, aligned 84 bins below the existing 55 Hz lattice.
     Log2Space::new(55.0 * 2.0_f32.powf(-7.0 / 8.0), 8000.0, 96)
 }
 
+/// Continuous autonomous Voice pitch limits, independent of the auditory lattice.
+pub(crate) fn voice_pitch_range_hz() -> (f32, f32) {
+    (55.0 * 2.0_f32.powf(-7.0 / 8.0), 8000.0)
+}
+
 impl Log2Space {
+    pub(crate) fn voice_pitch_bounds(&self) -> (f32, f32) {
+        let (lo, hi) = voice_pitch_range_hz();
+        let bounds = (lo.max(self.fmin), hi.min(self.fmax));
+        if bounds.0 <= bounds.1 {
+            bounds
+        } else {
+            // Nonproduction placeholder spaces retain their existing fallback range.
+            (self.fmin, self.fmax)
+        }
+    }
+
+    pub(crate) fn voice_pitch_bounds_log2(&self) -> (f32, f32) {
+        let (lo, hi) = self.voice_pitch_bounds();
+        (lo.log2(), hi.log2())
+    }
+
     /// Create a log2-space grid between fmin..fmax (inclusive).
     pub fn new(fmin: f32, fmax: f32, bins_per_oct: u32) -> Self {
         assert!(

@@ -37,7 +37,7 @@ impl Voice {
         };
         self.phonation_engine.set_sound_adsr(self.voice_adsr);
         let pitch = &self.effective_control.pitch;
-        let (field_lo, field_hi) = landscape.freq_bounds_log2();
+        let (field_lo, field_hi) = landscape.space.voice_pitch_bounds_log2();
         let center = pitch.freq.log2();
         let half = pitch.range_oct.clamp(0., 6.) * 0.5;
         let lo = field_lo.max(center - half);

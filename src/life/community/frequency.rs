@@ -309,14 +309,15 @@ impl Community {
     ) -> f32 {
         let space = &landscape.space;
         let n_bins = space.n_bins();
+        let (voice_min, voice_max) = space.voice_pitch_bounds();
         let (min_freq, max_freq) = strategy.freq_range_hz();
         let (min_freq, max_freq) = (min_freq.min(max_freq), min_freq.max(max_freq));
         let min_dist_erb = strategy.min_dist_erb();
         if landscape.support_weights.active()
             && landscape.support.is_some()
             && matches!(strategy, SpawnStrategy::Field { target, .. } if *target != FieldTarget::Uniform)
-            && min_freq <= space.fmax
-            && max_freq >= space.fmin
+            && min_freq <= voice_max
+            && max_freq >= voice_min
         {
             return self.decide_support_frequency(
                 strategy,
@@ -340,8 +341,8 @@ impl Community {
         // Without field evidence, keep the uniform fallback inside the requested
         // range. Uniform placement itself does not depend on the analysis space.
         if n_bins == 0
-            || max_freq < space.fmin
-            || min_freq > space.fmax
+            || max_freq < voice_min
+            || min_freq > voice_max
             || matches!(
                 strategy,
                 SpawnStrategy::Field {
@@ -359,8 +360,8 @@ impl Community {
             return sample_range(min_freq, max_freq, rng);
         }
 
-        let min_freq = min_freq.max(space.fmin);
-        let max_freq = max_freq.min(space.fmax);
+        let min_freq = min_freq.max(voice_min);
+        let max_freq = max_freq.min(voice_max);
         let idx_min = space.nearest_index(min_freq);
         let idx_max = space.nearest_index(max_freq);
         let bin_freq = |idx| space.freq_of_index(idx).clamp(min_freq, max_freq);
@@ -700,8 +701,9 @@ impl Community {
         let snapshot = landscape.support.as_ref().unwrap();
         let space = &landscape.space;
         let (a, b) = strategy.freq_range_hz();
-        let lo_hz = a.min(b).max(space.fmin);
-        let hi_hz = a.max(b).min(space.fmax);
+        let (voice_min, voice_max) = space.voice_pitch_bounds();
+        let lo_hz = a.min(b).max(voice_min);
+        let hi_hz = a.max(b).min(voice_max);
         let lo = space.nearest_index(lo_hz);
         let hi = space.nearest_index(hi_hz);
         let density = landscape.support_single_density(

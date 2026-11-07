@@ -334,7 +334,7 @@ impl PitchHillClimbPitchCore {
         melodic: Option<crate::life::melodic_continuity::Snapshot>,
         mut scorer: impl FnMut(f32) -> f32,
     ) -> Result<TargetProposal, &'static str> {
-        let (fmin, fmax) = landscape.freq_bounds_log2();
+        let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
         let current_target_log2 = current_target_log2.clamp(fmin, fmax);
         let melodic_bounds = melodic.map(|m| (m.bounds.0.max(fmin), m.bounds.1.min(fmax)));
         if melodic_bounds.is_some_and(|(lo, hi)| lo > hi) {
@@ -1310,7 +1310,7 @@ impl PitchCore for PitchPeakSamplerCore {
         neighbor_salience: &[f32],
         rng: &mut R,
     ) -> TargetProposal {
-        let (fmin, fmax) = landscape.freq_bounds_log2();
+        let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
         let current_target_log2 = current_target_log2.clamp(fmin, fmax);
         let window_bins = window_bins_from_cents(landscape, self.window_cents);
         let tessitura_center = self.tessitura_center;
@@ -1628,7 +1628,7 @@ fn adjusted_pitch_score_impl(
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
 ) -> f32 {
-    let (fmin, fmax) = landscape.freq_bounds_log2();
+    let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
     let clamped = pitch_log2.clamp(fmin, fmax);
     let score = sample_consonance_score_with_loo(
         clamped,
@@ -1861,7 +1861,7 @@ impl LooInput {
         let bounds = if action.bounds.0 <= action.bounds.1 {
             action.bounds
         } else {
-            (space.fmin.log2(), space.fmax.log2())
+            space.voice_pitch_bounds_log2()
         };
         let target = pitch_log2.clamp(bounds.0, bounds.1);
         if external.is_some()
@@ -2199,7 +2199,7 @@ fn top_local_peaks(
     scored: &mut Vec<(f32, f32)>,
     out: &mut Vec<f32>,
 ) {
-    let (fmin, fmax) = landscape.freq_bounds_log2();
+    let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
     let n_bins = landscape.space.n_bins();
     if n_bins == 0 {
         return;
@@ -2211,6 +2211,9 @@ fn top_local_peaks(
     scored.clear();
     for idx in start..=end {
         let pitch = landscape.space.centers_log2[idx];
+        if pitch < fmin || pitch > fmax {
+            continue;
+        }
         let score = scorer(pitch);
         if score.is_finite() {
             scored.push((score, pitch));
@@ -2234,8 +2237,12 @@ fn top_global_peaks(
     if n_bins == 0 || top_k == 0 {
         return;
     }
+    let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
     scored.clear();
     for &pitch in &landscape.space.centers_log2 {
+        if pitch < fmin || pitch > fmax {
+            continue;
+        }
         let score = scorer(pitch);
         if score.is_finite() {
             scored.push((score, pitch));

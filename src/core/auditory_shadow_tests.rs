@@ -948,3 +948,18 @@ fn pcb_occupied_scan_matches_full_scan_bits() {
         });
     }
 }
+
+#[test]
+fn hr2_records_production_band_settling() {
+    let space = crate::core::log2space::production_space(48000).unwrap();
+    let frontend = AuditoryFrontEnd::selected(space, 48000.0, 512, 16384);
+    let settling = frontend.band_settling_samples();
+    assert!(settling[0] > 0 && settling[0] < usize::MAX);
+    println!(
+        "HR2_SETTLING lowest_samples={} lowest_ms={} boxcar_hops={} warmup_samples={}",
+        settling[0],
+        settling[0] as f64 / 48.0,
+        frontend.band_hop_counts()[0],
+        frontend.warmup_samples
+    );
+}

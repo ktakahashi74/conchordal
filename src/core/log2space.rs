@@ -15,9 +15,19 @@ pub struct Log2Space {
 }
 
 /// Shared production grid for runtime analysis and body fallbacks.
-pub(crate) fn production_space(_sample_rate: u32) -> Log2Space {
-    // About 30 Hz, aligned 84 bins below the existing 55 Hz lattice.
-    Log2Space::new(55.0 * 2.0_f32.powf(-7.0 / 8.0), 8000.0, 96)
+pub(crate) fn production_space(sample_rate: u32) -> Result<Log2Space, String> {
+    let fmin = 55.0 * 2.0_f32.powf(-140.0 / 96.0);
+    for k in (689..=751).rev() {
+        // Round the shared bank/grid boundary only once, after the f64 expression.
+        let fmax = 8000.0_f64.max(55.0 * 2.0_f64.powf((f64::from(k) + 0.5) / 96.0)) as f32;
+        let space = Log2Space::new(fmin, fmax, 96);
+        match crate::core::auditory_frontend::validate_sample_rate(&space, sample_rate) {
+            Ok(()) => return Ok(space),
+            Err(error) if k == 689 => return Err(error),
+            Err(_) => {}
+        }
+    }
+    unreachable!("production range has a nonempty k interval")
 }
 
 /// Continuous autonomous Voice pitch limits, independent of the auditory lattice.
@@ -306,5 +316,51 @@ mod tests {
         assert_eq!(space.nearest_index(f32::NAN), 0);
         assert_eq!(space.nearest_index(f32::NEG_INFINITY), 0);
         assert_eq!(space.nearest_index(f32::INFINITY), last);
+    }
+    #[test]
+    fn hr2_sample_rate_selects_maximal_safe_production_grid() {
+        for (sample_rate, k, bins) in [
+            (48000, 751, 892),
+            (44100, 751, 892),
+            (32000, 751, 892),
+            (24000, 740, 881),
+            (22050, 729, 870),
+            (16351, 689, 830),
+        ] {
+            let space = production_space(sample_rate).unwrap();
+            let expected = 8000.0_f64.max(55.0 * 2.0_f64.powf((f64::from(k) + 0.5) / 96.0)) as f32;
+            assert_eq!(space.fmax, expected, "{sample_rate} Hz must select k={k}");
+            assert_eq!(space.n_bins(), bins);
+            super::super::auditory_frontend::validate_sample_rate(&space, sample_rate).unwrap();
+            assert_eq!(space.voice_pitch_bounds(), voice_pitch_range_hz());
+            if k < 751 {
+                let next = Log2Space::new(
+                    space.fmin,
+                    8000.0_f64.max(55.0 * 2.0_f64.powf((f64::from(k) + 1.5) / 96.0)) as f32,
+                    96,
+                );
+                assert!(
+                    super::super::auditory_frontend::validate_sample_rate(&next, sample_rate)
+                        .is_err()
+                );
+            }
+            println!(
+                "HR2_RATE fs={sample_rate} k={k} fmax={} bins={}",
+                space.fmax,
+                space.n_bins()
+            );
+        }
+        assert!(production_space(16350).unwrap_err().contains("Nyquist"));
+        let mut config = crate::config::AppConfig::default();
+        config.audio.sample_rate = 16350;
+        assert!(
+            config
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("Nyquist")
+        );
+        config.audio.sample_rate = 16351;
+        config.validate().unwrap();
     }
 }

@@ -1,3 +1,15 @@
+# HR-2: provisional auditory extent approximately 20.015 Hz..12.5 kHz.
+# Stage 1 preserved the old production hashes in both registered feature groups.
+# Stage 2 changes extent-dependent normalization and field-driven behavior;
+# recapture each unchanged case twice in each registered group.
+# Previous HR-2 fma=1,avx2=1,avx512f=1 sine 77bfb48a162b42c2
+# Previous HR-2 fma=1,avx2=1,avx512f=1 harmonic 73a4f443d30c55aa
+# Previous HR-2 fma=1,avx2=1,avx512f=1 modal 6cf9b6bbfc1687de
+# Previous HR-2 fma=1,avx2=1,avx512f=1 habituation c6cdebf499cf02b3
+# Previous HR-2 fma=0,avx2=0,avx512f=0 sine 77bfb48a162b42c2
+# Previous HR-2 fma=0,avx2=0,avx512f=0 harmonic 73a4f443d30c55aa
+# Previous HR-2 fma=0,avx2=0,avx512f=0 modal 6cf9b6bbfc1687de
+# Previous HR-2 fma=0,avx2=0,avx512f=0 habituation c6cdebf499cf02b3
 # IP-INT oscillator-normalization recapture: 2026-11-01T23:52:36.479001+09:00
 # Independent source: 4d39b26de52ab66296497af05a99036367078ea3 (detached), plus only the repair below.
 # Repair patch SHA-256: a77f6ffa673099b67e13273cd086ccff65ce33c719f901fb392026a0c74bdeae
@@ -46,12 +58,12 @@
 # Each case captured twice below; both WAV hashes must agree.
 # target_features case fnv1a64(complete WAV bytes)
 # Capture fma=1,avx2=1,avx512f=1: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=<unset; Cargo config applies>
-fma=1,avx2=1,avx512f=1 sine 77bfb48a162b42c2
-fma=1,avx2=1,avx512f=1 harmonic 73a4f443d30c55aa
-fma=1,avx2=1,avx512f=1 modal 6cf9b6bbfc1687de
-fma=1,avx2=1,avx512f=1 habituation c6cdebf499cf02b3
+fma=1,avx2=1,avx512f=1 sine ca0c6c6a83db43f8
+fma=1,avx2=1,avx512f=1 harmonic f6e11a76e6a1841b
+fma=1,avx2=1,avx512f=1 modal 1aba2388df1f02e9
+fma=1,avx2=1,avx512f=1 habituation 49d6ca3b7c684bef
 # Capture fma=0,avx2=0,avx512f=0: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=-C target-cpu=x86-64
-fma=0,avx2=0,avx512f=0 sine 77bfb48a162b42c2
-fma=0,avx2=0,avx512f=0 harmonic 73a4f443d30c55aa
-fma=0,avx2=0,avx512f=0 modal 6cf9b6bbfc1687de
-fma=0,avx2=0,avx512f=0 habituation c6cdebf499cf02b3
+fma=0,avx2=0,avx512f=0 sine ca0c6c6a83db43f8
+fma=0,avx2=0,avx512f=0 harmonic f6e11a76e6a1841b
+fma=0,avx2=0,avx512f=0 modal 1aba2388df1f02e9
+fma=0,avx2=0,avx512f=0 habituation 49d6ca3b7c684bef

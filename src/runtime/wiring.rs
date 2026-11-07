@@ -26,7 +26,8 @@ pub(super) fn build_analysis_runtime_core(
     runtime_sample_rate: u32,
 ) -> AnalysisRuntimeCore {
     let fs = runtime_sample_rate as f32;
-    let space = crate::core::log2space::production_space(runtime_sample_rate);
+    let space = crate::core::log2space::production_space(runtime_sample_rate)
+        .expect("validated production sample rate");
     let lparams = LandscapeParams {
         fs,
         roughness_kernel: RoughnessKernel::new(KernelParams::default(), 0.005),

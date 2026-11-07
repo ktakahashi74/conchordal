@@ -5164,6 +5164,56 @@ mod tests {
             proposal.target_pitch_log2,
         );
     }
+    #[test]
+    fn hr2_global_and_local_filter_before_scoring_and_top_k() {
+        let landscape = Landscape::new(crate::core::log2space::production_space(48000).unwrap());
+        let (lo, hi) = landscape.space.voice_pitch_bounds_log2();
+        let inside = landscape.space.centers_log2[landscape.space.nearest_index(7000.0)];
+        let mut scored = Vec::new();
+        let mut out = Vec::new();
+        let mut seen = Vec::new();
+        let mut scorer = |pitch: f32| {
+            seen.push(pitch);
+            if pitch < lo || pitch > hi {
+                1000.0
+            } else {
+                -(pitch - inside).abs()
+            }
+        };
+        top_global_peaks(&landscape, 1, 0.0, &mut scorer, &mut scored, &mut out);
+        assert_eq!(out, vec![inside]);
+        assert!(seen.iter().all(|&p| p >= lo && p <= hi));
+        for edge in [lo, hi] {
+            seen.clear();
+            out.clear();
+            let expected = landscape
+                .space
+                .centers_log2
+                .iter()
+                .copied()
+                .filter(|&p| p >= lo && p <= hi)
+                .min_by(|a, b| (a - edge).abs().total_cmp(&(b - edge).abs()))
+                .unwrap();
+            top_local_peaks(
+                &landscape,
+                edge,
+                48,
+                1,
+                &mut |pitch| {
+                    seen.push(pitch);
+                    if pitch < lo || pitch > hi {
+                        1000.0
+                    } else {
+                        -(pitch - edge).abs()
+                    }
+                },
+                &mut scored,
+                &mut out,
+            );
+            assert_eq!(out, vec![expected]);
+            assert!(seen.iter().all(|&p| p >= lo && p <= hi));
+        }
+    }
 }
 
 #[cfg(feature = "loo-diagnostic")]

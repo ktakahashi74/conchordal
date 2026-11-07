@@ -78,7 +78,7 @@ fn lowrange_input_evidence_moves_below_55_hz() {
 fn lowrange_candidates_match_unmodified_harmonicity_law() {
     let (mut stream, params) = production_analysis();
     // Specify the reference grid independently of production_space to catch truncation.
-    let reference_space = Log2Space::new(55.0 * 2.0_f32.powf(-7.0 / 8.0), 8000.0, 96);
+    let reference_space = Log2Space::new(55.0 * 2.0_f32.powf(-140.0 / 96.0), 12498.65_f32, 96);
     let reference = HarmonicityKernel::new(&reference_space, HarmonicityParams::default());
     let (_, du) = erb_grid(&reference_space);
     let mut observed = 0;
@@ -125,11 +125,11 @@ fn lowrange_candidates_match_unmodified_harmonicity_law() {
 #[test]
 fn lowrange_production_bank_has_extended_channels() {
     let (stream, _) = production_analysis();
-    assert_eq!(stream.last().space.n_bins(), 774);
+    assert_eq!(stream.last().space.n_bins(), 892);
     let diagnostic = stream.aud_m1_shadow_diagnostic();
     let centers = diagnostic["centers_hz"].as_array().unwrap();
-    assert_eq!(centers.len(), 174);
+    assert_eq!(centers.len(), 198);
     // Half the final displayed millihertz permits rounding of the specified centers.
-    assert!((centers[0].as_f64().unwrap() - 24.629).abs() < 0.0005);
-    assert!((centers[173].as_f64().unwrap() - 8175.326).abs() < 0.0005);
+    assert!((centers[0].as_f64().unwrap() - 14.574).abs() < 0.0005);
+    assert!((centers[197].as_f64().unwrap() - 12889.027).abs() < 0.0005);
 }

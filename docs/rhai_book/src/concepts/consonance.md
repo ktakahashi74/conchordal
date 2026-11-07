@@ -30,11 +30,17 @@ realized either as a cloud (the default) or as a deterministic extremum with
 Range bounds must be finite and within the synthesizer's 1–20000 Hz range;
 reversed bounds are accepted. Initial placement stays inside those bounds,
 including jitter and all-zero or fully occupied fallbacks. Field targets use
-the intersection with the analysis band (currently approximately 29.989–8000 Hz). If there is
-no intersection, placement falls back to log-uniform sampling in the requested
-range because no field evidence is available there. `random()` samples the
-requested range directly. Placement does not constrain subsequent
-`seek_consonance()` movement to that range.
+the intersection with the autonomous Voice pitch range, approximately 29.989–8000 Hz.
+This continuous range is independent of the wider auditory grid, provisionally
+approximately 20.015 Hz–12.5 kHz at 32/44.1/48 kHz; lower sample rates reduce its
+upper edge to keep the filterbank below Nyquist. Flora uses the full auditory grid.
+If a Voice placement has no intersection with its pitch range, it falls back to
+log-uniform sampling in the requested range. `random()` samples that requested
+range directly; `at()` and `line()` retain explicitly specified pitches.
+Placement does not constrain subsequent `seek_consonance()` movement to the
+placement range: autonomous candidates and targets use the separate Voice limits.
+Hereditary respawn retains its original requested range; it does not impose an
+additional 8000 Hz clamp on an explicitly specified parent.
 
 ```rhai
 let anchor = harmonic()

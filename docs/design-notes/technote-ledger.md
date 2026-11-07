@@ -12090,3 +12090,60 @@ Native builds also disagree with themselves. rustfft's planner picks AVX, SSE or
   - Recapture the seed-pinned baselines.
 
 **Open.** The per-CPU native FFT difference remains open. First check whether CI baselines or cross-machine reproduction of seed-pinned research depend on it, then either fix it or narrow the rule. Records are in `.orchestration/units/WP-4/`.
+
+
+### 9.3.131 2026-11-07: Separate provisional auditory extent from Voice pitch limits (HR-2)
+
+**Author decisions.** Widen the input and field lattice provisionally to about
+20.015 Hz–12.5 kHz while retaining the existing A-weighting, S2–S6 and H/R/C laws.
+Keep autonomous Voice candidates and targets in the independent continuous range
+`55 * 2^(-7/8)`–8000 Hz. The last old lattice center is not that upper limit.
+The H kernel retains its existing four-octave root halo, with no root cutoff or
+new linear root weight. Low input density above the existing floor contributes
+under the same law as the rest of the input.
+
+HR-3 examined a sensitivity model reaching 18 kHz. The primary sources obtained
+in that investigation did not establish a model meeting the adoption conditions;
+this does not establish that no such model exists. ISO 532-2 describes the
+middle-ear transfer above 12.5 kHz as extrapolated and unverified; ISO 532-3 uses
+spectra through 15 kHz; ISO 532-1's last input band center is 12.5 kHz. Parts of
+ANSI S3.4-2007 and Glasberg & Moore (2006) remain unconfirmed in that investigation.
+A calibrated full loudness model would also change the relative-level premise
+of the current front end. The author adopted this provisional extension instead.
+HR-4 concluded that a root cutoff or linear root weighting is not justified for
+the existing H computation; the author adopted the unchanged root law.
+
+**Why provisional.** 12.5 kHz is the upper entry in the ISO 226:2023 equal-loudness
+table, not the upper definition of A-weighting or the boundary of human hearing.
+The IEC 61672-1:2002 table checked in HR-2 review 1 extends to 20 kHz. Compared
+with the 40-phon relative correction, A-weighting attenuates less by 9.305 dB at
+20 Hz, 9.079 dB at 25 Hz, 8.671 dB at 31.5 Hz and 7.046 dB at 12.5 kHz. These
+four comparisons are not an error bound for arbitrary levels or complex sounds.
+The new edges have discrepancies comparable to the already included 31.5 Hz.
+A-weighting remains an existing model choice, not a newly validated sensitivity
+model over this extent. The front end's finite filter responses and existing
+one-bin edge taper remain; no new cutoff removes every input above 12.5 kHz.
+
+**Implementation.** One sample-rate-dependent production definition supplies the
+runtime, validation and body fallbacks. At 32/44.1/48 kHz it uses 892 bins and
+198 auditory channels. Lower rates select the largest safe upper edge under the
+bank's actual f32 Nyquist check; the 16351 Hz integer minimum is retained.
+T2's separate bank, PS-1's 48 kHz requirement and TC's unknown at other rates
+are unchanged. Flora, listener fields and full spectral self-reports retain the
+wide lattice. Voice local/global candidates are filtered before ranking and
+limiting their count. Lock, Linear, Uniform and out-of-range placement requests,
+and the distinct respawn policies retain their existing meanings.
+
+R mass, normalization and downstream values depend on the extent, so identical
+PCM need not retain its old H/R/C values. The staged refactor first preserves the
+old extent and fixed render hashes, then changes the auditory extent separately.
+The author's expectation about a natural musical effect is not a principle-layer
+acceptance condition. Mechanism agreement, causal routing and declared-load
+real-time operation are distinct from any final author audition.
+
+**Registered follow-up.** Revisit 12.5–18 kHz when a sensitivity model supported in
+that band is available; consider a calibrated full model with front-end
+unification. HR-4 retains research on a reduced author rule or reconstruction of
+the source temporal model. A lower Voice ceiling would be a separate author rule;
+4.7 kHz is not adopted as a universal hard limit. Non-pitched residents remain a
+separate author decision. Local design and review records: HR-2 v2.1, HR-3, HR-4.

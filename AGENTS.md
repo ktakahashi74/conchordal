@@ -633,10 +633,12 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   auditory filterbank independently of this window. `kernel_align` applies to NSGT.
 - `[analysis].tau_ms`: S6 density smoothing (default 10 ms).
 - `[psychoacoustics].use_incoherent_power`: retained NSGT power only, not H/R density.
-- The fixed auditory grid includes its 8175.326 Hz upper margin channel. Configured
-  and actual device sample rates must put every channel below Nyquist (integer
-  rates at least 16351 Hz for the runtime's approximately 29.989..8000 Hz grid); unsupported rates
-  return configuration errors before analysis construction.
+- The provisional auditory grid starts at approximately 20.015 Hz and extends to
+  approximately 12.5 kHz at 32/44.1/48 kHz. Lower rates select the largest grid
+  whose margin channels all lie below Nyquist; integer rates below 16351 Hz are
+  rejected before analysis construction. The autonomous Voice pitch range remains
+  approximately 29.989..8000 Hz, independently of the auditory grid. T2's separate
+  bank and the PS-1/TC sample-rate conditions remain unchanged.
 - `[audio].output_gain_db` (default `4.5`): fixed dB gain before cpal/WAV guards, calibrated from bundled sample peaks and the 0.98 ceiling. Analysis, listener, report and UI inputs stay at their original levels.
 - `[psychoacoustics.consonance.field.kernel]`
 - `a, b, c, d` (defaults: `1.0, -1.35, 1.0, 0.0`)

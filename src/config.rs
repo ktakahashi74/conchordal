@@ -620,13 +620,10 @@ impl AppConfig {
             self.audio.sample_rate > 0,
             "audio.sample_rate must be positive"
         );
-        // The fixed approximately 29.989..8000 Hz auditory grid includes a highest channel at
-        // 8175.326 Hz; integer rates below 16351 Hz cannot support its margin.
-        crate::core::auditory_frontend::validate_sample_rate(
-            &crate::core::log2space::production_space(self.audio.sample_rate),
-            self.audio.sample_rate,
-        )
-        .map_err(anyhow::Error::msg)?;
+        // Keep the widest provisional grid whose margin channels are below Nyquist.
+        // The minimum production bank retains the integer 16351 Hz rate boundary.
+        crate::core::log2space::production_space(self.audio.sample_rate)
+            .map_err(anyhow::Error::msg)?;
         ensure!(
             self.audio.latency_ms.is_finite() && self.audio.latency_ms > 0.0,
             "audio.latency_ms must be finite and positive"

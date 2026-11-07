@@ -1822,4 +1822,45 @@ mod tests {
             assert_eq!(picked_idx, idx_target);
         }
     }
+    #[test]
+    fn hr2_field_births_preserve_voice_and_requested_ranges() {
+        let space = crate::core::log2space::production_space(48000).unwrap();
+        let mut landscape = Landscape::new(space.clone());
+        landscape.consonance_density_mass_eff.fill(1.0);
+        for (i, &hz) in space.centers_hz.iter().enumerate() {
+            landscape.consonance_field_score_eff[i] = if hz > 8000.0 { 1000.0 } else { 1.0 };
+        }
+        let pop = test_pop();
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(21);
+        let make = |target, sampling, min_freq, max_freq| SpawnStrategy::Field {
+            target,
+            sampling,
+            min_freq,
+            max_freq,
+            min_dist_erb: 0.0,
+            tension: 0.0,
+        };
+        for sampling in [FieldSampling::Peak, FieldSampling::Density] {
+            for (lo, hi) in [(3000.0, 11000.0), (7980.0, 8000.0)] {
+                let strategy = make(FieldTarget::Consonance, sampling, lo, hi);
+                for _ in 0..64 {
+                    let hz = pop.decide_frequency(&strategy, &landscape, &mut rng, &[], None);
+                    assert!((lo..=8000.0).contains(&hz), "{hz}");
+                }
+            }
+        }
+        for (target, lo, hi) in [
+            (FieldTarget::Uniform, 3000.0, 11000.0),
+            (FieldTarget::Consonance, 9000.0, 11000.0),
+        ] {
+            let strategy = make(target, FieldSampling::Density, lo, hi);
+            let mut above = false;
+            for _ in 0..128 {
+                let hz = pop.decide_frequency(&strategy, &landscape, &mut rng, &[], None);
+                assert!((lo..=hi).contains(&hz));
+                above |= hz > 8000.0;
+            }
+            assert!(above);
+        }
+    }
 }

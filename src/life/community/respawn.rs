@@ -1621,6 +1621,77 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn hr2_respawn_keeps_policy_specific_ranges() {
+        let space = crate::core::log2space::production_space(48000).unwrap();
+        let mut landscape = Landscape::new(space.clone());
+        landscape.consonance_density_mass_eff.fill(1.0);
+        landscape.consonance_field_score_eff.fill(1.0);
+        let mut pop = test_pop();
+        pop.apply_action(
+            Action::Spawn {
+                population_id: 1,
+                ids: vec![1].into(),
+                spec: spawn_spec_with_freq(220.0),
+                strategy: None,
+            },
+            &landscape,
+        );
+        let mut population = pop.populations[&1].clone();
+        let mut rng = SmallRng::seed_from_u64(21);
+        population.respawn_policy = RespawnPolicy::Random;
+        let candidate = pop
+            .pick_respawn_candidate(1, &population, &BTreeMap::new(), &landscape, &mut rng, 0)
+            .unwrap()
+            .0;
+        let (lo, hi) = space.voice_pitch_bounds();
+        assert!((lo..=hi).contains(&candidate));
+        population.strategy = Some(SpawnStrategy::Field {
+            target: crate::scenario::FieldTarget::Consonance,
+            sampling: crate::scenario::FieldSampling::Density,
+            min_freq: 3000.0,
+            max_freq: 11000.0,
+            min_dist_erb: 0.0,
+            tension: 0.0,
+        });
+        population.respawn_policy = RespawnPolicy::Hereditary { sigma_oct: 0.0 };
+        let parents = BTreeMap::from([(
+            1,
+            vec![ParentCandidate {
+                id: 17,
+                freq_hz: 10000.0,
+                energy: 1.0,
+                generation: 3,
+            }],
+        )]);
+        let candidate = pop
+            .pick_respawn_candidate(1, &population, &parents, &landscape, &mut rng, 0)
+            .unwrap()
+            .0;
+        assert_eq!(candidate, 10000.0_f32.log2().exp2());
+        population.strategy = None;
+        let candidate = pop
+            .pick_respawn_candidate(1, &population, &parents, &landscape, &mut rng, 0)
+            .unwrap()
+            .0;
+        assert_eq!(candidate, 8000.0);
+        for (i, &hz) in space.centers_hz.iter().enumerate() {
+            landscape.consonance_field_score_eff[i] = if hz > 8000.0 { 1000.0 } else { 1.0 };
+        }
+        let bins = peak_bias_candidate_bins(&landscape, 3000.0, 11000.0, 16);
+        assert!(!bins.is_empty());
+        assert!(bins.iter().all(|&i| space.centers_hz[i] <= 8000.0));
+        let config = RespawnPeakBiasConfig::default();
+        let local = peak_bias_local_search_with(
+            10000.0,
+            3000.0,
+            11000.0,
+            config,
+            |hz| -(hz - 10000.0).abs(),
+            None,
+        );
+        assert_eq!(local, 10000.0);
+    }
 }
 
 #[cfg(test)]

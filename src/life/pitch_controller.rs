@@ -940,7 +940,7 @@ mod dwell_tests {
     }
     #[test]
     fn autonomous_continuous_upper_bound_keeps_7980_hz_and_lock_keeps_10000() {
-        let landscape = Landscape::new(crate::core::log2space::production_space(48_000));
+        let landscape = Landscape::new(crate::core::log2space::production_space(48_000).unwrap());
         for frequency in [7980.0_f32, 8000.0] {
             let pitch = PitchControl {
                 freq: frequency,
@@ -967,5 +967,27 @@ mod dwell_tests {
             0.0,
         );
         assert_eq!(ctl.target_pitch_log2, 10000.0_f32.log2());
+    }
+    #[test]
+    fn hr2_free_target_from_10000_hz_uses_voice_upper_bound() {
+        let landscape = Landscape::new(crate::core::log2space::production_space(48000).unwrap());
+        let pitch = PitchControl {
+            freq: 10000.0,
+            range_oct: 0.0,
+            ..Default::default()
+        };
+        let mut ctl = controller(&pitch, &landscape.space);
+        ctl.force_set_target_pitch_log2(10000.0_f32.log2());
+        ctl.update_pitch_target(
+            10000.0,
+            &NeuralRhythms::default(),
+            1.0,
+            &landscape,
+            &pitch,
+            &[],
+            &[],
+            0.0,
+        );
+        assert!(ctl.target_pitch_log2 <= 8000.0_f32.log2());
     }
 }

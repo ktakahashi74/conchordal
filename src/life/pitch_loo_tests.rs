@@ -521,3 +521,29 @@ fn tail_roughness_aversion_interpolates_r_without_changing_h_or_shared_observati
         }
     }
 }
+
+#[test]
+fn hr2_empty_target_bounds_project_rearticulation_to_voice_range() {
+    let space = crate::core::log2space::production_space(48000).unwrap();
+    let previous = 8000.0_f32.log2();
+    let input = LooInput {
+        rearticulation: Some(RearticulationView {
+            weight: 1.0,
+            id: 1,
+            generation: 0,
+            reference_log2: previous,
+            threshold_cents: 0.0,
+            previous_target: previous,
+            bounds: (1.0, 0.0),
+        }),
+        rearticulation_score: vec![1.0; space.n_bins()],
+        ..Default::default()
+    };
+    let external = vec![0.0; space.n_bins()];
+    assert_eq!(
+        input
+            .candidate_scan(&space, 10000.0_f32.log2(), Some(&external))
+            .unwrap(),
+        external
+    );
+}

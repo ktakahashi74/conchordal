@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Separate the autonomous Voice pitch range (approximately 29.989–8000 Hz) from
+  the provisional auditory grid (approximately 20.015 Hz–12.5 kHz at 32/44.1/48 kHz).
+  Lower sample rates select the largest filterbank below Nyquist, retaining the
+  16351 Hz minimum. Flora, analysis and listener fields use the wider grid;
+  explicit placement and respawn policies retain their existing meaning. Keep
+  A-weighting and the H/R/C laws unchanged, including the H root halo.
+
 - Run the instrument in the browser. A new `web` feature builds the engine without
   threads, file system or audio I/O, and `StepEngine` advances the worker, ecology
   analysis and listener analysis one hop at a time. `crates/conchordal-web` plays it

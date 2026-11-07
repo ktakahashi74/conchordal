@@ -189,14 +189,25 @@ impl Chunks {
     #[inline(always)]
     pub(crate) fn coherent<S: Simd>(&self, simd: S, x: [&[f32]; 2], out: &mut [Complex32]) {
         for (row, out) in self.rows.iter().zip(out) {
-            let mut acc = [[f32x8::splat(simd, 0.0); 2]; 2];
-            for (n, c) in row.clone().enumerate() {
+            let zero = f32x8::splat(simd, 0.0);
+            let (mut even_re, mut even_im, mut odd_re, mut odd_im) = (zero, zero, zero, zero);
+            let mut c = row.start;
+            // Fixed accumulators retain chunk parity without an indexed vector spill.
+            while c + 1 < row.end {
                 let ((xr, xi), (wr, wi)) = (self.bins(simd, x, c), self.weights(simd, c));
-                let [re, im] = &mut acc[n & 1];
-                *re += xr * wr - xi * wi;
-                *im += xr * wi + xi * wr;
+                even_re += xr * wr - xi * wi;
+                even_im += xr * wi + xi * wr;
+                let ((xr, xi), (wr, wi)) = (self.bins(simd, x, c + 1), self.weights(simd, c + 1));
+                odd_re += xr * wr - xi * wi;
+                odd_im += xr * wi + xi * wr;
+                c += 2;
             }
-            *out = Complex32::new(reduce(acc[0][0] + acc[1][0]), reduce(acc[0][1] + acc[1][1]));
+            if c < row.end {
+                let ((xr, xi), (wr, wi)) = (self.bins(simd, x, c), self.weights(simd, c));
+                even_re += xr * wr - xi * wi;
+                even_im += xr * wi + xi * wr;
+            }
+            *out = Complex32::new(reduce(even_re + odd_re), reduce(even_im + odd_im));
         }
     }
 
@@ -204,12 +215,20 @@ impl Chunks {
     #[inline(always)]
     pub(crate) fn power<S: Simd>(&self, simd: S, x: [&[f32]; 2], out: &mut [f32]) {
         for (row, out) in self.rows.iter().zip(out) {
-            let mut acc = [f32x8::splat(simd, 0.0); 2];
-            for (n, c) in row.clone().enumerate() {
+            let (mut even, mut odd) = (f32x8::splat(simd, 0.0), f32x8::splat(simd, 0.0));
+            let mut c = row.start;
+            while c + 1 < row.end {
                 let (xr, xi) = self.bins(simd, x, c);
-                acc[n & 1] += (xr * xr + xi * xi) * self.weights(simd, c).0;
+                even += (xr * xr + xi * xi) * self.weights(simd, c).0;
+                let (xr, xi) = self.bins(simd, x, c + 1);
+                odd += (xr * xr + xi * xi) * self.weights(simd, c + 1).0;
+                c += 2;
             }
-            *out = reduce(acc[0] + acc[1]);
+            if c < row.end {
+                let (xr, xi) = self.bins(simd, x, c);
+                even += (xr * xr + xi * xi) * self.weights(simd, c).0;
+            }
+            *out = reduce(even + odd);
         }
     }
 }
@@ -564,7 +583,7 @@ mod tests {
             (seed >> 40) as f32 / (1u64 << 24) as f32 - 0.5
         };
         let x: Vec<Complex32> = (0..len).map(|_| Complex32::new(next(), next())).collect();
-        let rows: Vec<Vec<(usize, Complex32)>> = (0..40)
+        let mut rows: Vec<Vec<(usize, Complex32)>> = (0..40)
             .map(|r| {
                 let mut k = (r * 97) % 64;
                 let mut row = Vec::new();
@@ -575,6 +594,11 @@ mod tests {
                 row
             })
             .collect();
+        rows.extend((0..4).map(|count| {
+            (0..count)
+                .map(|chunk| (chunk * 8, Complex32::new(0.3, -0.2)))
+                .collect()
+        }));
         let chunks = Chunks::new(rows.iter().map(|row| row.iter().copied()), len);
         let (mut re, mut im) = (vec![0.0; len], vec![0.0; len]);
         split_complex(&x, &mut re, &mut im);
@@ -600,6 +624,21 @@ mod tests {
             })
             .collect();
         let mut checked = 0;
+        let expected_power: Vec<u32> = chunks
+            .rows
+            .iter()
+            .map(|row| {
+                let mut acc = [[0f32; 8]; 2];
+                for (n, c) in row.clone().enumerate() {
+                    for j in 0..8 {
+                        let (xr, xi) = (re[chunks.bins[c] + j], im[chunks.bins[c] + j]);
+                        acc[n & 1][j] += (xr * xr + xi * xi) * chunks.re[8 * c + j];
+                    }
+                }
+                let a: [f32; 8] = std::array::from_fn(|j| acc[0][j] + acc[1][j]);
+                (((a[0] + a[4]) + (a[2] + a[6])) + ((a[1] + a[5]) + (a[3] + a[7]))).to_bits()
+            })
+            .collect();
         crate::core::for_each_simd_level!(|name, simd| {
             let mut out = vec![Complex32::default(); rows.len()];
             simd.vectorize(|| chunks.coherent(simd, [&re, &im], &mut out));
@@ -608,6 +647,13 @@ mod tests {
                 .map(|z| (z.re.to_bits(), z.im.to_bits()))
                 .collect();
             assert_eq!(bits, expected, "{name}");
+            let mut power = vec![0.0; rows.len()];
+            simd.vectorize(|| chunks.power(simd, [&re, &im], &mut power));
+            assert_eq!(
+                power.iter().map(|p| p.to_bits()).collect::<Vec<_>>(),
+                expected_power,
+                "power {name}"
+            );
             checked += 1;
         });
         assert!(checked > 0);

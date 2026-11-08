@@ -284,16 +284,16 @@ pub(super) fn wait_for_analysis(
         if exiting.load(Ordering::SeqCst) {
             break;
         }
-        #[cfg(feature = "native")]
-        thread::sleep(Duration::from_micros(200));
-        #[cfg(not(feature = "native"))]
-        {
+        // Without threads the analysis ran inline, so a missing result is final.
+        if !cfg!(feature = "native") {
             state
                 .failures
                 .push("inline analysis result is missing".into());
             exiting.store(true, Ordering::SeqCst);
             break;
         }
+        #[cfg(feature = "native")]
+        thread::sleep(Duration::from_micros(200));
     }
     analysis_updated
 }
@@ -396,16 +396,16 @@ pub(super) fn wait_for_listener(
         if cfg.exiting.load(Ordering::SeqCst) {
             break;
         }
-        #[cfg(feature = "native")]
-        thread::sleep(Duration::from_micros(200));
-        #[cfg(not(feature = "native"))]
-        {
+        // Without threads the analysis ran inline, so a missing result is final.
+        if !cfg!(feature = "native") {
             state
                 .failures
                 .push("inline listener result is missing".into());
             cfg.exiting.store(true, Ordering::SeqCst);
             break;
         }
+        #[cfg(feature = "native")]
+        thread::sleep(Duration::from_micros(200));
     }
     listener_state_update
 }

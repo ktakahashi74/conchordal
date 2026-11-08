@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@astrojs/markdown-satteri": "0.4.4",
-    "astro": "7.4.0",
+    "astro": "7.4.7",
     "bootstrap": "5.3.8",
     "katex": "0.19.1",
     "satteri": "0.10.5",

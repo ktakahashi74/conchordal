@@ -12147,3 +12147,236 @@ unification. HR-4 retains research on a reduced author rule or reconstruction of
 the source temporal model. A lower Voice ceiling would be a separate author rule;
 4.7 kHz is not adopted as a universal hard limit. Non-pitched residents remain a
 separate author decision. Local design and review records: HR-2 v2.1, HR-3, HR-4.
+
+<a id="first-impression-cue-response-20261107"></a>
+### 9.3.132 2026-11-07: Requirements for a first-impression piece, and a first stage that answers heard sound (a limited exception to the stop)
+
+**Author decision.** The author judged every piece on the browser demo (drafts B1 and B2, and samples 01–16) not musical enough as a first impression. The next goal is to make a piece that is. The author's requirements for it:
+
+> Both harmonic DCC and temporal DCC can be felt. Sounds live between the beats as well as on them, and something like a motif is felt, if not a melody. The harmony is felt to progress on its own. Every element evolves in time, self-organized.
+
+Requirement 4 is read as "every sounding role has a path to change with its environment (holding and stillness are allowed)". Fixed anchors and score-side changes of level or root do not count as evidence of autonomy.
+
+**Assessment (FI-1).** The existing parts do not meet all four requirements.
+- Requirements 1 and 4: partly met by material centred on slow Flora.
+- Requirement 3: only partly met.
+- Requirement 2: not met. Sounding between beats while keeping a relation, and growing joint pitch–time patterns at the 2–10 s scale, fall into the gap and negative results of §9.3.63–64, the earlier stop (§9.3.127) and the rejection of RH-1.
+
+**Flora alone (BASE-1).** Three Flora at pace 1, entering at 0, 25 and 50 s, with no fixed held tone and no rain, each died about 20 s after entering. From 80 s on the output was silent. Flora grows on the harmonic field of everything except itself, so it needs harmonic support that is not fixed. B1 and B2 kept sounding because a fixed held tone supplied that support.
+
+**Carrier (FI-2, FI-2R).** The author required consistency with the temporal-niche design (`rhythm-temporal-niche.md`), which aimed at phrase emergence through partitioning niches within the beat.
+- FI-2 required a hand-off between distinguishable individuals and recommended fixed-pitch Voices. The author rejected this as contrary to the author's earlier judgments that a continuously repeated single tone harms musicality (2026-06-12, 10-16, 11-02).
+- FI-2R reworked the first stage around a Voice that takes its pitch from a heard cue:
+  - The existing H projection is applied to the cue, and the consonance peaks within the Voice's register become candidates.
+  - Pitch and time are chosen together as one response.
+  - Temperature-driven acceptance is not used.
+  - A sound-mediated closed loop forms with slow Flora, whose first transient serves as the first cue.
+
+**Decision (author, 2026-11-07).**
+- A limited exception is made to the stop of §9.3.127.
+  - Stopped as before: general Voice melody generation, PD-2-style comprehensive contextual pitch selection, and improvements whose motion comes mainly from temperature-driven acceptance.
+  - Allowed, for the first stage only: a prototype that chooses, as one response, a pitch derived from an external cue supported by actual sound and a time from the existing legal participation opportunities.
+  - A failure does not fall back to general search, fixed anchors or temperature-driven motion.
+- The generation contract and start of FI-2R §2, §4 and §6 are adopted.
+- A limited prototype (FI-3) follows the order of §7: development measurement, frozen registration, verification. It excludes integration into the main engine, adoption of a piece, and the second stage (short patterns and harmonic transitions).
+- Locking onto a single pitch, convergence of all Voices onto one pitch, and silence are registered as failures.
+- The new mechanism must run on the browser's single thread (`StepEngine`).
+
+**Correction of the cue observation (author, 2026-11-07).**
+- FI-3 stopped at its first check.
+  - Ridges, envelopes and provisional groups could be read from the mixture.
+  - The current path has no observation that ties pitch, shape, continuity and availability time for another source with the Voice's own sound removed. The Voice observer publishes only H/R, and group analysis runs on the whole mixture in a background thread, which `StepEngine` rejects.
+- The orchestrator checked the cue definition against DCC and the design, and rejected "each Voice removes its own sound and extracts the other". The reasons:
+  - DCC couples generation to the listener's cognition, and a hand-off exists because the listener groups the sound.
+  - There is one listener (§9.3.126); the Voice default terrain is also shared.
+  - Map §5 and the temporal-niche design give each individual's action an environment from shared observation, without replicating perception per individual.
+- The author adopted the correction. A cue is defined by two parts:
+  - shared grouping, applied once to the habitat (the one listener's groups);
+  - each Voice recognising, from its own radiated sound, which groups are its own.
+
+  Groups that fuse own and other sound stay ambiguous. Both native and browser run this synchronously.
+
+**Shared grouping prototype (FI-4).**
+- A synchronous shared-grouping path and per-Voice ownership from each Voice's radiated sound were prototyped (research branch, off by default).
+- No group of the Voice's own sound was taken for another source, in development or validation.
+- In the frozen validation (one Flora and three Voices), a pitched cue from others was missing in 91.20% (871/955) of the Voice-hops in which another source sounded. The registered limit was 51.89%.
+  - Of the judged groups, 91.85% were ambiguous, most because one group mixed own and other components.
+  - The current group analysis, built for meter observation, does not split concurrent sources into separate groups. This is the open problem of stream identity in overlapping sound (technote §9.2).
+
+**Decision (author, 2026-11-07).** Try once more with a different cue unit (FI-5).
+- A cue is the onset of a partial track (ridge) that is not the Voice's own, instead of a group. Its pitch is that partial's frequency, which is not called a fundamental. Ownership is judged per ridge from the Voice's own radiated sound.
+- The FI-4 registration stays as a negative result. A separate registration is frozen before validation.
+- If cues are still mostly missing, this route (Voices that answer heard sound) is stopped until the open problem is solved, and the demo piece is reconsidered by another route.
+
+**Partial-track onsets as cues (FI-5).**
+- Frozen validation (new seed, one Flora and four Voices):
+  - Own onsets taken for another source: 0/14.
+  - Recall of other sources' onsets: 110/338 (32.54%).
+  - False cues: 381/491 (77.60%), above the registered limit of under one half.
+- Development material already gave 78–81% false cues, so the failure is not specific to the validation material. The shared track follower, built for meter observation, starts many new tracks in mixtures that match no actual onset.
+- Under the agreed condition, this route (Voices that answer heard sound) is stopped until the open problem of separating concurrent sources by source (technote §9.2) is solved. Across the three prototypes, recognising a Voice's own sound did work. The musical value of the response mechanism itself has not yet been tested.
+
+**Source-separation research (B, ASA-1 to ASA-3).** The author chose to work on the open problem of separating concurrent sounds by source, with no deadline.
+- Design (ASA-1): a shared passive observer.
+  - It uses pre-compression evidence from the existing auditory front end.
+  - It holds harmonic candidates with competing support, with Klapuri 2006 as the numerical reference.
+  - Continuation is inferred from the past only.
+  - Stream births are kept separate from note onsets.
+  - Each Voice recognises its own share in the complex outputs.
+- Prototypes (ASA-2, ASA-3; research branch, not connected to generation):
+  - A fully fused sound is held as unresolved at every hop.
+  - A re-attack is reported as an onset of the same stream, and a partial entering or leaving is no longer counted as an onset.
+  - In a passive test of the responder's decision only, reference cues allowed a response at all 90 opportunities, but observed cues at only 36. Pitch crossings and close pitches scored 0/8.
+
+**Correction of the target (author, 2026-11-07).**
+- The ground truth for separation is the grouping a listener hears, not the physical source, because DCC couples generation to the listener's cognition.
+- Where human listening studies confirm that listeners cannot separate sounds, or hear them ambiguously (for example crossings without a timbre difference, or close pitches within a critical band), "ambiguous" is the correct output.
+- Only literature whose original source has been checked is used, within the checked range.
+
+**Separation narrowed to the first stage (ASA-5).**
+- Author decision (2026-11-07): the first-stage response needs only the fact that "a sound that is not mine has just started, at this pitch". Lineage across crossings and close pitches is removed from first-stage acceptance and moved to the second stage (ordered relations, motifs).
+- Candidate support and lineage support were separated. Partials that the stronger group does not explain now correct the weaker group's pitch, and a new path confirms "not mine" from the Voice's own radiated sound and the complex residual.
+- Responses with a confirmed "not mine" reached 37/90 opportunities, and five false or unmatched onsets remained. The 43/90 of ASA-4 did not require "not mine"; recounted under the same condition it is 0/90.
+- Rounds 3 and 4 gave no adoptable improvement in a row, so work stopped. The registration was not frozen.
+
+**Closed loop of Voices that answer heard sound (FI-6).**
+- With the ASA-5 observer, responding Voices were connected in a closed loop (research branch, off by default). The material was one Flora and two Voices with different registers and timbres, for 90 seconds.
+- Each run ended in one of two ways.
+  - Locking: 62 onsets in 90 seconds, 23 of them in the second half. The two Voices gathered on an octave pair, from 367.33/734.66 Hz to 362.07/724.13 Hz, and each moved within 25 cents.
+  - Fading: when the comparison order was changed to put the field first, or the cue's H projection first, both Voices fell silent at 52.249 s and 70.270 s respectively, and the Flora thinned.
+- One selection rule could not both leave a fixed support and keep the exchange through sound alive.
+
+**Closed loop with spontaneous sounding and shared habituation restored (FI-7).**
+- Orchestrator diagnosis, adopted by the author (2026-11-07): the FI-6 Voices had no way to sound except in answer to a cue, and shared habituation did not act on their comparison. Two elements already in the design were restored: spontaneous onsets at the body's pace through existing participation, and comparison on the shared field eroded by habituation. No new hypothesis or coefficient was added.
+- The final version sounded 319 onsets in 90 seconds (297 spontaneous, 22 responses), 152 of them in the second half.
+- In the second half (45–90 s), however, each Voice's pitch range stayed within 12.5 cents, and the octave pair did not dissolve. Two rounds in a row gave no improvement, and work stopped.
+
+Records are in `.orchestration/units/` FI-1, FI-2, FI-2R, BASE-1, FI-3, FI-4, FI-5, FI-6, FI-7 and ASA-1 to ASA-5.
+
+<a id="departure-shared-listener-20261107"></a>
+### 9.3.133 2026-11-07: A reason to depart from consonance, and change in the shared listener's prediction (DEP, SH)
+
+**Problem.** By 2026-11-07, three sources of Voice pitch motion had been tried, and none worked.
+- Temperature sampling (the current default): most of the line's motion came from stochastic acceptance, and the author heard it as random (§9.3.127).
+- Choosing by the consonance evaluation without temperature (FI-7): the Voices locked into an octave pair.
+- Answering heard sound (FI-6): the Voices locked or fell silent.
+
+The orchestrator's reading was that the consonance terrain only pulls toward good places to settle, and that temperature is the only reason to depart from a settled place.
+
+**Two studies (DEP-A, DEP-B) and their synthesis (DEP-R).**
+- DEP-A (from research on expectation, surprise and tension) recommended a falsifiable prototype that adds a single column to the action comparison: a finite, causal predictive information rate (PIR; Abdallah and Plumbley) over the shared acoustic history. None of the checked sources provides a generative rule that guarantees spontaneous departure from a stationary consonance and return.
+- DEP-B (from expected free energy) found that the reason to depart can be written as "letting the listener identify an unresolved relation" and the reason to return as "realising a preferred relation after identification". The current E0, H/R and habituation alone cannot derive that round trip.
+- The orchestrator's synthesis defined the reason to depart as the expected change in the one shared listener's successor prediction under the body's outcome forecast, \(G(a)=\sum_y r_a(y\mid h)\,D_{KL}(p(z\mid h,y)\Vert p(z\mid h))\), added as one column to the existing comparison \(J_0\) with deterministic choice. It is neither EFE nor PIR proper.
+- The independent review (DEP-R) returned REVISE, and the orchestrator accepted every correction.
+  - \(G(a)=I(Y;Z)+D_{KL}(m_a\Vert p(z\mid h))\). The DEP-A and DEP-B quantities do not differ "only in the choice of \(z\)".
+  - The claim that a shadow counting states by absolute pitch fails before it runs was an overstatement and was removed.
+  - Sharing support through relational features is kept as a hypothesis to test as an author rule. Absolute register and timbre stay separate (DCC map §4.3).
+  - With successors seen only once, \(G\) degenerates into a rarity reward, \(-\log q(y\mid h)\). The specification must score with predictions frozen before issue and include dependency-breaking controls.
+- The revised recommendation was a shadow on shared observation that does not change generation, to test whether the model deserves the next stage. The stop of §9.3.127 is unchanged.
+
+**Specification (SH-1) and the source of variation.**
+- SH-1 specified shared presentation observation, fixed-origin encoding, predictions frozen at issue, and neutralisation of unsupported candidates. Fixed-origin encoding expresses \(y\) and \(z\) from a reference event in \(h\), so that replacing \(y\) does not change how \(z\) is encoded (SH-1 §7.3.1).
+- The orchestrator's check found that the result in the FI-7 scene was fixed before running. Over the whole run the Voices executed only 364.7–367.3 Hz and 729.4–734.7 Hz, so every departing candidate is unsupported. The Flora also settles within about 20 seconds at positions consonant with the pair. Change in the listener's prediction selects among changes already heard; it does not create change.
+- Author decision (2026-11-07, accepting the recommendation): the source of variation is the ecology. Existing birth, death, inheritance, background turnover and Flora supply it. While alive, a Voice chooses deterministically by consonance and the listener's prediction. Randomness stays only in existing birth placement.
+
+**Observation by the shared listener (SH-2 to SH-7).** In a scene with turnover (seed 76061, one Flora and turning-over Voices), the units tried to count the material that supports departing candidates. Each stopped at the observation layer, before the count.
+- SH-2: the shared-observation owner and the candidate tap were built. The adapter from a candidate to a finite-window relational state could not be closed.
+- SH-3: stopped by an error in the orchestrator's brief. Encoding \(z\) as the interval from the preceding event \(y\) yields \(G=\tfrac12\log 2\) even when the successor is unrelated to \(y\), against SH-1 §7.3.1.
+- SH-4: fixed-origin encoding was restored, and independent \(P,Q\) gave \(G=0\). Yet only 4/69 Voice executions in development and 0/68 in the check matched an onset recognised by the shared observer. Of the 69, 22 lay outside the observer's declared range (80–2100 Hz) and 50 were same-pitch re-attacks or executions over a sounding tone.
+- SH-5: events became changes of the supported pitch set. The whole set was supported in 1070/1687 hops (63%) in development and 124/1687 (7%) in the check. Across unknown intervals the order and timing of changes could not be fixed.
+- SH-6: the listener's harmonic state became the configuration of presentation H peaks, available at all 1687 hops. A peak's strength crossing a threshold, however, produced events by itself: 18 false events in development and 15 in the check, in intervals without change.
+- Author decision (2026-11-07, accepting the recommendation): in this line of work, continue without stopping whenever the next step is a single principled technical fix. Stop when an author value judgment is needed or when the fix is not unique.
+- SH-7: a deadband was introduced. A peak exits only when its prominence falls by more than the frozen observation envelope \(\delta=0.764378659427166\) from its last confirmed value and stays so for 32 hops. False events fell from 18 and 15 to 0. No unique rule mapped a candidate's instantaneous H to the timed events confirmed by a 32-hop persistence, and the unit stopped.
+- Side observation: 61 of 71 executions in development and 66 of the first 68 in FI-7 were same-pitch repetitions. The current deterministic path produces many same-pitch repetitions.
+
+**The count (SH-8).** Timed prediction was added on the candidate side, and 180 seconds were acquired once under frozen conditions.
+- The result is undecided. 16,875 hops and 193,934 candidates were counted. Of 658 opportunities that reached an actual onset, 33 had departing candidates, but none of them matched a supported table row. Unknown mass remained on 99.24% of the candidates, and all 1,500 comparisons were neutralised.
+- Ecological turnover kept supplying change. In 180 seconds there were 51 Voice replacements, 265 Flora lane births and 253 retirements, and 245 H events. The heard relations had 187 types; new types per 30 seconds were 60, 39, 32, 25, 19 and 12, decreasing but still growing to the end. The pitch set changed 113 times, and the longest fixed interval was 6.5 seconds. All Voices were on the same pitch for 23% of the time (41.8 s), however.
+- The listener's learning did not reach support. Only 38 learning pairs completed against 187 relation types, so rows where the same transition occurs twice hardly arise. In addition, a rule that invalidated the whole table on a late-arriving event fired seven times, leaving one episode. The rule can be fixed to censor only the affected episodes.
+- A listener that starts cold gives no working reason, within a scene of a few minutes, to depart toward sounds that change prediction. The cold-start problem that DEP-A and DEP-B excluded from their guarantees from the start is now confirmed by counts.
+
+Records are in `.orchestration/units/` DEP-A, DEP-B, DEP-R and SH-1 to SH-8.
+
+<a id="listener-memory-song-learning-20261108"></a>
+### 9.3.134 2026-11-08: Conditions on the listener's memory, and Voice learning modelled on birdsong (MEM, VPM, SONG)
+
+**Correction on the listener's prior.**
+- After SH-8 the orchestrator recommended learning the listener's prior (layer 3) from long performances of the instrument's own ecology.
+- In response to the author's question, "does A fit DCC's principles and Conchordal's design?", the orchestrator withdrew it. §9.3.56 defers learning layer 3 from population sound. Layer 3 gives a human listener's culture in cognitive coordinates, and a transition table learned from the instrument's output is not that.
+- Author decision: "Taken as history, culture is not rejected." Assuming a human listener who has heard Conchordal is within DCC. The history is built once, for a single generation, from performances of the original ecology without the departure mechanism. The composer chooses which history and its weight. Rebuilding over generations stays deferred under §9.3.56.
+- Author decision: "Even so, the history must be DCC: it must match what human cognition remembers of sound." The SH-2 to SH-8 learner counts exact matches of 12.5-cent positions and IOI ratios, with no decay, interference or retrieval precision, and does not meet this condition. Memory belongs under DCC map §4.3 (retain relations, keep absolute attributes separate) and §6 (retention, interference and retrieval precision fitted from human tasks).
+
+**Memory design (MEM-1) and the grounds for H.**
+- MEM-1 proposed as the reference a bounded graph of observed spans with their order, simultaneity and correspondence hypotheses, with one memory update and retrieval serving both the history and in-performance learning. Memory strength, interference, retrieval that confuses close relations, and pruning for computational resources are handled separately.
+- The checked sources gave no numerical basis for transferring retrieval precision from human tasks on single melodies or fast pure-tone sequences to the configuration of H peaks in a mixture. MEM-1 asked whether to proceed with the H-peak configuration as a limited proxy (ADR-MEM-1).
+- Author question: "Why can H be used?" The orchestrator answered that H had been chosen in SH-6 to SH-8 for ease of observation, not on DCC memory grounds, and withdrew the ADR-MEM-1 recommendation.
+  - H gathers virtual-root strength by a downward projection and returns fusion to that root's harmonic positions by an upward projection. Its peaks mark where a new tone would fuse, including positions nobody is sounding.
+  - The basis for H in §9.3.56 (McPherson et al. 2020) supports the function of fusion, not memory. Human memory research deals with heard pitches and their relations.
+
+**Virtual pitch and short acoustic context (VPM-1).**
+- The unit tested how far the intermediate stage of H (virtual-root strength after the downward projection) agrees with published virtual-pitch models and short-term memory models.
+- No basis was found to adopt the downward projection as a definite list of heard pitches, or as salience that can enter human memory directly. The current computation is not identical to a published virtual-pitch model, and the number of peaks cannot be taken as the number of heard voices.
+- Models that integrate a pitch or periodicity distribution over a short time and compute its similarity to a new sound have a limited correspondence with listeners' judgments (equations checked in Bigand et al. 2014). They support the acoustic context of recent sonority, not memory for melodic interval order or contour.
+- Parncutt 1988 and Huron and Parncutt 1993 were checked in the original. The good results of the latter include pitch class and a pre-existing key profile.
+- The unit is stopped because the texts of Terhardt 1979 and 1982, Parncutt 1989 and Leman 2000 could not be checked.
+
+**Voice learning modelled on birdsong: design (SONG-1).**
+- Author question: "Does birdsong come from circuits like the language areas? Is the human case a useful reference?"
+- Author decision (2026-11-08): the next design is learning of Voice figures modelled on birdsong learning. What it borrows is the separation between the part that injects variability (LMAN) and the part that evaluates the heard outcome (the dopaminergic performance error).
+- Author question: "Where does this sit in DCC's layers? Is it close to a principle, or a composition parameter?"
+  - Answer: it is not a DCC principle but one option for how Voices respond, and a composer quantity. Map §5 says that the body and the authored ecological disposition decide how to respond, and requires an explicit design for any new cognitive reward.
+  - Its evidence tier is Author rule, its disclosure tier Experimental, and it is off by default. A Voice learns its own way of playing, not the listener's memory.
+- Author question: "So it is one option among many. Should the earlier alternative be studied at the same time, or should we narrow to this one?" Author decision (accepting the recommendation): run SONG-1 and VPM-1 in parallel. The listener-expectation route (SH) rests while VPM-1 checks its foundation.
+- The SONG-1 design learns the value \(Q(s,a)\) of relative pitch, timing and shape steps from the outcome actually heard.
+  - The reward is \(r=w_C\Delta c+w_H\Delta e\), favouring a rise in consonance and a small loss to habituation. Its signs and weights are composer quantities.
+  - The update is \(Q\leftarrow Q+\alpha\delta\), and choice is deterministic on \(U=U_{native}+g[Q(s,a)-Q(s,a_{native})]\).
+  - The birdsong sources support exploratory variability, selection by auditory outcome and error against a predicted performance. They do not support these update equations themselves.
+  - The design states its limit in advance: "no signal from the evaluation distinguishes two orders with the same marginal distributions".
+
+**Prototype (SONG-2).** By author decision (2026-11-08, accepting the recommendation), research on Voice melody generation, stopped in §9.3.127, resumed for this prototype only, on a research branch and off by default. The scene had one long-lived learning Voice, turning-over Voices and one Flora, for 90 seconds. Seeds 76061–76063 were registered for development and 76064–76066 for validation.
+- Run 1 stopped because no rule fixed the tolerance for degeneration. The orchestrator decided (addendum 1): the records judge only clear degenerations that need no tolerance choice (fixation on a single pitch, all Voices on one pitch, silence, fixation on one figure) and no worsening against the no-learning run. Everything else goes to the author's ear with the numbers.
+- Run 2 stopped because no measure mapped the actual self-contribution of a Voice with several Tones to a window score. The orchestrator decided (addendum 2): time is weighted by the squared synthesized self PCM, and each Tone's share is its per-Tone squared ratio. A line was also drawn for measurement details that the worker decides and records.
+- Run 3: local learning worked. Choices changed at 1 of 42 opportunities in the pitch stage and 24 of 210 in the timing stage. The \(\alpha=0\) and \(g=0\) controls matched on all 8,721 hops apart from the learning records. Non-unison ordered recurrences were 0, however, and about 96% of the learning Voice's onsets re-struck the preceding pitch.
+- Author decision (2026-11-08, accepting the recommendation): add deterministic trials without lotteries (addendum 3).
+- Run 4: trials reached all 42 opportunities at most, but candidate pairs supported on both sides stayed at 0. In 34 of 42 windows no new sound occurred inside the window, and every evaluable window had a different context. On seed 76063 the time with all Voices on one pitch rose by 1.3226667 s, beyond the registered spread.
+- Orchestrator check: pitch proposals came 42 times in 90 seconds, while onsets came about 211 times on the participation clock; the two clocks were misaligned. Counting the context keys, the previous own step had zero pitch change in all 84 rows (48 onsets, 36 releases), so only absolute register (34 values) separated contexts.
+- Author question: "Does this mean pre-training on existing music?"
+  - Answer: no learning from a corpus of human music. It would import the statistics of human-written harmony and run against the requirement of spontaneous harmonic progression.
+  - The wall was not the amount of experience. The Voice's own motion did not enter its context, and matching was tied to absolute position.
+- Author decision (2026-11-08, accepting the recommendation): decide each note's pitch when it sounds. Match on the relative step only, and keep absolute register and body period in attached fields of the record (addendum 4).
+- Run 5: comparable experience arose, and learning changed choices.
+  - On three unused seeds, learning changed 25, 17 and 12 choices. The frozen-update and unused-selection controls changed 0.
+  - Same-pitch repetition fell from about 0.95 to 0.61–0.72. The clock change alone already lowered it to 0.85–0.91.
+  - Registered figure recurrences (matched on relative pitch step, IOI, hold and overlap) were 0 in all 31 conditions.
+  - Pitch-only two-step recurrences, ignoring IOI, did not exceed the controls either: 48, 27 and 26 with learning, against 33, 25 and 29 with frozen updates and 28, 31 and 39 with unused selection. Most recurring steps were ±1 bin (12.5 cents) or 0, not melodic intervals.
+  - On seed 76065 the time with all Voices on one pitch rose by 0.597 s, beyond the registered spread.
+
+**Decision (author, 2026-11-08, accepting the recommendation).** SONG stops here as a route to figures, and is kept as a record.
+- Three things are kept: local learning changes choices; a per-note decision clock and relative matching were necessary conditions for that; even so, no figures arose.
+- The research branch is kept and not merged into the main line.
+
+**Is repetition needed? (author question, 2026-11-08)**
+- Author question: "Is repetition essential to music? If it becomes song without repetition, isn't that fine? What does DCC say for Conchordal?"
+- The orchestrator corrected the run-5 check, which had given the cause as "the reward has no value for repetition", as an overstatement. More precisely, the reasons for choosing the next note are not relations the listener can follow.
+  - In the record of the author's own judgments (§9.3.127, JR-1 and FU-1), no measure, repetition included, separated "random" from "not random".
+  - Repetition is a strong factor in making sound heard as music (speech-to-song, Deutsch et al. 2011; Margulis and Simchy-Gross 2016, with a small effect). It is not an absolute universal (Savage et al. 2015).
+  - The temporal DCC map lists repetition and variation as one target alongside beat, phrase and boundaries. §4.3 states that recognising a recurrence is not an instruction to replay a stored sequence.
+- The decision to stop SONG stands. Its reward chose the next step only by consonance gain and habituation avoidance, and supplied none of the relations of continuation, return or transformation.
+- The target of the listener-memory route (VPM-1, MEM) widens from "repetition" to "followable continuation", including continuation, return and transformation.
+- A control applying the existing terms (`melodic_continuity`, `follow_own_sequence`) with temperature reduced to fluctuation was considered and is not taken, because principle already answers it.
+  - Both terms map statistics of the Voice's own executed notes (pitch mean, variance and lag-one correlation; predicted rounded intervals) onto the next step. Neither supplies a reason to start moving. With temperature reduced to fluctuation, the only departure source is listener habituation, whose rate SOLO-2 measured (at temperature 0 the crossing line moved 7 times in 56 seconds).
+  - On a static history both terms push towards staying. Repeated same-pitch rearticulation makes `follow_own_sequence` penalise moving candidates, and `melodic_continuity` penalises departures more strongly the smaller the variance.
+  - The first design question of the route is therefore what supplies a reason, followable by the listener, to change pitch at the next note. The existing terms can shape the destination of that step; the driver itself is new.
+
+**VPM-1 closed without the full texts (2026-11-08).** The author could not obtain the full texts of Terhardt 1982, Leman 2000 and the others. The orchestrator removed the full-text gate and closed the unit. Leman's family of models is already in TC and PS-1 as a port of IPEMToolbox, checked against its public code and fixed values. Terhardt's algorithm is needed only if it is adopted to replace H, and nobody has proposed that adoption. The conclusion stands that H's root distribution is not used directly as heard pitch or as input to memory.
+
+**The next-note reason design (NR-1) and the author's decision (2026-11-08).**
+- On the author's "recommended", a desk design sought the driver that gives, as a relation the listener can follow, the reason to change pitch at the next note. The result was BLOCKED.
+- The division of roles can be fixed: one listener's memory holds relations, Voices act, and the composer's initial conditions and the ecology make the first sound possible. Two connections are missing.
+  1. A selection rule that grows the first non-unison step into a followable continuation once it has occurred.
+  2. A rule that maps order, contour and timing relations supported in the mixture onto that Voice's legal non-unison candidates.
+- PD-1 already had the relation columns, the condition for motion at temperature 0 and peak candidates; recombining them gives no new reason to choose. Pitch inertia in the body, expectation from the preceding interval, response to other voices' motion and starting from a listener who heard past performances were also considered; none became a concrete update rule.
+- Most of human melodic expectation is learned from listening to music. Conchordal admits neither corpus priors nor human-written melody. Learning within the piece needs initial material, and no rule has yet been shown by which a first relation arises from the ecology alone and grows into a continuation.
+- **Author's decision: stop here and rethink the problem from the root.** Nothing proceeds automatically from here as an extension of the old path, PD, SONG or NR-1. Building the demo from working parts alone (the orchestrator's recommendation A) was not adopted by this decision either.
+
+Records are in `.orchestration/units/` MEM-1, VPM-1, NR-1, SONG-1 and SONG-2. The orchestrator's checks of VPM-1 and NR-1 are in each unit's `orchestrator-check.md`. SONG-2's per-run reports are in `run1/` to `run5/` (acquisition records above 1 MB were deleted after this entry was recorded), the orchestrator's checks in `orchestrator-check-run4.md` and `orchestrator-check-run5.md`, and the exchange with the author on layer 3 and memory in addenda 1–3 of `SH-8/orchestrator-check.md`.

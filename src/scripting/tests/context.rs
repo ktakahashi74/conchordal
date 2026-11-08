@@ -2821,7 +2821,9 @@ fn scenario_capabilities_override_standard_package_functions() {
     );
     let path = std::env::temp_dir().join(format!("conchordal-import-{}.rhai", std::process::id()));
     std::fs::write(&path, "const value = 1;").unwrap();
-    let source = format!("import \"{}\" as external;", path.display());
+    // Windows temp paths contain backslashes, which Rhai string literals treat as escapes.
+    let literal = path.display().to_string().replace('\\', "\\\\");
+    let source = format!("import \"{literal}\" as external;");
     let _ = standard.eval::<Dynamic>(&source).unwrap();
     let error = run_script_err(&source);
     assert!(error.to_string().contains("Module not found"), "{error}");

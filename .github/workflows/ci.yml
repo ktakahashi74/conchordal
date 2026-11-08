@@ -53,9 +53,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: cargo check --all-targets --features plotcheck
 
-      - name: Check scalar targets
+      # Tests and binaries need the default `native` feature (threads, files, audio I/O).
+      - name: Check core and web libraries
         if: matrix.os == 'ubuntu-latest'
-        run: cargo check --all-targets --no-default-features
+        run: |
+          cargo check --lib --no-default-features
+          cargo check --lib --no-default-features --features web
 
       - name: Tests
         run: cargo test

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Restore CI on all three platforms. The obsolete no-default all-target check,
+  added when the default feature only selected wide SIMD, is replaced by core and
+  `web` library checks; tests and binaries need the default `native` feature.
+  The x86-only filterbank lane path is compiled out on other architectures, and
+  a scripting test escapes Windows temp paths inside Rhai string literals.
+
 - Separate the autonomous Voice pitch range (approximately 29.989–8000 Hz) from
   the provisional auditory grid (approximately 20.015 Hz–12.5 kHz at 32/44.1/48 kHz).
   Lower sample rates select the largest filterbank below Nyquist, retaining the

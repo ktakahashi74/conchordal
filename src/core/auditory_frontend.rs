@@ -4,7 +4,7 @@ use crate::core::landscape::LandscapeParams;
 use crate::core::log2space::Log2Space;
 use crate::core::roughness_kernel::erb_grid;
 use crate::core::utils::a_weighting_gain_pow;
-use fearless_simd::{Level, Simd, f32x16, prelude::*};
+use fearless_simd::{Level, Simd, prelude::*};
 use rustfft::num_complex::Complex32;
 use std::f32::consts::TAU;
 
@@ -294,8 +294,10 @@ impl Bank {
     /// Runs the hop for sixteen channels at a time with all state in lanes. Each lane
     /// repeats `read_scalar`'s Complex32 arithmetic in the same order, so every SIMD
     /// level returns the same bits as the scalar reference.
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     #[inline(always)]
     fn read_lanes<S: Simd>(&mut self, simd: S) {
+        use fearless_simd::f32x16;
         let Self {
             centers,
             poles,

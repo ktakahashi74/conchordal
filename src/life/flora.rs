@@ -1024,8 +1024,19 @@ impl Flora {
                 self.harmonic_cells
                     .reserve(self.cells.len() - self.harmonic_cells.len());
             }
-        } else if let Some(active) = &mut self.harmonic_use {
-            active.weight = 0.;
+        } else {
+            // Both weights are zero: refresh clears weight, continuation and decision.
+            crate::temporal_cognition::harmonic_relations::consumer::Use::refresh(
+                &mut self.harmonic_use,
+                landscape,
+                None,
+                crate::core::harmonic_support::preview::Observer::Mixed,
+                None,
+                None,
+                0.,
+                self.fs,
+                landscape.harmonic_now_sample,
+            );
         }
         self.support_active = false;
         self.support_action = None;
@@ -2289,6 +2300,32 @@ mod tests {
                 .map(|x| (x.position.to_bits(), x.target.to_bits()))
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn harmonic_relations_flora_return_to_zero_clears_continuation_and_decision() {
+        use crate::temporal_cognition::harmonic_relations::consumer;
+        let (mut l, _) = consumer::test_landscape(0., true);
+        l.harmonic_continuation_weight = 0.5;
+        let mut f = Flora::new(
+            7,
+            FloraSpec::default(),
+            (100., 1000.),
+            FloraSeeding::Uniform,
+            42,
+            &l,
+            48000.,
+            512,
+        );
+        f.advance(&l);
+        f.harmonic_use
+            .as_ref()
+            .unwrap()
+            .set_sample(l.harmonic_now_sample);
+        assert!(f.harmonic_use.as_ref().unwrap().active());
+        l.harmonic_continuation_weight = 0.;
+        f.advance(&l);
+        assert!(!f.harmonic_use.as_ref().unwrap().active());
     }
 
     #[test]

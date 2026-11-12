@@ -1003,13 +1003,9 @@ impl Community {
         if !dt_step_sec.is_finite() || dt_step_sec <= 0.0 {
             return;
         }
-        if self
-            .voices
-            .iter()
-            .any(|v| v.effective_control.pitch.leave_self_out || v.selection_environment)
-        {
-            self.update_loo_ownership(landscape);
-        }
+        // Ownership has consumers beyond self-exclusion (temporal relations, the
+        // support warning), so every Voice reads it each hop.
+        self.update_loo_ownership(landscape);
         let sequence_field = self
             .voices
             .iter()
@@ -1600,6 +1596,42 @@ mod tests {
                 .exact_score
                 .is_none()
         );
+    }
+
+    #[test]
+    fn harmonic_relations_reach_default_voices_without_self_exclusion() {
+        use crate::core::harmonic_support::{Geometry, Snapshot};
+        use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
+        let mut landscape = runtime_landscape();
+        let space = landscape.space.clone();
+        let mut snapshot = Snapshot::new(Geometry::new(
+            &space,
+            &HarmonicityKernel::new(&space, HarmonicityParams::default()),
+        ));
+        let mut density = vec![0.; space.n_bins()];
+        density[72] = 1.;
+        snapshot.observe(&density, 1e-12, 512);
+        landscape.support = Some(std::sync::Arc::new(snapshot));
+        landscape.harmonic_relations_weight = 0.8;
+        let mut community = test_pop();
+        community.apply_action(
+            Action::Spawn {
+                population_id: 7,
+                ids: vec![70].into(),
+                spec: spawn_spec_with_freq(330.),
+                strategy: None,
+            },
+            &landscape,
+        );
+        let voice = &community.voices[0];
+        assert!(!voice.effective_control.pitch.leave_self_out);
+        assert!(!voice.selection_environment);
+        assert!(!community.harmonic_rhythm);
+        let dt = community.time.hop as f32 / community.time.fs;
+        community.advance(64, 0, dt, &landscape);
+        let input = community.voices[0].pitch_ctl.loo_input_mut();
+        assert_eq!(input.relation_source.id, 70);
+        assert!(input.relations.is_some());
     }
 
     #[test]

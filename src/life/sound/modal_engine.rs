@@ -9,6 +9,18 @@ use crate::synth::resonator::ResonatorBank;
 
 const DEFAULT_UPDATE_PERIOD_SAMPLES: usize = 64;
 
+/// Modes at or above 0.45 fs are muted rather than dropped (the Rain rule), so a
+/// retuned bank keeps its mode count and state. Compiled frequencies would
+/// otherwise fold to 0.49 fs with the resonator's large near-Nyquist gain.
+fn mute_above_nyquist(mut mode: ModeParams, fs: f32) -> ModeParams {
+    if mode.freq_hz >= 0.45 * fs {
+        mode.freq_hz = 0.45 * fs;
+        mode.gain = 0.0;
+        mode.in_gain = 0.0;
+    }
+    mode
+}
+
 #[derive(Debug, Clone)]
 pub enum ModeShape {
     Harmonic {
@@ -188,12 +200,15 @@ impl ModalEngine {
                     return None;
                 }
                 let c = compile_mode(
-                    &ModeParams {
-                        freq_hz,
-                        t60_s: mode.t60_s.max(1e-3),
-                        gain: mode.gain,
-                        in_gain: mode.in_gain,
-                    },
+                    &mute_above_nyquist(
+                        ModeParams {
+                            freq_hz,
+                            t60_s: mode.t60_s.max(1e-3),
+                            gain: mode.gain,
+                            in_gain: mode.in_gain,
+                        },
+                        self.bank.fs(),
+                    ),
                     self.bank.fs(),
                 );
                 let held = (c.b1 * c.b1 + c.b2 * c.b2).sqrt();
@@ -261,7 +276,8 @@ impl ModalEngine {
             return;
         }
         let limit = self.bank.capacity();
-        self.shape.build_modes(pitch_hz, limit, &mut self.scratch);
+        self.shape
+            .build_modes(pitch_hz, limit, self.bank.fs(), &mut self.scratch);
         self.last_modes_len = self.scratch.len();
         let _ = self
             .bank
@@ -284,7 +300,8 @@ impl ModalEngine {
             return;
         }
         let limit = self.bank.capacity();
-        self.shape.build_modes(pitch_hz, limit, &mut self.scratch);
+        self.shape
+            .build_modes(pitch_hz, limit, self.bank.fs(), &mut self.scratch);
         self.last_modes_len = self.scratch.len();
         let _ = self
             .bank
@@ -367,7 +384,7 @@ impl ModeShape {
         }
     }
 
-    fn build_modes(&self, pitch_hz: f32, limit: usize, scratch: &mut Vec<ModeParams>) {
+    fn build_modes(&self, pitch_hz: f32, limit: usize, fs: f32, scratch: &mut Vec<ModeParams>) {
         scratch.clear();
         match self {
             ModeShape::Harmonic {
@@ -389,12 +406,15 @@ impl ModeShape {
                     }
                     let gain = harmonic_gain(genotype, k, energy);
                     let t60_s = base_t60_s.max(1e-3) / (1.0 + 0.15 * k as f32);
-                    scratch.push(ModeParams {
-                        freq_hz,
-                        t60_s,
-                        gain,
-                        in_gain: *in_gain,
-                    });
+                    scratch.push(mute_above_nyquist(
+                        ModeParams {
+                            freq_hz,
+                            t60_s,
+                            gain,
+                            in_gain: *in_gain,
+                        },
+                        fs,
+                    ));
                 }
             }
             ModeShape::Modal { modes } => {
@@ -406,13 +426,75 @@ impl ModeShape {
                     if !freq_hz.is_finite() || freq_hz <= 0.0 {
                         continue;
                     }
-                    scratch.push(ModeParams {
-                        freq_hz,
-                        t60_s: mode.t60_s.max(1e-3),
-                        gain: mode.gain,
-                        in_gain: mode.in_gain,
-                    });
+                    scratch.push(mute_above_nyquist(
+                        ModeParams {
+                            freq_hz,
+                            t60_s: mode.t60_s.max(1e-3),
+                            gain: mode.gain,
+                            in_gain: mode.in_gain,
+                        },
+                        fs,
+                    ));
                 }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modes_at_or_above_045_fs_are_muted_in_render_and_forecast() {
+        let fs = 48_000.;
+        let pitch = 8_000.;
+        // Ratios 3 and 4 land at 24 and 32 kHz, above 0.45 fs = 21.6 kHz.
+        let shapes = [
+            ModeShape::Harmonic {
+                partials: 4,
+                base_t60_s: 0.5,
+                in_gain: 1.,
+                genotype: TimbreGenotype::default(),
+            },
+            ModeShape::Modal {
+                modes: (1..=4)
+                    .map(|k| ModalMode {
+                        ratio: k as f32,
+                        t60_s: 0.5,
+                        gain: 1.,
+                        in_gain: 1.,
+                    })
+                    .collect(),
+            },
+        ];
+        for shape in shapes {
+            let mut engine = ModalEngine::new(fs, shape.clone()).unwrap();
+            engine.rebuild_modes(pitch);
+            assert_eq!(engine.bank.active_len(), 4, "{shape:?}");
+            for _ in 0..64 {
+                engine.bank.process_sample(1.);
+            }
+            for idx in 0..4 {
+                let [x, y, _, _, gain] = engine.bank.mode_state(idx).unwrap();
+                if idx < 2 {
+                    assert!(gain != 0. && x != 0., "{shape:?} {idx}");
+                } else {
+                    assert_eq!([x, y, gain], [0.; 3], "{shape:?} {idx}");
+                }
+            }
+            if matches!(shape, ModeShape::Modal { .. }) {
+                let forecast = ModalEngine::new(fs, shape)
+                    .unwrap()
+                    .bank_forecast(pitch, 0, Some(1.))
+                    .unwrap();
+                assert_eq!(forecast.len, 4);
+                assert!(forecast.lanes[..2].iter().all(|lane| lane.gain != 0.));
+                assert!(
+                    forecast.lanes[2..4]
+                        .iter()
+                        .all(|lane| lane.gain == 0. && lane.state == [0.; 2])
+                );
             }
         }
     }

@@ -3060,3 +3060,34 @@ fn tail_roughness_aversion_initial_live_validation_and_once_warning() {
         );
     }
 }
+
+#[test]
+fn parallel_branch_emits_outer_handle_actions_at_its_own_end() {
+    let event_time = |scenario: &Scenario, f: &dyn Fn(&Action) -> bool| {
+        scenario
+            .events
+            .iter()
+            .find(|event| event.actions.iter().any(f))
+            .map(|event| event.time)
+    };
+    let is_patch =
+        |a: &Action| matches!(a, Action::UpdatePopulation { patch, .. } if patch.amp == Some(0.4));
+    let is_release = |a: &Action| matches!(a, Action::ReleasePopulation { .. });
+    for (script, expected) in [
+        (
+            "let p = place(sine(), at(220)); parallel([|| { wait(4); p.amp(0.4); }, || { wait(1); }]); wait(1);",
+            4.,
+        ),
+        (
+            "let p = place(sine(), at(220)); parallel([|| { wait(4); }, || { wait(1); p.amp(0.4); }]); wait(1);",
+            1.,
+        ),
+    ] {
+        let (scenario, _) = run_script(script);
+        assert_eq!(event_time(&scenario, &is_patch), Some(expected), "{script}");
+    }
+    let (scenario, _) = run_script(
+        "let p = place(sine(), at(220)); parallel([|| { wait(1); release(p); }, || { wait(4); }]); wait(1);",
+    );
+    assert_eq!(event_time(&scenario, &is_release), Some(1.));
+}

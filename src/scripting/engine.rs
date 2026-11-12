@@ -1716,6 +1716,9 @@ impl ScriptHost {
                     let result = fn_ptr.call_within_context::<Dynamic>(&call_ctx, ());
                     let mut ctx = ctx_for_parallel.lock().expect("lock script context");
                     let end_time = ctx.cursor;
+                    // The next branch rewinds the cursor, so outer-handle actions left
+                    // pending here must be emitted at this branch's end.
+                    ctx.emit_pending_actions(call_ctx.call_position());
                     ctx.pop_scope(call_ctx.call_position());
                     max_end = max_end.max(end_time);
                     let _ = result?;

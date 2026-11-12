@@ -6,6 +6,10 @@ use rand::{Rng, RngExt, SeedableRng, rngs::SmallRng};
 use tracing::warn;
 
 pub(crate) const DEFAULT_MODE_COUNT: usize = 16;
+/// Largest mode count whose per-mode vectors stay within `Vec`'s addressable
+/// capacity: the widest per-mode element (`ModeParams`, or a `(usize, f32)`
+/// candidate on 64-bit targets) is 16 bytes.
+pub(crate) const MAX_MODE_COUNT: usize = isize::MAX as usize / 16;
 const DEFAULT_MIN_MUL: f32 = 1.0;
 const DEFAULT_MAX_MUL: f32 = 4.0;
 const DEFAULT_MIN_DIST_ERB: f32 = 1.0;

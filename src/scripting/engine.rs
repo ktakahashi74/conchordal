@@ -1769,9 +1769,22 @@ impl ScriptHost {
             ModePattern::landscape_density_modes,
         );
         engine.register_fn("landscape_peaks_modes", ModePattern::landscape_peaks_modes);
-        engine.register_fn("count", |pattern: ModePattern, n: INT| {
-            pattern.with_count((n as usize).max(1))
-        });
+        engine.register_fn(
+            "count",
+            |call: NativeCallContext,
+             pattern: ModePattern,
+             n: INT|
+             -> Result<ModePattern, Box<EvalAltResult>> {
+                let max = crate::core::mode_pattern::MAX_MODE_COUNT;
+                match usize::try_from(n) {
+                    Ok(count) if (1..=max).contains(&count) => Ok(pattern.with_count(count)),
+                    _ => Err(Box::new(EvalAltResult::ErrorRuntime(
+                        format!("mode count must be within [1, {max}]").into(),
+                        call.call_position(),
+                    ))),
+                }
+            },
+        );
         let warnings = ctx.lock().unwrap().warnings.clone();
         numeric_overloads!(engine, "range", |call, pattern: ModePattern; min_mul, max_mul| { if pattern.supports_range() {pattern.with_range(min_mul, max_mul)} else {warnings.lock().unwrap().push(ScriptWarning { kind: "mode_range_ignored", count: 1, message: "range() is only supported for landscape_*_modes(); ignored".into(), position: call.call_position()}); pattern} });
         let warnings = ctx.lock().unwrap().warnings.clone();

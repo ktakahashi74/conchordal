@@ -3832,3 +3832,14 @@ fn nan_unit_interval_controls_do_not_reach_the_engine() {
         (0.0, 0.0, 0.0)
     );
 }
+
+#[test]
+fn mode_count_outside_the_addressable_range_is_a_script_error() {
+    for n in ["0", "-1", "9223372036854775807"] {
+        let err = run_script_err(&format!(
+            "place(modal().modes(harmonic_modes().count({n})), at(220));"
+        ));
+        assert!(err.message.contains("mode count"), "{n}: {}", err.message);
+        assert!(err.position.is_some(), "{n}");
+    }
+}

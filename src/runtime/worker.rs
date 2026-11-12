@@ -955,6 +955,27 @@ pub(super) fn process_hop(
             state.finish_logged = true;
         }
         if !cfg.wait_user_exit {
+            // `exiting` doubles as the stop flag that releases the output stream, so a
+            // natural end first lets the device play the queued tail. The wait is
+            // bounded by twice the ring duration; stop, recovery and failure end it.
+            #[cfg(feature = "native")]
+            if state.failures.is_empty()
+                && let Some(prod) = channels.audio_prod.as_ref()
+            {
+                let deadline = Instant::now()
+                    + Duration::from_secs_f64(
+                        2.0 * prod.capacity().get() as f64 / f64::from(cfg.fs),
+                    );
+                while prod.occupied_len() > 0
+                    && Instant::now() < deadline
+                    && !cfg.exiting.load(Ordering::SeqCst)
+                    && !cfg.audio_counters.as_ref().is_some_and(|c| {
+                        c.recovering.load(Ordering::Acquire) || c.failed.load(Ordering::Acquire)
+                    })
+                {
+                    thread::sleep(Duration::from_millis(1));
+                }
+            }
             cfg.exiting.store(true, Ordering::SeqCst);
         }
     }

@@ -2061,3 +2061,33 @@ fn remember_pitch_set_checks_the_runtime_sample_rate() {
         "{message}"
     );
 }
+
+#[test]
+fn natural_end_waits_for_the_queued_audio_tail() {
+    use ringbuf::traits::{Consumer, Observer, Split};
+    // The ring holds the whole run, so only the drain wait can delay `exiting`.
+    let (producer, mut consumer) = ringbuf::HeapRb::<f32>::new(1 << 15).split();
+    let mut opts = options();
+    opts.audio_prod = Some(producer);
+    let (wiring, stop, _, _output) = fixture(opts, "seed(21); wait(0.05);");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut last = (0, Instant::now());
+    let mut consumed = 0;
+    while !stop.load(Ordering::SeqCst) {
+        assert!(Instant::now() < deadline);
+        let occupied = consumer.occupied_len();
+        if occupied != last.0 {
+            last = (occupied, Instant::now());
+        } else if occupied > 0 && last.1.elapsed() > Duration::from_millis(50) {
+            consumed += consumer.skip(occupied);
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert_eq!(
+        consumer.occupied_len(),
+        0,
+        "exiting was set with queued audio"
+    );
+    assert!(consumed >= 2400);
+    join(wiring).unwrap();
+}

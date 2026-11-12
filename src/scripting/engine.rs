@@ -2461,7 +2461,18 @@ impl ScriptHost {
                     .lock()
                     .expect("lock script context");
                 ctx.check_header("meter_stability", call.call_position())?;
-                ctx.scenario.meter_shaping.stability = (value as f32).clamp(0.0, 1.0);
+                let value = value as f32;
+                if !value.is_finite() {
+                    ctx.warn(
+                        "meter_stability",
+                        format!(
+                            "meter_stability() expects a finite value in [0, 1]; using {}",
+                            sanitize01(value)
+                        ),
+                        call.call_position(),
+                    );
+                }
+                ctx.scenario.meter_shaping.stability = sanitize01(value);
                 Ok(())
             },
         );
@@ -2473,7 +2484,7 @@ impl ScriptHost {
                     .lock()
                     .expect("lock script context");
                 ctx.check_header("meter_stability", call.call_position())?;
-                ctx.scenario.meter_shaping.stability = (value as f32).clamp(0.0, 1.0);
+                ctx.scenario.meter_shaping.stability = sanitize01(value as f32);
                 Ok(())
             },
         );

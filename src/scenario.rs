@@ -455,9 +455,9 @@ impl CoupledTimingSpec {
     pub fn sanitized(self) -> Self {
         Self {
             relation: self.relation,
-            coupling: self.coupling.clamp(0.0, 1.0),
+            coupling: sanitize01(self.coupling),
             base_rate_hz: sanitize_positive_rate_hz(self.base_rate_hz),
-            flow_depth: self.flow_depth.clamp(0.0, 1.0),
+            flow_depth: sanitize01(self.flow_depth),
             steady: self.steady
                 && self.relation == RhythmRelation::Participating
                 && self.flow_depth == 0.0,
@@ -468,7 +468,7 @@ impl CoupledTimingSpec {
             },
             role: self.role,
             measure_accent: sanitize01(self.measure_accent),
-            social: self.social.clamp(0.0, 1.0),
+            social: sanitize01(self.social),
             vitality_lambda: sanitize_nonnegative_finite(self.vitality_lambda),
             vitality_floor: sanitize_v_floor(self.vitality_floor),
             reward: sanitize_nonnegative_finite(self.reward),
@@ -501,15 +501,15 @@ impl PhonationSpec {
     pub fn social_coupling(&self) -> f32 {
         match self.timing {
             PhonationTiming::Coupled(spec) => spec.sanitized().social,
-            PhonationTiming::Pulse { social, .. } => social.clamp(0.0, 1.0),
+            PhonationTiming::Pulse { social, .. } => sanitize01(social),
             PhonationTiming::Once => 0.0,
         }
     }
 
     pub fn prediction_sync(&self) -> f32 {
         match self.timing {
-            PhonationTiming::Coupled(spec) => (spec.sanitized().coupling * 0.25).clamp(0.0, 1.0),
-            PhonationTiming::Pulse { sync, .. } => sync.clamp(0.0, 1.0),
+            PhonationTiming::Coupled(spec) => sanitize01(spec.sanitized().coupling * 0.25),
+            PhonationTiming::Pulse { sync, .. } => sanitize01(sync),
             PhonationTiming::Once => 0.0,
         }
     }

@@ -3774,3 +3774,61 @@ fn population_sway_is_stored_and_clamped() {
             .any(|warning| warning.message.contains("sway() expects octaves"))
     );
 }
+
+#[test]
+fn nan_unit_interval_controls_do_not_reach_the_engine() {
+    let (scenario, warnings) = run_script(
+        r#"
+        meter_stability(0.0 / 0.0);
+        let nan = 0.0 / 0.0;
+        let p = place(
+            sine()
+                .amp(nan)
+                .brightness(nan)
+                .entrainment(nan)
+                .social(nan)
+                .duration_range(nan, nan)
+                .adsr(0.01, 0.1, nan, 0.2)
+                .respawn_random()
+                .respawn_min_consonance(nan),
+            at(220)
+        );
+        wait(0.5);
+        p.amp(nan);
+        wait(0.5);
+        "#,
+    );
+    assert_eq!(scenario.meter_shaping.stability, 0.0);
+    assert!(
+        warnings
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|w| w.kind == "meter_stability")
+    );
+    let mut control = crate::scenario::control::VoiceControl::default();
+    for action in scenario.events.iter().flat_map(|event| &event.actions) {
+        match action {
+            Action::Spawn { spec, .. } => {
+                let text = format!("{spec:?}");
+                assert!(!text.contains("NaN"), "{text}");
+            }
+            Action::UpdatePopulation { patch, .. } => {
+                control.apply_update(patch);
+                assert_eq!(control.body.amp, 0.0);
+            }
+            _ => {}
+        }
+    }
+    let timing = crate::scenario::CoupledTimingSpec {
+        coupling: f32::NAN,
+        flow_depth: f32::NAN,
+        social: f32::NAN,
+        ..Default::default()
+    }
+    .sanitized();
+    assert_eq!(
+        (timing.coupling, timing.flow_depth, timing.social),
+        (0.0, 0.0, 0.0)
+    );
+}

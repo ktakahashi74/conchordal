@@ -107,22 +107,22 @@ impl VoiceControl {
 
     #[inline]
     pub fn set_amp_clamped(&mut self, amp: f32) {
-        self.body.amp = amp.clamp(0.0, 1.0);
+        self.body.amp = crate::core::float::sanitize01(amp);
     }
 
     #[inline]
     pub fn set_timbre_brightness_clamped(&mut self, brightness: f32) {
-        self.body.timbre.brightness = brightness.clamp(0.0, 1.0);
+        self.body.timbre.brightness = crate::core::float::sanitize01(brightness);
     }
 
     #[inline]
     pub fn set_timbre_inharmonic_clamped(&mut self, inharmonic: f32) {
-        self.body.timbre.inharmonic = inharmonic.clamp(0.0, 1.0);
+        self.body.timbre.inharmonic = crate::core::float::sanitize01(inharmonic);
     }
 
     #[inline]
     pub fn set_timbre_motion_clamped(&mut self, motion: f32) {
-        self.body.timbre.motion = motion.clamp(0.0, 1.0);
+        self.body.timbre.motion = crate::core::float::sanitize01(motion);
     }
 
     #[inline]
@@ -428,7 +428,7 @@ impl PitchControl {
     #[inline]
     pub fn resolved_tessitura_gravity(&self) -> f32 {
         self.tessitura_gravity
-            .unwrap_or_else(|| self.gravity.clamp(0.0, 1.0) * 0.2)
+            .unwrap_or_else(|| crate::core::float::sanitize01(self.gravity) * 0.2)
     }
 
     #[inline]

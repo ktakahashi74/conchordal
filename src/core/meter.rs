@@ -13,7 +13,7 @@
 
 use std::f32::consts::TAU;
 
-use crate::core::float::smoothstep;
+use crate::core::float::{sanitize01, smoothstep};
 
 use crate::core::onset::{Onset, OnsetDetector, REFRACTORY_SEC};
 use crate::core::phase::wrap_pm_pi;
@@ -470,7 +470,11 @@ impl MeterNetwork {
             let center = 0.5 * (lo + hi);
             self.beat_omega = TAU * center;
         }
-        self.shaping = shaping;
+        // Sanitized once here; NaN would pass f32::clamp into the Hopf force gain.
+        self.shaping = MeterShaping {
+            stability: sanitize01(shaping.stability),
+            ..shaping
+        };
     }
 
     /// Advance from the source hop's absolute sample clock.
@@ -512,13 +516,13 @@ impl MeterNetwork {
         hop: usize,
         fs: f32,
     ) -> MeterState {
-        let preference_weight = self.shaping.stability.clamp(0.0, 1.0);
+        let preference_weight = self.shaping.stability;
         let dt = dt.max(MIN_STEP_SEC);
         let drive_known = drive.is_some();
         let drive = drive.unwrap_or(0.0).clamp(0.0, 1.0);
         let onset = self.observe_onset(dt, drive_known, drive);
         let confirmed_period = self.confirm_period(dt, onset, start, hop, fs);
-        let force_gain = 1.0 + self.shaping.stability.clamp(0.0, 1.0);
+        let force_gain = 1.0 + self.shaping.stability;
         let phi_before = self.beat_phi;
         let omega_before = self.beat_omega;
         self.integrate_hopf(dt, drive, force_gain);
@@ -846,7 +850,7 @@ impl MeterNetwork {
         // is a top-down prior that commits with less evidence, lowering this
         // threshold. It cannot fabricate a beat: scattered phases keep the PLV
         // resultant low regardless of how readily presence saturates.
-        let stab = self.shaping.stability.clamp(0.0, 1.0);
+        let stab = self.shaping.stability;
         let presence = smoothstep(1.0 - 0.5 * stab, 4.0 - 2.0 * stab, self.plv_count);
 
         let beat_plv = (self.beat_re * self.beat_re + self.beat_im * self.beat_im).sqrt() / count;
@@ -1011,6 +1015,21 @@ mod tests {
                 capacities,
                 (recurrence.history.capacity(), recurrence.echo.capacity())
             );
+        }
+    }
+
+    #[test]
+    fn non_finite_stability_is_sanitized_at_installation() {
+        let mut net = MeterNetwork::new();
+        net.set_shaping(MeterShaping {
+            stability: f32::NAN,
+            basin_hz: None,
+        });
+        assert_eq!(net.shaping.stability, 0.0);
+        for i in 0..(4.0 / DT) as usize {
+            let drive = if i % 25 == 0 { 1.0 } else { 0.0 };
+            let state = net.process(DT, drive);
+            assert!(net.beat_phi.is_finite() && state.beat.confidence.is_finite());
         }
     }
 

@@ -146,15 +146,15 @@ impl PopulationSpec {
     }
 
     pub(super) fn pulse_sync_or(&self, default: f32) -> f32 {
-        self.pulse_sync.unwrap_or(default).clamp(0.0, 1.0)
+        sanitize01(self.pulse_sync.unwrap_or(default))
     }
 
     pub(super) fn social_coupling_or(&self, default: f32) -> f32 {
-        self.social_coupling.unwrap_or(default).clamp(0.0, 1.0)
+        sanitize01(self.social_coupling.unwrap_or(default))
     }
 
     pub(super) fn entrainment_or(&self, default: f32) -> f32 {
-        self.entrainment.unwrap_or(default).clamp(0.0, 1.0)
+        sanitize01(self.entrainment.unwrap_or(default))
     }
 
     pub(super) fn rhythm_role_or(&self, default: RhythmRole) -> RhythmRole {
@@ -202,7 +202,7 @@ impl PopulationSpec {
         EnvelopeConfig {
             attack_sec: env.attack_sec.max(0.0),
             decay_sec: env.decay_sec.max(0.0),
-            sustain_level: env.sustain_level.clamp(0.0, 1.0),
+            sustain_level: sanitize01(env.sustain_level),
             release_sec: env.release_sec.max(0.0),
         }
     }
@@ -749,7 +749,7 @@ impl PopulationSpec {
     }
 
     pub(super) fn set_entrainment(&mut self, strength: f32) {
-        let strength = strength.clamp(0.0, 1.0);
+        let strength = sanitize01(strength);
         self.entrainment = Some(strength);
         self.coupled_spec_mut().coupling = strength;
     }
@@ -819,10 +819,10 @@ impl PopulationSpec {
         }
         if let PhonationTiming::Pulse { sync, social, .. } = &mut self.phonation_spec.timing {
             if let Some(value) = self.pulse_sync {
-                *sync = value.clamp(0.0, 1.0);
+                *sync = sanitize01(value);
             }
             if let Some(value) = self.social_coupling {
-                *social = value.clamp(0.0, 1.0);
+                *social = sanitize01(value);
             }
         }
         self.ensure_gated_duration(1);
@@ -880,7 +880,7 @@ impl PopulationSpec {
     }
 
     pub(super) fn set_pulse_lock(&mut self, depth: f32) {
-        let depth = depth.clamp(0.0, 1.0);
+        let depth = sanitize01(depth);
         self.pulse_sync = Some(depth);
         if let PhonationTiming::Pulse { sync, .. } = &mut self.phonation_spec.timing {
             *sync = depth;
@@ -888,7 +888,7 @@ impl PopulationSpec {
     }
 
     pub(super) fn set_social(&mut self, coupling: f32) {
-        let coupling = coupling.clamp(0.0, 1.0);
+        let coupling = sanitize01(coupling);
         self.social_coupling = Some(coupling);
         match &mut self.phonation_spec.timing {
             PhonationTiming::Coupled(spec) => spec.social = coupling,
@@ -898,8 +898,8 @@ impl PopulationSpec {
     }
 
     pub(super) fn set_duration_range(&mut self, min: f32, max: f32) {
-        self.field_duration_spec.hold_min_theta = min.clamp(0.0, 1.0);
-        self.field_duration_spec.hold_max_theta = max.clamp(0.0, 1.0);
+        self.field_duration_spec.hold_min_theta = sanitize01(min);
+        self.field_duration_spec.hold_max_theta = sanitize01(max);
         self.apply_field_duration_spec();
     }
 
@@ -983,7 +983,7 @@ impl PopulationSpec {
         self.control.body.envelope = EnvelopeConfig {
             attack_sec: a.max(0.0),
             decay_sec: d.max(0.0),
-            sustain_level: s.clamp(0.0, 1.0),
+            sustain_level: sanitize01(s),
             release_sec: r.max(0.0),
         };
         self.adsr_user_set = true;
@@ -1017,7 +1017,7 @@ impl PopulationSpec {
     }
 
     pub(super) fn set_respawn_min_c_level(&mut self, value: f32) {
-        self.respawn_min_c_level = Some(value.clamp(0.0, 1.0));
+        self.respawn_min_c_level = Some(sanitize01(value));
     }
 
     pub(super) fn set_respawn_background_death_rate(&mut self, value: f32) {

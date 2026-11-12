@@ -302,6 +302,16 @@ pub(super) fn prepare_runtime(
     let mut device_config = config.clone();
     device_config.audio.sample_rate = runtime_sample_rate;
     device_config.validate().map_err(|err| format!("{err:#}"))?;
+    // Checked against the actual runtime rate (device, render or step), not the config.
+    if scenario.remember_pitch_set > 0. && runtime_sample_rate != 48000 {
+        let position = scenario
+            .pitch_set_position
+            .map(|(line, column)| format!(":{line}:{column}"))
+            .unwrap_or_default();
+        return Err(format!(
+            "{scenario_label}{position}: remember_pitch_set requires 48000 Hz (runtime rate {runtime_sample_rate} Hz)"
+        ));
+    }
     let core = build_analysis_runtime_core(config, runtime_sample_rate);
     let fs = core.fs;
     let hop = core.hop;

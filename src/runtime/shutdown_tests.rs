@@ -2020,3 +2020,44 @@ fn gui1_listener_replay_cost() {
         writeln!(out, "{}", serde_json::json!({"frame":frame, "analysis_us":analysis, "habituation_us":habituation, "listener_us":listener, "allocations":allocations, "examples":examples})).unwrap();
     }
 }
+
+#[test]
+fn remember_pitch_set_checks_the_runtime_sample_rate() {
+    let directory =
+        std::env::temp_dir().join(format!("conchordal-pitch-set-rate-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("pitch_set.rhai");
+    std::fs::write(
+        &path,
+        "remember_pitch_set(1.0);\nplace(sine(), at(220));\nwait(0.1);\n",
+    )
+    .unwrap();
+    let mut config = AppConfig::default();
+    config.audio.sample_rate = 44_100;
+    let loaded = super::scenario_load::load_scenario(
+        &path,
+        Some(1),
+        &config.audio,
+        None,
+        &AtomicBool::new(false),
+        &AtomicBool::new(false),
+    );
+    std::fs::remove_dir_all(&directory).unwrap();
+    // The configured rate is not the runtime rate: a 48 kHz device may still run it.
+    let (label, scenario, _, _) = loaded.unwrap();
+    let Err(message) = super::wiring::prepare_runtime(
+        &config,
+        44_100,
+        label,
+        scenario,
+        Arc::new(AtomicBool::new(false)),
+        options(),
+        false,
+    ) else {
+        panic!("44.1 kHz runtime must reject remember_pitch_set");
+    };
+    assert!(
+        message.starts_with("pitch_set:1:") && message.contains("requires 48000 Hz"),
+        "{message}"
+    );
+}

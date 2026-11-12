@@ -441,7 +441,8 @@ impl Tracker {
         for &x in audio {
             if let Some(frame) = model.push(f64::from(x)) {
                 // Fixed IPEM wrapper support, including both resamplers and LP lookahead.
-                let numerator = (1 + 2 * (4 * (frame.index * super::STEP + 357) + 40)) * 320 + 3200;
+                let numerator =
+                    (1 + 2 * (4 * (frame.index * super::STEP as u64 + 357) + 40)) * 320 + 3200;
                 let end = self.epoch_start as f64 + numerator as f64 / 147.;
                 let begin = end - (super::STEP * 2560) as f64 / 147.;
                 let mut samples = 0.;
@@ -450,7 +451,7 @@ impl Tracker {
                         samples += (end.min(hi as f64) - begin.max(lo as f64)).max(0.);
                     }
                 }
-                let available = self.epoch_start + model.n0 as u64;
+                let available = self.epoch_start + model.n0;
                 assert!(end <= available as f64, "PP cannot consume future evidence");
                 self.memory.observe(
                     &model.pitch.fani,

@@ -107,8 +107,8 @@ impl Decoder {
     }
     pub(super) fn query_memory(
         &self,
-        n0: usize,
-        frame: usize,
+        n0: u64,
+        frame: u64,
         local: &[f64; W],
         glob: &[f64; W],
         hz: f64,
@@ -124,8 +124,8 @@ impl Decoder {
         let mut glob = *glob;
         let al = 2_f64.powf(-1. / (FA / STEP as f64 * 0.1));
         let ag = 2_f64.powf(-1. / (FA / STEP as f64 * 1.5));
-        let first = ((n0 + 9600) * 147).div_ceil(PERIOD);
-        let end = ((n0 + 28800) * 147).div_ceil(PERIOD);
+        let first = ((n0 + 9600) * 147).div_ceil(PERIOD as u64);
+        let end = ((n0 + 28800) * 147).div_ceil(PERIOD as u64);
         let origin = n0 as f64 * 147. / PERIOD as f64;
         let mut sum = 0.;
         for k in frame..end {
@@ -256,9 +256,9 @@ fn replay(control: bool) {
             mixed.push(x as f64);
         }
         hop += 1;
-        while next < decisions.len() && decisions[next].n0 <= mixed.n0 as u64 {
+        while next < decisions.len() && decisions[next].n0 <= mixed.n0 {
             let d = &decisions[next];
-            assert_eq!(d.n0, mixed.n0 as u64);
+            assert_eq!(d.n0, mixed.n0);
             let state = if d.excluded {
                 sources.get(&(d.id, d.generation))
             } else {
@@ -273,7 +273,7 @@ fn replay(control: bool) {
                 // Match every rational transport/PP phase without replaying a
                 // long silent prefix. This control has no grid interpolation.
                 let mut blank = Model::new(48000);
-                for _ in 0..PERIOD + state.n0 % PERIOD {
+                for _ in 0..PERIOD as u64 + state.n0 % PERIOD as u64 {
                     blank.push(0.);
                 }
                 assert_eq!(state.pitch.frame % 147, blank.pitch.frame % 147);

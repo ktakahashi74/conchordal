@@ -21,8 +21,9 @@ struct Resampler<const C: usize> {
     q: usize,
     h: Arc<[f64]>,
     ring: Vec<[f64; C]>,
-    count: usize,
-    next: usize,
+    // Absolute positions; next * q passes 2^32 after about 609 s at 48 kHz.
+    count: u64,
+    next: u64,
 }
 impl<const C: usize> Resampler<C> {
     fn new(p: usize, q: usize) -> Self {
@@ -64,20 +65,21 @@ impl<const C: usize> Resampler<C> {
         }
     }
     fn push(&mut self, x: [f64; C]) -> Option<[f64; C]> {
-        let size = self.ring.len();
-        self.ring[self.count % size] = x;
+        let size = self.ring.len() as u64;
+        let (p, q) = (self.p as u64, self.q as u64);
+        self.ring[(self.count % size) as usize] = x;
         self.count += 1;
-        let center = self.next * self.q;
-        let half = self.h.len() / 2;
-        let right = (center + half) / self.p;
+        let center = self.next * q;
+        let half = (self.h.len() / 2) as u64;
+        let right = (center + half) / p;
         if right >= self.count {
             return None;
         }
-        let left = (center.saturating_sub(half)).div_ceil(self.p);
+        let left = (center.saturating_sub(half)).div_ceil(p);
         let mut y = [0.; C];
         for n in left..=right {
-            let w = self.h[center + half - n * self.p];
-            let x = &self.ring[n % size];
+            let w = self.h[(center + half - n * p) as usize];
+            let x = &self.ring[(n % size) as usize];
             for c in 0..C {
                 y[c] += w * x[c];
             }
@@ -95,13 +97,13 @@ struct Pitch {
     count: usize,
     fani: Vec<[f64; 40]>,
     fcount: usize,
-    frame: usize,
+    frame: u64,
     local: [f64; W],
     glob: [f64; W],
 }
 #[derive(Clone)]
 struct Frame {
-    index: usize,
+    index: u64,
     pp: [f64; W],
     #[cfg(test)]
     local: [f64; W],
@@ -215,7 +217,7 @@ struct Model {
     ani: Ani,
     down: Resampler<40>,
     pitch: Pitch,
-    n0: usize,
+    n0: u64,
     #[cfg(test)]
     sample_rate: usize,
     valid: bool,
@@ -286,8 +288,8 @@ impl Model {
         let mut sum = 0.;
         let mut count = 0;
         let mut j: usize = 0;
-        let first = ((self.n0 + 9600) * 147).div_ceil(STEP * 2560);
-        let end = ((self.n0 + 28800) * 147).div_ceil(STEP * 2560);
+        let first = ((self.n0 + 9600) * 147).div_ceil((STEP * 2560) as u64);
+        let end = ((self.n0 + 28800) * 147).div_ceil((STEP * 2560) as u64);
         loop {
             let x = if j < 28800 {
                 let u = j as f64 / 48000.;
@@ -316,7 +318,11 @@ impl Model {
         if count != end - first || count == 0 {
             None
         } else {
-            Some((sum / count as f64, count, (j + 1).saturating_sub(28800)))
+            Some((
+                sum / count as f64,
+                count as usize,
+                (j + 1).saturating_sub(28800),
+            ))
         }
     }
 }

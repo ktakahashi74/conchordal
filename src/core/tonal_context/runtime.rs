@@ -51,7 +51,7 @@ impl Context {
             Arc::new(Snapshot {
                 observed: pearson(&self.model.pitch.local, &self.model.pitch.glob),
                 epoch_start: self.epoch_start,
-                end: self.epoch_start + self.model.n0 as u64,
+                end: self.epoch_start + self.model.n0,
                 frame: self.model.pitch.frame,
                 local: self.model.pitch.local,
                 glob: self.model.pitch.glob,
@@ -67,7 +67,7 @@ pub(crate) struct Snapshot {
     pub(crate) observed: Option<f64>,
     pub(crate) epoch_start: u64,
     pub(crate) end: u64,
-    frame: usize,
+    frame: u64,
     local: [f64; W],
     glob: [f64; W],
     decoder: Arc<Decoder>,
@@ -76,7 +76,7 @@ pub(crate) struct Snapshot {
 impl Snapshot {
     pub(crate) fn query(&self, hz: f32) -> Option<f64> {
         self.decoder.query_memory(
-            (self.end - self.epoch_start) as usize,
+            self.end - self.epoch_start,
             self.frame,
             &self.local,
             &self.glob,

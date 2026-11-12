@@ -123,8 +123,8 @@ fn reference_acquisition() {
             }
         }
         // Complete the input FIR, then reproduce C file padding and drain.
-        let converted = pcm.len() * model.input.p;
-        let target = converted.div_ceil(model.input.q);
+        let converted = (pcm.len() * model.input.p) as u64;
+        let target = converted.div_ceil(model.input.q as u64);
         while model.input.next < target {
             if let Some(f) = model.push(0.) {
                 observed.push(f);
@@ -186,7 +186,7 @@ fn reference_acquisition() {
                 converted.push(y);
             }
         }
-        while converted.len() < target {
+        while (converted.len() as u64) < target {
             if let Some([y]) = converter.push([0.]) {
                 converted.push(y);
             }
@@ -251,7 +251,7 @@ fn reference_acquisition() {
             let qr = meta["q"].as_f64().unwrap();
             compare("q", &[q], &[qr], meta["tolerance"]["q"].as_f64().unwrap());
             assert_eq!(j, meta["q_frames"].as_array().unwrap().len());
-            assert_eq!(prefix.n0, n0);
+            assert_eq!(prefix.n0, n0 as u64);
             assert_eq!(prefix.query(hz).unwrap(), (q, j, tail));
             println!("query hz={hz} q={q:.16e} J={j} tail_samples={tail}");
         }
@@ -305,8 +305,8 @@ fn cost_and_approximation() {
         );
     }
     let frequencies = [220., 233.081880759, 275., 330.];
-    let first = ((context.n0 + 9600) * 147).div_ceil(STEP * 2560);
-    let end = ((context.n0 + 28800) * 147).div_ceil(STEP * 2560);
+    let first = ((context.n0 + 9600) * 147).div_ceil((STEP * 2560) as u64);
+    let end = ((context.n0 + 28800) * 147).div_ceil((STEP * 2560) as u64);
     let mut tables = Vec::new();
     for &hz in &frequencies {
         let mut blank = Model::new(48000);
@@ -487,4 +487,25 @@ fn retained_c_numpy_smoke_and_snapshot_isolation() {
     assert_eq!(ctx.n0, 12000);
     ctx.push(f64::NAN);
     assert!(ctx.query(220.).is_none());
+}
+
+#[test]
+fn input_resampler_positions_past_32_bits_match_a_fresh_origin() {
+    // At 48 kHz the input output centre next*q passes 2^32 after about 609 s.
+    // Shifting next by 147*m and count by 320*m preserves every tap.
+    let m = (1u64 << 32) / (147 * 320) + 1;
+    let mut fresh = Resampler::<1>::new(147, 320);
+    let mut late = fresh.clone();
+    late.count = 320 * m;
+    late.next = 147 * m;
+    assert!(late.next * 320 > u64::from(u32::MAX));
+    let mut outputs = 0;
+    for i in 0..8192 {
+        let x = [(i as f64 * 0.013).sin()];
+        let a = fresh.push(x);
+        let b = late.push(x);
+        assert_eq!(a.map(|y| y[0].to_bits()), b.map(|y| y[0].to_bits()), "{i}");
+        outputs += usize::from(a.is_some());
+    }
+    assert!(outputs > 3000);
 }

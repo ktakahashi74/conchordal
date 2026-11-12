@@ -61,6 +61,7 @@
 - 修正案: 無条件で呼ぶ（担当によれば `loo_observation_delivery_steady_state_allocates_nothing` で割当0を確認済）。
   または条件に「temporal重み ≠ 0 または `relations.is_some()`」を加える（後者は重みが0に戻ったときの反映に必要）。
   全既定Voice＋temporal重みのCommunityテストを追加する。
+- 完了（2026-11-12）: `bb394849`。呼出条件を外し、毎hop無条件で呼ぶ案を採った。消費者（厳密LOO score、temporal relations、support警告）はそれぞれ関数の内部で分岐しており、呼出条件の側に消費者を列挙すると、今回と同じ追加漏れが再発するためである。既定Voiceだけの定常hopで割当0のままであることを `profile-alloc` の `community_steady_hops_reuse_respawn_social_and_sequential_storage` で確認した。回帰テストは `harmonic_relations_reach_default_voices_without_self_exclusion`。
 
 <a id="a2"></a>
 
@@ -80,6 +81,7 @@
   - 継続期間は `expires_at`（最古anchor＋600秒）までである。
 - `CLAUDE.md` の「Both zero bypass prediction/preview/new draws」に反する。テスト（`runtime.rs:1193`）は `weight` だけの経路しか見ていない。
 - 修正案: else分岐を削除し、`Use::refresh` を無条件で通す（冒頭が両重み0を処理する）。または `Use::disable()` を追加する。
+- 完了（2026-11-12）: `87e4dfbb`。両重みが0のときも `Use::refresh` を通し、冒頭の両重み0の処理で `weight`・`continuation`・`decision` を消す。回帰テストは `harmonic_relations_flora_return_to_zero_clears_continuation_and_decision`。
 
 <a id="a3"></a>
 
@@ -90,6 +92,7 @@
 - 失敗シナリオ: `let p = place(...); parallel([|| { wait(4); p.amp(0.4); }, || { wait(1); }]);` で、`UpdatePopulation` がt=4ではなくt=0に出る。`release(p)` も同様に4秒早く解放される。最後のbranchが最長でない場合は、逆に `max_end` まで遅れる。
 - 文書との不一致: `docs.rs:373, 550, 627` は「Live patches emit at wait, flush or scope end」とするが、外側handleはscope終了時に出ない。
 - 修正案: branch終了時、`pop_scope` の前に `ctx.emit_pending_actions(pos)` を呼ぶ。回帰テストは上の台本でevent時刻が4になることを確かめる。
+- 完了（2026-11-12）: `6c632e36`。回帰テスト `parallel_branch_emits_outer_handle_actions_at_its_own_end` は、上の台本でpatchがt=4、最後のbranchが短い場合にt=1、branch内の `release` がt=1に出ることを確かめる。
 
 <a id="a4"></a>
 
@@ -104,6 +107,8 @@
 - 対照: OscillatorBankはcullする（`oscillator_bank.rs:465-476`）。Rainは0.45·fs以上をmuteする（`rain.rs:591-603`、`fill_object_modes`）。未対応はModalだけで、テストもない。
 - 修正案: `build_modes` と `bank_forecast`（`modal_engine.rs:185-198`）で、`freq_hz >= 0.45*fs` のmodeを `gain=0, in_gain=0` にする（Rainと同じ規則）。
   帯域内の 1/cos 利得の補正は音色の変更になるため、作者判断として切り離す。
+- 完了（2026-11-12）: `ed606687`。`build_modes`（HarmonicとModal）と打撃時の `bank_forecast` で、0.45·fs以上のmodeをgain・in_gain 0、周波数0.45·fsにする（Rainと同じ規則）。帯域内の利得補正はしていない。回帰テストは `modes_at_or_above_045_fs_are_muted_in_render_and_forecast`。
+- 未解決: `render_prototype=true` のassertは、`phase3_residual_bound` がgainを見る前に係数だけでINFを返すため、mute後も残る。一時的な測定では、muteしたmodeのboundはt60 5秒で有限、10秒でINFだった（修正前は約1.2秒でINF）。
 
 <a id="a5"></a>
 
@@ -117,6 +122,7 @@
 - 同型の箇所（下流は未確認）: `control.rs:115`（`set_timbre_brightness_clamped`）、`spec.rs:751`（`set_entrainment`）、`:882`（`set_pulse_lock`）、`:890`（`set_social`）、`:900`（`set_duration_range`）、`:982`（`set_adsr` のsustain）、`:1019`（`set_respawn_min_c_level`）、`scenario.rs:458, 460, 471`（`CoupledTimingSpec::sanitized`）。`set_duration_curve`（`spec.rs:906`）は検証自体がない。
 - 修正案: `core::float::sanitize01` に置き換える（`CLAUDE.md` の「helperを書き直さない」規則とも合う）。`meter_stability` は `MeterNetwork::set_shaping` で一度だけsanitizeし、台本側でも警告を出す。
 - 補足: `freq(NaN)` は `pitch_controller.rs:548` でguardされていて無害である。
+- 完了（2026-11-12）: `594faa07`。上に列挙した箇所に加え、`set_timbre_inharmonic/motion_clamped`、`resolved_tessitura_gravity`、`PhonationSpec::social_coupling`・`prediction_sync` の0..1 clampも `sanitize01` にした。`MeterNetwork::set_shaping` で一度だけsanitizeし、meter内の3箇所のclampは外した。`meter_stability` は非有限値に位置付きの警告を出す。`set_duration_curve` は第一案の対象外なので変えていない。回帰テストは `nan_unit_interval_controls_do_not_reach_the_engine` と `non_finite_stability_is_sanitized_at_installation`。
 
 <a id="a6"></a>
 
@@ -125,6 +131,7 @@
 - 場所: `src/scripting/engine.rs:1769-1771`
 - 欠陥: `pattern.with_count((n as usize).max(1))` で負値が `usize::MAX` に化ける。spawn時に `Vec::with_capacity(count)`（`core/mode_pattern.rs:465, 489, 514`）でcapacity overflowのpanicになる。台本エラーではなくworker側のpanicである。Rainの `impact_modes` / `object_modes` も同じ経路を通る（`life/rain.rs:166, 190`）。上限もないので巨大な値はOOMになる。
 - 修正案: `n < 1` と上限超過を位置付きの台本エラーにする（Rainの `objects` と同じ方式、`engine.rs:420`）。
+- 完了（2026-11-12）: `16d1490c`。上限は `Vec` の容量があふれる点（mode当たりの最大要素16 byte、`isize::MAX / 16`）とした。これより小さくても物理メモリを超える値はOOMのままである。原理や消費者から決まる上限が見つからなかった。回帰テストは `mode_count_outside_the_addressable_range_is_a_script_error`。
 
 <a id="a7"></a>
 
@@ -138,6 +145,7 @@
   - `StepEngine::new(.., 44100)` と `remember_pitch_set(w>0)` → wasmがtrapする。同梱のページは `AudioContext({sampleRate: 48000})` なので現状は発火しない。
 - 不整合: TCは同じ前提を警告に落としてskipする（`wiring.rs:467`）。
 - 修正案: 検査を `prepare_runtime` に移して位置付きの `Err` を返し、`load_scenario` からは削除する。`StepEngine` も同じ経路でErrを返す。TCと同じ警告＋skipにする選択肢もある。
+- 完了（2026-11-12）: `c35379ae`。`prepare_runtime` で実行時の標本化率を検査して位置付きのErrを返し、`load_scenario` の検査は削除した。`StepEngine` も同じ経路を通る。回帰テストは `remember_pitch_set_checks_the_runtime_sample_rate`（44.1 kHzの設定で読み込めること、44.1 kHzの実行で位置付きErrになること）。
 
 <a id="a8"></a>
 
@@ -147,6 +155,7 @@
 - 欠陥: workerは最終hopをpushした直後に `exiting` を立ててreturnする。`run_headless` はringが空になるのを待たずに `rt` をdropし、cpal streamが止まる。ringの排出を待つコードはない。
 - 失敗シナリオ: `--nogui` では `wait_user_exit` が強制的にfalseになる。ring容量は `2 × latency_ms`（既定で約100 ms）で、workerは常にほぼ満杯まで詰める。終了の検出は50 msごとのpoll。末尾の約40–100 msのrelease tailやfadeが毎回切れる。GUIは `watch_for_close` の200 msのsleepで偶然排出される。終端が無音なら実害はない。
 - 修正案: 自然終了（`state.finished` かつ failuresが空）のとき、`exiting` を立てる前に、worker_loopで `prod.occupied_len() == 0` まで待つ。待ち時間の上限はring時間の2倍とし、`recovering` と強制停止で中断する。`exiting` はstop flagと共用なので、待機はstoreの前に置く。
+- 完了（2026-11-12）: `39491ec8`。待機は `process_hop` の自然終了の分岐で、`exiting` のstoreの直前に置いた。回帰テスト `natural_end_waits_for_the_queued_audio_tail` は、ringの消費をテスト側が持ち、`exiting` が立った時点でringが空であることを確かめる。cpalの実機での末尾の再生は確認していない。ringが空になった後に機器側のバッファに残る分は待たない。
 
 <a id="a9"></a>
 
@@ -156,6 +165,7 @@
 - 欠陥: 実時間経路でworkerは `listener_analysis_update_tx.send(update)`（容量8）をblockingで呼ぶ。listener threadはOrderedで `result_tx.send`（容量4）をblockingで呼び、更新の受け取りはbatchの先頭だけで行う。workerがresultを読むのは更新を送った後である（`apply_landscape_updates` → `wait_for_listener`）。
 - 失敗シナリオ: listener解析がhop予算を超え（backlogが64に張り付き、1 batchが0.7秒以上）、その間に台本が9 hop以上続けてlandscape更新を出す（例: `set_roughness_aversion` を `wait(0.05)` 刻みでramp）。workerが9個目でblockし、listenerが5個目のresultでblockして相互に待つ。workerはこの間 `exiting` を見ないので、ExitもCtrl-Cも効かず、`App::drop` のjoinが永久に待つ。
 - 修正案: 実時間経路では `try_send` にする。Fullのときはworker側にmerge済みの `pending_listener_update` を保持して次のhopで再送する（mergeは `life/community/actions.rs:421` に既存）。field解析側は `Latest` publishがnon-blockingなので現状安全である。
+- 完了（2026-11-12）: `460b15e7`。実時間経路（`deterministic_analysis = false`）だけ `try_send` にした。listenerを1 frame以内に保つ決定論的な経路はblockingのままである。mergeは `LandscapeUpdate::merge` に移してCommunityと共用する。回帰テスト `realtime_listener_update_does_not_block_on_a_full_queue` は、満杯のqueueで戻ることと、merge済みの更新が次のhopで届くことを確かめる。相互待ちのdeadlockそのものは再現していない。
 
 <a id="a10"></a>
 
@@ -165,6 +175,7 @@
 - 欠陥: 標本位置の積（`self.next * self.q`、p=147、q=320 など）を `usize` で計算している。wasm32では32 bitである。
 - 失敗シナリオ: 増加率は 48000×147 = 7,056,000/秒で、2^32に608.7秒で達する。wasmのreleaseにはoverflow checkがない（`Cargo.toml` はdevだけ）ので無言でwrapする。`right >= self.count` が成り立たなくなり、入力1標本ごとに位置のずれた出力が出る。`Tracker::process` は `samples = 0` になりPS学習が止まる。native（64 bit）には影響しない。`remember_pitch_set` はopt-inのExperimentalである。
 - 修正案: `count` / `next` / `n0` / `frame.index` と派生する積を `u64` にする。またはresamplerの位相を有界な剰余で持つ。
+- 完了（2026-11-12）: `6b91bcc7`。回帰テスト `input_resampler_positions_past_32_bits_match_a_fresh_origin` は、位置を2^32超へずらしても出力がbit一致することを確かめる。u64型で書いているので修正前のコードではcompileが通らない。wasm32上での実行は確認していない（`cargo check --target wasm32-unknown-unknown --no-default-features --features web` は通過）。
 
 <a id="a11"></a>
 
@@ -172,6 +183,7 @@
 
 - 場所: `src/config.rs:642-645`（`(1..=1 << 18).contains(&self.analysis.nfft)`）、`src/core/nsgt_kernel.rs:147`（`assert!(len >= 8, ...)`）
 - 修正案: 設定検証の下限を8にする。
+- 完了（2026-11-12）: `74b702ae`。`rejects_invalid_runtime_dimensions_when_loading` にnfft=7の場合を加えた。
 
 <a id="a-low"></a>
 

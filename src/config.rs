@@ -640,8 +640,8 @@ impl AppConfig {
             "audio.latency_ms exceeds the addressable audio buffer size"
         );
         ensure!(
-            (1..=1 << 18).contains(&self.analysis.nfft),
-            "analysis.nfft must be between 1 and 262144 (the NSGT limit)"
+            (8..=1 << 18).contains(&self.analysis.nfft),
+            "analysis.nfft must be between 8 and 262144 (the NSGT chunk and size limits)"
         );
         ensure!(
             self.analysis.hop_size > 0 && self.analysis.hop_size <= self.analysis.nfft,
@@ -1291,6 +1291,11 @@ mod tests {
             ("zero_fft", "[analysis]\nnfft = 0\n", "analysis.nfft"),
             ("capped_fft", "[analysis]\nnfft = 262145\n", "analysis.nfft"),
             (
+                "small_fft",
+                "[analysis]\nnfft = 7\nhop_size = 4\n",
+                "analysis.nfft",
+            ),
+            (
                 "zero_hop",
                 "[analysis]\nhop_size = 0\n",
                 "analysis.hop_size",
@@ -1307,7 +1312,7 @@ mod tests {
             ),
             (
                 "zero_duration",
-                "[audio]\nsample_rate = 4294967295\n[analysis]\nnfft = 1\nhop_size = 1\n",
+                "[audio]\nsample_rate = 4294967295\n[analysis]\nnfft = 8\nhop_size = 1\n",
                 "analysis.hop_size",
             ),
         ] {

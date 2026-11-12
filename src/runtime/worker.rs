@@ -94,6 +94,8 @@ pub(super) struct WorkerState {
     pub(super) listener_twin: ListenerTwin,
     pub(super) latest_listener_fast_state: Option<ListenerFastState>,
     pub(super) latest_listener_state: Option<ListenerState>,
+    /// Real-time listener update that met a full queue; merged and retried next hop.
+    pub(super) pending_listener_update: Option<LandscapeUpdate>,
     // Production-side meter core (auditory-motor coupling), separate from the
     // perception meter inside ListenerTwin. See "Perception vs Production".
     // Composer-set terrain priors (meter_stability / temporal_basin) seed it.
@@ -297,6 +299,7 @@ impl WorkerState {
             listener_twin,
             latest_listener_fast_state: None,
             latest_listener_state: None,
+            pending_listener_update: None,
             prod_meter,
             harmonic_clock: (cfg.harmonic_rhythm > 0).then(|| {
                 crate::life::harmonic_rhythm::HarmonicRhythm::new(

@@ -418,32 +418,7 @@ impl Community {
     }
 
     fn merge_landscape_update(&mut self, update: LandscapeUpdate) {
-        let mut merged = self.pending_update.unwrap_or_default();
-        for (out, value) in merged
-            .support_preference
-            .iter_mut()
-            .zip(update.support_preference)
-        {
-            if value.is_some() {
-                *out = value;
-            }
-        }
-        if update.roughness_aversion.is_some() {
-            merged.roughness_aversion = update.roughness_aversion;
-        }
-        if update.harmonicity_preference.is_some() {
-            merged.harmonicity_preference = update.harmonicity_preference;
-        }
-        if update.harmonic_relations_weight.is_some() {
-            merged.harmonic_relations_weight = update.harmonic_relations_weight;
-        }
-        if update.harmonic_continuation_weight.is_some() {
-            merged.harmonic_continuation_weight = update.harmonic_continuation_weight;
-        }
-        if update.pitch_objective_mode.is_some() {
-            merged.pitch_objective_mode = update.pitch_objective_mode;
-        }
-        self.pending_update = Some(merged);
+        self.pending_update.get_or_insert_default().merge(update);
     }
 }
 

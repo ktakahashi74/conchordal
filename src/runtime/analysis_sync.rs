@@ -312,7 +312,13 @@ pub(super) fn apply_landscape_updates(
         &mut state.lparams,
         &mut state.current_landscape,
         &channels.analysis_update_tx,
-        channels.listener_analysis_update_tx.as_ref(),
+        channels.listener_analysis_update_tx.as_ref().map(|tx| {
+            (
+                tx,
+                &mut state.pending_listener_update,
+                cfg.deterministic_analysis,
+            )
+        }),
     );
     drive_and_apply_habituation(
         &mut state.current_landscape,
@@ -415,9 +421,11 @@ pub(super) fn apply_pending_landscape_update(
     params: &mut LandscapeParams,
     current_landscape: &mut Landscape,
     analysis_update_tx: &Sender<LandscapeUpdate>,
-    listener_analysis_update_tx: Option<&Sender<LandscapeUpdate>>,
+    listener: Option<(&Sender<LandscapeUpdate>, &mut Option<LandscapeUpdate>, bool)>,
 ) -> bool {
-    if let Some(update) = pop.take_pending_update() {
+    let update = pop.take_pending_update();
+    let mut valuation_changed = false;
+    if let Some(update) = update {
         if let Some(weight) = update.harmonic_relations_weight
             && weight.is_finite()
             && (-1. ..=1.).contains(&weight)
@@ -441,7 +449,7 @@ pub(super) fn apply_pending_landscape_update(
         let harmonicity_changed = update
             .harmonicity_preference
             .is_some_and(|w| params.set_harmonicity_preference(w));
-        let valuation_changed = roughness_changed || harmonicity_changed;
+        valuation_changed = roughness_changed || harmonicity_changed;
         if let Some(mode) = update.pitch_objective_mode {
             current_landscape.pitch_objective_mode = mode;
         }
@@ -452,14 +460,30 @@ pub(super) fn apply_pending_landscape_update(
         if let Err(err) = analysis_update_tx.send(update) {
             warn!("analysis update disconnected: {err}");
         }
-        if let Some(tx) = listener_analysis_update_tx
-            && let Err(err) = tx.send(update)
-        {
-            warn!("listener analysis update disconnected: {err}");
-        }
-        return valuation_changed;
     }
-    false
+    // The real-time listener thread may be blocked sending results this worker has
+    // not read yet, so a full queue keeps the merged update for the next hop.
+    if let Some((tx, pending, deterministic)) = listener {
+        if let Some(update) = update {
+            pending.get_or_insert_default().merge(update);
+        }
+        if let Some(update) = pending.take() {
+            if deterministic {
+                if let Err(err) = tx.send(update) {
+                    warn!("listener analysis update disconnected: {err}");
+                }
+            } else {
+                match tx.try_send(update) {
+                    Ok(()) => {}
+                    Err(TrySendError::Full(update)) => *pending = Some(update),
+                    Err(TrySendError::Disconnected(_)) => {
+                        warn!("listener analysis update disconnected");
+                    }
+                }
+            }
+        }
+    }
+    valuation_changed
 }
 
 pub(super) fn compose_consonance_field_score_level_with_params(

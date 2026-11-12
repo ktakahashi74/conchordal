@@ -105,6 +105,36 @@ pub struct LandscapeUpdate {
     pub pitch_objective_mode: Option<PitchObjectiveMode>,
 }
 
+impl LandscapeUpdate {
+    /// Overlay `later` on `self`: each field set in `later` wins.
+    pub(crate) fn merge(&mut self, later: Self) {
+        for (out, value) in self
+            .support_preference
+            .iter_mut()
+            .zip(later.support_preference)
+        {
+            if value.is_some() {
+                *out = value;
+            }
+        }
+        if later.roughness_aversion.is_some() {
+            self.roughness_aversion = later.roughness_aversion;
+        }
+        if later.harmonicity_preference.is_some() {
+            self.harmonicity_preference = later.harmonicity_preference;
+        }
+        if later.harmonic_relations_weight.is_some() {
+            self.harmonic_relations_weight = later.harmonic_relations_weight;
+        }
+        if later.harmonic_continuation_weight.is_some() {
+            self.harmonic_continuation_weight = later.harmonic_continuation_weight;
+        }
+        if later.pitch_objective_mode.is_some() {
+            self.pitch_objective_mode = later.pitch_objective_mode;
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PitchObjectiveMode {
     #[default]

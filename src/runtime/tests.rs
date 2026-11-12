@@ -740,7 +740,7 @@ fn harmonicity_preference_update_reaches_kernel_and_fields_without_touching_sens
         &mut params,
         &mut landscape,
         &tx,
-        Some(&listener_tx),
+        Some((&listener_tx, &mut None, true)),
     ));
     assert_eq!(params.harmonicity_preference, 0.0);
     assert_eq!(params.roughness_aversion, 2.0);
@@ -1113,4 +1113,112 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             "the acoustic input must produce supported opportunities"
         );
     }
+}
+
+#[test]
+fn realtime_listener_update_does_not_block_on_a_full_queue() {
+    let (done_tx, done_rx) = std::sync::mpsc::channel();
+    // Pre-fix this blocks forever, so the work runs on its own thread with a deadline.
+    thread::spawn(move || {
+        let fs = 48_000.0;
+        let hop = 512;
+        let timebase = Timebase { fs, hop };
+        let cfg = WorkerConfig {
+            end_request: Arc::new(AtomicBool::new(false)),
+            duration_tick: None,
+            harmonic_relations: None,
+            has_flora: false,
+            render_prototype: false,
+            temporal_meter_t2: false,
+            onset_comparison: None,
+            scenario_name: "listener update".into(),
+            wait_user_exit: false,
+            start_flag: Arc::new(AtomicBool::new(true)),
+            exiting: Arc::new(AtomicBool::new(false)),
+            scaffold: Default::default(),
+            harmonic_rhythm: 0,
+            meter_shaping: Default::default(),
+            guard_meter: None,
+            underrun_frames: None,
+            telemetry: false,
+            audio_counters: None,
+            dcc_coupler: DccCoupler::new(Default::default()),
+            hop,
+            hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
+            fs,
+            deterministic_analysis: false,
+            deterministic_footprints: true,
+        };
+        let scenario = crate::scenario::Scenario {
+            observe_tonal_context: false,
+            harmonic_relation_sources: None,
+            expression: None,
+            expression_cursor: None,
+            temporal_mode: crate::scenario::TemporalMode::Off,
+            seed: 1,
+            output_gain_db: 0.0,
+            output_gain_position: None,
+            control_update_mode: Default::default(),
+            scaffold: Default::default(),
+            harmonic_rhythm: 0,
+            remember_pitch_set: 0.,
+            pitch_set_position: None,
+            meter_shaping: Default::default(),
+            scene_markers: Vec::new(),
+            events: Vec::new(),
+            end: crate::scenario::ScenarioEnd::Finite { duration_sec: 1.0 },
+        };
+        let space = Log2Space::new(200.0, 4_000.0, 12);
+        let mut state = WorkerState::new(
+            Community::new(timebase),
+            Conductor::from_scenario(scenario, timebase),
+            Landscape::new(space.clone()),
+            build_test_params(&space),
+            DorsalStream::new(fs),
+            None,
+            &cfg,
+        );
+        let (listener_tx, listener_rx) = bounded::<LandscapeUpdate>(1);
+        listener_tx.send(LandscapeUpdate::default()).unwrap();
+        let channels = WorkerChannels {
+            t2_inbox: None,
+            temporal_snapshots: [None, None],
+            ui_tx: None,
+            audio_prod: None,
+            wav_tx: None,
+            audio_to_analysis_tx: None,
+            analysis_result_rx: bounded(1).1,
+            analysis_update_tx: bounded(1).0,
+            presentation_to_listener_tx: None,
+            listener_result_rx: None,
+            listener_analysis_update_tx: Some(listener_tx),
+        };
+        for update in [
+            LandscapeUpdate {
+                roughness_aversion: Some(0.5),
+                ..Default::default()
+            },
+            LandscapeUpdate {
+                harmonicity_preference: Some(0.25),
+                ..Default::default()
+            },
+        ] {
+            state
+                .pop
+                .apply_action(Action::UpdateLandscape { update }, &state.current_landscape);
+            apply_landscape_updates(&mut state, &channels, &cfg, false, 0);
+        }
+        assert_eq!(listener_rx.len(), 1);
+        assert!(listener_rx.recv().unwrap().roughness_aversion.is_none());
+        apply_landscape_updates(&mut state, &channels, &cfg, false, 0);
+        let merged = listener_rx.try_recv().unwrap();
+        assert_eq!(
+            (merged.roughness_aversion, merged.harmonicity_preference),
+            (Some(0.5), Some(0.25))
+        );
+        done_tx.send(()).unwrap();
+    });
+    done_rx
+        .recv_timeout(Duration::from_secs(60))
+        .expect("real-time listener update blocked or failed");
 }

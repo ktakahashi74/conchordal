@@ -91,7 +91,7 @@ impl AnalysisState {
                 )
                 .expect("validated raw T2 geometry")
             });
-        let spectral_history = stream.nsgt_power_enabled().then(|| {
+        let spectral_history = stream.spectral_history_enabled().then(|| {
             crate::core::spectral_history::SpectralHistory::new(
                 stream.last().space.clone(),
                 stream.sample_rate() as f64,
@@ -135,6 +135,34 @@ impl AnalysisState {
         frame_id: u64,
         hop: &[f32],
         loo_pcm: Option<&crate::core::stream::loo::PcmPacket>,
+    ) -> bool {
+        self.observe_from(frame_id, hop, loo_pcm, None)
+    }
+
+    /// Without NSGT power, the front end is the only analysis state a follower skips.
+    #[cfg(any(test, not(feature = "native")))]
+    pub(crate) fn can_follow(&self) -> bool {
+        !self.stream.nsgt_power_enabled()
+    }
+
+    /// Observe a hop bit-identical to the one `mixed` has just observed.
+    #[cfg(any(test, not(feature = "native")))]
+    pub(crate) fn follow(&mut self, frame_id: u64, hop: &[f32], mixed: &AnalysisState) -> bool {
+        self.observe_from(frame_id, hop, None, Some(&mixed.stream))
+    }
+
+    /// Called before `mixed` observes the first hop whose PCM differs.
+    #[cfg(any(test, not(feature = "native")))]
+    pub(crate) fn split_from(&mut self, mixed: &AnalysisState) {
+        self.stream.adopt_frontend(&mixed.stream);
+    }
+
+    fn observe_from(
+        &mut self,
+        frame_id: u64,
+        hop: &[f32],
+        loo_pcm: Option<&crate::core::stream::loo::PcmPacket>,
+        source: Option<&AnalysisStream>,
     ) -> bool {
         let Self {
             stream,
@@ -197,7 +225,7 @@ impl AnalysisState {
         } else {
             loo_streams.clear();
         }
-        let frame = stream.process(hop);
+        let frame = stream.process_from(hop, source);
         #[cfg(feature = "native")]
         if let Some(tap) = temporal_tap.as_mut() {
             let mono_energy =
@@ -1190,5 +1218,94 @@ mod tests {
             );
             producer.join().unwrap();
         }
+    }
+
+    #[test]
+    fn listener_following_the_field_matches_independent_listener_analysis() {
+        // GUI-like wiring: the field has NSGT power, display support and resource power;
+        // the listener has neither NSGT power nor history, but keeps its own TC state.
+        let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+        let geometry =
+            crate::core::harmonic_support::Geometry::new(nsgt.space(), &params.harmonicity_kernel);
+        let mut field_stream = AnalysisStream::new(params.clone(), nsgt.clone());
+        field_stream.enable_support(geometry, false);
+        field_stream.publish_support_for_display(true);
+        field_stream.enable_resource_power();
+        let mut listener_stream = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
+        listener_stream
+            .enable_tonal_context(crate::core::tonal_context::Decoder::unqueried_for_test());
+        let mut field = AnalysisState::new(field_stream, None, None);
+        let mut follower = AnalysisState::new(listener_stream.clone(), None, None);
+        let mut reference = AnalysisState::new(listener_stream, None, None);
+        assert!(follower.can_follow() && !field.can_follow());
+        let hop = reference.hop_samples;
+        let tone = |hz: f32, frame: u64, amp: f32| -> Vec<f32> {
+            (0..hop)
+                .map(|n| {
+                    let t = (frame as usize * hop + n) as f32 / params.fs;
+                    amp * (2. * PI * hz * t).sin()
+                })
+                .collect()
+        };
+        let mut follows = true;
+        let mut published = [0, 0];
+        // Frames 21..=23 are a gap on both buses; habitat alone carries a tone from 90 to 99.
+        for frame in (0..21).chain(24..120) {
+            let presentation: Arc<[f32]> = tone(220., frame, 0.05 + 0.001 * frame as f32)
+                .iter()
+                .zip(tone(330., frame, if frame < 12 { 0. } else { 0.03 }))
+                .map(|(a, b)| a + b)
+                .collect();
+            let habitat: Arc<[f32]> = if (90..100).contains(&frame) {
+                presentation
+                    .iter()
+                    .zip(tone(300., frame, 0.04))
+                    .map(|(a, b)| a + b)
+                    .collect()
+            } else {
+                presentation.clone()
+            };
+            if frame == 10 {
+                // An update that reaches only the listener bus.
+                let update = LandscapeUpdate {
+                    roughness_aversion: Some(0.3),
+                    harmonicity_preference: Some(0.5),
+                    ..Default::default()
+                };
+                follower.update(update);
+                reference.update(update);
+            }
+            let gap = field.begin_hop(frame);
+            assert_eq!(follower.begin_hop(frame), gap);
+            assert_eq!(reference.begin_hop(frame), gap);
+            assert_eq!(gap, frame == 24);
+            if follows && presentation[..] != habitat[..] {
+                follower.split_from(&field);
+                follows = false;
+            }
+            assert_eq!(follows, frame < 90);
+            field.observe(frame, &habitat, None);
+            let expected = reference.observe(frame, &presentation, None);
+            let actual = if follows {
+                follower.follow(frame, &presentation, &field)
+            } else {
+                follower.observe(frame, &presentation, None)
+            };
+            assert_eq!(actual, expected, "publication at frame {frame}");
+            assert_eq!(
+                format!("{:?}", follower.stream.last()),
+                format!("{:?}", reference.stream.last()),
+                "listener analysis {frame}"
+            );
+            if expected {
+                assert_eq!(
+                    format!("{:?}", follower.snapshot()),
+                    format!("{:?}", reference.snapshot()),
+                    "listener frame {frame}"
+                );
+                published[usize::from(!follows)] += 1;
+            }
+        }
+        assert!(published[0] > 0 && published[1] > 0, "{published:?}");
     }
 }

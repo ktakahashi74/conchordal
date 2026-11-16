@@ -29,6 +29,8 @@ struct State {
     arrivals: VecDeque<(f64, f64)>,
     shown: f64,
     measure: bool,
+    decoder: Decoder,
+    benchmark: (Decoder, Encoder),
 }
 fn now() -> f64 {
     web_sys::window().unwrap().performance().unwrap().now()
@@ -60,10 +62,10 @@ impl WebGui {
     }
     /// Host passes UTF-8 bytes directly; JS must not round u64 identities through Number.
     pub fn push_snapshot(&self, bytes: &[u8]) -> Result<(), JsValue> {
-        let start = now();
-        let frame = UiFrame::decode(bytes).map_err(|e| JsValue::from_str(&e))?;
-        let elapsed = now() - start;
         let mut s = self.state.borrow_mut();
+        let start = now();
+        let frame = s.decoder.decode(bytes).map_err(|e| JsValue::from_str(&e))?;
+        let elapsed = now() - start;
         if s.measure {
             s.decode_ms.push(elapsed);
         }
@@ -113,14 +115,15 @@ impl WebGui {
     }
     /// Local codec benchmark only: no snapshot or waveform is exported to the host.
     pub fn benchmark_codec(&self, bytes: &[u8]) -> Result<(), JsValue> {
+        let mut s = self.state.borrow_mut();
+        let (decoder, encoder) = &mut s.benchmark;
         let start = now();
-        let decoded = UiFrame::decode(bytes).map_err(|e| JsValue::from_str(&e))?;
+        let decoded = decoder.decode(bytes).map_err(|e| JsValue::from_str(&e))?;
         let mid = now();
-        let encoded = decoded
-            .encode()
+        let encoded = encoder
+            .encode(decoded)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
         let end = now();
-        let mut s = self.state.borrow_mut();
         if s.measure {
             s.encode_ms.push(end - mid);
         }

@@ -158,6 +158,14 @@ pub(crate) struct Snapshot {
     frequency: Vec<Complex64>,
     work: Vec<Complex64>,
     fft_scratch: Vec<Complex64>,
+    /// `defer_projection` stored the inputs; `finish` derives every other field.
+    deferred: Option<Deferred>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Deferred {
+    eps: f32,
+    projected: bool,
 }
 impl Snapshot {
     pub(crate) fn new(geometry: Arc<Geometry>) -> Self {
@@ -186,6 +194,7 @@ impl Snapshot {
                     .max(geometry.inverse.get_inplace_scratch_len())
             ],
             geometry,
+            deferred: None,
         }
     }
     #[cfg(test)]
@@ -199,17 +208,54 @@ impl Snapshot {
         eps: f32,
         end_sample: u64,
     ) {
-        let g = &self.geometry;
-        g.space
+        self.defer_projection(density, projected, eps, end_sample);
+        self.finish();
+    }
+
+    /// Store one observation's inputs; until `finish`, only `end_sample` is current.
+    pub(crate) fn defer_projection(
+        &mut self,
+        density: &[f32],
+        projected: Option<&[f32]>,
+        eps: f32,
+        end_sample: u64,
+    ) {
+        self.geometry
+            .space
             .assert_scan_len_named(density, "support_density_scan");
         self.end_sample = end_sample;
-        self.p.fill(0.);
+        for (out, &v) in self.density.iter_mut().zip(density) {
+            *out = super::float::sanitize_nonnegative_finite(v);
+        }
+        if let Some(projected) = projected {
+            assert_eq!(projected.len(), self.p.len());
+            for (r, &v) in self.p.iter_mut().zip(projected) {
+                *r = f64::from(v);
+            }
+        }
+        self.deferred = Some(Deferred {
+            eps,
+            projected: projected.is_some(),
+        });
+    }
+
+    pub(crate) fn deferred(&self) -> bool {
+        self.deferred.is_some()
+    }
+
+    /// Complete a deferred observation; the result equals an immediate projection.
+    pub(crate) fn finish(&mut self) {
+        let Some(Deferred { eps, projected }) = self.deferred.take() else {
+            return;
+        };
+        let g = &self.geometry;
+        if !projected {
+            self.p.fill(0.);
+        }
         self.root_work.fill(0.);
         let mut erb_mass = 0.;
         self.sum = 0.;
-        for (i, &v) in density.iter().enumerate() {
-            let v = super::float::sanitize_nonnegative_finite(v);
-            self.density[i] = v;
+        for (i, &v) in self.density.iter().enumerate() {
             let v = f64::from(v);
             self.sum += v;
             erb_mass += v * f64::from(g.du[i]);
@@ -217,16 +263,10 @@ impl Snapshot {
                 continue;
             }
             for &(j, a) in &g.columns[i] {
-                if projected.is_none() {
+                if !projected {
                     self.p[j] += v * a;
                 }
                 self.root_work[j] += v * a / g.column_norm[i];
-            }
-        }
-        if let Some(projected) = projected {
-            assert_eq!(projected.len(), self.p.len());
-            for (r, &v) in self.p.iter_mut().zip(projected) {
-                *r = f64::from(v);
             }
         }
         let sum: f64 = self.p.iter().sum();

@@ -64,7 +64,10 @@ URL の seed と入力欄が空なら、開始のたびに host の `crypto.getR
 ## 計測と送信の境界
 
 Worker は native の `UI_MIN_INTERVAL` と同じ **33 ms の wall time** を最短間隔とし、
-`ui_frame().web_snapshot().encode()` を呼ぶ。最後の hop でも最終 snapshot を送る。
+`BrowserEngine::snapshot()` を呼ぶ。最後の hop でも最終 snapshot を送る。
+snapshot は JSON の header と binary の float 配列からなり、周波数軸は変わった時だけ
+載る。符号化の状態は演奏ごとの `BrowserEngine` が持ち、復号の状態は GUI が持つ
+（`reset()` で消える）。そのため snapshot は欠かさず順に渡す。
 bytes は main thread へ所有権を移し、そのまま `push_snapshot()` に渡す。
 JS の JSON 変換は挟まない。hop 時間には計算、limiter、PCM コピー、snapshot の
 構築・encode・転送呼出しを含む。snapshot 時間は構築・encode・wasm からのコピーを

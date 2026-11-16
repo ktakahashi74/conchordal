@@ -205,13 +205,14 @@ fn capture_web_gui_frames() {
     let stop = exiting.clone();
     let receiver = thread::spawn(move || {
         let mut out = std::io::BufWriter::new(std::fs::File::create(output).unwrap());
+        let mut encoder = crate::viewdata::WebSnapshotEncoder::default();
         let mut count = 0;
         let mut rows = Vec::new();
         for frame in rx {
             let started = Instant::now();
             let snapshot = frame.web_snapshot();
             let projected = Instant::now();
-            let bytes = snapshot.encode().unwrap();
+            let bytes = encoder.encode(snapshot).unwrap();
             if statistics.is_some() {
                 rows.push(
                     serde_json::json!({"time_sec":frame.meta.time_sec,"bytes":bytes.len(),
@@ -219,8 +220,8 @@ fn capture_web_gui_frames() {
                     "encode_ms":projected.elapsed().as_secs_f64()*1000.}),
                 );
             }
+            out.write_all(&(bytes.len() as u32).to_le_bytes()).unwrap();
             out.write_all(&bytes).unwrap();
-            out.write_all(b"\n").unwrap();
             count += 1;
             if count == 512 {
                 stop.store(true, Ordering::SeqCst);

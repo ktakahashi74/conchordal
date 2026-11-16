@@ -1,4 +1,7 @@
-//! Display-only wire contract. Version 1 carries no engine state or audio output API.
+//! Display-only wire contract. Version 2 carries no engine state or audio output API.
+//! A packet is a little-endian u32 header length, a JSON header without float arrays,
+//! then the arrays as little-endian binary in the order of `arrays`. Frequency axes
+//! travel only when they change; `Decoder` restores them from the last packet that had them.
 use std::sync::Arc;
 pub const RHYTHM_HISTORY_SEC: f64 = 30.;
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -279,24 +282,227 @@ pub struct UiFrame {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Envelope {
     pub version: u32,
+    /// The frequency axes are in this packet's arrays.
+    pub axes: bool,
     pub frame: UiFrame,
 }
-impl UiFrame {
-    pub fn encode(self) -> Result<Vec<u8>, serde_json::Error> {
-        serde_json::to_vec(&Envelope {
-            version: 1,
-            frame: self,
-        })
+
+enum Array<'a> {
+    F32(&'a mut Vec<f32>),
+    Shared(&'a mut Arc<[f32]>),
+    F64(&'a mut Vec<f64>),
+}
+
+/// Every float array in a fixed order; axes only when the packet carries them.
+fn arrays(
+    frame: &mut UiFrame,
+    axes: bool,
+    visit: &mut dyn FnMut(Array) -> Result<(), String>,
+) -> Result<(), String> {
+    visit(Array::Shared(&mut frame.wave.samples))?;
+    visit(Array::F32(&mut frame.spec.amps))?;
+    let l = &mut frame.landscape;
+    if axes {
+        visit(Array::F32(&mut frame.spec.spec_hz))?;
+        visit(Array::F32(&mut l.space.centers_hz))?;
+        visit(Array::F32(&mut l.space.centers_log2))?;
     }
-    pub fn decode(bytes: &[u8]) -> Result<Self, String> {
-        let packet: Envelope = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if packet.version != 1 {
+    for scan in [
+        &mut l.subjective_intensity,
+        &mut l.nsgt_power,
+        &mut l.consonance_field_score,
+        &mut l.consonance_field_level,
+        &mut l.harmonicity01,
+        &mut l.roughness01,
+    ] {
+        visit(Array::F32(scan))?;
+    }
+    if let Some(support) = &mut l.support {
+        let support = Arc::make_mut(support);
+        visit(Array::F64(&mut support.p))?;
+        if axes {
+            visit(Array::F32(&mut support.geometry.space.centers_hz))?;
+            visit(Array::F32(&mut support.geometry.space.centers_log2))?;
+        }
+    }
+    if let Some(scan) = &mut frame.prediction.pred_c_field_level_next_gate {
+        visit(Array::Shared(scan))?;
+    }
+    for voice in &mut frame.voices {
+        for scan in voice.support_scans.iter_mut().flatten() {
+            visit(Array::F64(scan))?;
+        }
+    }
+    Ok(())
+}
+
+/// The frequency axes of the last packet that carried them.
+struct Axes {
+    spec_hz: Vec<f32>,
+    space: (Vec<f32>, Vec<f32>),
+    support: Option<(Vec<f32>, Vec<f32>)>,
+}
+
+fn space_axes(space: &Space) -> (Vec<f32>, Vec<f32>) {
+    (space.centers_hz.clone(), space.centers_log2.clone())
+}
+
+fn same_bits(a: &[f32], b: &[f32]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits())
+}
+
+#[derive(Default)]
+pub struct Encoder {
+    axes: Option<Axes>,
+}
+
+impl Encoder {
+    pub fn encode(&mut self, mut frame: UiFrame) -> Result<Vec<u8>, serde_json::Error> {
+        let support = frame.landscape.support.as_ref().map(|s| &s.geometry.space);
+        let unchanged = self.axes.as_ref().is_some_and(|axes| {
+            same_bits(&axes.spec_hz, &frame.spec.spec_hz)
+                && same_bits(&axes.space.0, &frame.landscape.space.centers_hz)
+                && same_bits(&axes.space.1, &frame.landscape.space.centers_log2)
+                && support.is_none_or(|space| {
+                    axes.support.as_ref().is_some_and(|(hz, log2)| {
+                        same_bits(hz, &space.centers_hz) && same_bits(log2, &space.centers_log2)
+                    })
+                })
+        });
+        if !unchanged {
+            let previous = self.axes.take().and_then(|axes| axes.support);
+            self.axes = Some(Axes {
+                spec_hz: frame.spec.spec_hz.clone(),
+                space: space_axes(&frame.landscape.space),
+                support: support.map(space_axes).or(previous),
+            });
+        }
+        let mut binary = Vec::new();
+        arrays(&mut frame, !unchanged, &mut |array| {
+            match array {
+                Array::F32(v) => {
+                    binary.extend_from_slice(&(v.len() as u32).to_le_bytes());
+                    binary.extend(std::mem::take(v).iter().flat_map(|x| x.to_le_bytes()));
+                }
+                Array::Shared(v) => {
+                    binary.extend_from_slice(&(v.len() as u32).to_le_bytes());
+                    binary.extend(v.iter().flat_map(|x| x.to_le_bytes()));
+                    *v = Arc::from([]);
+                }
+                Array::F64(v) => {
+                    binary.extend_from_slice(&(v.len() as u32).to_le_bytes());
+                    binary.extend(std::mem::take(v).iter().flat_map(|x| x.to_le_bytes()));
+                }
+            }
+            Ok(())
+        })
+        .expect("encoding visits cannot fail");
+        if unchanged {
+            frame.spec.spec_hz.clear();
+            frame.landscape.space.centers_hz.clear();
+            frame.landscape.space.centers_log2.clear();
+            if let Some(support) = &mut frame.landscape.support {
+                let space = &mut Arc::make_mut(support).geometry.space;
+                space.centers_hz.clear();
+                space.centers_log2.clear();
+            }
+        }
+        let header = serde_json::to_vec(&Envelope {
+            version: 2,
+            axes: !unchanged,
+            frame,
+        })?;
+        let mut out = Vec::with_capacity(4 + header.len() + binary.len());
+        out.extend_from_slice(&(header.len() as u32).to_le_bytes());
+        out.extend_from_slice(&header);
+        out.extend_from_slice(&binary);
+        Ok(out)
+    }
+}
+
+fn take_array<'a>(
+    rest: &mut &'a [u8],
+    width: usize,
+) -> Result<std::slice::ChunksExact<'a, u8>, String> {
+    let truncated = || "Truncated UI snapshot".to_string();
+    let count = rest.get(..4).ok_or_else(truncated)?;
+    let size = (u32::from_le_bytes(count.try_into().unwrap()) as usize)
+        .checked_mul(width)
+        .ok_or_else(truncated)?;
+    let data = rest.get(4..4 + size).ok_or_else(truncated)?;
+    *rest = &rest[4 + size..];
+    Ok(data.chunks_exact(width))
+}
+
+fn f32_le(bytes: &[u8]) -> f32 {
+    f32::from_le_bytes(bytes.try_into().unwrap())
+}
+
+#[derive(Default)]
+pub struct Decoder {
+    axes: Option<Axes>,
+}
+
+impl Decoder {
+    pub fn decode(&mut self, bytes: &[u8]) -> Result<UiFrame, String> {
+        let truncated = || "Truncated UI snapshot".to_string();
+        let length = bytes.get(..4).ok_or_else(truncated)?;
+        let length = u32::from_le_bytes(length.try_into().unwrap()) as usize;
+        let header = bytes.get(4..4 + length).ok_or_else(truncated)?;
+        let packet: Envelope = serde_json::from_slice(header).map_err(|e| e.to_string())?;
+        if packet.version != 2 {
             return Err(format!(
                 "Unsupported UI snapshot version {}",
                 packet.version
             ));
         }
-        Ok(packet.frame)
+        let mut frame = packet.frame;
+        let mut rest = &bytes[4 + length..];
+        arrays(&mut frame, packet.axes, &mut |array| {
+            match array {
+                Array::F32(v) => *v = take_array(&mut rest, 4)?.map(f32_le).collect(),
+                Array::Shared(v) => *v = take_array(&mut rest, 4)?.map(f32_le).collect(),
+                Array::F64(v) => {
+                    *v = take_array(&mut rest, 8)?
+                        .map(|b| f64::from_le_bytes(b.try_into().unwrap()))
+                        .collect()
+                }
+            }
+            Ok(())
+        })?;
+        if !rest.is_empty() {
+            return Err("Trailing bytes in UI snapshot".into());
+        }
+        let support = frame.landscape.support.as_mut().map(Arc::make_mut);
+        if packet.axes {
+            let previous = self.axes.take().and_then(|axes| axes.support);
+            self.axes = Some(Axes {
+                spec_hz: frame.spec.spec_hz.clone(),
+                space: space_axes(&frame.landscape.space),
+                support: support.map(|s| space_axes(&s.geometry.space)).or(previous),
+            });
+        } else {
+            let axes = self
+                .axes
+                .as_ref()
+                .ok_or("UI snapshot refers to frequency axes it never received")?;
+            frame.spec.spec_hz.clone_from(&axes.spec_hz);
+            (
+                frame.landscape.space.centers_hz,
+                frame.landscape.space.centers_log2,
+            ) = axes.space.clone();
+            if let Some(support) = support {
+                let (hz, log2) = axes
+                    .support
+                    .clone()
+                    .ok_or("UI snapshot refers to support axes it never received")?;
+                (
+                    support.geometry.space.centers_hz,
+                    support.geometry.space.centers_log2,
+                ) = (hz, log2);
+            }
+        }
+        Ok(frame)
     }
 }
 
@@ -304,11 +510,33 @@ impl UiFrame {
 mod tests {
     use super::*;
     #[test]
-    fn rejects_unknown_version_and_truncated_packet() {
-        let frame = UiFrame::default();
-        let bytes = serde_json::to_vec(&Envelope { version: 2, frame }).unwrap();
-        assert!(UiFrame::decode(&bytes).unwrap_err().contains("version 2"));
-        assert!(UiFrame::decode(&bytes[..bytes.len() / 2]).is_err());
+    fn rejects_unknown_version_missing_axes_and_truncated_packet() {
+        let header = serde_json::to_vec(&Envelope {
+            version: 3,
+            axes: true,
+            frame: UiFrame::default(),
+        })
+        .unwrap();
+        let mut bytes = (header.len() as u32).to_le_bytes().to_vec();
+        bytes.extend_from_slice(&header);
+        assert!(
+            Decoder::default()
+                .decode(&bytes)
+                .unwrap_err()
+                .contains("version 3")
+        );
+        let mut encoder = Encoder::default();
+        let first = encoder.encode(UiFrame::default()).unwrap();
+        let second = encoder.encode(UiFrame::default()).unwrap();
+        assert!(Decoder::default().decode(&second).is_err());
+        assert!(
+            Decoder::default()
+                .decode(&first[..first.len() / 2])
+                .is_err()
+        );
+        let mut decoder = Decoder::default();
+        decoder.decode(&first).unwrap();
+        decoder.decode(&second).unwrap();
     }
 }
 

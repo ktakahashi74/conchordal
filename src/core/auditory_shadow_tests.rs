@@ -831,7 +831,12 @@ fn selected_frontend_hop_and_body_skip_allocate_nothing() {
     println!("AUD_M2_FRONTEND_ALLOC {counts:?}");
 }
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+#[cfg(any(
+    target_arch = "x86",
+    target_arch = "x86_64",
+    target_arch = "aarch64",
+    all(target_arch = "wasm32", target_feature = "simd128")
+))]
 #[test]
 fn filterbank_lanes_match_scalar_bits_on_selected_simd_levels() {
     use fearless_simd::{Level, Simd};
@@ -879,11 +884,29 @@ fn filterbank_lanes_match_scalar_bits_on_selected_simd_levels() {
     }
     let expected = bits(&reference);
     let level = Level::new();
-    if let Some(simd) = level.as_avx2() {
-        assert!(run(simd, bank.clone(), &hops) == expected, "avx2");
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    {
+        if let Some(simd) = level.as_avx2() {
+            assert!(run(simd, bank.clone(), &hops) == expected, "avx2");
+        }
+        if let Some(simd) = level.as_avx512() {
+            assert!(run(simd, bank.clone(), &hops) == expected, "avx512");
+        }
+        // 128-bit levels run the kernel at the register width of wasm SIMD128 and NEON.
+        if let Some(simd) = level.as_sse4_2() {
+            assert!(run(simd, bank.clone(), &hops) == expected, "sse4.2");
+        }
+        if let Some(simd) = level.as_sse2() {
+            assert!(run(simd, bank.clone(), &hops) == expected, "sse2");
+        }
     }
-    if let Some(simd) = level.as_avx512() {
-        assert!(run(simd, bank.clone(), &hops) == expected, "avx512");
+    #[cfg(target_arch = "aarch64")]
+    if let Some(simd) = level.as_neon() {
+        assert!(run(simd, bank.clone(), &hops) == expected, "neon");
+    }
+    #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+    if let Some(simd) = level.as_wasm_simd128() {
+        assert!(run(simd, bank.clone(), &hops) == expected, "wasm simd128");
     }
     let mut dispatched = bank.clone();
     for hop in &hops {

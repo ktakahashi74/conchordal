@@ -288,9 +288,20 @@ mod tests {
             time_sec: 1.25,
             ..Default::default()
         });
+        let mut decoder = wire::Decoder::default();
+        let mut encoder = wire::Encoder::default();
+        decoder
+            .decode(&encoder.encode(source.web_snapshot()).unwrap())
+            .unwrap();
         source.landscape.roughness01[0] = 0.125;
-        let snapshot = source.web_snapshot();
-        let decoded = wire::UiFrame::decode(&snapshot.encode().unwrap()).unwrap();
+        // The second packet omits the frequency axes; the decoder restores them.
+        let decoded = decoder
+            .decode(&encoder.encode(source.web_snapshot()).unwrap())
+            .unwrap();
+        assert_eq!(
+            decoded.landscape.space.centers_hz,
+            source.landscape.space.centers_hz
+        );
         assert_eq!(
             decoded.listener.generated_frame_id,
             source.listener.generated_frame_id

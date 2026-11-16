@@ -195,6 +195,31 @@ impl SynchronousAnalysis {
         );
     }
 
+    /// Take `process_spectral`'s perception from a stream that analyzed bit-identical
+    /// PCM with the same front-end history. The own front end does not advance, so the
+    /// caller adopts the source's front end before the inputs differ.
+    pub(super) fn copy_spectral(&mut self, source: &Self, params: &LandscapeParams) {
+        let (to, from) = (&mut self.landscape, &source.landscape);
+        to.harmonicity.copy_from_slice(&from.harmonicity);
+        to.roughness_shape_raw
+            .copy_from_slice(&from.roughness_shape_raw);
+        to.roughness01.copy_from_slice(&from.roughness01);
+        to.roughness.copy_from_slice(&from.roughness);
+        to.subjective_intensity
+            .copy_from_slice(&from.subjective_intensity);
+        to.loudness_exp = params.loudness_exp.max(0.01);
+        to.loudness_mass = from.loudness_mass;
+        to.roughness01_scalar = from.roughness01_scalar;
+        to.set_analysis_metadata(
+            params.roughness_kernel.params,
+            params.harmonicity_kernel.params,
+            params.consonance_field_kernel(),
+            params.roughness_k,
+            self.ref_peak,
+            params.roughness_ref_eps,
+        );
+    }
+
     pub(super) fn reset(&mut self, params: &LandscapeParams) {
         self.reset_density();
         let mode = self.landscape.pitch_objective_mode;

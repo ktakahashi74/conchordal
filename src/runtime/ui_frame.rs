@@ -130,6 +130,11 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
         .as_ref()
         .is_some_and(|(gate_tick, _)| *gate_tick >= input.now_tick && *gate_tick < frame_end);
     let pred_c_field_level_next_gate = pred_next_gate.map(|(_, scan)| scan);
+    let mut landscape = input.current_landscape.clone();
+    // Display-only support is projected for delivered frames alone.
+    if let Some(support) = landscape.support.as_mut().filter(|s| s.deferred()) {
+        Arc::make_mut(support).finish();
+    }
 
     UiFrame {
         wave,
@@ -138,7 +143,7 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
         spec,
         listener: listener_frame_from_states(input.listener_fast_state, input.listener_state),
         listener_rhythm: Vec::new(),
-        landscape: input.current_landscape.clone(),
+        landscape,
         meta: SimulationMeta {
             #[cfg(feature = "native")]
             script: input.conductor.score.as_ref().map(|s| s.stream.status()),

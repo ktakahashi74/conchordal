@@ -58,6 +58,9 @@
     - `scenario_load.rs`: Script compilation, validation, and compile-only diagnostics.
     - `step.rs`: `StepEngine` for the browser (feature `web`): one call runs the
       worker hop, ecology analysis and listener analysis in order on one thread.
+      While presentation PCM is bit-identical to habitat PCM, listener analysis
+      reuses the field's perception; on the first differing hop it adopts the
+      field's pre-hop front end and continues alone.
       It returns raw presentation PCM; the host applies `output_gain()` and the
       Limiter. Endless scores and background-thread analyses are rejected.
   - `temporal_cognition/` (declared by `temporal_cognition.rs`): ordered auditory
@@ -68,7 +71,8 @@
   - `viewdata.rs`: worker -> UI snapshot contract (`UiFrame` and friends). It is
     deliberately outside `ui/` so `runtime/` has no dependency on `ui/`.
     `viewdata_web.rs` projects a `UiFrame` to the display-only snapshot that the
-    web GUI decodes (JSON envelope in `gui/src/frame.rs`).
+    web GUI decodes (`gui/src/frame.rs`: a JSON header, binary float arrays, and
+    frequency axes only when they change, kept by a per-session encoder/decoder).
   - `clock.rs` / `handoff.rs`: wall-clock `Instant` (`web_time` on wasm) and the
     directly owned handoff buffers that replace channels on the web path.
   - `config.rs` / `dcc_coupler.rs`: TOML config, DCC coupling.
@@ -319,7 +323,10 @@ source-matched versus original computation rule or §9.3.56's five listener laye
     GUI wiring also publishes mixed-habitat harmonic support at zero valuation
     weights in every scene. Its two analysis buffers reuse storage; UI-retained
     snapshots can require owned publication copies. Display-only support does not
-    enable LOO support scans or the harmonic temporal-relations worker.
+    enable LOO support scans or the harmonic temporal-relations worker. When the
+    scene can never activate support weights or history, analysis stores only the
+    projection inputs; `build_runtime_ui_frame` finishes the projection on an owned
+    copy for delivered frames only.
   - Reporting allocates only when enabled, across `emit_hop_reports`, participation
     context/decision collection in `advance_population`, prediction/body/outcome paths
     in `render_and_route_audio` and `drive_production_meter` (`src/runtime/phases.rs`),
@@ -347,15 +354,18 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   power and H/R/level publication owns scans and allocates. Reports include resource/consumption
   scans and lane state at seconds and lifecycle changes; their allocations are
   outside the renderer contract.
-  Mixed/listener NSGT power and its spectral history are enabled once at wiring
-  only for GUI, reports, temporal observation taps or mixed-bus Flora resources.
-  With none of those consumers the NSGT state does not advance; gap publication
-  still waits the same sample-counted window. Voice observers continue to skip it.
+  NSGT power is enabled once at wiring: on the mixed bus for GUI, reports, its
+  temporal observation tap or mixed-bus Flora resources; on the presentation bus
+  only for reports or its tap (the GUI shows habitat power alone). Spectral
+  history exists only for reports, its sole reader. Without a consumer the NSGT
+  state does not advance; gap publication still waits the same sample-counted
+  window. Voice observers continue to skip it.
   The analysis worker (`src/core/analysis_worker.rs`) is a separate thread. Streaming
   and synchronous analysis share front-end/potential scratch; `AnalysisStream::process`
   (`src/core/stream/analysis.rs`) returns a borrowed Landscape. The worker clones only
   at publication (every Ordered frame or the last Latest frame), attaching a spectral
-  history snapshot. This still allocates; the former per-hop count is obsolete.
+  history snapshot when reports enabled one. This still allocates; the former
+  per-hop count is obsolete.
   A scenario reserves observers for populations with pitch/environment self-exclusion,
   including a later enabling patch. The renderer captures those Voices by ID and
   generation from birth. Each analysis observer subtracts actual own habitat PCM
@@ -429,8 +439,9 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   exception: rustfft picks AVX, SSE or scalar per CPU, and Flora resource power
   differs in its low bits between them; this is open. Test each level a kernel runs on
   against a scalar reference (`core::roughness_kernel` row sums,
-  `core::auditory_frontend` lanes). A kernel may run only on the levels where it is
-  faster if the other levels keep a bit-identical path. Kernels called per sample
+  `core::auditory_frontend` lanes, which run on AVX2/AVX-512, NEON and wasm SIMD128
+  and are also tested at x86's 128-bit levels). A kernel may run only on the levels
+  where it is faster if the other levels keep a bit-identical path. Kernels called per sample
   (synthesis) use `Level::baseline()`, the compile-time level, so they inline without
   runtime dispatch. On blanche, `~/.cargo/config.toml` builds with
   `target-cpu=native` (AVX-512, FMA), so its baseline level and `cfg!(target_feature)`
@@ -1011,8 +1022,10 @@ and require reacquisition for that configuration.
   publication copies. Do not call the whole asynchronous pipeline allocation-free.
 - GUI wiring publishes mixed-habitat support in every scene, including with all
   three preferences zero. This display-only reservation survives zero updates and
-  gaps, without reserving temporal relations or LOO support. Headless/offline and
-  report-only wiring retain their existing support-enablement conditions.
+  gaps, without reserving temporal relations or LOO support. If no event can make
+  a preference nonzero and no history is reserved, the projection is completed only
+  when a GUI frame is built. Headless/offline and report-only wiring retain their
+  existing support-enablement conditions.
 
 ## Harmonic temporal relations (HV-9)
 

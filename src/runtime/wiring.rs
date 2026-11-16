@@ -418,7 +418,8 @@ pub(super) fn prepare_runtime(
             .any(|action| matches!(action, crate::scenario::Action::PlaceFlora { .. }));
     let display_or_report = ui_tx.is_some() || reporter.is_some();
     let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
-        .with_nsgt_power(display_or_report || taps[0].is_some() || resource_power);
+        .with_nsgt_power(display_or_report || taps[0].is_some() || resource_power)
+        .with_spectral_history(reporter.is_some());
     let harmonic_relations_enabled = scenario.harmonic_relation_sources.is_some()
         || scenario
             .events
@@ -439,10 +440,11 @@ pub(super) fn prepare_runtime(
     let gui_support = ui_tx.is_some();
     #[cfg(test)]
     let gui_support = gui_support && !DISABLE_GUI_SUPPORT.get();
-    let support_enabled = gui_support || scenario.end == crate::scenario::ScenarioEnd::Open || harmonic_relations_enabled || scenario.events.iter().flat_map(|event| &event.actions).any(|action| {
+    let valued_support = scenario.end == crate::scenario::ScenarioEnd::Open || harmonic_relations_enabled || scenario.events.iter().flat_map(|event| &event.actions).any(|action| {
         matches!(action, crate::scenario::Action::SetSupportPreference { axis, value } if *axis < 3 && value.is_finite() && *value != 0. && (*axis != 2 || *value > 0.))
         || matches!(action, crate::scenario::Action::UpdateLandscape { update } if update.support_preference.iter().enumerate().any(|(axis, value)| value.is_some_and(|w| w.is_finite() && w != 0. && (axis != 2 || w > 0.))))
     });
+    let support_enabled = gui_support || valued_support;
     let support_geometry = support_enabled.then(|| {
         crate::core::harmonic_support::Geometry::new(
             core.nsgt.space(),
@@ -455,7 +457,7 @@ pub(super) fn prepare_runtime(
             harmonic_relations_enabled || scenario.end == crate::scenario::ScenarioEnd::Open,
         );
         if gui_support {
-            analysis_stream.publish_support_for_display();
+            analysis_stream.publish_support_for_display(!valued_support);
         }
         analysis_stream.apply_update(crate::core::landscape::LandscapeUpdate {
             support_preference: [Some(0.); 3],
@@ -533,9 +535,11 @@ pub(super) fn prepare_runtime(
         listener_analysis_update_tx,
         listener_analysis_handle,
     ) = if listener_analysis_enabled {
-        // The listener-side research tap also consumes its bus's NSGT power.
+        // The GUI shows only habitat power; the presentation bus's NSGT power feeds
+        // its report history and the listener-side research tap.
         let mut listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
-            .with_nsgt_power(display_or_report || taps[1].is_some());
+            .with_nsgt_power(reporter.is_some() || taps[1].is_some())
+            .with_spectral_history(reporter.is_some());
         if let Some(decoder) = &tonal_decoder {
             listener_stream.enable_tonal_context(decoder.clone());
         }

@@ -11,25 +11,21 @@ try {
   await init();
   const gui = new WebGui();
   await gui.start(document.querySelector('canvas'));
-  const response = await fetch('./frames.jsonl');
+  const response = await fetch('./frames.bin');
   if (!response.ok) throw new Error(`Snapshots: HTTP ${response.status}`);
-  const encoder = new TextEncoder();
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const text = new TextDecoder();
   const packets = [], times = [];
-  function retain(line) {
-    if (!line.trim()) return;
-    packets.push(encoder.encode(line));
-    // Only read the timestamp from parsed JSON; retain original bytes for u64 IDs.
-    times.push(JSON.parse(line).frame.meta.time_sec);
+  // Length-prefixed packets; each starts with its JSON header's length.
+  for (let offset = 0; offset < bytes.length;) {
+    const length = new DataView(bytes.buffer, offset, 4).getUint32(0, true);
+    const packet = bytes.subarray(offset + 4, offset + 4 + length);
+    offset += 4 + length;
+    const header = new DataView(packet.buffer, packet.byteOffset, 4).getUint32(0, true);
+    // Only read the timestamp from the header; retain original bytes for u64 IDs.
+    times.push(JSON.parse(text.decode(packet.subarray(4, 4 + header))).frame.meta.time_sec);
+    packets.push(packet);
   }
-  let pending = '';
-  for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
-    pending += chunk;
-    let newline;
-    while ((newline = pending.indexOf('\n')) >= 0) {
-      retain(pending.slice(0, newline)); pending = pending.slice(newline + 1);
-    }
-  }
-  retain(pending);
   if (!packets.length) throw new Error('No display snapshots');
   document.querySelector('#status').remove();
   let index = 0, running = true, start = performance.now(), offset = times[0];

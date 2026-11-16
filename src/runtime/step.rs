@@ -41,6 +41,9 @@ pub struct StepEngine {
     #[cfg(feature = "native")]
     ui: Receiver<UiFrame>,
     warnings: Vec<ScriptWarning>,
+    /// While presentation PCM equals habitat PCM, listener analysis reuses the field's.
+    #[cfg(not(feature = "native"))]
+    listener_follows: bool,
     last_presentation: Arc<[f32]>,
     output_gain: f32,
     limiter_mode: crate::audio::limiter::LimiterMode,
@@ -154,6 +157,11 @@ impl StepEngine {
             analysis_handle: runtime.analysis_handle,
             listener_analysis_handle: runtime.listener_analysis_handle,
         };
+        #[cfg(not(feature = "native"))]
+        let listener_follows = matches!(
+            &runtime.listener_analysis_handle,
+            Some(wiring::AnalysisExecution::Inline(listener)) if listener.can_follow()
+        );
         Ok(Self {
             runtime,
             #[cfg(feature = "native")]
@@ -161,6 +169,8 @@ impl StepEngine {
             #[cfg(feature = "native")]
             ui,
             warnings,
+            #[cfg(not(feature = "native"))]
+            listener_follows,
             last_presentation: Arc::from([]),
             output_gain,
             limiter_mode,
@@ -235,42 +245,63 @@ impl StepEngine {
                 .try_recv()
                 .expect("worker produced a habitat hop");
             assert!(!field.begin_hop(id), "inline field must be contiguous");
+            // The listener's hop is taken first: a split adopts the field's pre-hop state.
+            let mut listener = match listener_analysis_handle {
+                Some(wiring::AnalysisExecution::Inline(listener)) => {
+                    for update in channels
+                        .listener_analysis_update_tx
+                        .as_ref()
+                        .expect("inline listener updates")
+                        .try_iter()
+                    {
+                        listener.update(update);
+                    }
+                    let (listener_id, pcm, listener_packet) = channels
+                        .presentation_to_listener_tx
+                        .as_ref()
+                        .expect("inline listener input")
+                        .try_recv()
+                        .expect("worker produced presentation");
+                    assert!(
+                        !listener.begin_hop(listener_id),
+                        "inline listener must be contiguous"
+                    );
+                    if self.listener_follows
+                        && pcm
+                            .iter()
+                            .zip(habitat.iter())
+                            .any(|(a, b)| a.to_bits() != b.to_bits())
+                    {
+                        listener.split_from(field);
+                        self.listener_follows = false;
+                    }
+                    Some((listener, listener_id, pcm, listener_packet))
+                }
+                None => None,
+            };
             if field.observe(id, &habitat, packet.as_ref()) {
                 channels
                     .analysis_result_rx
                     .send((id, Some(field.snapshot())))
                     .expect("field consumed once per hop");
             }
-            if let Some(packet) = packet {
-                state.loo_storage = Some(packet.sources);
-            }
-            if let Some(wiring::AnalysisExecution::Inline(listener)) = listener_analysis_handle {
-                for update in channels
-                    .listener_analysis_update_tx
-                    .as_ref()
-                    .expect("inline listener updates")
-                    .try_iter()
-                {
-                    listener.update(update);
-                }
-                let (id, pcm, packet) = channels
-                    .presentation_to_listener_tx
-                    .as_ref()
-                    .expect("inline listener input")
-                    .try_recv()
-                    .expect("worker produced presentation");
-                assert!(
-                    !listener.begin_hop(id),
-                    "inline listener must be contiguous"
-                );
-                if listener.observe(id, &pcm, packet.as_ref()) {
+            if let Some((listener, id, pcm, packet)) = listener.as_mut() {
+                let observed = if self.listener_follows {
+                    listener.follow(*id, pcm, field)
+                } else {
+                    listener.observe(*id, pcm, packet.as_ref())
+                };
+                if observed {
                     channels
                         .listener_result_rx
                         .as_ref()
                         .expect("inline listener result")
-                        .send((id, Some(listener.snapshot())))
+                        .send((*id, Some(listener.snapshot())))
                         .expect("listener consumed once per hop");
                 }
+            }
+            if let Some(packet) = packet {
+                state.loo_storage = Some(packet.sources);
             }
         }
         if !state.failures.is_empty() {

@@ -13,29 +13,35 @@ RUSTFLAGS='-C target-feature=+simd128' "$CARGO" build --manifest-path gui/Cargo.
 wasm-bindgen "$CARGO_TARGET_DIR/wasm32-unknown-unknown/release/conchordal_web_ui.wasm" --target web --out-dir "$REPLAY_DIR/pkg"
 ```
 
-Copy `index.html` and the acquired `frames.jsonl` to `$REPLAY_DIR`. Serve that
+Copy `index.html` and the acquired `frames.bin` to `$REPLAY_DIR`. Serve that
 directory over localhost HTTP. The page reads local display snapshots and has no
 audio playback, recording, upload, or download control. It is an acquisition
 viewer, not the final Astro product page.
 
 The native acquisition is the explicitly ignored
 `runtime::gui_support_tests::capture_web_gui_frames` test. Set `WP3_SCRIPT` to the
-DEMO-B1 script and `WP3_FRAMES` to the output JSONL path. Acquisition requests
+DEMO-B1 script and `WP3_FRAMES` to the output path. Acquisition requests
 stop after 512 ordinary GUI deliveries, then drains terminal delivery. Set
 `WP3_CAPTURE_STATS` only under the timing lock to record projection and encoding
 costs separately. It runs the native runtime
-with GUI snapshots and without device output or a WAV writer. Each JSONL line is
-a version 1 envelope. This test does not add an output option to the instrument.
+with GUI snapshots and without device output or a WAV writer. The file holds
+version 2 packets, each preceded by its little-endian u32 length; one encoder
+writes them in order, so only the first packet carries the frequency axes. This
+test does not add an output option to the instrument.
 
 Integration with WP-1/WP-2:
 
-1. Convert an engine `UiFrame` using `web_snapshot().encode()` in the computation
-   Worker. Send the resulting UTF-8 bytes as an `ArrayBuffer` with a transfer list.
-2. Pass the received bytes to `WebGui.push_snapshot()` on the main thread. Keep
-   the bytes intact: parsing and stringifying them through JS `Number` loses u64
-   identity precision. Consume every delivered snapshot so its batched rhythm
-   observations are retained. Backpressure/coalescing belongs before snapshot
-   publication in the engine.
+1. Convert an engine `UiFrame` with one `WebSnapshotEncoder` per session:
+   `encoder.encode(frame.web_snapshot())` in the computation Worker. A packet is a
+   JSON header without float arrays, then the arrays as little-endian binary;
+   frequency axes travel only when they change. Send the bytes as an
+   `ArrayBuffer` with a transfer list.
+2. Pass the received bytes to `WebGui.push_snapshot()` on the main thread, in
+   order. Keep the bytes intact: parsing and stringifying them through JS
+   `Number` loses u64 identity precision. Consume every delivered snapshot so its
+   batched rhythm observations and the frequency axes are retained. `reset()`
+   clears the axes with the other state, so a new session's encoder starts over.
+   Backpressure/coalescing belongs before snapshot publication in the engine.
 3. Poll `take_commands()` after browser animation frames. It returns JSON strings
    `start`, `end`, and `exit`. Forward these to the host's lifecycle controller;
    the GUI never closes the page or terminates a Worker itself. Call `destroy()`

@@ -524,8 +524,9 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
         let mut reference = core.nsgt;
         let mut previous = vec![0.0; core.landscape.space.n_bins()];
         let mixed_enabled = kind != "none";
-        let listener_enabled = matches!(kind, "gui" | "report" | "tap");
-        let seen = Arc::new(std::sync::Mutex::new([false; 2]));
+        // Only reports read spectral history, on either bus.
+        let history = kind == "report";
+        let seen = Arc::new(std::sync::Mutex::new([false; 3]));
         let observed = Arc::clone(&seen);
         let mut opts = options();
         opts.listener_forced = true;
@@ -540,6 +541,7 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
             let mut seen = observed.lock().unwrap();
             seen[0] |= state.current_landscape.nsgt_power.iter().any(|&p| p > 0.0);
             seen[1] |= state.listener_twin.spectral_history.is_some();
+            seen[2] |= state.current_landscape.spectral_history.is_some();
             previous.copy_from_slice(reference.process_hop(pcm[0]));
         }));
         let (ui_tx, ui_rx) = crate::handoff::unbounded();
@@ -563,7 +565,7 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
         join(wiring).unwrap();
         assert_eq!(
             *seen.lock().unwrap(),
-            [mixed_enabled, listener_enabled],
+            [mixed_enabled, history, history],
             "{kind}"
         );
         if kind == "gui" {

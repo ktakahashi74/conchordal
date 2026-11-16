@@ -26,6 +26,9 @@ pub use conchordal_web_ui::frame::ListenerPrediction;
 
 pub use conchordal_web_ui::frame::ListenerFrame;
 
+/// Encodes `UiFrame::web_snapshot` for one GUI session; the browser host holds one.
+pub use conchordal_web_ui::frame::Encoder as WebSnapshotEncoder;
+
 #[derive(Clone, Debug, Default)]
 pub struct VoiceStateInfo {
     pub(crate) support: Option<std::sync::Arc<crate::core::harmonic_support::Snapshot>>,

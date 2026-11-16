@@ -1,3 +1,4 @@
+use conchordal::viewdata::WebSnapshotEncoder;
 use conchordal::{Limiter, StepEngine, StepStatus};
 use wasm_bindgen::prelude::*;
 
@@ -7,6 +8,7 @@ pub struct BrowserEngine {
     engine: StepEngine,
     presentation: Vec<f32>,
     limiter: Limiter,
+    snapshots: WebSnapshotEncoder,
 }
 
 #[wasm_bindgen]
@@ -22,6 +24,7 @@ impl BrowserEngine {
             engine,
             presentation,
             limiter,
+            snapshots: WebSnapshotEncoder::default(),
         })
     }
 
@@ -38,11 +41,12 @@ impl BrowserEngine {
     }
 
     pub fn snapshot(&mut self) -> Result<Vec<u8>, JsValue> {
-        self.engine
+        let frame = self
+            .engine
             .ui_frame()
-            .ok_or_else(|| JsValue::from_str("GUI frame unavailable"))?
-            .web_snapshot()
-            .encode()
+            .ok_or_else(|| JsValue::from_str("GUI frame unavailable"))?;
+        self.snapshots
+            .encode(frame.web_snapshot())
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 

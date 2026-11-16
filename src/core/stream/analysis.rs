@@ -5,8 +5,11 @@ use crate::core::nsgt_rt::RtNsgtKernelLog2;
 /// Spectral analysis shared with the body's synchronous perception path.
 #[derive(Clone)]
 pub struct AnalysisStream {
+    spectral_history: bool,
     support_history_planned: bool,
     support_display_planned: bool,
+    /// No valuation or history consumer can read support; GUI frames finish it.
+    support_display_only: bool,
     analysis: SynchronousAnalysis,
     params: LandscapeParams,
     onset_habituation: Option<crate::core::onset_habituation::OnsetHabituation>,
@@ -37,8 +40,10 @@ impl AnalysisStream {
             params.roughness_ref_eps,
         );
         Self {
+            spectral_history: true,
             support_history_planned: false,
             support_display_planned: false,
+            support_display_only: false,
             analysis,
             params,
             onset_habituation: None,
@@ -71,8 +76,10 @@ impl AnalysisStream {
         }));
     }
 
-    pub(crate) fn publish_support_for_display(&mut self) {
+    /// `only` is set when the scene can never activate support weights or history.
+    pub(crate) fn publish_support_for_display(&mut self, only: bool) {
         self.support_display_planned = true;
+        self.support_display_only = only;
     }
 
     pub(crate) fn enable_tonal_context(
@@ -165,10 +172,22 @@ impl AnalysisStream {
         self.analysis.nsgt_enabled
     }
 
+    /// Reports are the only reader of spectral history; it summarizes NSGT power.
+    pub(crate) fn with_spectral_history(mut self, enabled: bool) -> Self {
+        self.spectral_history = enabled;
+        self
+    }
+
+    pub(crate) fn spectral_history_enabled(&self) -> bool {
+        self.spectral_history && self.nsgt_power_enabled()
+    }
+
     pub(crate) fn voice_observer(&self) -> Self {
         let mut observer = Self {
+            spectral_history: false,
             support_history_planned: self.support_history_planned,
             support_display_planned: false,
+            support_display_only: false,
             analysis: self.analysis.clone(),
             params: self.params.clone(),
             onset_habituation: None,
@@ -226,6 +245,25 @@ impl AnalysisStream {
     /// Process one complete hop, or hold state on empty input.
     /// Callers clone the borrowed frame only when publishing it.
     pub fn process(&mut self, audio: &[f32]) -> &Landscape {
+        self.process_from(audio, None)
+    }
+
+    /// Continue independently from `source`'s front-end state, taken before either
+    /// stream processes the first differing hop.
+    #[cfg(any(test, not(feature = "native")))]
+    pub(crate) fn adopt_frontend(&mut self, source: &AnalysisStream) {
+        self.analysis.frontend = source.analysis.frontend.clone();
+    }
+
+    /// With a `source` that has just processed bit-identical PCM, reuse its perception.
+    /// Valid only while both front ends saw the same history and this stream has no NSGT
+    /// power to advance; see `adopt_frontend`.
+    pub(crate) fn process_from(
+        &mut self,
+        audio: &[f32],
+        source: Option<&AnalysisStream>,
+    ) -> &Landscape {
+        debug_assert!(source.is_none() || !self.analysis.nsgt_enabled);
         if !audio.is_empty() {
             assert_eq!(audio.len(), self.hop_samples(), "one complete analysis hop");
             if self.pitch_set.is_none()
@@ -233,7 +271,10 @@ impl AnalysisStream {
             {
                 state.process(audio);
             }
-            self.analysis.process_spectral(audio, 1, &self.params, true);
+            match source {
+                Some(source) => self.analysis.copy_spectral(&source.analysis, &self.params),
+                None => self.analysis.process_spectral(audio, 1, &self.params, true),
+            }
             if let Some(ps) = &mut self.pitch_set {
                 let mass = self.analysis.landscape.loudness_mass;
                 let gate = mass.is_finite() && mass > self.params.roughness_ref_eps.max(1e-12);
@@ -250,7 +291,13 @@ impl AnalysisStream {
             {
                 self.analysis.landscape.support = None;
                 let snapshot = std::sync::Arc::make_mut(&mut buffers[self.support_next]);
-                snapshot.observe_projection(
+                let observe = if self.support_display_only {
+                    crate::core::harmonic_support::Snapshot::defer_projection
+                } else {
+                    crate::core::harmonic_support::Snapshot::observe_projection
+                };
+                observe(
+                    snapshot,
                     &self.analysis.landscape.subjective_intensity,
                     self.analysis.potentials.support_roots.as_deref(),
                     self.params.roughness_ref_eps,

@@ -260,8 +260,9 @@ impl Bank {
         }
     }
 
-    // Lanes pay off only with 256-bit or wider registers. On narrower levels the
-    // per-sample channel loops below vectorize as well, with identical bits.
+    // On x86, lanes pay off only with 256-bit or wider registers; on its narrower levels
+    // the per-sample channel loops below vectorize as well, with identical bits. Wasm
+    // SIMD128 and NEON have no wider level, and their lanes beat those loops.
     fn read_dispatched(&mut self) {
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
@@ -272,6 +273,14 @@ impl Bank {
             if let Some(simd) = level.as_avx2() {
                 return simd.vectorize(|| self.read_lanes(simd));
             }
+        }
+        #[cfg(target_arch = "aarch64")]
+        if let Some(simd) = Level::new().as_neon() {
+            return simd.vectorize(|| self.read_lanes(simd));
+        }
+        #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+        if let Some(simd) = Level::new().as_wasm_simd128() {
+            return simd.vectorize(|| self.read_lanes(simd));
         }
         self.read_scalar();
     }
@@ -294,7 +303,12 @@ impl Bank {
     /// Runs the hop for sixteen channels at a time with all state in lanes. Each lane
     /// repeats `read_scalar`'s Complex32 arithmetic in the same order, so every SIMD
     /// level returns the same bits as the scalar reference.
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    #[cfg(any(
+        target_arch = "x86",
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        all(target_arch = "wasm32", target_feature = "simd128")
+    ))]
     #[inline(always)]
     fn read_lanes<S: Simd>(&mut self, simd: S) {
         use fearless_simd::f32x16;

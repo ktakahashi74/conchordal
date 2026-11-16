@@ -498,7 +498,7 @@ fn support_display_survives_zero_updates_and_gaps_without_enabling_loo() {
     let mut stream = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
     let geometry = Geometry::new(&stream.last().space, &params.harmonicity_kernel);
     stream.enable_support(geometry, false);
-    stream.publish_support_for_display();
+    stream.publish_support_for_display(false);
     let pcm = vec![0.002; stream.hop_samples()];
     let zero = crate::core::landscape::LandscapeUpdate {
         support_preference: [Some(0.); 3],
@@ -520,4 +520,42 @@ fn support_display_survives_zero_updates_and_gaps_without_enabling_loo() {
         ..Default::default()
     });
     assert!(stream.voice_observer().process(&pcm).support.is_some());
+}
+
+#[test]
+fn display_only_support_defers_projection_to_identical_bits() {
+    use crate::core::stream::analysis::AnalysisStream;
+    let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+    let geometry = Geometry::new(nsgt.space(), &params.harmonicity_kernel);
+    let mut streams = [false, true].map(|only| {
+        let mut stream = AnalysisStream::new(params.clone(), nsgt.clone()).with_nsgt_power(false);
+        stream.enable_support(geometry.clone(), false);
+        stream.publish_support_for_display(only);
+        stream
+    });
+    let hop = streams[0].hop_samples();
+    for frame in 0..24 {
+        // Silence first, so the zero-mass branch is deferred as well.
+        let pcm: Vec<f32> = (0..hop)
+            .map(|n| {
+                let t = (frame * hop + n) as f32 / params.fs;
+                if frame < 3 {
+                    0.
+                } else {
+                    0.05 * (std::f32::consts::TAU * 220. * t).sin()
+                        + 0.03 * (std::f32::consts::TAU * 331. * t).sin()
+                }
+            })
+            .collect();
+        let expected = streams[0].process(&pcm).support.clone().unwrap();
+        let mut actual = streams[1].process(&pcm).support.clone().unwrap();
+        assert!(!expected.deferred() && actual.deferred());
+        assert_eq!(actual.end_sample, expected.end_sample);
+        std::sync::Arc::make_mut(&mut actual).finish();
+        assert_eq!(
+            format!("{actual:?}"),
+            format!("{expected:?}"),
+            "frame {frame}"
+        );
+    }
 }

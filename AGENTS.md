@@ -7,7 +7,10 @@
     - `auditory_frontend.rs` / `auditory_statistics.rs`: Causal complex filterbank,
       hop boxcars, reassigned power, critical-band compression and S6 density.
     - `nsgt_rt.rs` / `nsgt_kernel.rs`: Non-Stationary Gabor Transform (streaming RT
-      variant and offline kernel variant). An older FFT variant is retired to `attic/`.
+      variant and offline kernel variant), both on one real-input FFT (`realfft`).
+      Kernel phases are computed in f64, so the 1e-6 sparsity threshold keeps each
+      kernel's true support (DC to about 19.3 kHz at 48 kHz and nfft 16384); resource
+      power outside every support is excluded. An older FFT variant is retired to `attic/`.
     - `harmonicity_kernel.rs`: Virtual pitch/root detection via harmonic templates.
     - `roughness_kernel.rs`: Sensory dissonance calculation via interference kernels.
     - `phase.rs`: Phase wrap/diff utilities (shared across rhythm + kernels).
@@ -436,8 +439,8 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   cross-lane reduction uses a fixed logical width and order. The browser (wasm) build
   runs the same source but need not match native bit for bit: its RNG type and math
   rounding differ (author decision 2026-11-06, ledger §9.3.130). Known native
-  exception: rustfft picks AVX, SSE or scalar per CPU, and Flora resource power
-  differs in its low bits between them; this is open. Test each level a kernel runs on
+  exception: rustfft (also inside realfft) picks AVX, SSE or scalar per CPU, and
+  NSGT and Flora resource power differ in their low bits between them; this is open. Test each level a kernel runs on
   against a scalar reference (`core::roughness_kernel` row sums,
   `core::auditory_frontend` lanes, which run on AVX2/AVX-512, NEON and wasm SIMD128
   and are also tested at x86's 128-bit levels). A kernel may run only on the levels

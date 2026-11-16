@@ -74,6 +74,12 @@ impl StatisticsWindow {
     }
 }
 
+/// (1 + (q + x)^2)^-4 = r^4 sum c[n] x^n with r = 1 / (1 + q^2): c[0] = 1,
+/// c[1] = -8 q r, and c[n + 1] = -(A q c[n] + B c[n - 1]) r for n = 1..=5, where
+/// (A, B) = (2 (n + 4) / (n + 1), (n + 7) / (n + 1)) is entry n - 1. Reciprocals
+/// replace the per-term divisions.
+const RECURRENCE: [(f64, f64); 5] = [(5.0, 4.0), (4.0, 3.0), (3.5, 2.5), (3.2, 2.2), (3.0, 2.0)];
+
 #[derive(Clone)]
 pub(super) struct ErbContext {
     first: f64,
@@ -148,7 +154,7 @@ impl ErbContext {
     pub(super) fn powers_lanes<S: Simd>(&self, simd: S, frequencies: &[f32], out: &mut [f32]) {
         let splat = |value: f64| f64x8::splat(simd, value);
         for (queries, out) in frequencies.chunks(8).zip(out.chunks_mut(8)) {
-            let (mut f, mut b) = ([1.0; 8], [1.0; 8]);
+            let (mut f, mut inverse_b) = ([1.0; 8], [1.0; 8]);
             let mut scales = [[1.0; 8]; 7];
             let mut ranges = [(0, 0); 8];
             for (k, &frequency) in queries.iter().enumerate() {
@@ -157,9 +163,9 @@ impl ErbContext {
                 let low = (((e - 4.0 - self.first) / self.step).floor() as isize).max(0) as usize;
                 let high = (((e + 4.0 - self.first) / self.step).floor() as usize)
                     .min(self.moments.len() - 1);
-                b[k] = 1.0186 * (24.7 + f[k] / 9.265);
+                inverse_b[k] = 1.0 / (1.0186 * (24.7 + f[k] / 9.265));
                 for n in 1..7 {
-                    scales[n][k] = scales[n - 1][k] / b[k];
+                    scales[n][k] = scales[n - 1][k] * inverse_b[k];
                 }
                 let occupied = &self.occupied[..self.occupied_len];
                 ranges[k] = (
@@ -173,7 +179,7 @@ impl ErbContext {
                 .max()
                 .unwrap_or(0);
             let fv = f64x8::load_array(simd, f);
-            let bv = f64x8::load_array(simd, b);
+            let bv = f64x8::load_array(simd, inverse_b);
             let sv = scales.map(|lanes| f64x8::load_array(simd, lanes));
             let mut power = splat(0.0);
             for j in 0..steps {
@@ -191,26 +197,21 @@ impl ErbContext {
                         }
                     }
                 }
-                let q = (f64x8::load_array(simd, center) - fv) / bv;
-                let a = splat(1.0) + q * q;
+                let q = (f64x8::load_array(simd, center) - fv) * bv;
+                let r = splat(1.0) / (splat(1.0) + q * q);
                 let mut coefficients = [splat(0.0); 7];
                 coefficients[0] = splat(1.0);
-                for n in 0..6 {
-                    let previous = if n > 0 {
-                        splat((n + 7) as f64) * coefficients[n - 1]
-                    } else {
-                        splat(0.0)
-                    };
+                coefficients[1] = -(splat(8.0) * q) * r;
+                for (n, &(a, b)) in (1..6).zip(&RECURRENCE) {
                     coefficients[n + 1] =
-                        -(splat(2.0) * q * splat((n + 4) as f64) * coefficients[n] + previous)
-                            / (a * splat((n + 1) as f64));
+                        -(splat(a) * q * coefficients[n] + splat(b) * coefficients[n - 1]) * r;
                 }
-                // `powi(4)` lowers to these two squarings.
-                let a2 = a * a;
-                let a4 = a2 * a2;
+                let mut sum = splat(0.0);
                 for n in 0..7 {
-                    power += coefficients[n] * f64x8::load_array(simd, moments[n]) * sv[n] / a4;
+                    sum += coefficients[n] * f64x8::load_array(simd, moments[n]) * sv[n];
                 }
+                let r2 = r * r;
+                power += sum * (r2 * r2);
             }
             for (out, power) in out.iter_mut().zip(power.to_array()) {
                 *out = power.max(0.0) as f32;
@@ -227,30 +228,27 @@ impl ErbContext {
         let low = (((e - 4.0 - self.first) / self.step).floor() as isize).max(0) as usize;
         let high =
             (((e + 4.0 - self.first) / self.step).floor() as usize).min(self.moments.len() - 1);
-        let b = 1.0186 * (24.7 + f / 9.265);
+        let inverse_b = 1.0 / (1.0186 * (24.7 + f / 9.265));
         let mut power = 0.0_f64;
         for i in low..=high {
             if self.moments[i][0] == 0.0 {
                 continue;
             }
-            let q = (self.centers[i] - f) / b;
-            let a = 1.0 + q * q;
+            let q = (self.centers[i] - f) * inverse_b;
+            let r = 1.0 / (1.0 + q * q);
             let mut coefficients = [0.0; 7];
             coefficients[0] = 1.0;
-            for n in 0..6 {
-                coefficients[n + 1] = -(2.0 * q * (n + 4) as f64 * coefficients[n]
-                    + if n > 0 {
-                        (n + 7) as f64 * coefficients[n - 1]
-                    } else {
-                        0.0
-                    })
-                    / (a * (n + 1) as f64);
+            coefficients[1] = -(8.0 * q) * r;
+            for (n, &(a, b)) in (1..6).zip(&RECURRENCE) {
+                coefficients[n + 1] = -(a * q * coefficients[n] + b * coefficients[n - 1]) * r;
             }
-            let mut scale = 1.0;
+            let (mut scale, mut sum) = (1.0, 0.0);
             for (coefficient, moment) in coefficients.iter().zip(&self.moments[i]) {
-                power += coefficient * moment * scale / a.powi(4);
-                scale /= b;
+                sum += coefficient * moment * scale;
+                scale *= inverse_b;
             }
+            let r2 = r * r;
+            power += sum * (r2 * r2);
         }
         power.max(0.0) as f32
     }

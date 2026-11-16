@@ -62,6 +62,7 @@ crossbeam-channel = { version = "0.5", optional = true }
 
 # DSP / Math
 fearless_simd = "1.1.0"
+realfft = "3"
 rustfft = "6"
 rand = { version = "0.10", default-features = false, features = ["std", "std_rng"] }
 plotters = { version = "0.3", optional = true, default-features = false, features = ["bitmap_backend", "bitmap_encoder", "line_series", "ttf"] }

@@ -239,10 +239,15 @@ fn reduce<S: Simd>(acc: f32x8<S>) -> f32 {
     ((a[0] + a[4]) + (a[2] + a[6])) + ((a[1] + a[5]) + (a[3] + a[7]))
 }
 
-/// Splits X into the real and imaginary planes that [`Chunks`] loads.
-pub(crate) fn split_complex(x: &[Complex32], re: &mut [f32], im: &mut [f32]) {
-    for ((z, re), im) in x.iter().zip(re).zip(im) {
+/// Splits the real-input spectrum X[0..=n/2] into the full-length real and imaginary
+/// planes that [`Chunks`] loads; X[n-k] = conj(X[k]) supplies the bins above n/2.
+pub(crate) fn split_real_spectrum(half: &[Complex32], re: &mut [f32], im: &mut [f32]) {
+    let n = re.len();
+    for ((z, re), im) in half.iter().zip(&mut *re).zip(&mut *im) {
         (*re, *im) = (z.re, z.im);
+    }
+    for k in half.len()..n {
+        (re[k], im[k]) = (re[n - k], -im[n - k]);
     }
 }
 
@@ -253,7 +258,6 @@ pub struct NsgtKernelLog2 {
     pub power_mode: PowerMode,
     nfft: usize,
     hop: usize,
-    fft: Arc<dyn rustfft::Fft<f32>>,
     bands: Vec<KernelBand>,
     // The sparse band kernels, regrouped for SIMD; shared by every analyzer.
     band_chunks: Arc<Chunks>,
@@ -357,12 +361,14 @@ impl NsgtKernelLog2 {
                 KernelAlign::Center => (nfft / 2 + nfft - center) % nfft,
                 KernelAlign::Right => nfft - win_len_req,
             };
+            // The phase reaches about 2*pi*Q radians. In f32 its rounding noise lies above
+            // the sparsity threshold in short kernels and would keep almost every bin.
+            let omega = std::f64::consts::TAU * f64::from(f) / f64::from(fs);
             for (i, &win) in window.iter().enumerate().take(win_len_req) {
-                let w = win / sum_w;
-                let ph = 2.0 * std::f32::consts::PI * f * (i as f32) / fs;
-                let cplx = Complex32::new(ph.cos(), ph.sin()) * w;
+                let w = f64::from(win / sum_w);
+                let (sin, cos) = (omega * i as f64).sin_cos();
                 let idx = (i + shift) % nfft;
-                h[idx] = cplx;
+                h[idx] = Complex32::new((cos * w) as f32, (sin * w) as f32);
             }
 
             // K_k = FFT{h_k}
@@ -436,7 +442,6 @@ impl NsgtKernelLog2 {
             power_mode,
             nfft,
             hop,
-            fft,
             bands,
             band_chunks,
         }
@@ -468,10 +473,6 @@ impl NsgtKernelLog2 {
     }
     pub fn bands(&self) -> &[KernelBand] {
         &self.bands
-    }
-    /// Shared forward FFT plan (same nfft as the bands), reusable by the RT analyzer.
-    pub fn fft(&self) -> Arc<dyn rustfft::Fft<f32>> {
-        self.fft.clone()
     }
     #[inline]
     fn time_ref_sample_in_frame(&self) -> usize {
@@ -515,27 +516,24 @@ impl NsgtKernelLog2 {
             })
             .collect();
 
-        let mut buf = vec![Complex32::new(0.0, 0.0); nfft];
+        let fft = realfft::RealFftPlanner::<f32>::new().plan_fft_forward(nfft);
+        let (mut buf, mut spectrum) = (fft.make_input_vec(), fft.make_output_vec());
         let (mut re, mut im) = (vec![0.0; nfft], vec![0.0; nfft]);
         let mut sums = vec![Complex32::default(); self.bands.len()];
 
         for frame_idx in 0..n_frames {
             // Rectangular framing; the kernel already contains the analysis window.
             let start = frame_idx * hop;
-            for i in 0..nfft {
-                let xi = if start + i < x.len() {
-                    x[start + i]
-                } else {
-                    0.0
-                };
-                buf[i] = Complex32::new(xi, 0.0);
+            for (i, sample) in buf.iter_mut().enumerate() {
+                *sample = x.get(start + i).copied().unwrap_or(0.0);
             }
 
-            // X = FFT{x}
-            self.fft.process(&mut buf);
+            // X = FFT{x}, the same real-input transform as the streaming analyzer.
+            fft.process(&mut buf, &mut spectrum)
+                .expect("buffers sized by the plan");
 
             // Sparse inner product per band: C_k = (1/Nfft) * sum X[nu] * conj(K_k[nu]) = sum x[n] * conj(h_k[n]).
-            split_complex(&buf, &mut re, &mut im);
+            split_real_spectrum(&spectrum, &mut re, &mut im);
             let chunks = &*self.band_chunks;
             dispatch!(Level::new(), simd => chunks.coherent(simd, [&re, &im], &mut sums));
             for (b_idx, &sum) in sums.iter().enumerate() {
@@ -600,8 +598,8 @@ mod tests {
                 .collect()
         }));
         let chunks = Chunks::new(rows.iter().map(|row| row.iter().copied()), len);
-        let (mut re, mut im) = (vec![0.0; len], vec![0.0; len]);
-        split_complex(&x, &mut re, &mut im);
+        let re: Vec<f32> = x.iter().map(|z| z.re).collect();
+        let im: Vec<f32> = x.iter().map(|z| z.im).collect();
         // Scalar replica of the chunk order: lane by bin offset, accumulator by chunk parity.
         let expected: Vec<(u32, u32)> = chunks
             .rows
@@ -742,6 +740,56 @@ mod tests {
             return f32::NEG_INFINITY;
         }
         20.0 * (side / peak).log10()
+    }
+
+    #[test]
+    fn sparse_supports_match_exact_kernel_supports() {
+        // Rounding of the kernel phase must not lift noise above the 1e-6 threshold.
+        let nsgt = NsgtKernelLog2::new_coherent(
+            NsgtLog2Config {
+                fs: 48_000.0,
+                nfft_override: Some(4096),
+                ..Default::default()
+            },
+            Log2Space::new(100.0, 16_000.0, 48),
+            None,
+        );
+        let n = nsgt.nfft();
+        let fft = FftPlanner::<f64>::new().plan_fft_forward(n);
+        for band in nsgt.bands() {
+            let window = blackman_harris_window_symmetric(band.win_len);
+            let sum: f64 = window.iter().map(|&w| f64::from(w)).sum();
+            let omega = std::f64::consts::TAU * f64::from(band.f_hz) / 48_000.0;
+            let shift = (n / 2 + n - band.win_len / 2) % n;
+            let mut kernel = vec![rustfft::num_complex::Complex64::default(); n];
+            for (i, &w) in window.iter().enumerate() {
+                kernel[(i + shift) % n] = rustfft::num_complex::Complex64::from_polar(
+                    f64::from(w) / sum,
+                    omega * i as f64,
+                );
+            }
+            fft.process(&mut kernel);
+            let max = kernel.iter().map(|z| z.norm()).fold(0.0, f64::max);
+            let mut kept = vec![false; n];
+            for &(k, _) in band.spec_conj_sparse.as_ref().unwrap() {
+                kept[k] = true;
+            }
+            // f32 transform rounding lies orders below the threshold, so only bins
+            // within a factor of two of it may fall on either side.
+            for (k, z) in kernel.iter().enumerate() {
+                let level = z.norm() / max;
+                assert!(
+                    if kept[k] {
+                        level >= 0.5e-6
+                    } else {
+                        level < 2e-6
+                    },
+                    "{} Hz bin {k}: exact level {level:e}, kept {}",
+                    band.f_hz,
+                    kept[k]
+                );
+            }
+        }
     }
 
     #[test]

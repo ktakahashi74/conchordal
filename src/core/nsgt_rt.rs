@@ -16,8 +16,9 @@
 //! - No per-hop allocations; FFT and scratch buffers are reused.
 
 use crate::core::log2space::Log2Space;
-use crate::core::nsgt_kernel::{Chunks, NsgtKernelLog2, PowerMode, split_complex};
+use crate::core::nsgt_kernel::{Chunks, NsgtKernelLog2, PowerMode, split_real_spectrum};
 use fearless_simd::{Level, dispatch};
+use realfft::RealToComplex;
 use rustfft::num_complex::Complex32;
 use std::sync::{Arc, OnceLock};
 
@@ -74,8 +75,9 @@ pub struct RtNsgtKernelLog2 {
     // runtime buffers (no per-hop alloc)
     ring: Vec<f32>,
     write_pos: usize, // next position to write
-    fft: Arc<dyn rustfft::Fft<f32>>,
-    fft_buf: Vec<Complex32>,
+    fft: Arc<dyn RealToComplex<f32>>,
+    fft_in: Vec<f32>,
+    fft_out: Vec<Complex32>,
     fft_scratch: Vec<Complex32>,
 
     // per-band states & cached meta
@@ -113,9 +115,10 @@ impl RtNsgtKernelLog2 {
         let dt = hop as f32 / fs;
         let power_mode = nsgt.power_mode;
 
-        // Reuse nsgt's forward FFT plan (same nfft); avoids a duplicate plan.
-        let fft = nsgt.fft();
-        let fft_scratch = vec![Complex32::new(0.0, 0.0); fft.get_inplace_scratch_len()];
+        // Clones share the plan; each stream owns its buffers.
+        let fft = realfft::RealFftPlanner::<f32>::new().plan_fft_forward(nfft);
+        let fft_scratch = fft.make_scratch_vec();
+        let fft_out = fft.make_output_vec();
 
         // Build band states (tau mapping).
         let bands_state = nsgt
@@ -142,7 +145,8 @@ impl RtNsgtKernelLog2 {
             ring: vec![0.0; nfft],
             write_pos: 0,
             fft,
-            fft_buf: vec![Complex32::new(0.0, 0.0); nfft],
+            fft_in: vec![0.0; nfft],
+            fft_out,
             fft_scratch,
             out_env: vec![0.0; bands_state.len()],
             bands_state,
@@ -361,9 +365,8 @@ impl RtNsgtKernelLog2 {
         }
         self.ring.fill(0.0);
         self.write_pos = 0;
-        for z in &mut self.fft_buf {
-            *z = Complex32::new(0.0, 0.0);
-        }
+        self.fft_in.fill(0.0);
+        self.fft_out.fill(Complex32::default());
         self.out_env.fill(0.0);
     }
 
@@ -419,23 +422,14 @@ impl RtNsgtKernelLog2 {
     }
 
     fn analyze_fft(&mut self) {
-        // Reassemble latest nfft samples: [write_pos..end) then [0..write_pos)
-        let n = self.nfft;
-        let left = n - self.write_pos;
-
-        // Fill fft_buf with real input (imag=0), then FFT.
-        for i in 0..left {
-            let s = self.ring[self.write_pos + i];
-            self.fft_buf[i] = Complex32::new(s, 0.0);
-        }
-        for i in 0..self.write_pos {
-            let s = self.ring[i];
-            self.fft_buf[left + i] = Complex32::new(s, 0.0);
-        }
-
+        // Latest nfft samples in time order: [write_pos..end) then [0..write_pos).
+        let (newer, older) = self.ring.split_at(self.write_pos);
+        self.fft_in[..older.len()].copy_from_slice(older);
+        self.fft_in[older.len()..].copy_from_slice(newer);
         self.fft
-            .process_with_scratch(&mut self.fft_buf, &mut self.fft_scratch);
-        split_complex(&self.fft_buf, &mut self.x_re, &mut self.x_im);
+            .process_with_scratch(&mut self.fft_in, &mut self.fft_out, &mut self.fft_scratch)
+            .expect("buffers sized by the plan");
+        split_real_spectrum(&self.fft_out, &mut self.x_re, &mut self.x_im);
     }
 
     fn analyze_one_and_update_gap(&mut self, gap: i32) {
@@ -649,7 +643,8 @@ mod tests {
                 mode,
             ));
             let state_bytes = std::mem::size_of_val(rt.ring.as_slice())
-                + std::mem::size_of_val(rt.fft_buf.as_slice())
+                + std::mem::size_of_val(rt.fft_in.as_slice())
+                + std::mem::size_of_val(rt.fft_out.as_slice())
                 + std::mem::size_of_val(rt.fft_scratch.as_slice())
                 + std::mem::size_of_val(rt.x_re.as_slice())
                 + std::mem::size_of_val(rt.x_im.as_slice())

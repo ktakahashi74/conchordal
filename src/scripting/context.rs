@@ -59,6 +59,7 @@ pub(super) struct ScopeFrame {}
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
     pub(super) tonal_observation_position: Option<Position>,
+    pub(super) felt_observation_position: Option<Position>,
     pub(super) harmonic_observation_position: Option<Position>,
     #[cfg(feature = "native")]
     pub(super) stream: Option<Arc<score::ScoreStream>>,
@@ -115,6 +116,7 @@ impl ScriptContext {
     pub(super) fn with_seed(seed: u64) -> Self {
         Self {
             tonal_observation_position: None,
+            felt_observation_position: None,
             harmonic_observation_position: None,
             harmonic_position: Position::NONE,
             harmonic_sites: Vec::new(),
@@ -129,6 +131,7 @@ impl ScriptContext {
             expression_sections: Vec::new(),
             scenario: Scenario {
                 observe_tonal_context: false,
+                observe_felt_beat: false,
                 harmonic_relation_sources: None,
                 expression: None,
                 expression_cursor: None,
@@ -804,6 +807,15 @@ impl ScriptContext {
             self.warn("finite_harmonic_observation", "observe_harmonic_relations ignored in a finite scenario; events determine observation and source capacity".into(), position);
             self.scenario.harmonic_relation_sources = None;
         }
+        if let Some(position) = self.felt_observation_position {
+            self.warn(
+                "finite_felt_observation",
+                "observe_felt_beat ignored in a finite scenario; placements determine observation"
+                    .into(),
+                position,
+            );
+            self.scenario.observe_felt_beat = false;
+        }
         if let Some(position) = self.tonal_observation_position {
             self.warn("finite_tonal_observation", "observe_tonal_context ignored in a finite scenario; placements determine observation".into(), position);
             self.scenario.observe_tonal_context = false;
@@ -902,6 +914,22 @@ impl ScriptContext {
                 specified.get(label).copied().unwrap_or(position),
             );
         };
+        if population_spec.spec.control.phonation.syncopate > 0.0
+            && (!population_spec.spec.explicit_metric
+                || population_spec.spec.microtiming_or(0.0) != 0.0)
+        {
+            warn_at(
+                "syncopate",
+                "felt-beat generation requires metric() with microtiming(0); ignored",
+            );
+            population_spec.spec.control.phonation.syncopate = 0.0;
+        }
+        if self.scenario.end == ScenarioEnd::Open
+            && population_spec.spec.control.phonation.syncopate > 0.0
+            && !self.scenario.observe_felt_beat
+        {
+            return Err(EvalAltResult::ErrorRuntime("declare observe_felt_beat() before time advances to use syncopate in an endless scenario".into(), position).into());
+        }
         if !matches!(population_spec.spec.brain, BrainKind::Entrain) {
             for label in [
                 "endurance",

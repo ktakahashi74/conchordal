@@ -47,6 +47,7 @@ needless_range_loop = "allow"
 type_complexity = "allow"
 
 [dependencies]
+libm = "0.2"
 conchordal-web-ui = { path = "gui", default-features = false }
 anyhow = "1.0"
 
@@ -106,7 +107,6 @@ loo-diagnostic = []
 plotcheck = ["dep:plotters"]
 
 [dev-dependencies]
-libm = "0.2"
 serde = { version = "1.0", features = ["rc"] }
 approx = "0.5"
 walkdir = "2.5"

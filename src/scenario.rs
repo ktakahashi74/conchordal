@@ -138,6 +138,7 @@ pub struct RainPatch {
 #[derive(Debug, Clone)]
 pub struct Scenario {
     pub(crate) observe_tonal_context: bool,
+    pub(crate) observe_felt_beat: bool,
     pub(crate) harmonic_relation_sources: Option<usize>,
     pub(crate) expression: Option<expression::Expression>,
     pub(crate) expression_cursor: Option<f64>,

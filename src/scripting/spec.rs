@@ -786,6 +786,15 @@ impl PopulationSpec {
         Ok(())
     }
 
+    pub(super) fn set_syncopate(&mut self, amount: f32) {
+        self.control.phonation.syncopate = if amount.is_finite() && amount >= 0.0 {
+            amount
+        } else {
+            self.warn("syncopate() expects a finite nonnegative weight; ignored".into());
+            0.0
+        };
+    }
+
     pub(super) fn set_microtiming(&mut self, amount: f32) {
         let amount = if amount.is_finite() {
             amount.clamp(-0.5, 0.5)

@@ -125,6 +125,8 @@ const TUNING_FNS: &[&str] = &[
 
 /// Research/assay controls. See [`TUNING_FNS`] for the tier rules.
 const RESEARCH_FNS: &[&str] = &[
+    "syncopate",
+    "observe_felt_beat",
     "temporal_mode",
     "pitch_core",
     "move_cost_time_scale",
@@ -953,6 +955,34 @@ on the PopulationSpec first; the returned Population exposes only live patches a
         usage: &["observe_harmonic_relations(max_sources)"],
         summary: "Reserve harmonic relation observation before time advances in an endless scenario.",
         details: "Required for either signed nonzero follow_harmonic_relations or follow_harmonic_continuation weight in endless scenes. max_sources is the declared maximum simultaneous Voice and Flora lane sources, including retiring sources; it is a positive integer bounded by the 38400 structural-record capacity. The background observer starts at sample zero. A late declaration or an unreserved nonzero control is a positioned script error. Finite scenes warn and ignore the declaration and retain event pre-scanning. Vertical support scans run from the start of every endless scene without a declaration.",
+    },
+    FnDoc {
+        name: "observe_felt_beat",
+        evidence: &[EvidenceDoc {
+            en: "Author rule: reserve felt-beat observation for endless performances. Input: read only onsets with a sustained level rise of at least 1 dB across 60 ms.",
+            ja: "作者規則：終わりを定めない演奏で感じられた拍の観測を予約する。入力は、60 ms の間に水準が 1 dB 上がって続く発音だけを読む。",
+        }],
+        owner: Owner::Global,
+        category: "timeline",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["observe_felt_beat()"],
+        summary: "Reserve habitat felt-beat observation before time advances in an endless scenario.",
+        details: "Required for positive syncopate in endless scenes. Late declarations and unreserved placements are positioned errors. Finite scenes warn and ignore the declaration; placement pre-scanning reserves observation only when needed. Research only.",
+    },
+    FnDoc {
+        name: "syncopate",
+        evidence: &[EvidenceDoc {
+            en: "Author rule: independent beat confirmation and hypothetical half-onset support. Observation: Candidate (Cannon 2021 figure parameters); grid inference and half-cycle template placement: Author rules. Input: Author rule; read only onsets with a sustained level rise of at least 1 dB across 60 ms.",
+            ja: "作者規則：独立した拍の確認と半拍への発音の支え。観測は候補（Cannon 2021の図示値）、格子の推論と半拍への型の配置は作者規則。入力も作者規則：60 ms の間に水準が 1 dB 上がって続く発音だけを読む。",
+        }],
+        owner: Owner::Population,
+        category: "phonation",
+        style: Style::Method,
+        patch: Patch::Initial,
+        usage: &["syncopate(w)"],
+        summary: "Confirm an uncertain felt beat, defer to a half beat, or omit an opportunity (default 0).",
+        details: "Finite nonnegative weight, without an upper bound. Requires metric() and microtiming(0); otherwise warns and uses zero. After existing vetoes, draws with a private Voice RNG: beat probability (1-c)^w, otherwise half-beat probability m_plus, otherwise omission. Unknown observation bypasses without drawing. Positive consumers read habitat frequency, felt phase and beat probability times R for coupling; the oscillator phase stays continuous. Half-beat targets expire after that cycle and do not change microtiming. Template values inherit; respawn resets private state. Zero owns no state/RNG and requests no observation. Initial-only; research only.",
     },
     FnDoc {
         name: "observe_tonal_context",

@@ -74,3 +74,6 @@ macro_rules! for_each_simd_level {
 #[cfg(test)]
 pub(crate) use for_each_simd_level;
 pub(crate) mod tonal_context;
+
+pub(crate) mod felt_beat;
+pub(crate) mod felt_input;

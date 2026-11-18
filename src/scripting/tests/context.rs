@@ -3250,3 +3250,63 @@ fn parallel_branch_emits_outer_handle_actions_at_its_own_end() {
     );
     assert_eq!(event_time(&scenario, &is_release), Some(1.));
 }
+
+#[test]
+fn felt_generation_is_initial_only_validated_and_inherited_by_templates() {
+    for chain in ["metric().syncopate(2)", "syncopate(2).metric()"] {
+        let s = first_spawn_spec_for_script(&format!(
+            "let t=harmonic().{chain}; place(t,at(220)); place(t,at(330)); wait(1);"
+        ));
+        assert_eq!(s.control.phonation.syncopate, 2.0);
+    }
+    for chain in [
+        "entrained().syncopate(1)",
+        "metric().microtiming(0.1).syncopate(1)",
+    ] {
+        let (s, warnings) = run_script(&format!("place(harmonic().{chain},at(220)); wait(1);"));
+        assert!(!warnings.lock().unwrap().is_empty());
+        for a in s.events.iter().flat_map(|e| &e.actions) {
+            if let Action::Spawn { spec, .. } = a {
+                assert_eq!(spec.control.phonation.syncopate, 0.0);
+            }
+        }
+    }
+    let s =
+        first_spawn_spec_for_script("place(harmonic().metric().syncopate(-1),at(220)); wait(1);");
+    assert_eq!(s.control.phonation.syncopate, 0.0);
+    assert!(
+        run_script_err("let p=place(harmonic().metric(),at(220)); p.syncopate(1);")
+            .to_string()
+            .contains("syncopate")
+    );
+}
+
+#[test]
+fn felt_observation_header_reserves_endless_and_is_ignored_for_finite_scenes() {
+    let (s, warnings) = run_script(
+        "observe_felt_beat(); place(harmonic().metric().syncopate(1),at(220)); wait(1);",
+    );
+    assert!(!s.observe_felt_beat);
+    assert!(
+        warnings
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|w| w.kind == "finite_felt_observation")
+    );
+    assert!(
+        run_script_err("endless(); wait(1); observe_felt_beat();")
+            .to_string()
+            .contains("observe_felt_beat")
+    );
+    let err =
+        run_script_err("endless(); place(harmonic().metric().syncopate(1),at(220)); wait(1);");
+    assert!(
+        err.to_string().contains("declare observe_felt_beat"),
+        "{err}"
+    );
+    let (s, _) = run_script(
+        "endless(); observe_felt_beat(); place(harmonic().metric().syncopate(1),at(220)); wait(1);",
+    );
+    assert!(s.observe_felt_beat);
+}

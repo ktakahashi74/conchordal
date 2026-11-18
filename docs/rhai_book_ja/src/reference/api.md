@@ -2120,6 +2120,16 @@ instrumentを研究するための面であり、作曲用ではありません�
 
 ### TimelineとPopulation
 
+#### `observe_felt_beat`
+
+```rhai,ignore
+observe_felt_beat()
+```
+
+Reserve habitat felt-beat observation before time advances in an endless scenario. Required for positive syncopate in endless scenes. Late declarations and unreserved placements are positioned errors. Finite scenes warn and ignore the declaration; placement pre-scanning reserves observation only when needed. Research only.
+
+**根拠:** 作者規則：終わりを定めない演奏で感じられた拍の観測を予約する。入力は、60 ms の間に水準が 1 dB 上がって続く発音だけを読む。
+
 #### `temporal_mode`
 
 ```rhai,ignore
@@ -2129,6 +2139,20 @@ temporal_mode(name)
 Select off or observe for new temporal cognition before playback. Declare once at top level before events or time advance. Default off keeps behavior. Observe currently tracks ordered NSGT evidence on both buses; relation inference remains unknown and no new action pressure is applied. Participate is rejected until implemented and calibrated. Run a new scenario to change mode.
 
 **根拠:** 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。
+
+### Phonationとリズム
+
+#### `syncopate`
+
+```rhai,ignore
+syncopate(w)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Confirm an uncertain felt beat, defer to a half beat, or omit an opportunity (default 0). Finite nonnegative weight, without an upper bound. Requires metric() and microtiming(0); otherwise warns and uses zero. After existing vetoes, draws with a private Voice RNG: beat probability (1-c)^w, otherwise half-beat probability m_plus, otherwise omission. Unknown observation bypasses without drawing. Positive consumers read habitat frequency, felt phase and beat probability times R for coupling; the oscillator phase stays continuous. Half-beat targets expire after that cycle and do not change microtiming. Template values inherit; respawn resets private state. Zero owns no state/RNG and requests no observation. Initial-only; research only.
+
+**根拠:** 作者規則：独立した拍の確認と半拍への発音の支え。観測は候補（Cannon 2021の図示値）、格子の推論と半拍への型の配置は作者規則。入力も作者規則：60 ms の間に水準が 1 dB 上がって続く発音だけを読む。
 
 ### Pitch Movement
 

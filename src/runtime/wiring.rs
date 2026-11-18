@@ -715,6 +715,14 @@ pub(super) fn prepare_runtime(
             sources,
         )
     });
+    let felt_period_guard =
+        scenario.events.iter().flat_map(|e| &e.actions).any(
+            |a| matches!(a, Action::Spawn { spec, .. } if spec.control.phonation.syncopate > 0.0),
+        );
+    let felt_beat = config.analysis.felt_beat.or_else(|| {
+        (scenario.observe_felt_beat || felt_period_guard)
+            .then(crate::config::FeltBeatParams::default)
+    });
     let mut conductor =
         Conductor::from_scenario(scenario, crate::core::timebase::Timebase { fs, hop });
 
@@ -725,6 +733,8 @@ pub(super) fn prepare_runtime(
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
+        felt_beat,
+        felt_period_guard,
         harmonic_relations,
         habitat_meter,
         render_prototype: config.render_prototype,

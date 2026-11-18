@@ -678,6 +678,79 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   `.residual(true)` remains available.
 
 ## Config Keys
+- `[analysis.felt_beat]` enables a research-only joint circular-grid beat/no-beat
+  observer on the habitat audio-only MeterNetwork. Omission owns no observer.
+  Its source-figure defaults are seconds-coordinate `sigma2=0.05^2`, `v=0.0001`,
+  `lambda=0.05`, `lambda_0=0.01`, `weak_v=0.0005`, `weak_lambda=0.01` (Candidate,
+  Cannon 2021; illustration values, not fitted human data). The weak position is the Author-rule half cycle used by generation;
+  the source swing example at 0.6 cycles is not the adopted template. Each hop converts using the actual meter period;
+  `meter_stability` multiplies both peak strengths by `1 + stability`.
+  Inference and the beat/no-beat Markov switching rate `2*pi^2*sigma2/T` per
+  cycle are Author rules. The co-moving grid uses integrated Gaussian absence
+  likelihood, cell-averaged onset likelihood and a cyclic tridiagonal backward
+  Euler diffusion solve, without FFT or grid interpolation. The 2048-point grid
+  and eight numerical subintervals are chosen by end-to-end consumer error; the
+  source model and parameters do not change. Existing detector
+  onsets split a hop at `frac`. A meter seed gives uniform beat mass 1/2 and
+  no-beat probability 1/2. Missing input, coordinate reset or invalid arithmetic
+  invalidates the observer until a meter seed; silence and rain are represented
+  continuously by c and P(beat), with no variance threshold.
+  Copy snapshots expose instantaneous phase, co-moving phase offset, c, half-circle
+  R/pi/margin, hypothetical half-onset m_plus, P(beat), surprise and descriptive
+  crossings between the seed coordinate's half-circles. Only positive felt-beat
+  generation controls consume them; presentation observation and GUI do not. The optional per-hop
+  felt_beat report allocates only through existing serialization when enabled.
+  Arrays and one Box are constructed once; steady processing/snapshots allocate
+  nothing (`profile-alloc`). Grid-size error, causal checks and StepEngine timing
+  belong to FB-6, separately from the retained FB-1 Gaussian source witness.
+- Felt input confirmation is an Author rule: read only onsets with a sustained
+  level rise of at least 1 dB across 60 ms. Existing OnsetDetector candidates and
+  frac are retained; neither it nor DorsalStream nor the ordinary meters change.
+  The window is ceil(REFRACTORY_SEC / hop_seconds) whole hops (six at 48 kHz/512),
+  with the same upward rounding as the refractory interval. Three-band positive
+  differences of post/pre window means are summed before division by total pre
+  energy. No new energy floor is used; zero-to-positive power passes, zero-to-zero
+  does not. Incomplete prefix windows are not evidence. Optional rings are built
+  only with the observer, at wiring, and have zero steady allocations. Each hop
+  rolls three pre/post sums and one frame queue in constant time; a candidate adds
+  one log10. Missing bands or clock/coordinate gaps reset this storage in place.
+  Inference advances window_hops-1 hops behind; P(beat), c, m_plus and R are from
+  posterior_end. Only phase is projected to availability time by the sum of queued
+  frequency*dt; no extra diffusion or speculative inference is added. Onset
+  timestamps retain their source hop/frac. Felt reports keep both clocks,
+  candidate decisions and band means/dB; other reports are unchanged
+  for observer-only scenes. Hover docs identify the input as an Author rule.
+- The habitat meter's felt-period guard is an Author rule, enabled only for
+  scenes containing a positive syncopate Voice. Finite scenes pre-scan placements;
+  endless scenes enable it on their first positive spawn.
+  Observer reservation/config alone leaves the meter unchanged. While the prior
+  completed felt snapshot is known and P(beat) >= 1/2, a confirmed interval within
+  min(0.2*expected,60ms) of k/2 current periods (k=1,3,5,7) issues no replacement.
+  Integer-period re-estimation retains its existing path.
+  Large-Jones period correction, tempo prior and unmatched intervals are unchanged.
+  This adds at most four scalar comparisons per confirmed onset, no storage or
+  steady allocations; no grid scan or additional observer update is needed.
+- Research-only initial `syncopate(w)` (finite nonnegative, no upper bound)
+  is an Author rule on explicit metric() Voices with microtiming(0); invalid
+  targets warn and use zero. Existing vetoes precede private independent RNG
+  draws. Confirmation uses (1-c)^w, otherwise hypothetical half-onset m_plus
+  chooses a half-cycle target or omission. Half targets use the private clock's
+  fractional crossings without changing microtiming or jumping its phase.
+  Positive consumers use habitat frequency, felt mean phase
+  and P(beat)*R for the existing wrapped-linear coupling. Reading changes move
+  only the target. Unknown observations bypass without draws. Templates inherit
+  weights; respawn allocates fresh private state/RNG. Zero owns no state/RNG,
+  reads no observation and requests none. Finite event pre-scanning reserves the
+  observer from sample zero; endless requires header observe_felt_beat(), with
+  positioned errors for late declarations or unreserved positive placement.
+  Finite declarations warn and are ignored. Config research overrides win.
+  The optional Box and reusable crossing/pending/report storage are constructed
+  at birth; decision processing allocates nothing. Reports retain opportunity,
+  observation and actual execution/pitch, draws and phase error.
+  Vetoed clock opportunities also retain phase/error without drawing, so target
+  changes and convergence remain readable through rests and other vetoes.
+  Cost includes the shared observer, positive Voice decisions and conditional
+  reports; FB-3 records declared-load StepEngine ABBA and profile-alloc checks.
 - `[analysis].nfft`: retained NSGT window for spectrum/UI, reports, spectral history,
   research taps, gap publication warmup and Flora resource coverage. H/R use the
   auditory filterbank independently of this window. `kernel_align` applies to NSGT.

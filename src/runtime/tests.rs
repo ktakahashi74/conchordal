@@ -343,6 +343,8 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
     let hop = 512;
     let timebase = Timebase { fs, hop };
     let cfg = WorkerConfig {
+        felt_beat: None,
+        felt_period_guard: false,
         end_request: Arc::new(AtomicBool::new(false)),
         duration_tick: None,
         harmonic_relations: None,
@@ -370,6 +372,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
     };
     let scenario = crate::scenario::Scenario {
         observe_tonal_context: false,
+        observe_felt_beat: false,
         harmonic_relation_sources: None,
         expression: None,
         expression_cursor: None,
@@ -944,6 +947,8 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         let hop = 512;
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
+            felt_beat: None,
+            felt_period_guard: false,
             end_request: Arc::new(AtomicBool::new(false)),
             duration_tick: None,
             harmonic_relations: None,
@@ -971,6 +976,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         };
         let scenario = crate::scenario::Scenario {
             observe_tonal_context: false,
+            observe_felt_beat: false,
             harmonic_relation_sources: None,
             expression: None,
             expression_cursor: None,
@@ -1020,6 +1026,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         };
         let scenario = crate::scenario::Scenario {
             observe_tonal_context: false,
+            observe_felt_beat: false,
             harmonic_relation_sources: None,
             expression: None,
             expression_cursor: None,
@@ -1124,6 +1131,8 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
         let hop = 512;
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
+            felt_beat: None,
+            felt_period_guard: false,
             end_request: Arc::new(AtomicBool::new(false)),
             duration_tick: None,
             harmonic_relations: None,
@@ -1151,6 +1160,7 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
         };
         let scenario = crate::scenario::Scenario {
             observe_tonal_context: false,
+            observe_felt_beat: false,
             harmonic_relation_sources: None,
             expression: None,
             expression_cursor: None,

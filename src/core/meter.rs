@@ -388,6 +388,9 @@ impl Recurrence {
 /// detection). One instance per listener.
 #[derive(Debug)]
 pub struct MeterNetwork {
+    felt_beat: Option<Box<crate::core::felt_beat::FeltBeat>>,
+    felt_period_guard: bool,
+    felt_input: Option<Box<crate::core::felt_input::FeltInput>>,
     recurrence: RecurrenceInput,
     // Beat oscillator state.
     beat_phi: f32,
@@ -430,6 +433,9 @@ impl Default for MeterNetwork {
 impl MeterNetwork {
     fn with_input(recurrence: RecurrenceInput) -> Self {
         Self {
+            felt_beat: None,
+            felt_period_guard: false,
+            felt_input: None,
             recurrence,
             beat_phi: 0.0,
             beat_omega: TAU * F_BEAT_INIT,
@@ -459,6 +465,42 @@ impl MeterNetwork {
 impl MeterNetwork {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub(crate) fn enable_felt_beat(&mut self, params: crate::config::FeltBeatParams) {
+        self.felt_beat = Some(Box::new(crate::core::felt_beat::FeltBeat::new(params)));
+    }
+
+    pub(crate) fn enable_felt_input(&mut self, fs: f32, hop: usize) {
+        if self.felt_beat.is_some() {
+            self.felt_input = Some(Box::new(crate::core::felt_input::FeltInput::new(fs, hop)));
+        }
+    }
+
+    pub(crate) fn needs_felt_bands(&self) -> bool {
+        self.felt_input.is_some()
+    }
+
+    pub(crate) fn set_felt_bands(&mut self, end: u64, bands: Option<[f32; 3]>) {
+        if let Some(input) = self.felt_input.as_mut() {
+            input.set_bands(end, bands);
+        }
+    }
+
+    pub(crate) fn enable_felt_period_guard(&mut self) {
+        self.felt_period_guard = true;
+    }
+
+    pub(crate) fn felt_beat(&self) -> Option<crate::core::felt_beat::FeltBeatState> {
+        self.felt_beat.as_ref().map(|f| {
+            let mut state = f.state();
+            if let Some(input) = self.felt_input.as_ref() {
+                input.project(&mut state, self.beat_phi);
+            }
+            state.meter_frequency_hz = self.last.beat.freq_hz;
+            state.meter_confidence = self.last.beat.confidence;
+            state
+        })
     }
 
     /// Install composer-set terrain shaping. A basin seeds the beat frequency at
@@ -516,11 +558,25 @@ impl MeterNetwork {
         hop: usize,
         fs: f32,
     ) -> MeterState {
-        let preference_weight = self.shaping.stability;
         let dt = dt.max(MIN_STEP_SEC);
         let drive_known = drive.is_some();
         let drive = drive.unwrap_or(0.0).clamp(0.0, 1.0);
         let onset = self.observe_onset(dt, drive_known, drive);
+        self.process_onset(dt, drive_known.then_some(drive), onset, start, hop, fs)
+    }
+
+    fn process_onset(
+        &mut self,
+        dt: f32,
+        drive: Option<f32>,
+        onset: Onset,
+        start: u64,
+        hop: usize,
+        fs: f32,
+    ) -> MeterState {
+        let preference_weight = self.shaping.stability;
+        let drive_known = drive.is_some();
+        let drive = drive.unwrap_or(0.0);
         let confirmed_period = self.confirm_period(dt, onset, start, hop, fs);
         let force_gain = 1.0 + self.shaping.stability;
         let phi_before = self.beat_phi;
@@ -571,6 +627,53 @@ impl MeterNetwork {
         let att_a = (-dt / 0.3).exp();
         self.attention_ema = att_a * self.attention_ema + (1.0 - att_a) * drive;
         self.last = self.build_state();
+        if let Some(felt) = self.felt_beat.as_mut() {
+            if !drive_known {
+                felt.invalidate();
+            }
+            if let Some(input) = self.felt_input.as_mut() {
+                let frame = crate::core::felt_input::Frame {
+                    dt,
+                    frequency: self.beat_omega / TAU,
+                    fired: onset.fired,
+                    frac: onset.frac,
+                    seeded: seeded_now,
+                    stability: self.shaping.stability,
+                    hopf: self.beat_phi,
+                    ..Default::default()
+                };
+                let released = if drive_known {
+                    input.push(frame)
+                } else {
+                    input.reset();
+                    None
+                };
+                if let Some(frame) = released {
+                    felt.process(
+                        frame.dt,
+                        frame.frequency,
+                        Onset {
+                            fired: frame.fired,
+                            frac: frame.frac,
+                        },
+                        frame.seeded,
+                        frame.stability,
+                        frame.hopf,
+                    );
+                } else if input.missing {
+                    felt.invalidate();
+                }
+            } else {
+                felt.process(
+                    dt,
+                    self.beat_omega / TAU,
+                    onset,
+                    seeded_now,
+                    self.shaping.stability,
+                    self.beat_phi,
+                );
+            }
+        }
         self.last
     }
 
@@ -710,6 +813,22 @@ impl MeterNetwork {
                                 proposal = Some(frequency);
                                 break;
                             }
+                        }
+                    }
+                    // Author rule: the felt half-peak explains odd half-cycle multiples.
+                    // Observation alone must never change the acoustic meter.
+                    if self.felt_period_guard
+                        && self.felt_beat.as_ref().is_some_and(|felt| {
+                            let state = felt.state();
+                            !state.unknown && state.p_beat >= 0.5
+                        })
+                    {
+                        let current_period = TAU / self.beat_omega;
+                        if (1..=8).step_by(2).any(|k| {
+                            let expected = 0.5 * k as f32 * current_period;
+                            (period - expected).abs() <= ioi_window(expected)
+                        }) {
+                            proposal = None;
                         }
                     }
                 }
@@ -976,6 +1095,112 @@ pub(crate) fn sane_basin(min_hz: f32, max_hz: f32) -> (f32, f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn felt_period_guard_external_trains() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../tests/research/felt_period_trains.json"))
+                .unwrap();
+        let dt = 512.0_f32 / 48000.0;
+        let mut results = Vec::new();
+        let mut failures = Vec::new();
+        for case in fixture["cases"].as_array().unwrap() {
+            let kind = case["kind"].as_str().unwrap();
+            let events: Vec<f64> = case["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_f64().unwrap())
+                .collect();
+            let mut metrics = Vec::new();
+            for guard in [false, true] {
+                let mut meter = MeterNetwork::new();
+                meter.set_shaping(MeterShaping {
+                    stability: 0.55,
+                    basin_hz: Some((1.6, 2.4)),
+                });
+                meter.enable_felt_beat(Default::default());
+                if guard {
+                    meter.enable_felt_period_guard();
+                }
+                let mut rows = Vec::new();
+                let (mut event, mut last) = (0, -9.0_f64);
+                for i in 0..(60.0 / (512.0 / 48000.0)) as usize {
+                    let t0 = i as f64 * 512.0 / 48000.0;
+                    let mut onset = Onset::default();
+                    while event < events.len() && events[event] < t0 + 512.0 / 48000.0 {
+                        if !onset.fired && events[event] - last > 0.06 && events[event] >= t0 {
+                            onset = Onset {
+                                fired: true,
+                                frac: ((events[event] - t0) / (512.0 / 48000.0)) as f32,
+                            };
+                            last = events[event];
+                        }
+                        event += 1;
+                    }
+                    // Bypass only the acoustic detector; run the production meter and grid.
+                    let state = meter.process_onset(
+                        dt,
+                        Some(if onset.fired { 1.0 } else { 0.0 }),
+                        onset,
+                        i as u64 * 512,
+                        512,
+                        48000.0,
+                    );
+                    rows.push((
+                        t0,
+                        state.beat.freq_hz as f64,
+                        meter.felt_beat().unwrap().p_beat as f64,
+                    ));
+                }
+                let low = rows
+                    .iter()
+                    .filter(|r| r.0 >= if kind == "step" { 30.0 } else { 10.0 } && r.2 < 0.5)
+                    .count();
+                let limit = PERIOD_GAIN as f64 * 1.55 / std::f64::consts::TAU;
+                let jumps = rows
+                    .windows(2)
+                    .filter(|r| r[1].0 >= 10.0 && (r[1].1 / r[0].1 - 1.0).abs() > limit)
+                    .count();
+                // Same descriptive tracking criteria as FB-7 i_tracking.py.
+                let tracking = if kind == "step" {
+                    let w = (0.5 / (512.0 / 48000.0)) as usize;
+                    rows.windows(w)
+                        .find(|w| {
+                            w[0].0 >= 30.0 && w.iter().all(|r| (r.1 / 2.3 - 1.0).abs() < 0.06)
+                        })
+                        .map(|w| w[0].0 - 30.0)
+                        .unwrap_or(f64::INFINITY)
+                } else if kind == "ramp" {
+                    rows.iter()
+                        .filter(|r| r.0 >= 10.0)
+                        .map(|r| (r.1 / (1.8 + 0.4 * r.0 / 60.0) - 1.0).abs())
+                        .fold(0.0, f64::max)
+                } else {
+                    0.0
+                };
+                metrics.push((low, jumps, tracking));
+            }
+            let pass = if matches!(kind, "step" | "ramp") {
+                metrics[1].2 <= metrics[0].2
+            } else {
+                metrics[1].0 <= metrics[0].0 && metrics[1].1 < metrics[0].1
+            };
+            let row = serde_json::json!({"kind":kind,"seed":case["seed"],"old":{"low_seconds":metrics[0].0 as f64*dt as f64,"jumps":metrics[0].1,"tracking":metrics[0].2},"new":{"low_seconds":metrics[1].0 as f64*dt as f64,"jumps":metrics[1].1,"tracking":metrics[1].2},"pass":pass});
+            println!("felt period fixture {row}");
+            if !pass {
+                failures.push(row.clone());
+            }
+            results.push(row);
+        }
+        if let Ok(path) = std::env::var("FB8_FIXTURE_OUTPUT") {
+            std::fs::write(path, serde_json::to_string_pretty(&results).unwrap()).unwrap();
+        }
+        assert!(
+            failures.is_empty(),
+            "felt period acceptance failures: {failures:?}"
+        );
+    }
 
     const DT: f32 = 0.005; // 200 Hz control rate
 

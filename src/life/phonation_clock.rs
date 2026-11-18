@@ -251,7 +251,7 @@ impl CouplingClock {
         interval: std::ops::Range<Tick>,
         rhythms: &NeuralRhythms,
         out: &mut Vec<CandidatePoint>,
-        subdivisions: Option<(u8, &mut Vec<CandidatePoint>)>,
+        mut subdivisions: Option<(u8, &mut Vec<CandidatePoint>)>,
     ) {
         let Some(expression) = self.expression else {
             return self.gather_unexpressive(fs, interval, rhythms, out, subdivisions);
@@ -260,10 +260,14 @@ impl CouplingClock {
         if interval.end <= entry {
             return self.gather_unexpressive(fs, interval, rhythms, out, subdivisions);
         }
-        // Sustained shape/subdivision consumers are excluded by scene validation.
-        debug_assert!(subdivisions.is_none());
         if interval.start < entry {
-            self.gather_unexpressive(fs, interval.start..entry, rhythms, out, None);
+            self.gather_unexpressive(
+                fs,
+                interval.start..entry,
+                rhythms,
+                out,
+                subdivisions.as_mut().map(|(n, p)| (*n, &mut **p)),
+            );
         }
         let start = interval.start.max(entry);
         let end = interval
@@ -291,6 +295,29 @@ impl CouplingClock {
                     self.phase.floor() + 1.0
                 },
             });
+        }
+        if let Some((ratio, points)) = &mut subdivisions {
+            let clock = self.expression_clock.as_ref().expect("frozen score clock");
+            let phase = clock.phase
+                + clock.rate * (expression.score(start as f64 / f64::from(fs)) - clock.score);
+            let coordinate = clock.first_gate as f64 + phase - clock.first_phase;
+            let mut k = (coordinate * f64::from(*ratio)).ceil();
+            loop {
+                let gate = k / f64::from(*ratio);
+                let tick = self
+                    .expression_gate_tick(gate, fs)
+                    .expect("frozen score clock");
+                if tick >= end {
+                    break;
+                }
+                if tick >= start && gate >= 0.0 {
+                    points.push(CandidatePoint {
+                        tick,
+                        gate: gate.floor() as u64,
+                    });
+                }
+                k += 1.0;
+            }
         }
         loop {
             let gate = if self.has_gate {

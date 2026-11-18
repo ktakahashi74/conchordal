@@ -706,6 +706,11 @@ impl Community {
                     batch,
                 );
             }
+            if let Some(felt) = &mut voice.phonation_engine.felt {
+                for tone in &batch.tones {
+                    felt.executed(tone.onset, tone.freq_hz);
+                }
+            }
             voice.finish_sequence_execution(batch, frame_end);
             if let Some(phrase) = &mut voice.phonation_engine.phrase_boundary {
                 for tone in &mut batch.tones {

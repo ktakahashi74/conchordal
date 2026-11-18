@@ -521,6 +521,15 @@ impl Voice {
 
         let mut phonation_engine =
             PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
+        if effective_control.phonation.syncopate > 0.0 {
+            phonation_engine.felt = Some(Box::new(super::phonation_engine::FeltRhythm::new(
+                effective_control.phonation.syncopate,
+                seed_offset
+                    ^ assigned_id.rotate_left(17)
+                    ^ u64::from(metadata.generation).rotate_left(39)
+                    ^ 0x4645_4c54_5f42_4541,
+            )));
+        }
         if effective_control.phonation.phrase_boundary > 0.0
             && effective_control.supports_phrase_boundary()
             && let Some(period) = phonation_engine.clock.intrinsic_period_sec()
@@ -825,6 +834,7 @@ impl Voice {
     }
 
     pub(crate) fn configure_control_hop(&mut self, hop: usize, control_step: usize, fs: f32) {
+        self.phonation_engine.reserve_felt_hop(hop, fs);
         self.support_clock_fs = fs;
         self.support_clock_step = control_step.max(1) as u64;
         if (self.effective_control.pitch.mode == PitchMode::Free || self.sustain_participation)
@@ -1800,7 +1810,11 @@ impl Voice {
             now_tick: now,
             frame_end,
             fs: tb.fs,
-            rhythms: *rhythms,
+            rhythms: self
+                .phonation_engine
+                .felt
+                .as_ref()
+                .map_or(*rhythms, |felt| felt.rhythms(*rhythms, now, tb.fs)),
         };
         // Target amp and the phonation gate are both evaluated up front and fed
         // into `onset_allowed`, which the engine uses to gate onset *emission*.

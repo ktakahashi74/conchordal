@@ -2120,6 +2120,16 @@ For studying the instrument, not composing with it. Normal composing never touch
 
 ### Timeline & Populations
 
+#### `observe_felt_beat`
+
+```rhai,ignore
+observe_felt_beat()
+```
+
+Reserve habitat felt-beat observation before time advances in an endless scenario. Required for positive syncopate in endless scenes. Late declarations and unreserved placements are positioned errors. Finite scenes warn and ignore the declaration; placement pre-scanning reserves observation only when needed. Research only.
+
+**Evidence:** Author rule: reserve felt-beat observation for endless performances. Input: read only onsets with a sustained level rise of at least 1 dB across 60 ms.
+
 #### `temporal_mode`
 
 ```rhai,ignore
@@ -2129,6 +2139,20 @@ temporal_mode(name)
 Select off or observe for new temporal cognition before playback. Declare once at top level before events or time advance. Default off keeps behavior. Observe currently tracks ordered NSGT evidence on both buses; relation inference remains unknown and no new action pressure is applied. Participate is rejected until implemented and calibrated. Run a new scenario to change mode.
 
 **Evidence:** Not a mechanism (operation): output, reproducibility or research execution settings (§9.3.56).
+
+### Phonation & Rhythm
+
+#### `syncopate`
+
+```rhai,ignore
+syncopate(w)
+```
+
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
+
+Confirm an uncertain felt beat, defer to a half beat, or omit an opportunity (default 0). Finite nonnegative weight, without an upper bound. Requires metric() and microtiming(0); otherwise warns and uses zero. After existing vetoes, draws with a private Voice RNG: beat probability (1-c)^w, otherwise half-beat probability m_plus, otherwise omission. Unknown observation bypasses without drawing. Positive consumers read habitat frequency, felt phase and beat probability times R for coupling; the oscillator phase stays continuous. Half-beat targets expire after that cycle and do not change microtiming. Template values inherit; respawn resets private state. Zero owns no state/RNG and requests no observation. Initial-only; research only.
+
+**Evidence:** Author rule: independent beat confirmation and hypothetical half-onset support. Observation: Candidate (Cannon 2021 figure parameters); grid inference and half-cycle template placement: Author rules. Input: Author rule; read only onsets with a sustained level rise of at least 1 dB across 60 ms.
 
 ### Pitch Movement
 

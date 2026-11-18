@@ -342,6 +342,7 @@ impl Default for PitchControl {
 
 #[derive(Debug, Clone, Default)]
 pub struct PhonationControl {
+    pub(crate) syncopate: f32,
     pub spec: crate::scenario::PhonationSpec,
     pub gate: PhonationGate,
     pub(crate) finite_duration: Option<crate::scenario::DurationSpec>,

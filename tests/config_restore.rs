@@ -166,6 +166,7 @@ fn config_load_custom_values() {
             output_gain_db: -3.0,
         },
         analysis: AnalysisConfig {
+            felt_beat: None,
             nfft: 8192,
             hop_size: 256,
             tau_ms: 60.0,

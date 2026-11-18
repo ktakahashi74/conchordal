@@ -23,10 +23,13 @@ use crate::scenario::{
 
 #[path = "phonation_clock.rs"]
 mod clock;
+#[path = "felt_rhythm.rs"]
+mod felt;
 #[path = "phonation_rules.rs"]
 mod rules;
 #[path = "phonation_timing.rs"]
 mod timing;
+pub(crate) use felt::{FeltRhythm, FeltRhythmInput, FeltRhythmRecord};
 
 use clock::COUPLING_PULL_K;
 pub use clock::{CouplingClock, ParticipationClock, PhonationClock, ThetaGateClock};
@@ -177,6 +180,7 @@ pub(crate) struct RestState {
 }
 
 pub struct PhonationEngine {
+    pub(crate) felt: Option<Box<FeltRhythm>>,
     pub(crate) phrase_boundary: Option<crate::life::phrase_boundary::PhraseBoundary>,
     pub(crate) expression_active: bool,
     pub(crate) rest: Option<RestState>,
@@ -319,11 +323,42 @@ impl PhonationEngine {
         count
     }
 
+    pub(crate) fn reserve_felt_hop(&mut self, hop: usize, fs: f32) {
+        if self.felt.is_none() {
+            return;
+        }
+        let count = self.reserve_synchronized_hop(hop, fs);
+        let hold = self
+            .duration_rule
+            .estimate_hold(1.0, 0.0)
+            .unwrap_or(0.0)
+            .ceil()
+            .clamp(0.0, MAX_EXTRA_GATES as f32) as usize;
+        let felt = self.felt.as_mut().unwrap();
+        felt.points.reserve(2 * count);
+        felt.delivery_grid.boundaries.reserve(hold + 2);
+    }
+
+    fn gather_felt_candidates(&mut self, ctx: &CoreTickCtx) {
+        if let (Some(felt), PhonationClock::Coupling(clock)) = (&mut self.felt, &mut self.clock) {
+            felt.points.clear();
+            clock.gather_rhythm_subdivided(
+                ctx.fs,
+                ctx.now_tick..ctx.frame_end,
+                &ctx.rhythms,
+                &mut self.scratch_candidates,
+                Some((2, &mut felt.points)),
+            );
+        } else {
+            self.clock
+                .gather_candidates(ctx, &mut self.scratch_candidates);
+        }
+    }
+
     pub(crate) fn prepare_synchronized_hop(&mut self, ctx: &CoreTickCtx) {
         if self.sustain_participation && matches!(self.clock, PhonationClock::Coupling(_)) {
             self.scratch_candidates.clear();
-            self.clock
-                .gather_candidates(ctx, &mut self.scratch_candidates);
+            self.gather_felt_candidates(ctx);
             Self::merge_candidates_into(&mut self.scratch_merged, &mut self.scratch_candidates);
         }
     }
@@ -521,6 +556,7 @@ impl PhonationEngine {
                     PhonationClockConfig::Participation { .. }
                         | PhonationClockConfig::Coupling { .. }
                 ),
+            felt: None,
             clock: PhonationClock::from_config(&config.clock, seed),
             onset_rule,
             duration_rule,
@@ -827,7 +863,15 @@ impl PhonationEngine {
                     onset.tick >= (e.start * f64::from(ctx.fs)).round() as Tick
                 }) =>
             {
-                clock.expression_gate_tick(off_pos, ctx.fs)
+                clock.expression_gate_tick(
+                    off_pos
+                        + if self.felt.as_ref().is_some_and(|f| f.delivering_half) {
+                            0.5
+                        } else {
+                            0.0
+                        },
+                    ctx.fs,
+                )
             }
             _ => None,
         };
@@ -1038,8 +1082,7 @@ impl PhonationEngine {
             return;
         }
         self.scratch_candidates.clear();
-        self.clock
-            .gather_candidates(ctx, &mut self.scratch_candidates);
+        self.gather_felt_candidates(ctx);
         Self::merge_candidates_into(&mut self.scratch_merged, &mut self.scratch_candidates);
         let merged = std::mem::take(&mut self.scratch_merged);
         let mut timing_grid = std::mem::take(&mut self.scratch_grid);
@@ -1196,6 +1239,85 @@ impl PhonationEngine {
     }
 
     #[allow(clippy::too_many_arguments)]
+    fn emit_candidate(
+        &mut self,
+        ctx: &CoreTickCtx,
+        c: &CandidatePoint,
+        mut kick: OnsetKick,
+        step: &CandidateStep,
+        phrase: Option<crate::life::phrase_boundary::Reservation>,
+        timing_grid: &mut ThetaGrid,
+        fixed_period: Option<f64>,
+        out_cmds: &mut Vec<ToneCmd>,
+        out_events: &mut Vec<ToneOnEvent>,
+        out_onsets: &mut Vec<OnsetEvent>,
+    ) {
+        let measure = ctx.rhythms.measure;
+        if self.measure_accent > 0.0
+            && ctx.rhythms.measure_ratio > 0
+            && measure.freq_hz > 0.0
+            && measure.freq_hz.is_finite()
+            && measure.phase.is_finite()
+        {
+            let dt = c.tick.saturating_sub(ctx.now_tick) as f32 / ctx.fs;
+            let phase = measure.phase + TAU * measure.freq_hz * dt;
+            // Weak, symmetric emphasis; no onset is scheduled by the measure.
+            kick.strength *=
+                1.0 + 0.35 * self.measure_accent * sanitize01(measure.alpha) * phase.cos();
+        }
+        if self.sustain_participation {
+            if out_events.iter().any(|e| e.onset_tick == c.tick) {
+                return;
+            }
+            if let Some(tone_id) = self.hold.tone_id.take() {
+                out_cmds.push(ToneCmd::Off {
+                    tone_id,
+                    off_tick: c.tick,
+                });
+                self.active_notes = self.active_notes.saturating_sub(1);
+            }
+        }
+        let tone_id = self.next_tone_id;
+        if let Some(mut reservation) = phrase {
+            reservation.tone = tone_id;
+            self.phrase_boundary.as_mut().unwrap().selected = Some(reservation);
+        }
+        self.next_tone_id = self.next_tone_id.wrapping_add(1);
+        if self.sustain_participation {
+            self.hold.tone_id = Some(tone_id);
+            self.hold.note_on_sent = true;
+        }
+        if let Some(gap) = &mut self.span_gap {
+            gap.on(c.tick, true);
+        }
+        out_cmds.push(ToneCmd::On { tone_id, kick });
+        if let Some(context) = &mut self.support_action {
+            context.body = crate::life::support_action::Body::Unknown;
+        }
+        self.active_notes = self.active_notes.saturating_add(1);
+        out_events.push(ToneOnEvent {
+            tone_id,
+            onset_tick: c.tick,
+            participation_onset: true,
+        });
+        out_onsets.push(OnsetEvent {
+            gate: c.gate,
+            onset_tick: c.tick,
+            strength: kick.strength,
+        });
+        let onset = OnsetContext {
+            tone_id,
+            tick: c.tick,
+            gate: c.gate,
+            exc_gate: step.exc_gate,
+            exc_slope: step.exc_slope,
+        };
+        if !self.sustain_participation || self.rest.is_some() {
+            self.schedule_duration(onset, ctx, timing_grid, fixed_period);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn process_candidates(
         &mut self,
         ctx: &CoreTickCtx,
@@ -1211,7 +1333,44 @@ impl PhonationEngine {
         let mut prev_gate_exc: Option<f32> = None;
         let fixed_period = self.clock.fixed_period_ticks(ctx.fs);
         self.drain_note_offs(ctx.now_tick, out_cmds);
-        for c in candidates {
+        let points = self.felt.as_mut().map(|f| std::mem::take(&mut f.points));
+        let work = points.as_deref().unwrap_or(candidates);
+        for c in work
+            .iter()
+            .filter(|c| c.tick >= ctx.now_tick && c.tick < ctx.frame_end)
+        {
+            let half = !candidates
+                .iter()
+                .any(|n| n.tick == c.tick && n.gate == c.gate);
+            if let Some(kick) = self.felt.as_mut().and_then(|f| f.take_due(c, half))
+                && state.is_alive
+                && state.onset_allowed
+            {
+                self.drain_note_offs(c.tick, out_cmds);
+                let step = self.step_for_candidate(c, timing_field, prev_gate_exc, ctx.fs);
+                let felt = self.felt.as_mut().unwrap();
+                felt.delivering_half = half;
+                let mut grid = std::mem::take(&mut felt.delivery_grid);
+                grid.rebuild_from_candidates(std::slice::from_ref(c));
+                self.emit_candidate(
+                    ctx,
+                    c,
+                    kick,
+                    &step,
+                    None,
+                    &mut grid,
+                    fixed_period,
+                    out_cmds,
+                    out_events,
+                    out_onsets,
+                );
+                let felt = self.felt.as_mut().unwrap();
+                felt.delivery_grid = grid;
+                felt.delivering_half = false;
+            }
+            if half {
+                continue;
+            }
             let phrase = self
                 .phrase_boundary
                 .as_mut()
@@ -1271,83 +1430,36 @@ impl PhonationEngine {
                     }
                     _ => false,
                 };
+            let trace_before = self.felt.as_ref().map_or(0, |f| f.trace.len());
             if allow_onset
                 && rest_allowed
                 && !intentional
                 && state.onset_allowed
                 && !self.sway_skips()
-                && let Some(mut kick) = self.onset_rule.on_candidate(&input, state)
+                && let Some(kick) = self.onset_rule.on_candidate(&input, state)
                 && self.support_allows_candidate(ctx, c, &step, timing_grid, fixed_period)
             {
-                let measure = ctx.rhythms.measure;
-                if self.measure_accent > 0.0
-                    && ctx.rhythms.measure_ratio > 0
-                    && measure.freq_hz > 0.0
-                    && measure.freq_hz.is_finite()
-                    && measure.phase.is_finite()
-                {
-                    let dt = c.tick.saturating_sub(ctx.now_tick) as f32 / ctx.fs;
-                    let phase = measure.phase + TAU * measure.freq_hz * dt;
-                    // Weak, symmetric emphasis; no onset is scheduled by the measure.
-                    kick.strength *=
-                        1.0 + 0.35 * self.measure_accent * sanitize01(measure.alpha) * phase.cos();
+                let allow = self.felt.as_mut().is_none_or(|f| f.decide(c, kick, ctx));
+                if allow {
+                    self.emit_candidate(
+                        ctx,
+                        c,
+                        kick,
+                        &step,
+                        phrase,
+                        timing_grid,
+                        fixed_period,
+                        out_cmds,
+                        out_events,
+                        out_onsets,
+                    );
                 }
-                if self.sustain_participation {
-                    if out_events.iter().any(|e| e.onset_tick == c.tick) {
-                        #[cfg(test)]
-                        if synchronized {
-                            self.synchronized_counts[1] += 1;
-                        }
-                        self.last_tick = Some(c.tick);
-                        prev_gate_exc = Some(step.exc_gate);
-                        continue;
-                    }
-                    if let Some(tone_id) = self.hold.tone_id.take() {
-                        out_cmds.push(ToneCmd::Off {
-                            tone_id,
-                            off_tick: c.tick,
-                        });
-                        self.active_notes = self.active_notes.saturating_sub(1);
-                    }
-                }
-                let tone_id = self.next_tone_id;
-                if let Some(mut reservation) = phrase {
-                    reservation.tone = tone_id;
-                    self.phrase_boundary.as_mut().unwrap().selected = Some(reservation);
-                }
-                self.next_tone_id = self.next_tone_id.wrapping_add(1);
-                if self.sustain_participation {
-                    self.hold.tone_id = Some(tone_id);
-                    self.hold.note_on_sent = true;
-                }
-                if let Some(gap) = &mut self.span_gap {
-                    gap.on(c.tick, true);
-                }
-                out_cmds.push(ToneCmd::On { tone_id, kick });
-                if let Some(context) = &mut self.support_action {
-                    context.body = crate::life::support_action::Body::Unknown;
-                }
-                self.active_notes = self.active_notes.saturating_add(1);
-                out_events.push(ToneOnEvent {
-                    tone_id,
-                    onset_tick: c.tick,
-                    participation_onset: true,
-                });
-                out_onsets.push(OnsetEvent {
-                    gate: c.gate,
-                    onset_tick: c.tick,
-                    strength: kick.strength,
-                });
-                let onset = OnsetContext {
-                    tone_id,
-                    tick: c.tick,
-                    gate: c.gate,
-                    exc_gate: step.exc_gate,
-                    exc_slope: step.exc_slope,
-                };
-                if !self.sustain_participation || self.rest.is_some() {
-                    self.schedule_duration(onset, ctx, timing_grid, fixed_period);
-                }
+            }
+            if let Some(felt) = &mut self.felt
+                && felt.trace_enabled
+                && felt.trace.len() == trace_before
+            {
+                felt.veto(c, ctx);
             }
             if synchronized {
                 let sounded = out_onsets.len() > onset_before;
@@ -1367,6 +1479,9 @@ impl PhonationEngine {
             }
             self.last_tick = Some(c.tick);
             prev_gate_exc = Some(step.exc_gate);
+        }
+        if let Some(points) = points {
+            self.felt.as_mut().unwrap().points = points;
         }
         self.drain_note_offs(ctx.frame_end.saturating_sub(1), out_cmds);
     }

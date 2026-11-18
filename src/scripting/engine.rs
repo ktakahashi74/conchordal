@@ -944,6 +944,7 @@ impl ScriptHost {
                 ("entrainment", PopulationSpec::set_entrainment),
                 ("microtiming", PopulationSpec::set_microtiming),
                 ("measure_accent", PopulationSpec::set_measure_accent),
+                ("syncopate", PopulationSpec::set_syncopate),
             ],
         );
         // Tier 2: explicit when/duration
@@ -1431,6 +1432,18 @@ impl ScriptHost {
                 let mut ctx = ctx_for_flush.lock().expect("lock script context");
                 ctx.flush(_call_ctx.call_position());
                 ctx.check_emission()
+            },
+        );
+
+        let ctx_for_felt = ctx.clone();
+        engine.register_fn(
+            "observe_felt_beat",
+            move |call: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
+                let mut ctx = ctx_for_felt.lock().expect("lock script context");
+                ctx.check_header("observe_felt_beat", call.call_position())?;
+                ctx.scenario.observe_felt_beat = true;
+                ctx.felt_observation_position = Some(call.call_position());
+                Ok(())
             },
         );
 

@@ -1,3 +1,4 @@
+pub use crate::core::felt_beat::FeltBeatParams;
 use crate::core::nsgt_kernel::KernelAlign;
 use anyhow::{Context, Result, ensure};
 use serde::{Deserialize, Serialize};
@@ -60,6 +61,9 @@ pub enum LimiterSetting {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AnalysisConfig {
+    /// Research observation; omission disables it. Parameters are source figure values.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub felt_beat: Option<FeltBeatParams>,
     /// NSGT window for UI, spectral taps, gap warmup and Flora resource coverage.
     /// Auditory H/R resolution is fixed independently of this window.
     #[serde(default = "AnalysisConfig::default_nfft")]
@@ -94,6 +98,7 @@ impl AnalysisConfig {
 impl Default for AnalysisConfig {
     fn default() -> Self {
         Self {
+            felt_beat: None,
             nfft: Self::default_nfft(),
             hop_size: Self::default_hop_size(),
             tau_ms: Self::default_tau_ms(),
@@ -529,6 +534,27 @@ impl Default for PlaybackConfig {
 impl AppConfig {
     /// Validate the dimensions shared by the runtime and the NSGT kernel.
     pub fn validate(&self) -> Result<()> {
+        if let Some(p) = self.analysis.felt_beat {
+            ensure!(
+                p.lambda + p.weak_lambda + p.lambda_0 > 0.0,
+                "analysis.felt_beat requires a positive event rate"
+            );
+            for (name, value, positive) in [
+                ("sigma2", p.sigma2, false),
+                ("v", p.v, true),
+                ("lambda", p.lambda, false),
+                ("lambda_0", p.lambda_0, false),
+                ("weak_v", p.weak_v, true),
+                ("weak_lambda", p.weak_lambda, false),
+            ] {
+                ensure!(
+                    value.is_finite() && if positive { value > 0.0 } else { value >= 0.0 },
+                    "analysis.felt_beat.{name} must be finite and {}",
+                    if positive { "positive" } else { "nonnegative" }
+                );
+            }
+        }
+
         let psycho = &self.psychoacoustics;
         for (name, value, minimum) in [
             (
@@ -1113,6 +1139,7 @@ mod tests {
                 output_gain_db: -3.0,
             },
             analysis: AnalysisConfig {
+                felt_beat: None,
                 nfft: 8192,
                 hop_size: 256,
                 tau_ms: 60.0,

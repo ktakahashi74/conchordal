@@ -250,6 +250,9 @@ fn environment_viability_consumes_pcm_observation_without_pitch_self_exclusion()
             h_scan: vec![0.; landscape.space.n_bins()],
             r_scan: vec![0.; landscape.space.n_bins()],
             score_scan: vec![0.; landscape.space.n_bins()].into(),
+            onset_habituation_state_scan: None,
+            onset_habituation_end: 0,
+            onset_habituation_known: false,
         }];
         let mut community = crate::life::community::Community::new(Timebase { fs: FS, hop: 512 });
         community.add_voice(voice);
@@ -343,7 +346,7 @@ fn rendered_loo_conformance() {
                 all.extend(others.iter().cloned());
                 let mut mixed_renderer = ScheduleRenderer::new(timebase);
                 let mut own_renderer = ScheduleRenderer::new(timebase);
-                let mut candidate = crate::core::stream::loo::Observer::new(2, 0, &template);
+                let mut candidate = crate::core::stream::loo::Observer::new(2, 0, &template, false);
                 let mut mixed_stream = template.clone();
                 let mut removed_stream = template.clone();
                 let mut oracle_stream = template.clone();
@@ -992,13 +995,14 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
         let own_batch = [batch(2, &own_recipe)];
         let mut mixed_renderer = ScheduleRenderer::new(timebase);
         let mut own_renderer = ScheduleRenderer::new(timebase);
-        let mut candidate = crate::core::stream::loo::Observer::new(2, 0, &template);
+        let mut candidate = crate::core::stream::loo::Observer::new(2, 0, &template, false);
         let mut mixed_stream = template.clone();
         let mut removed_stream = template.clone();
         let mut reference_stream = template.clone();
         let mut sources = [crate::life::schedule_renderer::SourcePcm {
             kind: crate::core::stream::loo::SourceKind::Voice,
             analyze_hr: true,
+            onset_history: false,
             tonal_context: None,
             id: 2,
             generation: 0,
@@ -1428,7 +1432,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
     for tails in [0, 2] {
         for habitat in [true, false] {
             let mut streams = [template.clone(), template.clone(), template.clone()];
-            let mut observer = crate::core::stream::loo::Observer::new(2, 7, &template);
+            let mut observer = crate::core::stream::loo::Observer::new(2, 7, &template, false);
             let mut renderers: [_; 5] = std::array::from_fn(|_| ScheduleRenderer::new(tb));
             let mut batches: Vec<_> = [660., 440., 392., 466., 452.]
                 .into_iter()
@@ -1672,7 +1676,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                     observer.reset();
                     let zeros = vec![0.; hop];
                     observer.process(&zeros, &zeros);
-                    let mut fresh = crate::core::stream::loo::Observer::new(2, 7, &template);
+                    let mut fresh = crate::core::stream::loo::Observer::new(2, 7, &template, false);
                     fresh.process(&zeros, &zeros);
                     assert_eq!(observer.snapshot().score_scan, fresh.snapshot().score_scan);
                     input.exact_score = None;

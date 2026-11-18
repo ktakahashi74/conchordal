@@ -366,6 +366,7 @@ impl BodyMetabolism {
                     self.pcm.push(SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
+                        onset_history: false,
                         tonal_context: None,
                         id: voice.id(),
                         generation: voice.metadata.generation,

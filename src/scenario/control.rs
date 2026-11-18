@@ -280,6 +280,8 @@ pub struct PitchControl {
     pub move_cost_exp: Option<u8>,
     pub proposal_interval_sec: Option<f32>,
     pub(crate) dwell: f32,
+    /// Author rule: heard external onsets advance the proposal clock (0 = off).
+    pub(crate) respond_to_onsets: f32,
     pub(crate) follow_own_sequence: f64,
     pub(crate) melodic_continuity: f64,
     pub(crate) follow_tonal_context: f64,
@@ -317,6 +319,7 @@ impl Default for PitchControl {
             move_cost_exp: None,
             proposal_interval_sec: None,
             dwell: 0.0,
+            respond_to_onsets: 0.0,
             follow_own_sequence: 0.0,
             melodic_continuity: 0.0,
             follow_tonal_context: 0.0,

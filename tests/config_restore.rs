@@ -192,6 +192,7 @@ fn config_load_custom_values() {
                 },
             },
             habituation: HabituationConfig {
+                drive: Default::default(),
                 enabled: true,
                 satiation_sec: 4.0,
                 recovery_sec: 7.0,

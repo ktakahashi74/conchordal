@@ -238,6 +238,9 @@ fn roughness_view_follows_eligible_off_on_actions() {
             h_scan: vec![0.; n],
             r_scan: vec![0.; n],
             score_scan: vec![0.; n].into(),
+            onset_habituation_state_scan: None,
+            onset_habituation_end: 0,
+            onset_habituation_known: false,
         });
         v.pitch_ctl.loo_input_mut().exact_score = Some(land.loo[0].score_scan.clone());
         if case != "no_tone" {

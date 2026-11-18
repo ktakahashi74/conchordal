@@ -6,6 +6,9 @@ use crate::core::log2space::Log2Space;
 use crate::core::onset::REFRACTORY_SEC;
 
 const POWER_FLOOR: f32 = 1e-6 * 0.1875;
+/// Half-width in ERB of the bins one detected band drives; Flora reuses it to
+/// exclude its own sounding partials.
+pub(crate) const SUPPORT_ERB: f32 = 1.5;
 
 #[derive(Clone, Debug, Default)]
 struct Band {
@@ -71,7 +74,7 @@ impl OnsetHabituation {
                     .enumerate()
                     .filter_map(|(i, &hz)| {
                         let distance = hz_to_erb(hz) - center;
-                        (distance.abs() <= 1.5)
+                        (distance.abs() <= SUPPORT_ERB)
                             .then(|| (i, crate::core::float::unit_gaussian(distance, 0.5)))
                     })
                     .collect()

@@ -347,6 +347,9 @@ fn rearticulation_view_reuses_proposal_storage() {
         h_scan: vec![0.3; n],
         r_scan: vec![0.1; n],
         score_scan: vec![0.2; n].into(),
+        onset_habituation_state_scan: None,
+        onset_habituation_end: 0,
+        onset_habituation_known: false,
     });
     let mut input = LooInput {
         exact_score: Some(land.loo[0].score_scan.clone()),
@@ -393,6 +396,9 @@ fn harmonic_opportunity_uses_the_same_separate_pitch_view() {
             h_scan: vec![1.; n],
             r_scan: vec![0.; n],
             score_scan: external.clone(),
+            onset_habituation_state_scan: None,
+            onset_habituation_end: 0,
+            onset_habituation_known: false,
         });
         let mut c = VoiceControl::default();
         c.pitch.mode = PitchMode::Free;
@@ -478,6 +484,9 @@ fn tail_roughness_aversion_interpolates_r_without_changing_h_or_shared_observati
                 h_scan: vec![0.3; n],
                 r_scan: vec![external; n],
                 score_scan: vec![kernel.score(0.3, external); n].into(),
+                onset_habituation_state_scan: None,
+                onset_habituation_end: 0,
+                onset_habituation_known: false,
             }];
             let original = land.loo[0].score_scan.clone();
             let mut input = LooInput {

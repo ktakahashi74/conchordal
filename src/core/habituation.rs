@@ -5,6 +5,16 @@
 
 const LN_STALE: f32 = std::f32::consts::LN_10; // "stale" = 90% eroded
 
+/// Research alternatives; channel-to-field mappings remain author rules.
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HabituationDrive {
+    #[default]
+    RootProjection,
+    ChannelQ,
+    ChannelP,
+}
+
 /// Relax a signed score toward its level-neutral baseline `theta`.
 #[inline]
 pub fn erode_score(raw: f32, h: f32, theta: f32) -> f32 {
@@ -21,6 +31,7 @@ pub fn erode_mass(raw: f32, h: f32) -> f32 {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct HabituationParams {
     pub enabled: bool,
+    pub drive: HabituationDrive,
     pub satiation_sec: f32,
     pub recovery_sec: f32,
     pub ref_drive: f32,
@@ -30,6 +41,7 @@ impl Default for HabituationParams {
     fn default() -> Self {
         Self {
             enabled: true,
+            drive: HabituationDrive::default(),
             satiation_sec: 5.0,
             recovery_sec: 8.0,
             ref_drive: 0.25,
@@ -40,34 +52,112 @@ impl Default for HabituationParams {
 #[derive(Clone, Debug)]
 pub struct HabituationField {
     enabled: bool,
+    drive: HabituationDrive,
     tau_e: f32,
     tau_r: f32,
     ref_drive: f32,
     theta: f32,
     h: Vec<f32>,
+    channels: Vec<f32>,
 }
 
 impl HabituationField {
     pub fn new(params: &HabituationParams, theta: f32, n_bins: usize) -> Self {
         Self {
             enabled: params.enabled,
+            drive: params.drive,
             tau_e: (params.satiation_sec.max(1e-3)) / LN_STALE,
             tau_r: (params.recovery_sec.max(1e-3)) / LN_STALE,
             ref_drive: params.ref_drive.max(1e-6),
             theta,
             h: vec![0.0; n_bins],
+            channels: if params.drive == HabituationDrive::ChannelQ {
+                vec![0.0; n_bins]
+            } else {
+                Vec::new()
+            },
         }
     }
 
     pub fn ensure_len(&mut self, n_bins: usize) {
         if self.h.len() != n_bins {
             self.h.resize(n_bins, 0.0);
+            if self.drive == HabituationDrive::ChannelQ {
+                self.channels.resize(n_bins, 0.0);
+            }
         }
     }
 
     #[inline]
     pub fn is_enabled(&self) -> bool {
         self.enabled
+    }
+
+    pub fn drive(&self) -> HabituationDrive {
+        self.drive
+    }
+
+    /// Peak-normalized S6 density drives frequency channels without extra smoothing.
+    /// Q averages adaptation at a candidate's partials using the H kernel's count
+    /// and weights. Out-of-grid partials are unadapted, with their weights retained.
+    pub fn advance_from_channels(
+        &mut self,
+        density: &[f32],
+        space: &crate::core::log2space::Log2Space,
+        harmonics: &crate::core::harmonicity_kernel::HarmonicityParams,
+        dt: f32,
+    ) {
+        use crate::core::float::sanitize_nonnegative_finite;
+        assert_ne!(self.drive, HabituationDrive::RootProjection);
+        space.assert_scan_len(density);
+        assert_eq!(density.len(), self.h.len());
+        if !self.enabled || density.is_empty() {
+            return;
+        }
+        let peak = density
+            .iter()
+            .copied()
+            .map(sanitize_nonnegative_finite)
+            .fold(0.0, f32::max);
+        let a_e = (-dt.max(0.0) / self.tau_e).exp();
+        let a_r = (-dt.max(0.0) / self.tau_r).exp();
+        let channels = if self.drive == HabituationDrive::ChannelQ {
+            &mut self.channels
+        } else {
+            &mut self.h
+        };
+        for (h, &s) in channels.iter_mut().zip(density) {
+            let raw = if peak > 0.0 {
+                sanitize_nonnegative_finite(s) / peak
+            } else {
+                0.0
+            };
+            let d = raw / (raw + self.ref_drive);
+            let a = if d > *h { a_e } else { a_r };
+            *h = (a * *h + (1.0 - a) * d).clamp(0.0, 1.0);
+        }
+        if self.drive == HabituationDrive::ChannelQ {
+            self.h.fill(0.0);
+            let mut total_weight = 0.0;
+            for k in 1..=harmonics.num_harmonics.max(1) {
+                let weight = (k as f32).powf(-harmonics.rho_common_root);
+                let offset = (k as f32).log2() * space.bins_per_oct as f32;
+                total_weight += weight;
+                for (i, h) in self.h.iter_mut().enumerate() {
+                    let pos = i as f32 + offset;
+                    if pos <= (self.channels.len() - 1) as f32 {
+                        let lo = pos.floor() as usize;
+                        let hi = (lo + 1).min(self.channels.len() - 1);
+                        let frac = pos - lo as f32;
+                        *h +=
+                            weight * (self.channels[lo] * (1.0 - frac) + self.channels[hi] * frac);
+                    }
+                }
+            }
+            for h in &mut self.h {
+                *h = (*h / total_weight).clamp(0.0, 1.0);
+            }
+        }
     }
 
     #[inline]
@@ -120,6 +210,99 @@ impl HabituationField {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn channel_drive_matches_relaxation_and_partial_overlap() {
+        use crate::core::{harmonicity_kernel::HarmonicityParams, log2space::Log2Space};
+        let space = Log2Space::new(100.0, 1600.0, 4);
+        let mut density = vec![0.0; space.n_bins()];
+        density[4] = 2.0;
+        let hp = HarmonicityParams {
+            num_harmonics: 3,
+            ..Default::default()
+        };
+        let mut p = HabituationField::new(
+            &HabituationParams {
+                drive: HabituationDrive::ChannelP,
+                ..Default::default()
+            },
+            0.0,
+            density.len(),
+        );
+        let mut q = HabituationField::new(
+            &HabituationParams {
+                drive: HabituationDrive::ChannelQ,
+                ..Default::default()
+            },
+            0.0,
+            density.len(),
+        );
+        p.advance_from_channels(&density, &space, &hp, 5.0);
+        q.advance_from_channels(&density, &space, &hp, 5.0);
+        // At 5 seconds the driven channel has reached 90% of 1/(1+0.25).
+        assert!((p.state()[4] - 0.72).abs() < 1e-6);
+        assert_eq!(p.state()[0], 0.0);
+        assert_eq!(q.channels, p.h);
+        let w2 = 2.0_f32.powf(-0.4);
+        let w3 = 3.0_f32.powf(-0.4);
+        assert!((q.state()[0] - 0.72 * w2 / (1.0 + w2 + w3)).abs() < 1e-6);
+        assert!((q.state()[4] - 0.72 / (1.0 + w2 + w3)).abs() < 1e-6);
+        // The third partial of bin 0 lies between bins 6 and 7.
+        density.fill(0.0);
+        density[6] = 1.0;
+        p.advance_from_channels(&density, &space, &hp, 8.0);
+        q.advance_from_channels(&density, &space, &hp, 8.0);
+        assert!((p.state()[4] - 0.072).abs() < 1e-6);
+        let frac = 3.0_f32.log2() * 4.0 - 6.0;
+        let expected = (w2 * p.state()[4] + w3 * (1.0 - frac) * p.state()[6]) / (1.0 + w2 + w3);
+        assert!((q.state()[0] - expected).abs() < 1e-6);
+        // Above-grid partials keep their denominator weight, as in HB-1.
+        density.fill(1.0);
+        q.advance_from_channels(&density, &space, &hp, 5.0);
+        let last = density.len() - 1;
+        assert!((q.state()[last] - q.channels[last] / (1.0 + w2 + w3)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn channel_drive_silence_disabled_and_scale_invariance() {
+        use crate::core::{harmonicity_kernel::HarmonicityParams, log2space::Log2Space};
+        let space = Log2Space::new(100.0, 800.0, 4);
+        for drive in [HabituationDrive::ChannelP, HabituationDrive::ChannelQ] {
+            let params = HabituationParams {
+                drive,
+                ..Default::default()
+            };
+            let mut a = HabituationField::new(&params, 0.0, space.n_bins());
+            let mut b = a.clone();
+            let mut off = HabituationField::new(
+                &HabituationParams {
+                    enabled: false,
+                    ..params
+                },
+                0.0,
+                space.n_bins(),
+            );
+            let mut density = vec![0.0; space.n_bins()];
+            density[2] = 1.0;
+            let hp = HarmonicityParams::default();
+            for _ in 0..100 {
+                a.advance_from_channels(&density, &space, &hp, 0.01);
+                off.advance_from_channels(&density, &space, &hp, 0.01);
+            }
+            density[2] = 8.0;
+            for _ in 0..100 {
+                b.advance_from_channels(&density, &space, &hp, 0.01);
+            }
+            assert_eq!(a.h, b.h);
+            assert!(off.h.iter().all(|&h| h == 0.0));
+            let before = a.h.clone();
+            density.fill(0.0);
+            a.advance_from_channels(&density, &space, &hp, 8.0);
+            for (&after, &before) in a.h.iter().zip(&before) {
+                assert!((after - before * 0.1).abs() < 1e-6);
+            }
+        }
+    }
 
     fn full_drive_params() -> HabituationParams {
         HabituationParams::default()

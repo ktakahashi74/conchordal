@@ -19,6 +19,7 @@
 - [placement-vocabulary](placement-vocabulary.md)。配置のfield targetを直交させる語彙。
 - [tension](tension.md)。移動の温度と配置の相対level。
 - [並列継続の作業境界](parallel-continuation-20260927.md)。2026-09-27の隔離作業と取得の履歴。
+- [演奏の場 conchordal.org/demo/](demo-site.md)。browserで作品を生で演奏する場のコンセプト・要件・設計（2026-11-16、未実装）。
 - [技術ノート設計台帳・英語](technote-ledger.md)。節番号とanchorを保った設計判断の履歴。
 - [技術ノート設計台帳・日本語](technote-ledger.ja.md)。同じ台帳の日本語版。
 

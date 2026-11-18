@@ -50,6 +50,18 @@ jobs:
           mdbook build docs/rhai_book
           mdbook build docs/rhai_book_ja
 
+      # The demo page exists only when the pinned release carries its assets.
+      - name: Fetch the live demo assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(node -p "require('./web/src/data/demo-release.json').tag ?? ''")
+          if [ -n "$tag" ] && gh release download "$tag" -p "conchordal-demo-$tag.tar.gz" -D "$RUNNER_TEMP"; then
+            tar xzf "$RUNNER_TEMP/conchordal-demo-$tag.tar.gz" -C web/static
+          else
+            echo "No demo assets for '$tag'; building without the demo page."
+          fi
+
       - name: Build
         run: npm run build
         working-directory: web

@@ -182,7 +182,9 @@ impl AnalysisStream {
         self.spectral_history && self.nsgt_power_enabled()
     }
 
-    pub(crate) fn voice_observer(&self) -> Self {
+    /// `onset_history` copies the mixed attack detector, with its pre-birth state, so the
+    /// observer publishes the attack history of everything except its own PCM.
+    pub(crate) fn voice_observer(&self, onset_history: bool) -> Self {
         let mut observer = Self {
             spectral_history: false,
             support_history_planned: self.support_history_planned,
@@ -190,7 +192,11 @@ impl AnalysisStream {
             support_display_only: false,
             analysis: self.analysis.clone(),
             params: self.params.clone(),
-            onset_habituation: None,
+            onset_habituation: self
+                .onset_habituation
+                .as_ref()
+                .filter(|_| onset_history)
+                .cloned(),
             next_sample: self.next_sample,
             support_buffers: self.support_buffers.as_ref().map(|buffers| {
                 std::array::from_fn(|_| {
@@ -212,8 +218,10 @@ impl AnalysisStream {
                 observer.analysis.landscape.support = None;
             }
         }
-        observer.analysis.landscape.onset_habituation_state_scan = std::sync::Arc::from([]);
-        observer.analysis.landscape.onset_habituation_known = false;
+        if observer.onset_habituation.is_none() {
+            observer.analysis.landscape.onset_habituation_state_scan = std::sync::Arc::from([]);
+            observer.analysis.landscape.onset_habituation_known = false;
+        }
         // Voice observers consume H/R only, even when the mixed stream feeds Flora.
         observer.analysis.nsgt.disable_resource_power();
         observer.analysis.nsgt_enabled = false;
@@ -435,7 +443,7 @@ mod tests {
         assert!(!stream.last().onset_habituation_known);
         stream.process(&silence);
         assert!(stream.last().onset_habituation_known);
-        let observer = stream.voice_observer();
+        let observer = stream.voice_observer(false);
         assert!(observer.onset_habituation.is_none());
         assert!(observer.last().onset_habituation_state_scan.is_empty());
         assert!(!observer.last().onset_habituation_known);
@@ -536,7 +544,7 @@ mod tests {
             mixed.process(&audio);
         }
         assert!(mixed.analysis.nsgt.resource_power().is_some());
-        let mut voice = mixed.voice_observer();
+        let mut voice = mixed.voice_observer(false);
         assert!(voice.analysis.nsgt.resource_power().is_none());
         let retained_power = voice.last().nsgt_power.clone();
         for _ in 0..40 {
@@ -565,7 +573,7 @@ mod tests {
             original.process(&audio);
         }
         let mut updated = original.clone();
-        let mut observer = Observer::new(7, 0, &original);
+        let mut observer = Observer::new(7, 0, &original, false);
         let update = LandscapeUpdate {
             harmonicity_preference: Some(0.0),
             ..Default::default()
@@ -610,7 +618,7 @@ mod tests {
             }
         }
         // New observers inherit the updated valuation; reset retains it as well.
-        let mut born_after = updated.voice_observer();
+        let mut born_after = updated.voice_observer(false);
         born_after.reset();
         assert_eq!(born_after.process(&audio).consonance_kernel.a, 0.0);
     }

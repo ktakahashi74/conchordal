@@ -3280,6 +3280,90 @@ fn dwell_is_initial_only_clamped_and_requires_explicit_free_seek() {
 }
 
 #[test]
+fn respond_to_onsets_is_initial_only_validated_and_limited_to_the_supported_line() {
+    let line = r#"harmonic().sustain().seek_consonance().pitch_apply_mode("rearticulate")"#;
+    let p1 = r#"harmonic().brain("drone").sustain().seek_consonance().modes(harmonic_modes().count(8)).amp(0.04).brightness(0.38).temperature(0.10).pitch_apply_mode("rearticulate").leave_self_out(true).adsr(1.5, 0.8, 0.9, 3.0)"#;
+    let metric = r#"harmonic().sustain().metric().seek_consonance().pitch_apply_mode("rearticulate").leave_self_out(true)"#;
+    for (chain, expected, warns) in [
+        (format!("{p1}.respond_to_onsets(4)"), 4.0, false),
+        (format!("{line}.leave_self_out(true).respond_to_onsets(0)"), 0.0, false),
+        (format!("{line}.leave_self_out(true).respond_to_onsets(2.5)"), 2.5, false),
+        (format!("{line}.leave_self_out(true).respond_to_onsets(1e30)"), 1e30, false),
+        (format!("{metric}.respond_to_onsets(2)"), 2.0, false),
+        (format!("{line}.leave_self_out(true).respond_to_onsets(1e100)"), 0.0, true),
+        (format!("{line}.leave_self_out(true).respond_to_onsets(-1)"), 0.0, true),
+        // Without self-exclusion the weight is kept, has no effect and warns once.
+        (format!("{line}.respond_to_onsets(2)"), 2.0, true),
+        // Unsupported forms warn and become zero.
+        (
+            r#"harmonic().sustain().seek_consonance().pitch_apply_mode("glide").leave_self_out(true).respond_to_onsets(2)"#.to_string(),
+            0.0,
+            true,
+        ),
+        (format!("{line}.rearticulate_above(50).leave_self_out(true).respond_to_onsets(2)"), 0.0, true),
+        (format!("{metric}.follow_own_sequence(0.1).respond_to_onsets(2)"), 0.0, true),
+        (format!("{metric}.melodic_continuity(0.001).respond_to_onsets(2)"), 0.0, true),
+        (
+            r#"harmonic().sustain().pitch_apply_mode("rearticulate").leave_self_out(true).respond_to_onsets(2)"#.to_string(),
+            0.0,
+            true,
+        ),
+    ] {
+        let (scenario, warnings) = run_script(&format!("\ncreate({chain},1);"));
+        let warnings = warnings.lock().unwrap();
+        let own: Vec<_> = warnings
+            .iter()
+            .filter(|w| w.message.contains("respond_to_onsets"))
+            .collect();
+        assert_eq!(own.len(), usize::from(warns), "{chain}");
+        assert!(own.iter().all(|w| w.position.line() == Some(2)), "{chain}");
+        let spec = scenario
+            .events
+            .iter()
+            .flat_map(|e| &e.actions)
+            .find_map(|a| match a {
+                Action::Spawn { spec, .. } => Some(spec),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(spec.control.pitch.respond_to_onsets, expected, "{chain}");
+    }
+    // The tonal listener preset adds deferred execution; the final form is checked.
+    let (scenario, warnings) = run_script(&format!(
+        "listener_profile(\"tonal\"); create({metric}.respond_to_onsets(2),1);"
+    ));
+    assert!(
+        warnings
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|w| w.message.contains("respond_to_onsets"))
+    );
+    for action in scenario.events.iter().flat_map(|e| &e.actions) {
+        if let Action::Spawn { spec, .. } = action {
+            assert_eq!(spec.control.pitch.respond_to_onsets, 0.0);
+        }
+    }
+    for invalid in [FLOAT::NAN, FLOAT::INFINITY, FLOAT::NEG_INFINITY] {
+        let mut spec = PopulationSpec::preset(BodyMethod::Sine);
+        spec.set_respond_to_onsets(invalid);
+        assert_eq!(spec.control.pitch.respond_to_onsets, 0.0);
+        assert!(
+            spec.diagnostics
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|w| w.message.contains("respond_to_onsets"))
+        );
+    }
+    assert!(
+        run_script_err(&format!("let p=create({line},1); p.respond_to_onsets(1);"))
+            .to_string()
+            .contains("respond_to_onsets")
+    );
+}
+
+#[test]
 fn dwell_respawn_inherits_weight_without_phase() {
     let (scenario, _) = run_script_with_seed(
         "create(sine().seek_consonance().dwell(0.75).respawn_random().respawn_background_death_rate(10000.0),1);",

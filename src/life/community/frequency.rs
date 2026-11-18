@@ -42,43 +42,47 @@ fn field_peak_score(target: FieldTarget, landscape: &Landscape, i: usize) -> f32
 
 /// Non-negative density mass for a field target at bin `i`. `gap_ref` is the
 /// loudest in-range intensity, used only by `Gap`. Shared by spawn placement and Rain.
+/// Missing bins get zero mass except under `Uniform`.
 pub(crate) fn field_density_mass(
     target: FieldTarget,
     landscape: &Landscape,
     i: usize,
     gap_ref: f32,
 ) -> f32 {
-    match target {
-        FieldTarget::Consonance => landscape
+    field_target_mass(
+        target,
+        landscape
             .consonance_density_mass_eff
             .get(i)
             .copied()
             .unwrap_or(0.0),
-        FieldTarget::Dissonance => {
-            // Missing bins default to fully consonant so they get zero mass.
-            let v = landscape
-                .consonance_field_level_eff
-                .get(i)
-                .copied()
-                .unwrap_or(1.0);
-            (1.0 - v).max(0.0)
-        }
-        FieldTarget::Edge => {
-            let v = landscape
-                .consonance_field_level_eff
-                .get(i)
-                .copied()
-                .unwrap_or(0.0);
-            (1.0 - 2.0 * (v - 0.5).abs()).max(0.0)
-        }
-        FieldTarget::Gap => {
-            let e = landscape
-                .subjective_intensity
-                .get(i)
-                .copied()
-                .unwrap_or(gap_ref);
-            (gap_ref - e).max(0.0)
-        }
+        landscape
+            .consonance_field_level_eff
+            .get(i)
+            .copied()
+            .unwrap_or(1.0),
+        landscape
+            .subjective_intensity
+            .get(i)
+            .copied()
+            .unwrap_or(gap_ref),
+        gap_ref,
+    )
+}
+
+/// Field-target mass from one bin's eroded density mass, eroded level and intensity.
+pub(crate) fn field_target_mass(
+    target: FieldTarget,
+    mass_eff: f32,
+    level_eff: f32,
+    intensity: f32,
+    gap_ref: f32,
+) -> f32 {
+    match target {
+        FieldTarget::Consonance => mass_eff,
+        FieldTarget::Dissonance => (1.0 - level_eff).max(0.0),
+        FieldTarget::Edge => (1.0 - 2.0 * (level_eff - 0.5).abs()).max(0.0),
+        FieldTarget::Gap => (gap_ref - intensity).max(0.0),
         FieldTarget::Uniform => 1.0,
     }
 }

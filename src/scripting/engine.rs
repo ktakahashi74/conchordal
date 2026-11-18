@@ -242,7 +242,13 @@ impl ScriptHost {
         engine.register_fn("flora", || FloraSpecHandle {
             spec: FloraSpec::default(),
         });
-        for name in ["amp", "fade", "pace", "rest_on_habituation"] {
+        for name in [
+            "amp",
+            "fade",
+            "pace",
+            "rest_on_habituation",
+            "respond_to_onsets",
+        ] {
             let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
             engine.register_fn(
                 name,
@@ -371,6 +377,8 @@ impl ScriptHost {
             "sway",
             "hit",
             "width",
+            "ring",
+            "follow_meter",
             "object_decay",
         ] {
             engine.register_fn(
@@ -386,7 +394,15 @@ impl ScriptHost {
                 },
             );
         }
-        for name in ["amp", "rate", "sway", "hit", "width"] {
+        for name in [
+            "amp",
+            "rate",
+            "sway",
+            "hit",
+            "width",
+            "ring",
+            "follow_meter",
+        ] {
             let ctx_float = ctx.clone();
             engine.register_fn(
                 name,
@@ -445,6 +461,20 @@ impl ScriptHost {
             spec.spec.anchored = true;
             spec
         });
+        engine.register_fn(
+            "leave_drops_out",
+            |mut spec: RainSpecHandle, enabled: bool| {
+                spec.spec.leave_drops_out = enabled;
+                spec
+            },
+        );
+        engine.register_fn(
+            "objects_follow_drops",
+            |mut spec: RainSpecHandle, enabled: bool| {
+                spec.spec.objects_follow_drops = enabled;
+                spec
+            },
+        );
         engine.register_fn("send", |mut spec: RainSpecHandle, bus: Bus| {
             spec.spec.routing = bus.routing;
             spec
@@ -1026,6 +1056,26 @@ impl ScriptHost {
                 spec.spec
                     .record_call("dwell", call.call_position(), &diagnostics);
                 spec.spec.set_dwell(weight as FLOAT);
+                spec
+            },
+        );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "respond_to_onsets",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: FLOAT| {
+                spec.spec
+                    .record_call("respond_to_onsets", call.call_position(), &diagnostics);
+                spec.spec.set_respond_to_onsets(weight);
+                spec
+            },
+        );
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "respond_to_onsets",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, weight: INT| {
+                spec.spec
+                    .record_call("respond_to_onsets", call.call_position(), &diagnostics);
+                spec.spec.set_respond_to_onsets(weight as FLOAT);
                 spec
             },
         );

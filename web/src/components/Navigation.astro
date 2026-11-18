@@ -4,10 +4,13 @@ import { site } from '../data/site';
 import { ui, type Locale } from '../i18n/ui';
 import LanguageSwitch from './LanguageSwitch.astro';
 import Icon from './Icon.astro';
+import { demo } from '../lib/demo';
 interface Props { locale: Locale; slug: string; top?: boolean }
 const { locale, slug, top = false } = Astro.props;
 const strings = ui[locale];
 const home = getRelativeLocaleUrl(locale);
+// The demo link exists only when the build carries the live instrument.
+const navigation = demo() ? [site.navigation[0], { key: 'demo', slug: 'demo' } as const, ...site.navigation.slice(1)] : site.navigation;
 ---
 {top ? (
   <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
@@ -19,7 +22,7 @@ const home = getRelativeLocaleUrl(locale);
       </button>
       <div class="collapse navbar-collapse" id="navbarResponsive">
         <ul class="navbar-nav ms-auto">
-          {site.navigation.map(item => <li class="nav-item"><a class="nav-link" href={item.slug ? getRelativeLocaleUrl(locale, item.slug) : `${home}#page-top`}>{strings.navigation[item.key]}</a></li>)}
+          {navigation.map(item => <li class="nav-item"><a class="nav-link" href={item.slug ? getRelativeLocaleUrl(locale, item.slug) : `${home}#page-top`}>{strings.navigation[item.key]}</a></li>)}
           {site.social.map(item => <li class="nav-item"><a class="nav-link" href={item.url} target="_blank" rel="noopener" aria-label={item.label}><Icon name={item.icon} />{item.key === 'github' && ' GitHub'}</a></li>)}
         </ul>
       </div>
@@ -32,7 +35,7 @@ const home = getRelativeLocaleUrl(locale);
         <a href={home} class="nav-brand">{site.title}</a>
         <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false">{strings.menu}</button>
         <div class="nav-menu" id="site-nav">
-          {site.navigation.map(item => <a href={getRelativeLocaleUrl(locale, item.slug)} class="nav-link">{strings.navigation[item.key]}</a>)}
+          {navigation.map(item => <a href={getRelativeLocaleUrl(locale, item.slug)} class="nav-link">{strings.navigation[item.key]}</a>)}
           {site.social.map(item => <a href={item.url} class="nav-link" target="_blank" rel="noopener" aria-label={item.label}>
             <Icon name={item.icon} />{item.key === 'github' && ' GitHub'}
           </a>)}

@@ -22,6 +22,7 @@ pub struct FloraSpec {
     pub tone: FloraTone,
     pub pitch_apply_mode: control::PitchApplyMode,
     pub rest_on_habituation: f32,
+    pub respond_to_onsets: f32,
     pub residual: bool,
     pub leave_self_out: bool,
     pub routing: control::Routing,
@@ -36,6 +37,7 @@ impl Default for FloraSpec {
             tone: FloraTone::Sine,
             pitch_apply_mode: control::PitchApplyMode::Glide,
             rest_on_habituation: 0.0,
+            respond_to_onsets: 0.0,
             residual: false,
             leave_self_out: true,
             routing: control::Routing::default(),
@@ -77,6 +79,12 @@ pub struct RainSpec {
     pub impact_modes: crate::core::mode_pattern::ModePattern,
     /// Half range, in octaves, by which each impact mode strays from `impact_modes`.
     pub width: f32,
+    /// Octaves by which an impact's decay lengthens at the most consonant place of the
+    /// extent; 0 leaves every decay unchanged.
+    pub ring: f32,
+    /// Focus with which the impact rate follows the habitat meter's expected beat,
+    /// subdivision and measure positions; 0 leaves the rate unweighted.
+    pub follow_meter: f32,
     pub objects: u32,
     /// Objects keep their placement pitch instead of drifting toward consonance.
     pub anchored: bool,
@@ -84,6 +92,11 @@ pub struct RainSpec {
     /// T60 of an object's first mode, in seconds.
     pub object_decay: f32,
     pub routing: control::Routing,
+    /// Read a habitat field without this Rain's own impacts; its objects stay in it.
+    pub leave_drops_out: bool,
+    /// An object holds its pitch only while it rings: once its longest T60 has passed
+    /// since its last strike, it takes the centre pitch of the next impact that strikes it.
+    pub objects_follow_drops: bool,
 }
 
 impl Default for RainSpec {
@@ -97,12 +110,16 @@ impl Default for RainSpec {
             impact_modes: crate::core::mode_pattern::ModePattern::modal_table("wine_glass")
                 .expect("built-in modal table"),
             width: 0.05,
+            ring: 0.0,
+            follow_meter: 0.0,
             objects: 3,
             anchored: false,
             object_modes: crate::core::mode_pattern::ModePattern::modal_table("vibraphone_1")
                 .expect("built-in modal table"),
             object_decay: 2.0,
             routing: control::Routing::default(),
+            leave_drops_out: false,
+            objects_follow_drops: false,
         }
     }
 }
@@ -114,6 +131,8 @@ pub struct RainPatch {
     pub sway: Option<f32>,
     pub hit: Option<f32>,
     pub width: Option<f32>,
+    pub ring: Option<f32>,
+    pub follow_meter: Option<f32>,
 }
 
 #[derive(Debug, Clone)]

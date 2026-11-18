@@ -4,53 +4,8 @@ use conchordal_web_ui::frame::{self as wire, Diagnostic};
 
 pub(crate) fn diagnostics(frame: &UiFrame) -> Vec<Diagnostic> {
     let mut out = Vec::new();
-    if let Some(body) = &frame.body {
-        out.push(Diagnostic::Heading(
-            ("Private body descriptors (uncalibrated)").into(),
-        ));
-        if let Some(version) = body.prototype_model_version {
-            out.push(Diagnostic::Label(format!(
-                "Prototype model {:02x}{:02x}{:02x}{:02x} (diagnostic)",
-                version[0], version[1], version[2], version[3]
-            )));
-        }
-        out.push(Diagnostic::Label(format!(
-            "{} frames · {} capture drops · {} outside-capacity voice hops · {} invalid bus hops",
-            body.processed_frames, body.capture_drops, body.outside_voice_hops, body.invalid_hops
-        )));
-        for (index, record) in body
-            .records
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| r.active)
-            .take(4)
-        {
-            out.push(Diagnostic::Label(format!(
-                "Voice {} / {} · body {} · bus {} · support {}..{} · mask {:06b}",
-                record.source_id,
-                record.source_generation,
-                record.body_generation,
-                record.bus,
-                record.start,
-                record.end,
-                record.mask
-            )));
-            if body.prototype_model_version.is_some() {
-                if let Some(assignment) = body.prototype_assignments[index] {
-                    out.push(Diagnostic::Label(format!(
-                        "Descriptive medoid {} · distance {:.3} · {} coordinates",
-                        assignment.key.0, assignment.distance, assignment.common_coordinates
-                    )));
-                } else {
-                    out.push(Diagnostic::Label(
-                        ("Descriptive medoid: unsupported").into(),
-                    ));
-                }
-            }
-        }
-        out.push(Diagnostic::Separator);
-    }
-    out.push(Diagnostic::Heading(("Listener Twin").into()));
+    // The GUI draws the "Listener Twin" heading with its state bars even before the
+    // first frame, so these labels come first and sit directly under it.
     if frame
         .temporal
         .iter()
@@ -153,6 +108,52 @@ pub(crate) fn diagnostics(frame: &UiFrame) -> Vec<Diagnostic> {
                     if let Some(f) = group.forecast {
                         out.push(Diagnostic::Label(format!("{:?} arrival {:?} · elapsed {:?} s · reset unknown {} · forecast {}–{} · evidence {}–{} / available {}",f.model,f.probability,f.elapsed_seconds,f.reset_unknown,f.issued_at,f.horizon_end,f.source_start,f.source_end,f.available)));
                     }
+                }
+            }
+        }
+    }
+    if let Some(body) = &frame.body {
+        out.push(Diagnostic::Separator);
+        out.push(Diagnostic::Heading(
+            ("Private body descriptors (uncalibrated)").into(),
+        ));
+        if let Some(version) = body.prototype_model_version {
+            out.push(Diagnostic::Label(format!(
+                "Prototype model {:02x}{:02x}{:02x}{:02x} (diagnostic)",
+                version[0], version[1], version[2], version[3]
+            )));
+        }
+        out.push(Diagnostic::Label(format!(
+            "{} frames · {} capture drops · {} outside-capacity voice hops · {} invalid bus hops",
+            body.processed_frames, body.capture_drops, body.outside_voice_hops, body.invalid_hops
+        )));
+        for (index, record) in body
+            .records
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.active)
+            .take(4)
+        {
+            out.push(Diagnostic::Label(format!(
+                "Voice {} / {} · body {} · bus {} · support {}..{} · mask {:06b}",
+                record.source_id,
+                record.source_generation,
+                record.body_generation,
+                record.bus,
+                record.start,
+                record.end,
+                record.mask
+            )));
+            if body.prototype_model_version.is_some() {
+                if let Some(assignment) = body.prototype_assignments[index] {
+                    out.push(Diagnostic::Label(format!(
+                        "Descriptive medoid {} · distance {:.3} · {} coordinates",
+                        assignment.key.0, assignment.distance, assignment.common_coordinates
+                    )));
+                } else {
+                    out.push(Diagnostic::Label(
+                        ("Descriptive medoid: unsupported").into(),
+                    ));
                 }
             }
         }

@@ -327,6 +327,24 @@ impl ScriptContext {
         }
         let id = self.next_rain_id;
         self.next_rain_id = self.next_rain_id.wrapping_add(1);
+        if spec.spec.leave_drops_out && !spec.spec.routing.to_habitat {
+            self.warn(
+                "rain_leave_drops_out_unrouted",
+                format!(
+                    "leave_drops_out has no effect on Rain {id}: its impacts are not sent to the habitat bus"
+                ),
+                position,
+            );
+        }
+        if spec.spec.objects_follow_drops && spec.spec.anchored {
+            self.warn(
+                "rain_objects_follow_drops_anchored",
+                format!(
+                    "objects_follow_drops has no effect on Rain {id}: anchor() holds its objects"
+                ),
+                position,
+            );
+        }
         self.rain.insert(
             id,
             RainState {
@@ -1109,6 +1127,29 @@ impl ScriptContext {
                 }
             }
         }
+        // Checked on the final form, after the listener preset may add deferred execution.
+        let control = population_spec.spec.spawn_spec().control;
+        if control.pitch.respond_to_onsets > 0.0
+            && !(population_spec.spec.consonance_movement
+                && control.pitch.mode == PitchMode::Free
+                && control.pitch.core_kind == PitchCoreKind::HillClimb
+                && control.pitch.pitch_apply_mode == PitchApplyMode::Rearticulate
+                && control.pitch.rearticulate_above_cents == 0.0
+                && matches!(control.phonation.spec.duration, DurationSpec::WhileAlive)
+                && control.pitch.follow_own_sequence == 0.0
+                && control.pitch.melodic_continuity == 0.0)
+        {
+            warn_at(
+                "respond_to_onsets",
+                "respond_to_onsets() requires free seek_consonance() with sustain(), pitch_apply_mode(\"rearticulate\"), rearticulate_above(0), and no follow_own_sequence() or melodic_continuity(); ignored",
+            );
+            population_spec.spec.control.pitch.respond_to_onsets = 0.0;
+        } else if control.pitch.respond_to_onsets > 0.0 && !control.pitch.leave_self_out {
+            warn_at(
+                "respond_to_onsets",
+                "respond_to_onsets() has no effect without leave_self_out(true)",
+            );
+        }
         let tail_roughness_warned = population_spec.spec.control.pitch.tail_roughness_aversion
             > 0.0
             && !population_spec.spec.control.pitch.leave_self_out;
@@ -1440,6 +1481,8 @@ pub(super) fn update_rain_numeric(
             "sway" => patch.sway = Some(value),
             "hit" => patch.hit = Some(value),
             "width" => patch.width = Some(value),
+            "ring" => patch.ring = Some(value),
+            "follow_meter" => patch.follow_meter = Some(value),
             _ => unreachable!("registered Rain patch parameter"),
         }
     } else {

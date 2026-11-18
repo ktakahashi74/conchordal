@@ -23,7 +23,7 @@ Evidence labels describe parts of a mechanism, independently of disclosure tiers
 | `FloraSpec` | Reusable spectral-growth definition built by `flora()`; placed as a Flora over a frequency extent. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `Flora` | Placed spectral growth; supports pending amplitude and pace patches and release. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `RainSpec` | Reusable impact-texture definition built by `rain()`; placed as a Rain over a frequency extent. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
-| `Rain` | Placed impact texture with its resonant objects; supports live amp, rate, sway, hit and width patches and release. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
+| `Rain` | Placed impact texture with its resonant objects; supports live amp, rate, sway, hit, width and ring patches and release. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `PopulationSpec` | Reusable population definition: founder voice traits plus lifecycle, respawn, and demographic rules. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `Population` | Placed population returned by `place()`; one stable handle across its voices, deaths, and respawn generations. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
 | `Placement` | Where voices enter the field: built by `at()`, `consonance()`, `dissonance()`, `edge()`, `gap()`, `random()`, or `line()`. | Not a mechanism (API container): use the labels of the constructor and operations on this type. |
@@ -54,7 +54,7 @@ amp(level)
 
 Applies to: `FloraSpec`, `Flora`.
 
-Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
+Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end and glide to the new level over this Flora's fade() seconds (at least 80 ms).
 
 **Evidence:** Not a mechanism (initial body): Flora body, amplitude or fade choices; see flora and pace.<br>Author rule: underlying spectral growth, consumption and retirement ecology; not an auditory cognition model.
 
@@ -1557,6 +1557,18 @@ Enable or disable rendering diffuse Flora mass as band noise. Disabled by defaul
 
 **Evidence:** Not a mechanism (initial body): Flora body, amplitude or fade choices; see flora and pace.<br>Author rule: underlying spectral growth, consumption and retirement ecology; not an auditory cognition model.
 
+#### `respond_to_onsets`
+
+```rhai,ignore
+respond_to_onsets(w)
+```
+
+Applies to: `FloraSpec`.
+
+Speed the Flora's ecological time while new external onsets are heard inside its extent (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights read the shared attack history inside the extent, skipping bins within 1.5 ERB of the Flora's sounding lanes. A rise rho owes w*tau*rho extra ecological seconds (tau = satiation_sec/ln 10), spent at most w seconds per second, so unhabituated external onsets run the clock up to 1+w times faster; pace saturation still applies. Births stay on the Flora's own crossings and the field chooses where; no onset, pitch or random draw is added. Unknown or regridded observations only re-prime. Disabled habituation warns once. Invalid values warn and use zero. Initial-only; the observer starts at scene start, including before later Flora placements.
+
+**Evidence:** Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: faster Flora ecological time after rises in heard attack history outside its own partials; neutral at weight 0 (§9.3.135).
+
 ### Rain
 
 #### `rain`
@@ -1629,6 +1641,30 @@ Set the half range in [0, 5] octaves by which each impact mode strays from impac
 
 **Evidence:** Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
 
+#### `ring`
+
+```rhai,ignore
+ring(octaves)
+```
+
+Applies to: `RainSpec`, `Rain`.
+
+Let impacts that land on more consonant places ring longer; up to 2^octaves at the most consonant place of the extent, in [0, 4], default 0. Each hop the eroded consonance score inside the extent is normalised to u in [0, 1]; a flat or silent extent gives u = 0. An impact reads u where its first mode sounds and lengthens the decay of all its modes by 2^(octaves * u). Level is unchanged, decays never shorten, and the pitch objective sign does not invert it. At 0 the field is not read. The bound 4 keeps the longest decay near a minute, within f32 precision. Live patches apply from the next hop.
+
+**Evidence:** Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: an impact's decay lengthens by 2^(ring * u), where u is the eroded consonance score where its first mode sounds, normalised within the extent; one-sided, level unchanged.
+
+#### `follow_meter`
+
+```rhai,ignore
+follow_meter(focus)
+```
+
+Applies to: `RainSpec`, `Rain`.
+
+Gather impacts where the meter heard in the habitat expects its beat, subdivision and measure; finite and non-negative, default 0. Each hop the Rain reads the habitat meter that Flora reads. For the beat, and for the subdivision and measure when detected, the confidence c (how closely heard onsets lock to that level) gives the von Mises concentration kappa whose resultant is c; focus multiplies it, up to 512. The impact rate is multiplied by e^(sum kappa (cos phi - 1)), normalised to mean 1 over a measure, so impacts move in time but are not added. Focus 1 reproduces the heard concentration and larger values sharpen it; the meter hears the impacts, so a beat they gather on gains confidence. An unknown or unconfident meter leaves the rate unweighted. Live patches apply from the next hop.
+
+**Evidence:** Principle: beat perception as input (§9.3.56).<br>Candidate (source match pending): the habitat meter's Large neural-resonance oscillator form, as for metric(); source agreement is not established here.<br>Author rule: the impact rate is weighted by e^(w * sum kappa (cos phi - 1)) over beat, subdivision and measure, normalised to mean 1, with kappa the von Mises concentration whose resultant equals each level's confidence; neutral at weight 0.
+
 #### `objects`
 
 ```rhai,ignore
@@ -1664,6 +1700,30 @@ Applies to: `RainSpec`.
 Set the impacts' material as a ModePattern; default modal_table("wine_glass"). The pattern's ratios are taken once at placement, at the extent's geometric centre, and at most eight are used. Mode k has level 0.85^k with a 3 dB spread. Decay is 25 ms at 3.2 kHz, longer at lower centres as (3.2 kHz / f)^0.5, with a log-normal spread; higher modes decay as ratio^-0.5. Each impact starts with a raised-cosine onset of 0.5 to 1.5 ms.
 
 **Evidence:** Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
+
+#### `leave_drops_out`
+
+```rhai,ignore
+leave_drops_out(enabled)
+```
+
+Applies to: `RainSpec`.
+
+Let Rain read a habitat field without its own impacts; its objects stay in that field. Default false: Rain reads the mixed field, including its impacts. When true, the actual habitat PCM of this Rain's impacts is removed before the auditory front end, and impact positions under consonance, dissonance and edge, object drift and ring read the remaining field with the shared habituation applied. gap still reads mixed occupancy. Before the first render the mixed field is read; a missing observation keeps the previous distribution. Presentation-only Rain warns and has no effect. Set before placement.
+
+**Evidence:** Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).<br>Author rule: which sound Rain excludes from the field it reads; only its own impacts' actual habitat PCM, while its objects stay in the field.
+
+#### `objects_follow_drops`
+
+```rhai,ignore
+objects_follow_drops(enabled)
+```
+
+Applies to: `RainSpec`.
+
+Let an object hold its pitch only while it rings; once silent, it takes the centre of the next impact that strikes it. Default false. An object is silent when its longest mode's T60 (object_decay for the default body) has passed since its last strike, or before its first strike. A silent object struck by an impact retunes to that impact's centre, clamped to the extent; if the centre lies within 1 ERB of another object, it keeps its pitch and is struck as usual. A ringing object drifts as before. No random number is added, so impact times, levels and struck objects are unchanged. How long a pitch holds follows rate, hit, objects and object_decay: with long decays or frequent strikes, objects rarely fall silent. anchor() wins and warns. Set before placement.
+
+**Evidence:** Author rule: an object holds its pitch only while it rings; once its T60 has passed since its last strike, it takes the centre of the next impact that strikes it, keeping 1 ERB from the other objects.
 
 #### `object_decay`
 
@@ -1702,6 +1762,20 @@ Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` 
 Withhold the first onset until perceived consonance is viable. Silently settles into the field until consonance reaches the low bound of the voice's consonance-viability window (`consonance_viability()`, or always-viable if that window was never set), then phonates normally and never re-gates. A voice that never settles dies unheard and the respawn policy replaces it -- there is no timeout parameter, the energy economy is the timeout.
 
 **Evidence:** Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
+
+### Pitch Movement
+
+#### `respond_to_onsets`
+
+```rhai,ignore
+respond_to_onsets(w)
+```
+
+Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
+
+Bring pitch proposals forward while new onsets are heard outside the Voice's own sound (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights copy the shared attack detector into the Voice's self-exclusion observer, so it hears everything except its own PCM. A rise rho inside the pitch range owes w*tau*rho proposal-clock seconds (tau = satiation_sec/ln 10), spent at most w seconds per second; one unhabituated onset lends about 0.45*w seconds with a 2 Hz basin. After each pitch change nothing is lent until one ordinary proposal threshold of real time passes. The field still decides whether and where to move; no onset or random draw is added. Requires free seek_consonance(), sustain(), rearticulate, rearticulate_above(0) and no follow_own_sequence()/melodic_continuity(); otherwise warns to 0. Without leave_self_out(true) it warns and has no effect.
+
+**Evidence:** Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: earlier pitch proposals after rises in the attack history heard without the Voice's own PCM; one ordinary proposal cycle is kept after each pitch change; neutral at weight 0 (§9.3.135).
 
 ### Director & Global Parameters
 

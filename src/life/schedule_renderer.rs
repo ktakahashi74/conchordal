@@ -780,6 +780,13 @@ impl ScheduleRenderer {
         // Before the self-sound history reads the habitat bus: Voices hear Rain as external.
         for rain in rain {
             rain.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
+            if let Some(source) = self
+                .loo_pcm
+                .iter_mut()
+                .find(|s| s.kind == crate::core::stream::loo::SourceKind::Rain && s.id == rain.id())
+            {
+                source.habitat.copy_from_slice(rain.drops_habitat_pcm());
+            }
         }
         self.update_rest_completion(end);
         let samples_us = profile_lap(&mut checkpoint);
@@ -1263,6 +1270,7 @@ mod tests {
             let mut source = [SourcePcm {
                 kind: crate::core::stream::loo::SourceKind::Voice,
                 analyze_hr: true,
+                onset_history: false,
                 tonal_context: None,
                 id: 2,
                 generation: 7,
@@ -1271,6 +1279,7 @@ mod tests {
             actual.loo_pcm = vec![SourcePcm {
                 kind: source[0].kind,
                 analyze_hr: true,
+                onset_history: false,
                 tonal_context: None,
                 id: 2,
                 generation: 7,
@@ -1393,6 +1402,7 @@ mod tests {
                     .map(|(index, id)| SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
+                        onset_history: false,
                         tonal_context: None,
                         id,
                         generation: if index == 1 { 8 } else { 7 },
@@ -1404,6 +1414,7 @@ mod tests {
                     .map(|s| SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
+                        onset_history: false,
                         tonal_context: None,
                         id: s.id,
                         generation: s.generation,
@@ -2266,6 +2277,7 @@ mod tests {
                 let mut sources = [SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    onset_history: false,
                     tonal_context: None,
                     id: 2,
                     generation: 7,
@@ -2343,6 +2355,7 @@ mod tests {
                 SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    onset_history: false,
                     tonal_context: None,
                     id: 2,
                     generation: 7,
@@ -2351,6 +2364,7 @@ mod tests {
                 SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    onset_history: false,
                     tonal_context: None,
                     id: 2,
                     generation: 8,
@@ -2359,6 +2373,7 @@ mod tests {
                 SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    onset_history: false,
                     tonal_context: None,
                     id: 999,
                     generation: 0,
@@ -2370,6 +2385,7 @@ mod tests {
                 .map(|s| SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    onset_history: false,
                     tonal_context: None,
                     id: s.id,
                     generation: s.generation,
@@ -2912,6 +2928,7 @@ mod tests {
                     SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
+                        onset_history: false,
                         tonal_context: None,
                         id: 2,
                         generation: 7,
@@ -2920,6 +2937,7 @@ mod tests {
                     SourcePcm {
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
+                        onset_history: false,
                         tonal_context: None,
                         id: 2,
                         generation: 8,
@@ -3003,6 +3021,7 @@ mod tests {
         renderer.loo_pcm.push(SourcePcm {
             kind: crate::core::stream::loo::SourceKind::Voice,
             analyze_hr: true,
+            onset_history: false,
             tonal_context: None,
             id: 2,
             generation: 7,
@@ -3054,6 +3073,7 @@ mod tests {
             renderer.loo_pcm.push(SourcePcm {
                 kind: crate::core::stream::loo::SourceKind::Flora,
                 analyze_hr: true,
+                onset_history: false,
                 tonal_context: None,
                 id: 7,
                 generation: 0,

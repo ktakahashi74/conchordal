@@ -39,6 +39,7 @@ pub(super) fn merge_latest_analysis_results(
                 current_landscape.spectral_history = None;
                 current_landscape.loo.clear();
                 current_landscape.flora_observations.clear();
+                current_landscape.rain_observations.clear();
                 *last_analysis_frame = None;
                 latest_audio = None;
             }
@@ -94,6 +95,7 @@ pub(super) fn merge_latest_analysis_results(
     current_landscape.pitch_set_weight = frame.pitch_set_weight;
     current_landscape.tonal_observations = frame.tonal_observations;
     current_landscape.flora_observations = frame.flora_observations;
+    current_landscape.rain_observations = frame.rain_observations;
     current_landscape.spectral_history = frame.spectral_history;
     current_landscape.recompute_consonance(lparams);
 
@@ -150,10 +152,20 @@ pub(super) fn drive_and_apply_habituation(
         return;
     }
     hab.ensure_len(landscape.space.n_bins());
-    let (proj, _max) = lparams
-        .harmonicity_kernel
-        .potential_h_from_log2_spectrum(&landscape.subjective_intensity, &landscape.space);
-    hab.advance_from_parts(&landscape.consonance_field_level, &proj, dt_sec);
+    match hab.drive() {
+        crate::core::habituation::HabituationDrive::RootProjection => {
+            let (proj, _max) = lparams
+                .harmonicity_kernel
+                .potential_h_from_log2_spectrum(&landscape.subjective_intensity, &landscape.space);
+            hab.advance_from_parts(&landscape.consonance_field_level, &proj, dt_sec);
+        }
+        _ => hab.advance_from_channels(
+            &landscape.subjective_intensity,
+            &landscape.space,
+            &lparams.harmonicity_kernel.params,
+            dt_sec,
+        ),
+    }
     landscape.apply_habituation(hab.state(), hab.theta(), &lparams.consonance_representation);
 }
 
@@ -494,4 +506,109 @@ pub(super) fn compose_consonance_field_score_level_with_params(
     let c_score = params.consonance_field_kernel().score(h_state01, r_state01);
     let c_level = params.consonance_representation.level(c_score);
     (c_score, c_level)
+}
+
+#[cfg(test)]
+mod habituation_tests {
+    use super::*;
+    #[cfg(feature = "profile-alloc")]
+    use crate::core::habituation::HabituationDrive;
+    use crate::core::habituation::HabituationField;
+
+    #[test]
+    fn default_habituation_preserves_legacy_bits() {
+        let core = super::super::wiring::build_analysis_runtime_core(&AppConfig::default(), 48000);
+        let params = core.lparams;
+        let mut actual = core.landscape;
+        let mut legacy = actual.clone();
+        let n = actual.space.n_bins();
+        let mut field = HabituationField::new(&params.habituation, 0.0, n);
+        let mut old_h = vec![0.0_f32; n];
+        for step in 0..20 {
+            for i in 0..n {
+                let v = if step < 10 {
+                    ((i * 17 + step) % 41) as f32 / 40.0
+                } else {
+                    0.0
+                };
+                actual.subjective_intensity[i] = v;
+                actual.harmonicity01[i] = v;
+                actual.roughness01[i] = 0.2;
+            }
+            actual.recompute_consonance(&params);
+            legacy.clone_from(&actual);
+            let (proj, _) = params
+                .harmonicity_kernel
+                .potential_h_from_log2_spectrum(&legacy.subjective_intensity, &legacy.space);
+            let dt = 0.05_f32;
+            let ae = (-dt / (5.0 / std::f32::consts::LN_10)).exp();
+            let ar = (-dt / (8.0 / std::f32::consts::LN_10)).exp();
+            for i in 0..n {
+                let raw = (legacy.consonance_field_level[i] * proj[i]).max(0.0);
+                let d = (raw / (raw + 0.25)).clamp(0.0, 1.0);
+                let a = if d > old_h[i] { ae } else { ar };
+                old_h[i] = (a * old_h[i] + (1.0 - a) * d).clamp(0.0, 1.0);
+            }
+            legacy.apply_habituation(&old_h, 0.0, &params.consonance_representation);
+            drive_and_apply_habituation(&mut actual, &mut field, &params, dt);
+            for (got, expected) in [
+                (
+                    &actual.perc_habituation_state_scan,
+                    &legacy.perc_habituation_state_scan,
+                ),
+                (
+                    &actual.consonance_field_score_eff,
+                    &legacy.consonance_field_score_eff,
+                ),
+                (
+                    &actual.consonance_field_level_eff,
+                    &legacy.consonance_field_level_eff,
+                ),
+                (
+                    &actual.consonance_density_mass_eff,
+                    &legacy.consonance_density_mass_eff,
+                ),
+            ] {
+                assert!(
+                    got.iter()
+                        .zip(expected)
+                        .all(|(a, b)| a.to_bits() == b.to_bits())
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn channel_habituation_runtime_reuses_storage() {
+        for drive in [HabituationDrive::ChannelP, HabituationDrive::ChannelQ] {
+            let mut config = AppConfig::default();
+            config.psychoacoustics.habituation.drive = drive;
+            let core = super::super::wiring::build_analysis_runtime_core(&config, 48000);
+            assert_eq!(core.lparams.habituation.drive, drive);
+            let mut landscape = core.landscape;
+            landscape.subjective_intensity[100] = 1.0;
+            landscape.recompute_consonance(&core.lparams);
+            let mut field =
+                HabituationField::new(&core.lparams.habituation, 0.0, landscape.space.n_bins());
+            crate::runtime_profile::begin_allocations();
+            for _ in 0..64 {
+                drive_and_apply_habituation(
+                    &mut landscape,
+                    &mut field,
+                    &core.lparams,
+                    512.0 / 48000.0,
+                );
+            }
+            let counts = crate::runtime_profile::finish_allocations().unwrap();
+            assert_eq!(counts.count, 0);
+            assert_eq!(counts.bytes, 0);
+            assert!(
+                landscape
+                    .perc_habituation_state_scan
+                    .iter()
+                    .any(|&h| h > 0.0)
+            );
+        }
+    }
 }

@@ -338,6 +338,13 @@ enum ReportRecord<'a> {
         #[serde(flatten)]
         state: &'a crate::life::voice::pitch_controller::DwellRecord,
     },
+    Respond {
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        #[serde(flatten)]
+        record: &'a crate::life::voice::pitch_controller::RespondRecord,
+    },
     SpanGap {
         voice_id: u64,
         generation: u32,
@@ -352,6 +359,38 @@ enum ReportRecord<'a> {
         sample_rate: u32,
         #[serde(flatten)]
         transition: &'a crate::life::span_gap::Transition,
+    },
+    /// What a Rain read over its extent; arrays start at `first_bin` and are not scans.
+    RainField {
+        time_sec: f64,
+        rain_id: u64,
+        fmin_hz: f32,
+        bins_per_octave: u32,
+        first_bin: usize,
+        n_bins: usize,
+        observed: bool,
+        source: &'static str,
+        raw_score: &'a [f32],
+        eff_score: &'a [f32],
+        mass: &'a [f32],
+        object_hz: Vec<f32>,
+    },
+    RainImpact {
+        rain_id: u64,
+        sample: u64,
+        sample_rate: u32,
+        centre_hz: f32,
+        first_mode_hz: f32,
+        ring_gain: f32,
+        level: f32,
+        object: Option<usize>,
+        object_hz: Option<f32>,
+        replaced: bool,
+        replace_blocked: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        meter_weight: Option<f32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        beat_phase: Option<f32>,
     },
     OnsetHabituationScan {
         time_sec: f64,
@@ -417,6 +456,13 @@ enum ReportRecord<'a> {
         post_order: usize,
         known_rms_by_age_scan: &'a [[f32; 8]],
         known_coverage_by_age: [f32; 8],
+    },
+    /// Mixed habitat sensation averaged over sounding components (see
+    /// `listener_twin::component_weighted_sensation`); null without audible evidence.
+    HabitatSensation {
+        time_sec: f64,
+        harmonicity01: Option<f32>,
+        roughness01: Option<f32>,
     },
     Habituation {
         time_sec: f64,
@@ -858,6 +904,19 @@ impl JsonlReporter {
         })
     }
 
+    pub(crate) fn write_habitat_sensation(
+        &mut self,
+        time_sec: f64,
+        landscape: &Landscape,
+    ) -> Result<(), String> {
+        let sensation = crate::listener_twin::component_weighted_sensation(landscape);
+        self.write_record(&ReportRecord::HabitatSensation {
+            time_sec,
+            harmonicity01: sensation.map(|(h, _)| h),
+            roughness01: sensation.map(|(_, r)| r),
+        })
+    }
+
     pub(crate) fn write_pitch_set(
         &mut self,
         voice_id: u64,
@@ -900,6 +959,21 @@ impl JsonlReporter {
             generation,
             sample_rate,
             state,
+        })
+    }
+
+    pub(crate) fn write_respond(
+        &mut self,
+        voice_id: u64,
+        generation: u32,
+        sample_rate: u32,
+        record: &crate::life::voice::pitch_controller::RespondRecord,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::Respond {
+            voice_id,
+            generation,
+            sample_rate,
+            record,
         })
     }
 
@@ -1026,6 +1100,53 @@ impl JsonlReporter {
             generation: 0,
             sample_rate,
             transition,
+        })
+    }
+
+    pub(crate) fn write_rain_field(
+        &mut self,
+        time_sec: f64,
+        rain: &crate::life::rain::Rain,
+        space: &crate::core::log2space::Log2Space,
+    ) -> Result<(), String> {
+        let trace = &rain.field_trace;
+        self.write_record(&ReportRecord::RainField {
+            time_sec,
+            rain_id: rain.id(),
+            fmin_hz: space.fmin,
+            bins_per_octave: space.bins_per_oct,
+            first_bin: trace.first_bin,
+            n_bins: trace.mass.len(),
+            observed: trace.source == "observed",
+            source: trace.source,
+            raw_score: &trace.raw_score,
+            eff_score: &trace.eff_score,
+            mass: &trace.mass,
+            object_hz: rain.object_hz().collect(),
+        })
+    }
+
+    pub(crate) fn write_rain_impact(
+        &mut self,
+        rain_id: u64,
+        sample: u64,
+        sample_rate: u32,
+        impact: &crate::life::rain::ImpactRecord,
+    ) -> Result<(), String> {
+        self.write_record(&ReportRecord::RainImpact {
+            rain_id,
+            sample,
+            sample_rate,
+            centre_hz: impact.centre_hz,
+            first_mode_hz: impact.first_mode_hz,
+            ring_gain: impact.ring_gain,
+            level: impact.level,
+            object: impact.object,
+            object_hz: impact.object_hz,
+            replaced: impact.replaced,
+            replace_blocked: impact.replace_blocked,
+            meter_weight: impact.meter_weight,
+            beat_phase: impact.beat_phase,
         })
     }
 

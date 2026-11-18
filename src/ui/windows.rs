@@ -207,6 +207,9 @@ fn listener_state_meter(
         " N/A".to_string()
     };
     ui.vertical(|ui| {
+        // Keep each label-over-bar pair within a heading's height.
+        ui.spacing_mut().item_spacing.y = 0.0;
+        ui.spacing_mut().interact_size.y = 11.0;
         ui.label(egui::RichText::new(label).size(9.0).color(color));
         ui.horizontal(|ui| {
             let desired = Vec2::new(42.0, 8.0);
@@ -232,54 +235,39 @@ fn listener_state_meter(
     .response
 }
 
+/// Presentation-side Listener Twin states on the time and prediction side, laid out
+/// in the caller's row. Adapted stability sits with the Harmony circle instead.
 fn draw_listener_state_readout(ui: &mut egui::Ui, frame: &UiFrame) {
     let prediction = frame.listener.prediction;
     let forecast = prediction.forecast;
+    listener_state_meter(
+        ui,
+        "Sensory salience",
+        frame
+            .listener
+            .has_fast_state
+            .then_some(frame.listener.attention_level),
+        Color32::from_rgb(90, 180, 230),
+    )
+    .on_hover_text("Presentation bus: bottom-up acoustic change (flux), smoothed. The meter reads the same flux.");
     // The E0 details belong to the two bars they explain, so they appear on hover
     // there instead of in a separate menu row.
-    egui::Grid::new("listener_state_readout")
-        .num_columns(2)
-        .spacing([8.0, 2.0])
-        .show(ui, |ui| {
-            listener_state_meter(
-                ui,
-                "Sensory salience",
-                frame
-                    .listener
-                    .has_fast_state
-                    .then_some(frame.listener.attention_level),
-                Color32::from_rgb(90, 180, 230),
-            )
-            .on_hover_text("Bottom-up acoustic change (flux), smoothed.");
-            listener_state_meter(
-                ui,
-                "Adapted stability",
-                frame
-                    .listener
-                    .has_state
-                    .then_some(frame.listener.stability_level),
-                Color32::from_rgb(80, 200, 130),
-            )
-            .on_hover_text("Mass-weighted consonance field after habituation.");
-            ui.end_row();
-            listener_state_meter(
-                ui,
-                "Uncertainty H / ln 5",
-                forecast
-                    .and_then(|f| f.entropy_nats)
-                    .map(|h| h / 5.0_f32.ln()),
-                Color32::from_rgb(235, 95, 85),
-            )
-            .on_hover_ui(|ui| e0_details(ui, &prediction));
-            listener_state_meter(
-                ui,
-                "Arrival score",
-                forecast.and_then(|f| f.arrival_score),
-                Color32::from_rgb(235, 200, 75),
-            )
-            .on_hover_ui(|ui| e0_details(ui, &prediction));
-            ui.end_row();
-        });
+    listener_state_meter(
+        ui,
+        "Uncertainty H / ln 5",
+        forecast
+            .and_then(|f| f.entropy_nats)
+            .map(|h| h / 5.0_f32.ln()),
+        Color32::from_rgb(235, 95, 85),
+    )
+    .on_hover_ui(|ui| e0_details(ui, &prediction));
+    listener_state_meter(
+        ui,
+        "Arrival score",
+        forecast.and_then(|f| f.arrival_score),
+        Color32::from_rgb(235, 200, 75),
+    )
+    .on_hover_ui(|ui| e0_details(ui, &prediction));
 }
 
 /// What the E0 uncertainty and arrival bars are based on.
@@ -512,11 +500,11 @@ fn draw_listener_dashboard(
     let audio_height = 60.0;
     let plot_height = 82.0;
     let strobe_height = 128.0;
-    // Reserve the audio heading, separator and the two readout rows; circle titles
-    // sit inside the circles' corners. At the default width the circles reach half
-    // the column, and the Roughness/Harmonicity layout test bounds this height.
-    let circle_side = (dashboard_height - audio_height - 110.0_f32)
-        .min((left_width - ui.spacing().item_spacing.x) * 0.5);
+    // Reserve the audio heading and separator; the circle title sits inside its
+    // corner. The Roughness/Harmonicity layout test bounds this height.
+    let harmony_side = (dashboard_height - audio_height - 40.0_f32).min(left_width);
+    // The meter circle spans the strobe legend row and the strobe.
+    let meter_side = strobe_height + ui.spacing().interact_size.y;
 
     // Top-align both columns; centering left the shorter column floating.
     // `horizontal_top` would start the row at the full available height, which
@@ -579,11 +567,30 @@ fn draw_listener_dashboard(
                     );
 
                     ui.separator();
-                    ui.horizontal(|ui| {
-                        draw_meter_circle(ui, rhythm_history, window_end, circle_side);
-                        draw_harmony_circle(ui, &frame.landscape, harmony_history, circle_side);
+                    ui.vertical_centered(|ui| {
+                        draw_harmony_circle(ui, &frame.landscape, harmony_history, harmony_side);
+                        // The consonance bar takes the circle's free top-right corner,
+                        // opposite the title, so it costs no height.
+                        let circle = ui.min_rect();
+                        let mut corner = ui.new_child(
+                            egui::UiBuilder::new()
+                                .max_rect(egui::Rect::from_min_max(
+                                    egui::pos2(circle.right() - 84.0, circle.top()),
+                                    egui::pos2(circle.right(), circle.top() + 22.0),
+                                ))
+                                .layout(egui::Layout::top_down(egui::Align::LEFT)),
+                        );
+                        listener_state_meter(
+                            &mut corner,
+                            "Adapted stability",
+                            frame
+                                .listener
+                                .has_state
+                                .then_some(frame.listener.stability_level),
+                            Color32::from_rgb(80, 200, 130),
+                        )
+                        .on_hover_text("Presentation bus: mass-weighted consonance field after habituation. The circle shows the habitat bus.");
                     });
-                    draw_listener_state_readout(ui, frame);
                 },
             );
 
@@ -593,6 +600,13 @@ fn draw_listener_dashboard(
                 Vec2::new(right_width, dashboard_height),
                 egui::Layout::top_down(egui::Align::LEFT),
                 |ui| {
+                    // Drawn before any frame arrives, so the panels below keep their
+                    // place when playback starts. The state bars cost no height here.
+                    ui.horizontal(|ui| {
+                        ui.heading("Listener Twin");
+                        ui.separator();
+                        draw_listener_state_readout(ui, frame);
+                    });
                     for diagnostic in super::model::diagnostics(frame) {
                         match diagnostic {
                             super::model::Diagnostic::Heading(text) => {
@@ -646,26 +660,43 @@ fn draw_listener_dashboard(
                             );
                         }
                     });
-                    ui.columns(2, |columns| {
-                        beat_strobe_legend(&mut columns[0]);
-                        beat_strobe_plot(
-                            &mut columns[0],
-                            rhythm_history,
-                            strobe_height,
-                            window_end,
-                        );
-                        columns[1].horizontal(|ui| {
-                            ui.label("30 s");
-                            for (name, color) in [
-                                ("Beat", Color32::from_rgb(80, 180, 255)),
-                                ("Sub", Color32::from_rgb(70, 225, 135)),
-                                ("Measure", Color32::from_rgb(255, 110, 90)),
-                            ] {
-                                ui.colored_label(color, name);
-                            }
-                        });
-                        rhythm_slow_plots(&mut columns[1], rhythm_history, window_end);
-                    });
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(ui.available_width(), meter_side),
+                        egui::Layout::left_to_right(egui::Align::Min),
+                        |ui| {
+                            draw_meter_circle(ui, rhythm_history, window_end, meter_side);
+                            ui.allocate_ui_with_layout(
+                                Vec2::new(ui.available_width(), meter_side),
+                                egui::Layout::top_down(egui::Align::LEFT),
+                                |ui| {
+                                    ui.columns(2, |columns| {
+                                        beat_strobe_legend(&mut columns[0]);
+                                        beat_strobe_plot(
+                                            &mut columns[0],
+                                            rhythm_history,
+                                            strobe_height,
+                                            window_end,
+                                        );
+                                        columns[1].horizontal(|ui| {
+                                            ui.label("30 s");
+                                            for (name, color) in [
+                                                ("Beat", Color32::from_rgb(80, 180, 255)),
+                                                ("Sub", Color32::from_rgb(70, 225, 135)),
+                                                ("Measure", Color32::from_rgb(255, 110, 90)),
+                                            ] {
+                                                ui.colored_label(color, name);
+                                            }
+                                        });
+                                        rhythm_slow_plots(
+                                            &mut columns[1],
+                                            rhythm_history,
+                                            window_end,
+                                        );
+                                    });
+                                },
+                            );
+                        },
+                    );
                     ui.spacing_mut().item_spacing = old_spacing;
                 },
             );
@@ -674,6 +705,7 @@ fn draw_listener_dashboard(
 }
 
 /// === Main window ===
+/// `end_request` None hides End; the browser page offers a single stop control.
 #[allow(clippy::too_many_arguments)]
 pub fn main_window(
     root_ui: &mut egui::Ui,
@@ -685,7 +717,7 @@ pub fn main_window(
     runtime_error: Option<&str>,
     exit_flag: &Arc<AtomicBool>,
     start_flag: &Arc<AtomicBool>,
-    end_request: &Arc<AtomicBool>,
+    end_request: Option<&Arc<AtomicBool>>,
     show_raw_nsgt_power: &mut bool,
 ) {
     let ctx = root_ui.ctx().clone();
@@ -722,7 +754,9 @@ pub fn main_window(
                         }
                     }
                     PlaybackState::Playing => {
-                        if ui.button("End").clicked() {
+                        if let Some(end_request) = end_request
+                            && ui.button("End").clicked()
+                        {
                             end_request.store(true, Ordering::SeqCst);
                         }
                     }
@@ -1113,11 +1147,24 @@ mod time_tests {
 mod layout_tests {
     use super::*;
 
-    /// The author asked for the Roughness/Harmonicity plot to fit the minimum window.
-    /// Inside the page ScrollArea a row that claims the available height would grow
-    /// the dashboard to the whole viewport and push the lower plots off screen.
-    #[test]
-    fn roughness_harmonicity_fits_the_minimum_window() {
+    type Salience = VecDeque<(f64, crate::viewdata::DorsalFrame)>;
+
+    /// A running listener: the meter labels row and the salience plot are drawn.
+    fn running() -> (UiFrame, Salience) {
+        let mut frame = UiFrame::default();
+        frame.meta.playback_state = PlaybackState::Playing;
+        frame.listener.has_fast_state = true;
+        frame.listener.has_state = true;
+        let salience = VecDeque::from([
+            (-0.1, crate::viewdata::DorsalFrame::default()),
+            (0.0, crate::viewdata::DorsalFrame::default()),
+        ]);
+        (frame, salience)
+    }
+
+    /// Every painted text and its rectangle at the minimum window size. Right-to-left
+    /// rows such as Exit settle on the second frame, so the second one is returned.
+    fn texts(frame: &UiFrame, salience: &Salience) -> Vec<(String, egui::Rect)> {
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,
@@ -1125,64 +1172,99 @@ mod layout_tests {
             )),
             ..Default::default()
         };
-        let frame = UiFrame::default();
         let flag = Arc::new(AtomicBool::new(false));
         let mut raw = false;
-        let mut output = egui::Context::default().run_ui(input, |ui| {
-            main_window(
-                ui,
-                &frame,
-                &VecDeque::new(),
-                &VecDeque::new(),
-                &VecDeque::new(),
-                0.0,
-                None,
-                &flag,
-                &flag,
-                &flag,
-                &mut raw,
-            )
-        });
-        output.textures_delta.clear();
-        let heading_bottom = output.shapes.iter().find_map(|shape| match &shape.shape {
-            egui::epaint::Shape::Text(text) if text.galley.text() == "Roughness / Harmonicity" => {
-                Some(text.pos.y + text.galley.size().y)
-            }
-            _ => None,
-        });
-        // 102 is the R/H plot height passed by `main_window`.
-        let bottom = heading_bottom.expect("R/H heading on screen") + 102.0;
-        let anchors: Vec<_> = output
-            .shapes
+        let ctx = egui::Context::default();
+        let mut shapes = Vec::new();
+        for _ in 0..2 {
+            let mut output = ctx.run_ui(input.clone(), |ui| {
+                main_window(
+                    ui,
+                    frame,
+                    &VecDeque::new(),
+                    salience,
+                    &VecDeque::new(),
+                    0.0,
+                    None,
+                    &flag,
+                    &flag,
+                    Some(&flag),
+                    &mut raw,
+                )
+            });
+            output.textures_delta.clear();
+            shapes = output.shapes;
+        }
+        shapes
             .iter()
             .filter_map(|shape| match &shape.shape {
-                egui::epaint::Shape::Text(text)
-                    if matches!(
-                        text.galley.text(),
-                        "Audio"
-                            | "Meter"
-                            | "Harmony · habitat"
-                            | "Population Dynamics"
-                            | "Roughness / Harmonicity"
-                    ) =>
-                {
-                    Some((text.galley.text(), text.pos.y))
-                }
+                egui::epaint::Shape::Text(text) => Some((
+                    text.galley.text().to_owned(),
+                    egui::Rect::from_min_size(text.pos, text.galley.size()),
+                )),
                 _ => None,
             })
-            .collect();
-        assert!(
-            bottom <= 900.0,
-            "R/H plot ends at {bottom}; anchors: {anchors:?}"
-        );
+            .collect()
+    }
+
+    fn find<'a>(texts: &'a [(String, egui::Rect)], label: &str) -> Option<&'a egui::Rect> {
+        texts
+            .iter()
+            .find(|(text, _)| text == label)
+            .map(|(_, rect)| rect)
+    }
+
+    /// The author asked for the Roughness/Harmonicity plot to fit the minimum window.
+    /// Inside the page ScrollArea a row that claims the available height would grow
+    /// the dashboard to the whole viewport and push the lower plots off screen.
+    #[test]
+    fn roughness_harmonicity_fits_the_minimum_window() {
+        let (frame, salience) = running();
+        let texts = texts(&frame, &salience);
+        // 102 is the R/H plot height passed by `main_window`.
+        let bottom = find(&texts, "Roughness / Harmonicity")
+            .expect("R/H heading on screen")
+            .bottom()
+            + 102.0;
+        assert!(bottom <= 900.0, "R/H plot ends at {bottom}");
         // The author asked for Exit at the right edge, not after a fixed gap.
-        let exit_right = output.shapes.iter().find_map(|shape| match &shape.shape {
-            egui::epaint::Shape::Text(text) if text.galley.text() == "Exit" => {
-                Some(text.pos.x + text.galley.size().x)
-            }
-            _ => None,
-        });
-        let exit_right = exit_right.expect("Exit button on screen");
+        let exit_right = find(&texts, "Exit").expect("Exit button on screen").right();
         assert!(exit_right > 1150.0, "Exit ends at {exit_right}");
+        // The time-side bars share the "Listener Twin" heading row; the consonance
+        // bar sits inside the Harmony circle's square.
+        assert!(find(&texts, "Sensory salience").is_some());
+        let harmony = find(&texts, "Harmony · habitat").expect("Harmony title");
+        let stability = find(&texts, "Adapted stability").expect("stability bar");
+        assert!(
+            (stability.top() - harmony.top()).abs() < 1.0 && stability.left() > harmony.right(),
+            "stability {stability:?}, harmony title {harmony:?}"
+        );
+    }
+
+    /// The author saw the dashboard move when playback started: before any listener
+    /// data the salience plot collapsed to one text line, and in the browser the
+    /// "Listener Twin" row arrived only with the first engine frame.
+    #[test]
+    fn dashboard_does_not_move_when_playback_starts() {
+        let before = texts(&UiFrame::default(), &VecDeque::new());
+        let (frame, salience) = running();
+        let after = texts(&frame, &salience);
+        for label in [
+            "Sensory salience",
+            "Listener Meter",
+            "Meter",
+            "Harmony · habitat",
+            "Adapted stability",
+            "Population Dynamics",
+            "Roughness / Harmonicity",
+        ] {
+            let (before, after) = (find(&before, label), find(&after, label));
+            assert_eq!(
+                before.map(|r| r.top()),
+                after.map(|r| r.top()),
+                "{label} moved"
+            );
+            assert!(before.is_some(), "{label} not drawn");
+        }
     }
 }

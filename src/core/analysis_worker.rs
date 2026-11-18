@@ -205,6 +205,7 @@ impl AnalysisState {
                                     source.id,
                                     source.generation,
                                     stream,
+                                    source.onset_history,
                                 )
                             }
                             crate::core::stream::loo::SourceKind::Flora => {
@@ -214,6 +215,9 @@ impl AnalysisState {
                                     stream,
                                     source.analyze_hr,
                                 )
+                            }
+                            crate::core::stream::loo::SourceKind::Rain => {
+                                crate::core::stream::loo::Observer::rain(source.id, stream)
                             }
                         };
                         loo_streams.push(observer);
@@ -269,6 +273,11 @@ impl AnalysisState {
             .iter()
             .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Flora)
             .map(|s| s.resource_snapshot())
+            .collect();
+        frame.rain_observations = loo_streams
+            .iter()
+            .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Rain)
+            .map(|s| s.rain_snapshot())
             .collect();
         frame
     }
@@ -889,6 +898,7 @@ mod tests {
             sources: vec![crate::core::stream::loo::SourcePcm {
                 kind: crate::core::stream::loo::SourceKind::Voice,
                 analyze_hr: true,
+                onset_history: false,
                 tonal_context: None,
                 id,
                 generation,
@@ -915,6 +925,7 @@ mod tests {
                 SourcePcm {
                     kind: SourceKind::Voice,
                     analyze_hr: true,
+                    onset_history: false,
                     tonal_context: None,
                     id: 7,
                     generation: 0,
@@ -923,6 +934,7 @@ mod tests {
                 SourcePcm {
                     kind: SourceKind::Flora,
                     analyze_hr: true,
+                    onset_history: false,
                     tonal_context: None,
                     id: 7,
                     generation: u32::from(frame >= 36),

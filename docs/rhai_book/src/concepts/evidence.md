@@ -51,8 +51,8 @@ value, route or control.
 
 Under the current policy, **new candidate and author-rule axes start neutral**.
 This does not switch off the existing base. `dwell`, `rest_on_habituation`,
-`follow_own_sequence` and `phrase_boundary` are examples of optional weights
-whose defaults are 0.
+`respond_to_onsets`, `follow_own_sequence` and `phrase_boundary` are examples of
+optional weights whose defaults are 0.
 Defaults come first, then presets, then individual controls: simple pieces should
 not require a stack of parameters.
 

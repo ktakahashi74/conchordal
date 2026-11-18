@@ -1,0 +1,79 @@
+name: Demo assets
+
+# Builds the live demo (engine and GUI wasm, player, pieces) from a release tag,
+# checks it in headless Chrome, attaches it to that release and redeploys the site.
+# The site serves the release named in web/src/data/demo-release.json.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build the demo from
+        required: true
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: demo-assets-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  assets:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.99.0'
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen@0.2.130
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build demo assets
+        run: node web/scripts/build-demo.mjs
+        env:
+          DEMO_TAG: ${{ env.TAG }}
+          CARGO_BUILD_JOBS: 4
+          CARGO_TARGET_DIR: ${{ runner.temp }}/conchordal-demo-target
+
+      - name: Build the site with the demo
+        working-directory: web
+        run: npm ci && npm run build
+
+      - name: Play every piece in headless Chrome
+        run: node web/scripts/demo-smoke.mjs web/dist 20 "$RUNNER_TEMP/demo-smoke.json"
+
+      - name: Check the counter endpoint
+        run: node web/metrics-worker/test.mjs
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar czf "$RUNNER_TEMP/conchordal-demo-$TAG.tar.gz" -C web/static demo-assets
+          gh release upload "$TAG" "$RUNNER_TEMP/conchordal-demo-$TAG.tar.gz" --clobber
+
+      - name: Redeploy the site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run web_deploy.yml --ref main

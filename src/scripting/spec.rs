@@ -434,6 +434,17 @@ impl PopulationSpec {
         };
     }
 
+    pub(super) fn set_respond_to_onsets(&mut self, value: FLOAT) {
+        self.control.pitch.respond_to_onsets = if (value as f32).is_finite() && value >= 0.0 {
+            value as f32
+        } else {
+            self.warn(
+                "respond_to_onsets() expects a finite nonnegative f32 weight; using 0".into(),
+            );
+            0.0
+        };
+    }
+
     pub(super) fn set_proposal_interval_sec(&mut self, value: f32) {
         self.control.pitch.set_proposal_interval_sec_clamped(value);
     }
@@ -1088,6 +1099,16 @@ pub(super) fn validate_rain_numeric(
     value: FLOAT,
     position: Position,
 ) -> Result<f32, Box<EvalAltResult>> {
+    if name == "follow_meter" {
+        // No upper bound: the focus saturates inside the Rain (MAX_METER_KAPPA).
+        if !value.is_finite() || value < 0.0 || !(value as f32).is_finite() {
+            return Err(Box::new(EvalAltResult::ErrorRuntime(
+                "Rain follow_meter must be finite and non-negative".into(),
+                position,
+            )));
+        }
+        return Ok(value as f32);
+    }
     let (min, max) = match name {
         "amp" | "hit" => (0.0, 1.0),
         "fade" => (0.0, 60.0),
@@ -1097,6 +1118,9 @@ pub(super) fn validate_rain_numeric(
         "sway" => (0.0, 4.0),
         // Five octaves either side of a centre covers the audible band from any centre.
         "width" => (0.0, 5.0),
+        // At 16x the longest decay (20 Hz, 6 sd) stays near 56 s, far below the ~350 s
+        // where the f32 decay factor rounds to 1.
+        "ring" => (0.0, 4.0),
         "object_decay" => (0.01, 30.0),
         _ => unreachable!("registered Rain parameter"),
     };
@@ -1124,6 +1148,8 @@ impl RainSpecHandle {
             "sway" => self.spec.sway = value,
             "hit" => self.spec.hit = value,
             "width" => self.spec.width = value,
+            "ring" => self.spec.ring = value,
+            "follow_meter" => self.spec.follow_meter = value,
             "object_decay" => self.spec.object_decay = value,
             _ => unreachable!("registered Rain spec parameter"),
         }
@@ -1137,7 +1163,7 @@ pub(super) fn validate_flora_numeric(
     position: Position,
     diagnostics: &ScriptWarnings,
 ) -> Result<f32, Box<EvalAltResult>> {
-    if name == "rest_on_habituation" {
+    if name == "rest_on_habituation" || name == "respond_to_onsets" {
         let converted = value as f32;
         if !converted.is_finite() || value < 0.0 {
             diagnostics
@@ -1146,9 +1172,9 @@ pub(super) fn validate_flora_numeric(
                 .push(ScriptWarning {
                     kind: "flora_parameter",
                     count: 1,
-                    message:
-                        "Flora rest_on_habituation expects a finite nonnegative f32 weight; using 0"
-                            .into(),
+                    message: format!(
+                        "Flora {name} expects a finite nonnegative f32 weight; using 0"
+                    ),
                     position,
                 });
             return Ok(0.0);
@@ -1217,6 +1243,7 @@ impl FloraSpecHandle {
             "amp" => self.spec.amp = value,
             "fade" => self.spec.fade_sec = value,
             "rest_on_habituation" => self.spec.rest_on_habituation = value,
+            "respond_to_onsets" => self.spec.respond_to_onsets = value,
             _ => unreachable!("registered Flora spec parameter"),
         }
         Ok(self)

@@ -2098,6 +2098,59 @@ fn flora_pitch_apply_mode_initial_live_and_invalid_names() {
 }
 
 #[test]
+fn flora_respond_to_onsets_is_initial_only_and_invalid_values_warn_to_zero() {
+    for value in [
+        0.,
+        1.,
+        16.,
+        f32::MAX as f64,
+        -1.,
+        f64::NAN,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        1e100,
+    ] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx.clone());
+        let mut scope = rhai::Scope::new();
+        scope.push("value", value);
+        let _ = engine
+            .eval_with_scope::<Dynamic>(
+                &mut scope,
+                "\nplace(flora().respond_to_onsets(value), random(220,880)); wait(0.1);",
+            )
+            .unwrap();
+        let ctx = ctx.lock().unwrap();
+        let invalid = !(value as f32).is_finite() || value < 0.;
+        let weight = action_times(&ctx.scenario)
+            .into_iter()
+            .find_map(|(_, a)| match a {
+                Action::PlaceFlora { spec, .. } => Some(spec.respond_to_onsets),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(weight, if invalid { 0. } else { value as f32 });
+        let warnings = ctx.warnings.lock().unwrap();
+        assert_eq!(warnings.len(), usize::from(invalid));
+        if invalid {
+            let warning = &warnings.snapshot()[0];
+            assert_eq!(warning.position.line(), Some(2));
+            assert!(warning.message.contains("respond_to_onsets"));
+        }
+    }
+    let (scene, warnings) = run_script("place(flora().respond_to_onsets(4), random(220,880));");
+    assert!(warnings.lock().unwrap().is_empty());
+    assert!(action_times(&scene).iter().any(
+        |(_, a)| matches!(a, Action::PlaceFlora { spec, .. } if spec.respond_to_onsets == 4.)
+    ));
+    assert!(
+        run_script_err("let f=place(flora(),random(220,880)); f.respond_to_onsets(1);")
+            .to_string()
+            .contains("Function not found")
+    );
+}
+
+#[test]
 fn flora_rest_on_habituation_is_initial_only_and_uses_cap_one_range() {
     for value in [
         0.,
@@ -2544,7 +2597,7 @@ fn listener_profile_rejects_unknown_and_late_selection() {
 fn rain_specs_emit_placements_for_every_field_target() {
     let (scenario, _) = run_script(
         r#"
-        let drops = rain().amp(0.2).fade(0.5).rate(80).sway(1).hit(0.3).width(0.1).objects(5)
+        let drops = rain().amp(0.2).fade(0.5).rate(80).sway(1).hit(0.3).width(0.1).ring(4).objects(5)
             .object_modes(modal_table("xylophone")).object_decay(1.5).send(habitat_bus)
             .impact_modes(modal_table("uniform_wooden_bar")).anchor();
         place(drops, random(300, 6000));
@@ -2588,10 +2641,11 @@ fn rain_specs_emit_placements_for_every_field_target() {
             spec.sway,
             spec.hit,
             spec.width,
+            spec.ring,
             spec.objects,
             spec.object_decay
         ),
-        (0.2, 0.5, 80.0, 1.0, 0.3, 0.1, 5, 1.5)
+        (0.2, 0.5, 80.0, 1.0, 0.3, 0.1, 4.0, 5, 1.5)
     );
     assert_eq!(
         spec.object_modes,
@@ -2609,11 +2663,91 @@ fn rain_specs_emit_placements_for_every_field_target() {
             defaults.rate,
             defaults.hit,
             defaults.width,
+            defaults.ring,
             defaults.objects,
             defaults.anchored
         ),
-        (40.0, 0.06, 0.05, 3, false)
+        (40.0, 0.06, 0.05, 0.0, 3, false)
     );
+    let (scenario, _) = run_script("place(rain().ring(0), random(300, 6000)); wait(0.5);");
+    assert!(
+        action_times(&scenario).iter().any(
+            |(_, action)| matches!(action, Action::PlaceRain { spec, .. } if spec.ring == 0.0)
+        )
+    );
+}
+
+#[test]
+fn rain_leave_drops_out_is_boolean_initial_only_and_warns_without_habitat() {
+    let (scenario, warnings) = run_script(
+        "place(rain().leave_drops_out(true), consonance(150, 5000)); place(rain(), random(300, 6000)); wait(0.5);",
+    );
+    assert!(warnings.lock().unwrap().is_empty());
+    let placed: Vec<bool> = action_times(&scenario)
+        .into_iter()
+        .filter_map(|(_, action)| match action {
+            Action::PlaceRain { spec, .. } => Some(spec.leave_drops_out),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(placed, [true, false]);
+    for script in [
+        "rain().leave_drops_out(1);",
+        "\nlet r = place(rain(), random(300, 6000)); r.leave_drops_out(true);",
+    ] {
+        let error = run_script_err(script);
+        assert!(error.to_string().contains("leave_drops_out"), "{error}");
+        assert!(
+            error.position.is_some_and(|p| p.line().is_some()),
+            "{script}: {error}"
+        );
+    }
+    let (_, warnings) = run_script(
+        "\nplace(rain().leave_drops_out(true).send(presentation_bus), random(300, 6000)); wait(0.5);",
+    );
+    let warnings = warnings.lock().unwrap();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    let warning = warnings.iter().next().unwrap();
+    assert_eq!(warning.kind, "rain_leave_drops_out_unrouted");
+    assert_eq!(warning.position.line(), Some(2));
+}
+
+#[test]
+fn rain_objects_follow_drops_is_boolean_initial_only_and_warns_when_anchored() {
+    let (scenario, warnings) = run_script(
+        "place(rain().objects_follow_drops(true), consonance(150, 5000)); place(rain(), random(300, 6000)); wait(0.5);",
+    );
+    assert!(warnings.lock().unwrap().is_empty());
+    let placed: Vec<bool> = action_times(&scenario)
+        .into_iter()
+        .filter_map(|(_, action)| match action {
+            Action::PlaceRain { spec, .. } => Some(spec.objects_follow_drops),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(placed, [true, false]);
+    for script in [
+        "rain().objects_follow_drops(1);",
+        "\nlet r = place(rain(), random(300, 6000)); r.objects_follow_drops(true);",
+    ] {
+        let error = run_script_err(script);
+        assert!(
+            error.to_string().contains("objects_follow_drops"),
+            "{error}"
+        );
+        assert!(
+            error.position.is_some_and(|p| p.line().is_some()),
+            "{script}: {error}"
+        );
+    }
+    let (_, warnings) = run_script(
+        "\nplace(rain().objects_follow_drops(true).anchor(), random(300, 6000));\nplace(rain().objects(0).objects_follow_drops(true), random(300, 6000)); wait(0.5);",
+    );
+    let warnings = warnings.lock().unwrap();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    let warning = warnings.iter().next().unwrap();
+    assert_eq!(warning.kind, "rain_objects_follow_drops_anchored");
+    assert_eq!(warning.position.line(), Some(2));
 }
 
 #[test]
@@ -2650,10 +2784,27 @@ fn rain_rejects_unsupported_placements_and_values() {
         ("rain().sway(5);", "sway must be finite"),
         ("rain().hit(1.5);", "hit must be finite"),
         ("rain().width(6);", "width must be finite"),
+        ("rain().ring(-1);", "ring must be finite"),
+        ("rain().ring(4.5);", "ring must be finite"),
+        (
+            "let r = place(rain(), random(300, 6000)); r.ring(5);",
+            "ring must be finite",
+        ),
         ("rain().object_decay(0);", "object_decay must be finite"),
     ] {
         let error = run_script_err(script).to_string();
         assert!(error.contains(message), "{script}: {error}");
+    }
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let ctx = Arc::new(Mutex::new(ScriptContext::default()));
+        let engine = ScriptHost::create_engine(ctx);
+        let mut scope = rhai::Scope::new();
+        scope.push("value", value);
+        let error = engine
+            .eval_with_scope::<Dynamic>(&mut scope, "\nrain().ring(value);")
+            .expect_err("non-finite ring");
+        assert_eq!(error.position().line(), Some(2), "{error}");
+        assert!(error.to_string().contains("ring must be finite"), "{error}");
     }
 }
 
@@ -2663,7 +2814,7 @@ fn rain_patches_wait_for_boundaries_and_release_extends_finish() {
         r#"
         let r = place(rain().fade(3), random(300, 6000));
         wait(1);
-        r.amp(0.1).rate(10).sway(0.5).hit(0.5).width(0);
+        r.amp(0.1).rate(10).sway(0.5).hit(0.5).width(0).ring(2);
         wait(1);
         release(r);
         "#,
@@ -2683,9 +2834,17 @@ fn rain_patches_wait_for_boundaries_and_release_extends_finish() {
             update.2.rate,
             update.2.sway,
             update.2.hit,
-            update.2.width
+            update.2.width,
+            update.2.ring
         ),
-        (Some(0.1), Some(10.0), Some(0.5), Some(0.5), Some(0.0))
+        (
+            Some(0.1),
+            Some(10.0),
+            Some(0.5),
+            Some(0.5),
+            Some(0.0),
+            Some(2.0)
+        )
     );
     assert!(actions.iter().any(|(time, action)| *time == 2.0
         && matches!(action, Action::ReleaseRain { rain_id: 1, fade_sec } if *fade_sec == 3.0)));

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Add the live demo page (`/demo/`, `/ja/demo/` on conchordal.org). It performs the
+  pieces in `samples/demo/` in the visitor's browser, shows the whole score being
+  played, and keeps no recording. Publishing a release builds the demo from its tag
+  and attaches it to the release; `web/src/data/demo-release.json` chooses the
+  release the site serves, and without it the site has no demo page. The page
+  sends one playback-counter record per performance to a Cloudflare Worker, with
+  a notice and an off switch; sound and anything made from sound are never sent.
+  The browser player now starts with 2 s of lookahead and doubles it after a
+  dropout (up to 8 s), and reports per-stage and per-5-second hop times.
+
 - Restore CI on all three platforms. The obsolete no-default all-target check,
   added when the default feature only selected wide SIMD, is replaced by core and
   `web` library checks; tests and binaries need the default `native` feature.

@@ -3,6 +3,13 @@ import init, { BrowserEngine } from "./pkg/conchordal_web.js";
 let engine, port, targetFrames, produced = 0, played = 0;
 let stopped = false, pumping = false, primed = false, completed = false;
 let times = [], snapshotTimes = [], sampleRate, nextMetrics = 0, nextSnapshot = 0;
+// Worker, ecology analysis and listener analysis times of each hop.
+const stageTimes = [[], [], []];
+// Hop times grouped by the score time of the hop, in 5 s windows.
+const WINDOW_SEC = 5;
+let windows = [];
+// Growth stops where an average-real-time device rides out the stall seen on the M5.
+const MAX_TARGET_SEC = 8;
 // Matches runtime::UI_MIN_INTERVAL (33 ms of wall time).
 const UI_MIN_INTERVAL_MS = 33;
 
@@ -20,7 +27,10 @@ function metrics() {
     const i = (sorted.length - 1) * p;
     return sorted.length ? sorted[Math.floor(i)] + (sorted[Math.ceil(i)] - sorted[Math.floor(i)]) * (i % 1) : null;
   };
-  return { snapshot: distribution(snapshotTimes), hops: times.length, generatedFrames: produced, generatedSeconds: produced / sampleRate,
+  const [worker, ecology, listener] = stageTimes.map(distribution);
+  return { snapshot: distribution(snapshotTimes), stages: { worker, ecology, listener },
+    windows: { sec: WINDOW_SEC, hopMeanMs: windows.map((w) => w.sum / w.hops), hopMaxMs: windows.map((w) => w.max) },
+    targetFrames, hops: times.length, generatedFrames: produced, generatedSeconds: produced / sampleRate,
     firstHopMs: times[0], meanMs: times.reduce((a, b) => a + b, 0) / times.length,
     p50Ms: quantile(0.5), p95Ms: quantile(0.95), p99Ms: quantile(0.99), maxMs: sorted.at(-1),
     overBudget: times.filter((t) => t > engine.hop_len() / sampleRate * 1000).length };
@@ -39,14 +49,23 @@ function pump() {
     if (produced - played < targetFrames && !engine.finished()) {
       const start = performance.now();
       const pcm = engine.step();
+      const stages = engine.stage_ms();
+      for (let i = 0; i < 3; i++) stageTimes[i].push(stages[i]);
       if (performance.now() >= nextSnapshot || engine.finished()) {
         const began = performance.now();
         const bytes = engine.snapshot();
         snapshotTimes.push(performance.now() - began);
-        postMessage({ type: "snapshot", buffer: bytes.buffer }, [bytes.buffer]);
+        // The snapshot describes the score up to the end of this hop's PCM.
+        postMessage({ type: "snapshot", buffer: bytes.buffer, frame: produced + pcm.length }, [bytes.buffer]);
         nextSnapshot = performance.now() + UI_MIN_INTERVAL_MS;
       }
-      times.push(performance.now() - start);
+      const elapsed = performance.now() - start;
+      times.push(elapsed);
+      const w = Math.floor(produced / (WINDOW_SEC * sampleRate));
+      windows[w] ??= { hops: 0, sum: 0, max: 0 };
+      windows[w].hops++;
+      windows[w].sum += elapsed;
+      windows[w].max = Math.max(windows[w].max, elapsed);
       produced += pcm.length;
       port.postMessage({ type: "pcm", buffer: pcm.buffer }, [pcm.buffer]);
     }
@@ -92,6 +111,12 @@ self.onmessage = async ({ data }) => {
       targetFrames = Math.ceil(data.bufferMs * sampleRate / 1000 / engine.hop_len()) * engine.hop_len();
       postMessage({ type: "initialized", initializationMs: performance.now() - start,
         hop: engine.hop_len(), targetFrames });
+      schedule();
+    } else if (data.type === "grow") {
+      // After an underrun, keep more audio ahead so that a similar stall is absorbed.
+      const hop = engine.hop_len();
+      targetFrames = Math.min(targetFrames * 2, Math.ceil(MAX_TARGET_SEC * sampleRate / hop) * hop);
+      postMessage({ type: "metrics", metrics: metrics() });
       schedule();
     } else if (data.type === "end") {
       engine?.request_end();

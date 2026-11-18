@@ -19,6 +19,143 @@ pub(crate) struct DwellRecord {
     pub(crate) weight: f32,
 }
 
+/// One `respond` report record: a spent control step or a proposal.
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+pub(crate) struct RespondRecord {
+    pub(crate) at: Option<u64>,
+    pub(crate) event: &'static str,
+    pub(crate) weight: f32,
+    pub(crate) extra_sec: f64,
+    pub(crate) rise_sum: f64,
+    pub(crate) pending: f64,
+    pub(crate) listening_bins: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) cycle_extra_sec: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) moved: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) protected: Option<bool>,
+}
+
+/// Author rule (`respond_to_onsets`): new attacks heard in the Voice's own
+/// self-excluding observer advance its proposal clock. A rise rho owes
+/// `w*tau*rho` clock seconds, spent at most `w*dt` per control step. Nothing is
+/// owed or spent until one ordinary proposal threshold of real time has passed
+/// since the last pitch change, so a new note keeps its ordinary cycle.
+#[derive(Clone, Debug)]
+pub(crate) struct OnsetResponse {
+    weight: f32,
+    tau: f64,
+    prev_scan: Vec<f32>,
+    prev_end: u64,
+    primed: bool,
+    pub(crate) pending: f64,
+    pub(crate) rise_sum: f64,
+    pub(crate) extra_sec: f64,
+    cycle_extra: f64,
+    since_move_sec: f32,
+    protected: bool,
+    proposed: bool,
+    listening_bins: u32,
+}
+
+impl OnsetResponse {
+    pub(crate) fn new(weight: f32, bins: usize) -> Self {
+        let mut response = Self {
+            weight,
+            tau: 0.0,
+            prev_scan: vec![0.0; bins],
+            prev_end: 0,
+            primed: false,
+            pending: 0.0,
+            rise_sum: 0.0,
+            extra_sec: 0.0,
+            cycle_extra: 0.0,
+            since_move_sec: 0.0,
+            protected: true,
+            proposed: false,
+            listening_bins: 0,
+        };
+        response.configure(crate::core::habituation::HabituationParams::default());
+        response
+    }
+
+    /// The time constant is the existing satiation time: `satiation_sec / ln 10`.
+    pub(crate) fn configure(&mut self, params: crate::core::habituation::HabituationParams) {
+        self.tau = f64::from(params.satiation_sec) / std::f64::consts::LN_10;
+    }
+
+    fn record(&self, at: Option<u64>, event: &'static str) -> RespondRecord {
+        RespondRecord {
+            at,
+            event,
+            weight: self.weight,
+            extra_sec: self.extra_sec,
+            rise_sum: self.rise_sum,
+            pending: self.pending,
+            listening_bins: self.listening_bins,
+            cycle_extra_sec: None,
+            moved: None,
+            protected: None,
+        }
+    }
+
+    /// One control step: reads a new own observation inside `bins` and returns the
+    /// clock seconds spent. Unknown, future or regridded observations re-prime
+    /// without contribution; the shared mixed history is never used.
+    fn step(
+        &mut self,
+        input: &super::pitch_core::LooInput,
+        now: Option<u64>,
+        space: &Log2Space,
+        bins: std::ops::Range<usize>,
+        dt: f32,
+        threshold: f32,
+    ) -> f64 {
+        self.since_move_sec += dt;
+        self.protected = self.since_move_sec < threshold;
+        let end = input.onset_habituation_end;
+        match (&input.onset_habituation_state_scan, now) {
+            (Some(scan), Some(now)) if input.onset_habituation_known && end <= now => {
+                space.assert_scan_len_named(scan, "onset_habituation_state_scan");
+                if self.prev_scan.len() != scan.len() {
+                    self.prev_scan.clear();
+                    self.prev_scan.resize(scan.len(), 0.0);
+                    self.primed = false;
+                }
+                if !self.primed || end != self.prev_end {
+                    if self.primed && end > self.prev_end {
+                        let rise = bins
+                            .clone()
+                            .map(|i| scan[i] - self.prev_scan[i])
+                            .fold(0.0_f32, f32::max);
+                        self.listening_bins = bins.len() as u32;
+                        self.rise_sum += f64::from(rise);
+                        if !self.protected {
+                            self.pending += f64::from(self.weight) * self.tau * f64::from(rise);
+                        }
+                    }
+                    self.prev_scan.copy_from_slice(scan);
+                    self.prev_end = end;
+                    self.primed = true;
+                }
+            }
+            _ => self.primed = false,
+        }
+        let spend = if self.protected {
+            self.pending = 0.0;
+            0.0
+        } else {
+            let spend = self.pending.min(f64::from(self.weight) * f64::from(dt));
+            self.pending -= spend;
+            spend
+        };
+        self.extra_sec += spend;
+        self.cycle_extra += spend;
+        spend
+    }
+}
+
 #[derive(Debug)]
 pub struct PitchController {
     pub(crate) harmonic_gate: Option<bool>,
@@ -37,6 +174,8 @@ pub struct PitchController {
     proposal_phase: f32,
     pub(crate) dwell_state: Option<DwellRecord>,
     pub(crate) dwell_trace: Vec<DwellRecord>,
+    pub(crate) respond: Option<OnsetResponse>,
+    pub(crate) respond_trace: Vec<RespondRecord>,
     pub(crate) tonal_trace: Vec<crate::core::tonal_context::Record>,
     pub(crate) pitch_set_trace: Vec<crate::core::tonal_context::pitch_set::Decision>,
     pub(crate) dwell_trace_enabled: bool,
@@ -88,7 +227,7 @@ impl PitchController {
         if self.harmonic_gate.is_some() {
             return self.harmonic_next_tick.filter(|&next| next > at);
         }
-        if pitch.dwell > 0. || !fs.is_finite() || fs <= 0. {
+        if pitch.dwell > 0. || self.respond.is_some() || !fs.is_finite() || fs <= 0. {
             return None;
         }
         let interval = pitch.proposal_interval_sec.filter(|v| *v > 0.);
@@ -144,6 +283,8 @@ impl PitchController {
             proposal_phase: 0.0,
             dwell_state: None,
             dwell_trace: Vec::new(),
+            respond: None,
+            respond_trace: Vec::new(),
             tonal_trace: Vec::new(),
             pitch_set_trace: Vec::new(),
             dwell_trace_enabled: false,
@@ -218,6 +359,11 @@ impl PitchController {
             state.remainder = 0.0;
             state.elapsed_sec = 0.0;
         }
+        if let Some(response) = &mut self.respond {
+            response.since_move_sec = 0.0;
+            response.pending = 0.0;
+            response.cycle_extra = 0.0;
+        }
         self.last_theta_phase = 0.0;
         self.theta_phase_initialized = false;
         self.last_target_salience = 0.0;
@@ -226,6 +372,47 @@ impl PitchController {
     /// Update pitch targets at control rate (hop-sized steps).
     #[allow(clippy::too_many_arguments)]
     pub fn update_pitch_target(
+        &mut self,
+        current_freq_hz: f32,
+        rhythms: &NeuralRhythms,
+        dt_sec: f32,
+        landscape: &Landscape,
+        pitch: &PitchControl,
+        neighbor_pitch_log2: &[f32],
+        neighbor_salience: &[f32],
+        temperature_bonus: f32,
+    ) -> bool {
+        let moved = self.update_pitch_target_inner(
+            current_freq_hz,
+            rhythms,
+            dt_sec,
+            landscape,
+            pitch,
+            neighbor_pitch_log2,
+            neighbor_salience,
+            temperature_bonus,
+        );
+        if let Some(response) = &mut self.respond
+            && std::mem::take(&mut response.proposed)
+        {
+            if self.dwell_trace_enabled {
+                self.respond_trace.push(RespondRecord {
+                    cycle_extra_sec: Some(response.cycle_extra),
+                    moved: Some(moved),
+                    protected: Some(response.protected),
+                    ..response.record(self.control_tick, "proposal")
+                });
+            }
+            response.cycle_extra = 0.0;
+            if moved {
+                response.since_move_sec = 0.0;
+            }
+        }
+        moved
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn update_pitch_target_inner(
         &mut self,
         current_freq_hz: f32,
         rhythms: &NeuralRhythms,
@@ -301,6 +488,38 @@ impl PitchController {
         self.integration_window = Self::integration_window_for_freq(current_freq);
         self.accumulated_time += dt_sec;
         let dwelling = pitch.dwell > 0.0;
+        let spend = match &mut self.respond {
+            Some(response) => {
+                let (lo, hi) = Self::target_bounds(pitch, current_pitch_log2, landscape);
+                let (lo, hi) = if lo <= hi {
+                    (lo, hi)
+                } else {
+                    landscape.space.voice_pitch_bounds_log2()
+                };
+                let centers = &landscape.space.centers_log2;
+                let bins =
+                    centers.partition_point(|&x| x < lo)..centers.partition_point(|&x| x <= hi);
+                let threshold = pitch
+                    .proposal_interval_sec
+                    .filter(|v| *v > 0.0)
+                    .unwrap_or(self.integration_window);
+                let spend = response.step(
+                    self.core.loo_input(),
+                    self.control_tick,
+                    &landscape.space,
+                    bins,
+                    dt_sec,
+                    threshold,
+                );
+                if spend > 0.0 && self.dwell_trace_enabled {
+                    self.respond_trace
+                        .push(response.record(self.control_tick, "spend"));
+                }
+                spend as f32
+            }
+            None => 0.0,
+        };
+        let phased = dwelling || self.respond.is_some();
         if dwelling {
             let (level, excluded) =
                 self.core
@@ -309,6 +528,9 @@ impl PitchController {
             self.proposal_phase = (self.proposal_phase
                 + dt_sec * (1.0 + pitch.dwell * (1.0 - 2.0 * level)).max(0.0))
             .min(f32::MAX);
+            if spend > 0.0 {
+                self.proposal_phase = (self.proposal_phase + spend).min(f32::MAX);
+            }
             self.dwell_state = Some(DwellRecord {
                 at: self.control_tick,
                 event: "state",
@@ -320,8 +542,10 @@ impl PitchController {
                 freq_hz: current_freq,
                 weight: pitch.dwell,
             });
+        } else if phased {
+            self.proposal_phase = (self.proposal_phase + dt_sec + spend).min(f32::MAX);
         }
-        let proposal_clock = if dwelling {
+        let proposal_clock = if phased {
             self.proposal_phase
         } else {
             self.accumulated_time
@@ -380,9 +604,14 @@ impl PitchController {
         }
         if should_propose {
             let elapsed = self.accumulated_time;
-            if dwelling {
+            if phased {
                 self.proposal_phase = proposal_interval_sec
                     .map_or(0.0, |interval| (self.proposal_phase - interval).max(0.0));
+            }
+            if let Some(response) = &mut self.respond {
+                response.proposed = true;
+            }
+            if dwelling {
                 let state = self
                     .dwell_state
                     .as_mut()
@@ -434,7 +663,7 @@ impl PitchController {
                     // A future adaptive gate is unknown until its owning clock publishes it.
                     let next = if self.harmonic_gate.is_some() {
                         self.harmonic_next_tick.unwrap_or(sample)
-                    } else if dwelling {
+                    } else if phased {
                         sample
                     } else if has_rhythm && proposal_interval_sec.is_none() {
                         if rhythms.theta.freq_hz.is_finite() && rhythms.theta.freq_hz > 0. {
@@ -989,5 +1218,436 @@ mod dwell_tests {
             0.0,
         );
         assert!(ctl.target_pitch_log2 <= 8000.0_f32.log2());
+    }
+}
+
+#[cfg(test)]
+mod respond_tests {
+    use super::super::pitch_core::LooInput;
+    use super::*;
+    use crate::life::adaptation::AdaptationConfig;
+    use rand::SeedableRng;
+    use std::sync::Arc;
+
+    const DT: f32 = 0.05;
+    const STEP: u64 = 2400;
+
+    fn space() -> Log2Space {
+        Log2Space::new(55.0, 8000.0, 96)
+    }
+
+    fn controller(pitch: &PitchControl, space: &Log2Space) -> PitchController {
+        let mut ctl = PitchController::new(
+            AnyPitchCore::from_control(pitch, 220.0_f32.log2()),
+            AdaptationContext::from_config(&AdaptationConfig::default(), space.n_bins()),
+            220.0_f32.log2(),
+            2.0,
+            SmallRng::seed_from_u64(21),
+        );
+        if pitch.respond_to_onsets > 0.0 {
+            ctl.respond = Some(OnsetResponse::new(pitch.respond_to_onsets, space.n_bins()));
+        }
+        ctl.dwell_trace_enabled = true;
+        ctl
+    }
+
+    fn observe(ctl: &mut PitchController, scan: Option<Arc<[f32]>>, end: u64, known: bool) {
+        let input = ctl.loo_input_mut();
+        input.onset_habituation_state_scan = scan;
+        input.onset_habituation_end = end;
+        input.onset_habituation_known = known;
+    }
+
+    fn input(scan: &Arc<[f32]>, end: u64, known: bool) -> LooInput {
+        let mut input = LooInput::default();
+        input.onset_habituation_state_scan = Some(scan.clone());
+        input.onset_habituation_end = end;
+        input.onset_habituation_known = known;
+        input
+    }
+
+    fn tau() -> f64 {
+        5.0 / std::f64::consts::LN_10
+    }
+
+    fn bins(space: &Log2Space, lo_hz: f32, hi_hz: f32) -> std::ops::Range<usize> {
+        let c = &space.centers_log2;
+        c.partition_point(|&x| x < lo_hz.log2())..c.partition_point(|&x| x <= hi_hz.log2())
+    }
+
+    /// A peak that moves every few seconds, so proposals both move and stay.
+    fn terrain(landscape: &mut Landscape, step: usize) {
+        let peak = [220.0_f32, 330.0, 330.0, 247.0][(step / 90) % 4].log2();
+        let centers = landscape.space.centers_log2.clone();
+        for (score, x) in landscape.consonance_field_score_eff.iter_mut().zip(centers) {
+            *score = 1.0 - 8.0 * (x - peak).abs();
+        }
+    }
+
+    fn update(ctl: &mut PitchController, landscape: &Landscape, pitch: &PitchControl) -> bool {
+        let current = ctl.target_pitch_log2().exp2();
+        ctl.update_pitch_target(
+            current,
+            &NeuralRhythms::default(),
+            DT,
+            landscape,
+            pitch,
+            &[],
+            &[],
+            0.0,
+        )
+    }
+
+    #[test]
+    fn zero_weight_has_no_state_and_ignores_its_observation() {
+        let space = space();
+        let n = space.n_bins();
+        let mut landscape = Landscape::new(space.clone());
+        let zero = PitchControl::default();
+        let positive = PitchControl {
+            respond_to_onsets: 2.0,
+            ..Default::default()
+        };
+        let mut observed = controller(&zero, &space);
+        let mut plain = controller(&zero, &space);
+        let mut flat = controller(&positive, &space);
+        assert!(observed.respond.is_none() && plain.respond.is_none());
+        let still: Arc<[f32]> = vec![0.1; n].into();
+        let rhythms = NeuralRhythms::default();
+        let mut moves = 0;
+        for step in 0..1200_usize {
+            terrain(&mut landscape, step);
+            let at = step as u64 * STEP;
+            let moving: Arc<[f32]> = (0..n)
+                .map(|i| ((i * 7 + step * 13) % 17) as f32 / 17.0)
+                .collect();
+            observe(&mut observed, Some(moving), at, step % 5 != 2);
+            observe(&mut flat, Some(still.clone()), at, true);
+            for ctl in [&mut observed, &mut plain, &mut flat] {
+                ctl.control_tick = Some(at);
+            }
+            let a = update(&mut observed, &landscape, &zero);
+            let b = update(&mut plain, &landscape, &zero);
+            let c = update(&mut flat, &landscape, &positive);
+            assert_eq!(
+                (
+                    a,
+                    observed.target_pitch_log2.to_bits(),
+                    observed.accumulated_time.to_bits(),
+                    observed.rng_state_for_test(),
+                    observed.next_proposal_tick(at, &zero, &rhythms, 48_000.0, STEP),
+                ),
+                (
+                    b,
+                    plain.target_pitch_log2.to_bits(),
+                    plain.accumulated_time.to_bits(),
+                    plain.rng_state_for_test(),
+                    plain.next_proposal_tick(at, &zero, &rhythms, 48_000.0, STEP),
+                ),
+                "step {step}"
+            );
+            // A positive weight that hears no rise proposes at the same samples.
+            assert_eq!(
+                (
+                    c,
+                    flat.target_pitch_log2.to_bits(),
+                    flat.rng_state_for_test()
+                ),
+                (
+                    b,
+                    plain.target_pitch_log2.to_bits(),
+                    plain.rng_state_for_test()
+                ),
+                "step {step}"
+            );
+            moves += usize::from(b);
+        }
+        assert!(moves > 2, "{moves}");
+        assert!(observed.respond_trace.is_empty());
+        let response = flat.respond.as_ref().unwrap();
+        assert_eq!((response.extra_sec, response.pending), (0.0, 0.0));
+        assert!(flat.respond_trace.iter().all(|r| r.event == "proposal"));
+    }
+
+    #[test]
+    fn rises_inside_the_range_owe_w_tau_rho_and_other_changes_do_nothing() {
+        let space = space();
+        let n = space.n_bins();
+        let range = bins(&space, 200.0, 400.0);
+        let w = 3.0;
+        let cases: [(&str, fn(f32) -> f32, f32); 3] = [
+            ("inside", |r| r, 300.0),
+            ("outside", |r| r, 1000.0),
+            ("falling", |r| -r, 300.0),
+        ];
+        for (name, sign, hz) in cases {
+            let mut response = OnsetResponse::new(w, n);
+            let mut scan = vec![0.1_f32; n];
+            let mut rises = 0.0_f64;
+            for step in 0..80_u64 {
+                let rise = if (1..=10).contains(&step) {
+                    0.002 * step as f32
+                } else {
+                    0.0
+                };
+                for (x, &c) in scan.iter_mut().zip(&space.centers_hz) {
+                    if (c - hz).abs() < 0.05 * hz {
+                        *x += sign(rise);
+                    }
+                }
+                let at = step * STEP;
+                let shared: Arc<[f32]> = scan.clone().into();
+                let spend = response.step(
+                    &input(&shared, at, true),
+                    Some(at),
+                    &space,
+                    range.clone(),
+                    DT,
+                    0.0,
+                );
+                assert!(spend <= f64::from(w) * f64::from(DT) + 1e-12);
+                rises += f64::from(rise);
+            }
+            if name == "inside" {
+                assert!((response.rise_sum - rises).abs() < 1e-6);
+                assert_eq!(response.pending, 0.0);
+                let expected = f64::from(w) * tau() * response.rise_sum;
+                assert!((response.extra_sec - expected).abs() < 1e-12, "{expected}");
+                assert_eq!(response.listening_bins as usize, range.len());
+            } else {
+                assert_eq!(
+                    (response.extra_sec, response.rise_sum),
+                    (0.0, 0.0),
+                    "{name}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn unknown_future_repeated_and_regridded_observations_only_reprime() {
+        let space = space();
+        let n = space.n_bins();
+        let all = 0..n;
+        let mut response = OnsetResponse::new(2.0, n);
+        let mut level = 0.1_f32;
+        let mut next = |end: u64, known: bool, now: u64, response: &mut OnsetResponse| {
+            level += 0.003;
+            let scan: Arc<[f32]> = vec![level; n].into();
+            response.step(
+                &input(&scan, end, known),
+                Some(now),
+                &space,
+                all.clone(),
+                DT,
+                0.0,
+            );
+            response.rise_sum
+        };
+        let h = STEP;
+        assert_eq!(next(0, true, 0, &mut response), 0.0);
+        // A repeated end, even with changed values.
+        assert_eq!(next(0, true, h, &mut response), 0.0);
+        // Unknown, then the next known observation only re-primes.
+        assert_eq!(next(2 * h, false, 2 * h, &mut response), 0.0);
+        assert_eq!(next(3 * h, true, 3 * h, &mut response), 0.0);
+        // Future, then a re-prime.
+        assert_eq!(next(5 * h, true, 4 * h, &mut response), 0.0);
+        assert_eq!(next(5 * h, true, 5 * h, &mut response), 0.0);
+        assert!((next(6 * h, true, 6 * h, &mut response) - 0.003).abs() < 1e-6);
+        // Missing own observation: never the shared history.
+        let empty = LooInput::default();
+        response.step(&empty, Some(7 * h), &space, all.clone(), DT, 0.0);
+        assert!((next(8 * h, true, 8 * h, &mut response) - 0.003).abs() < 1e-6);
+        // A grid change re-primes and keeps the debt.
+        response.pending = 1.0;
+        let coarse = Log2Space::new(55.0, 8000.0, 48);
+        let scan: Arc<[f32]> = vec![0.9; coarse.n_bins()].into();
+        let rise = response.rise_sum;
+        response.step(
+            &input(&scan, 9 * h, true),
+            Some(9 * h),
+            &coarse,
+            0..coarse.n_bins(),
+            0.0,
+            0.0,
+        );
+        assert_eq!((response.rise_sum, response.pending), (rise, 1.0));
+    }
+
+    #[test]
+    fn skipped_observations_keep_the_total_and_bound_each_step() {
+        let space = space();
+        let n = space.n_bins();
+        let w = 2.0;
+        let (mut every, mut sparse) = (OnsetResponse::new(w, n), OnsetResponse::new(w, n));
+        let mut held = (Arc::<[f32]>::from(vec![0.0; n]), 0);
+        let mut spread = false;
+        for step in 0..200_u64 {
+            let scan: Arc<[f32]> = vec![0.04 * step.min(20) as f32; n].into();
+            let at = step * STEP;
+            if step % 4 == 0 {
+                held = (scan.clone(), at);
+            }
+            let a = every.step(&input(&scan, at, true), Some(at), &space, 0..n, DT, 0.0);
+            let b = sparse.step(
+                &input(&held.0, held.1, true),
+                Some(at),
+                &space,
+                0..n,
+                DT,
+                0.0,
+            );
+            for spend in [a, b] {
+                assert!(spend <= f64::from(w) * f64::from(DT) + 1e-12);
+            }
+            spread |= step % 4 != 0 && b > 0.0;
+        }
+        assert!(spread, "sparse debt must spill into later steps");
+        assert!((every.rise_sum - sparse.rise_sum).abs() < 1e-5);
+        assert!((every.extra_sec - sparse.extra_sec).abs() < 1e-4);
+        assert_eq!((every.pending, sparse.pending), (0.0, 0.0));
+    }
+
+    #[test]
+    fn a_moved_note_keeps_one_ordinary_cycle_and_protected_rises_are_dropped() {
+        let space = space();
+        let n = space.n_bins();
+        let mut landscape = Landscape::new(space.clone());
+        let w = 4.0;
+        let pitch = PitchControl {
+            respond_to_onsets: w,
+            ..Default::default()
+        };
+        let mut ctl = controller(&pitch, &space);
+        let mut quiet = controller(&pitch, &space);
+        quiet.dwell_trace_enabled = false;
+        let rise = 0.01_f32;
+        let mut last_proposal: Option<(u64, bool)> = None;
+        let (mut moved, mut stayed_early) = (0, 0);
+        let mut checked_first_spend = 0;
+        for step in 0..3000_usize {
+            terrain(&mut landscape, step);
+            let at = step as u64 * STEP;
+            // Every step rises inside the range, except at the sawtooth wrap.
+            let scan: Arc<[f32]> = vec![rise * (step % 50) as f32; n].into();
+            for c in [&mut ctl, &mut quiet] {
+                observe(c, Some(scan.clone()), at, true);
+                c.control_tick = Some(at);
+            }
+            let before = ctl.respond_trace.len();
+            let a = update(&mut ctl, &landscape, &pitch);
+            let b = update(&mut quiet, &landscape, &pitch);
+            // Reporting changes neither targets nor random draws.
+            assert_eq!(
+                (a, ctl.target_pitch_log2.to_bits(), ctl.rng_state_for_test()),
+                (
+                    b,
+                    quiet.target_pitch_log2.to_bits(),
+                    quiet.rng_state_for_test()
+                )
+            );
+            // One ordinary cycle in f32 real time after the last pitch change.
+            let threshold = ctl.integration_window();
+            let mut sum = 0.0_f32;
+            let mut cycle = 0_u64;
+            while sum < threshold {
+                sum += DT;
+                cycle += 1;
+            }
+            for record in ctl.respond_trace[before..].iter().copied() {
+                let record_at = record.at.unwrap();
+                if let Some((last, last_moved)) = last_proposal
+                    && last_moved
+                {
+                    // Nothing is spent inside the protected cycle.
+                    assert!(record_at >= last + cycle * STEP, "{record:?}");
+                    if record.event == "spend" && record_at == last + cycle * STEP {
+                        // Rises heard during protection were dropped, not saved.
+                        assert!(record.pending <= f64::from(w) * tau() * f64::from(rise) + 1e-9);
+                        checked_first_spend += 1;
+                    }
+                }
+                if record.event == "proposal" {
+                    if let Some((last, last_moved)) = last_proposal {
+                        if last_moved {
+                            assert_eq!(record_at - last, cycle * STEP, "{record:?}");
+                            assert!(!record.protected.unwrap());
+                        } else if record_at - last < cycle * STEP {
+                            stayed_early += 1;
+                        }
+                    }
+                    moved += usize::from(record.moved.unwrap());
+                    last_proposal = Some((record_at, record.moved.unwrap()));
+                }
+            }
+        }
+        assert!(moved > 2 && stayed_early > 2, "{moved} {stayed_early}");
+        assert!(checked_first_spend > 0);
+        assert!(quiet.respond_trace.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn observation_and_phase_updates_allocate_nothing() {
+        use crate::runtime_profile::{begin_allocations, finish_allocations};
+        let space = space();
+        let n = space.n_bins();
+        let mut landscape = Landscape::new(space.clone());
+        let pitch = PitchControl {
+            respond_to_onsets: 4.0,
+            ..Default::default()
+        };
+        let mut ctl = controller(&pitch, &space);
+        ctl.dwell_trace_enabled = false;
+        let scans: Vec<Arc<[f32]>> = (0..50).map(|k| vec![0.01 * k as f32; n].into()).collect();
+        let (mut measured, mut spending) = (0, 0);
+        for step in 0..3000_usize {
+            terrain(&mut landscape, step);
+            let at = step as u64 * STEP;
+            observe(&mut ctl, Some(scans[step % 50].clone()), at, true);
+            ctl.control_tick = Some(at);
+            let before = ctl.respond.as_ref().unwrap().extra_sec;
+            begin_allocations();
+            update(&mut ctl, &landscape, &pitch);
+            let counts = finish_allocations().unwrap();
+            // Proposals belong to the pitch core; observation and clock steps must not allocate.
+            if !ctl.harmonic_evaluated {
+                assert_eq!((counts.count, counts.bytes), (0, 0), "step {step}");
+                measured += 1;
+                spending += usize::from(ctl.respond.as_ref().unwrap().extra_sec > before);
+            }
+        }
+        assert!(measured > 0 && spending > 0, "{measured} {spending}");
+        println!("RESPOND_CONTROL_ALLOC measured_steps={measured} spending_steps={spending}");
+    }
+
+    #[test]
+    fn without_its_own_observation_the_voice_never_reads_the_shared_history() {
+        let space = space();
+        let n = space.n_bins();
+        let mut landscape = Landscape::new(space.clone());
+        let positive = PitchControl {
+            respond_to_onsets: 8.0,
+            ..Default::default()
+        };
+        let zero = PitchControl::default();
+        let mut responding = controller(&positive, &space);
+        let mut plain = controller(&zero, &space);
+        for step in 0..600_usize {
+            terrain(&mut landscape, step);
+            let at = step as u64 * STEP;
+            landscape.onset_habituation_state_scan = vec![0.01 * (step % 40) as f32; n].into();
+            landscape.onset_habituation_end = at;
+            landscape.onset_habituation_known = true;
+            responding.control_tick = Some(at);
+            plain.control_tick = Some(at);
+            assert_eq!(
+                update(&mut responding, &landscape, &positive),
+                update(&mut plain, &landscape, &zero)
+            );
+            assert_eq!(responding.target_pitch_log2, plain.target_pitch_log2);
+        }
+        assert_eq!(responding.respond.as_ref().unwrap().extra_sec, 0.0);
     }
 }

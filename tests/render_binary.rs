@@ -473,6 +473,81 @@ section("report fixture", || {
 }
 
 #[test]
+fn habitat_sensation_report_is_bounded_per_hop_and_preserves_output() {
+    let scenario = write_inline_scenario(
+        r#"
+seed(5);
+let tone = place(sine().sustain().anchor().amp(0.1), at(220.0));
+let r = place(rain().amp(0.03).rate(30).leave_drops_out(true).objects(4).hit(0.5),
+              consonance(150.0, 5000.0));
+wait(1.0);
+release(r);
+release(tone);
+wait(0.2);
+"#,
+    );
+    let wav_path = unique_wav_path();
+    let plain_wav_path = unique_wav_path();
+    let report_path = unique_temp_path("jsonl");
+    let output = Command::new(env!("CARGO_BIN_EXE_conchordal-render"))
+        .env("RUST_LOG", "warn")
+        .arg(&scenario)
+        .arg("-o")
+        .arg(&wav_path)
+        .arg("--report")
+        .arg(&report_path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "report render failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let plain = run_render_binary(&scenario, &plain_wav_path);
+    assert!(
+        plain.status.success(),
+        "plain render failed: {}",
+        String::from_utf8_lossy(&plain.stderr)
+    );
+    assert_eq!(
+        fs::read(&wav_path).unwrap(),
+        fs::read(&plain_wav_path).unwrap(),
+        "the habitat sensation record must not change the rendered waveform"
+    );
+    let records: Vec<serde_json::Value> = fs::read_to_string(&report_path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let hops = records.iter().filter(|r| r["type"] == "hop_timing").count();
+    let sensation: Vec<_> = records
+        .iter()
+        .filter(|r| r["type"] == "habitat_sensation")
+        .collect();
+    assert_eq!(sensation.len(), hops, "one record per hop");
+    assert!(
+        sensation[0]["harmonicity01"].is_null(),
+        "silence before analysis"
+    );
+    let mut audible = 0;
+    for r in &sensation {
+        let (h, rough) = (&r["harmonicity01"], &r["roughness01"]);
+        assert_eq!(h.is_null(), rough.is_null(), "{r}");
+        if let (Some(h), Some(rough)) = (h.as_f64(), rough.as_f64()) {
+            assert!(
+                (0.0..=1.0).contains(&h) && (0.0..=1.0).contains(&rough),
+                "{r}"
+            );
+            audible += 1;
+        }
+    }
+    assert!(audible > hops / 2, "audible={audible} hops={hops}");
+    for path in [scenario, wav_path, plain_wav_path, report_path] {
+        let _ = fs::remove_file(path);
+    }
+}
+
+#[test]
 fn conchordal_render_fails_when_report_cannot_be_created() {
     let wav_path = unique_wav_path();
     let report_path = unique_temp_path("dir");

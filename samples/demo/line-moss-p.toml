@@ -1,0 +1,3 @@
+# Research habituation drive (HB-2 form P): only places where sound was heard tire.
+[psychoacoustics.habituation]
+drive = "channel_p"

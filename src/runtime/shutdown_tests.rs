@@ -1177,6 +1177,155 @@ fn onset_habituation_wiring_starts_before_late_birth_and_zero_allocates_no_state
 }
 
 #[test]
+fn respond_to_onsets_alone_reserves_onset_history_from_run_start() {
+    let root = std::env::temp_dir().join(format!(
+        "conchordal-respond-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _directory = super::test_output_directory::TestOutputDirectory::new(root.clone());
+    for weight in [0.0, 2.0] {
+        let script = root.join(format!("{weight}.rhai"));
+        std::fs::write(
+            &script,
+            format!(
+                "place(sine().sustain().amp(0.1),at(440.0)); wait(1.0);\n\
+                 let m=place(flora().respond_to_onsets({weight}),random(220.0,880.0)); wait(0.5);"
+            ),
+        )
+        .unwrap();
+        let scenario = compile_scenario_from_script(&script, Some(21)).unwrap();
+        let reached = Arc::new(AtomicBool::new(false));
+        let observed = reached.clone();
+        let mut opts = options();
+        opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
+            let frame = &state.current_landscape;
+            if weight == 0.0 {
+                assert!(frame.onset_habituation_state_scan.is_empty());
+            } else if tick > 512 && tick < 48000 {
+                assert!(state.pop.flora.is_empty());
+                assert!(frame.onset_habituation_known);
+                assert_eq!(
+                    frame.onset_habituation_state_scan.len(),
+                    frame.space.n_bins()
+                );
+                observed.store(true, Ordering::SeqCst);
+            }
+        }));
+        let wiring = wire_runtime(
+            &AppConfig::default(),
+            48000,
+            script.to_string_lossy().into_owned(),
+            scenario,
+            Arc::new(AtomicBool::new(false)),
+            opts,
+        )
+        .unwrap();
+        join(wiring).unwrap();
+        assert_eq!(reached.load(Ordering::SeqCst), weight > 0.0);
+    }
+}
+
+#[test]
+fn voice_respond_to_onsets_reserves_history_at_run_start_and_reports_only_when_positive() {
+    use std::sync::Mutex;
+    let root = std::env::temp_dir().join(format!(
+        "conchordal-voice-respond-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    let _directory = super::test_output_directory::TestOutputDirectory::new(root.clone());
+    for weight in [0.0, 4.0] {
+        let mut runs = Vec::new();
+        for reporting in [false, true] {
+            let script = root.join(format!("{weight}-{reporting}.rhai"));
+            std::fs::write(
+                &script,
+                format!(
+                    "wait(1.0);\n\
+                     place(harmonic().sustain().seek_consonance().pitch_apply_mode(\"rearticulate\").leave_self_out(true).respond_to_onsets({weight}),at(220.0));\n\
+                     wait(1.0); place(sine().amp(0.1),at(660.0)); wait(1.0); place(sine().amp(0.1),at(990.0)); wait(3.0);"
+                ),
+            )
+            .unwrap();
+            let scenario = compile_scenario_from_script(&script, Some(21)).unwrap();
+            let report = root.join(format!("{weight}.jsonl"));
+            let capture = Arc::new(Mutex::new(Vec::new()));
+            let copy = capture.clone();
+            let seen = Arc::new(Mutex::new((false, false)));
+            let observed = seen.clone();
+            let mut opts = options();
+            if reporting {
+                opts.reporter = Some(JsonlReporter::create(report.to_str().unwrap()).unwrap());
+            }
+            opts.offline_body_probe = Some(Box::new(move |state, tick, count, _| {
+                let frame = &state.current_landscape;
+                if tick > 512 && tick < 48000 {
+                    // Before the line is placed, the mixed history exists only for w > 0.
+                    assert!(state.pop.voices.is_empty());
+                    assert_eq!(
+                        frame.onset_habituation_state_scan.len(),
+                        if weight > 0.0 {
+                            frame.space.n_bins()
+                        } else {
+                            0
+                        }
+                    );
+                    assert_eq!(frame.onset_habituation_known, weight > 0.0);
+                    observed.lock().unwrap().0 = true;
+                }
+                if tick > 96000
+                    && let Some(own) = frame.loo.first()
+                {
+                    assert_eq!(own.onset_habituation_state_scan.is_some(), weight > 0.0);
+                    assert_eq!(own.onset_habituation_known, weight > 0.0);
+                    observed.lock().unwrap().1 = true;
+                }
+                for batch in &state.phonation_batches_buf[..count] {
+                    copy.lock().unwrap().push(
+                        serde_json::to_string(&(tick, batch.source_id, &batch.cmds, &batch.tones))
+                            .unwrap(),
+                    );
+                }
+            }));
+            let wiring = wire_runtime(
+                &AppConfig::default(),
+                48000,
+                script.to_string_lossy().into_owned(),
+                scenario,
+                Arc::new(AtomicBool::new(false)),
+                opts,
+            )
+            .unwrap();
+            join(wiring).unwrap();
+            assert_eq!(*seen.lock().unwrap(), (true, true));
+            runs.push(capture.lock().unwrap().clone());
+            if reporting {
+                let records: Vec<serde_json::Value> = std::fs::read_to_string(&report)
+                    .unwrap()
+                    .lines()
+                    .map(|s| serde_json::from_str(s).unwrap())
+                    .filter(|r: &serde_json::Value| r["type"] == "respond")
+                    .collect();
+                if weight > 0.0 {
+                    assert!(records.iter().any(|r| r["event"] == "proposal"));
+                    assert!(records.iter().all(|r| r["weight"] == weight));
+                } else {
+                    assert!(records.is_empty());
+                }
+            }
+        }
+        assert_eq!(runs[0], runs[1], "reporting must not change Tone commands");
+    }
+}
+
+#[test]
 fn dwell_reporting_preserves_real_tone_commands_and_records_stopped_end_state() {
     use std::sync::Mutex;
     let root = std::env::temp_dir().join(format!(
@@ -1812,7 +1961,8 @@ fn harmonic_observer_reservation_cost() {
         for (pcm, sources) in &inputs {
             own.retain(|key, _| sources.iter().any(|(k, _)| key == k));
             for (key, _) in sources {
-                own.entry(*key).or_insert_with(|| mixed.voice_observer());
+                own.entry(*key)
+                    .or_insert_with(|| mixed.voice_observer(false));
             }
             let start = Instant::now();
             std::hint::black_box(mixed.process(pcm));

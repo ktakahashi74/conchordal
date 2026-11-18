@@ -92,6 +92,8 @@
   web GUI; it shares `src/ui/` drawing with the native GUI.
 - `web/` (Astro site sources; build with `npm ci && npm run build` in `web/`) lives at the repository root, not under `src/`.
 - Samples: execution-test scripts live under `tests/scripts/`. Compile-only samples stay under `samples/`.
+  The live demo's pieces and their `pieces.json` live in `samples/demo/` (unseeded);
+  the demo page is built by `web/scripts/build-demo.mjs` (see `web/scripts/README.md`).
 
 ## Build, Test, and Development Commands
 - Build (debug): `cargo build`
@@ -277,8 +279,11 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   The air-gap policy does not apply to `conchordal-render`.
 - Do not add `--wav` or any disk-write capability to the `conchordal` binary.
 - The browser version follows the same rule: no path saves or sends audio or
-  audio-derived values. Its page posts performance counters only (an explicit
-  allowlist in `crates/conchordal-web/www/page.js`).
+  audio-derived values. Its measurement page posts performance counters only (an
+  explicit allowlist in `crates/conchordal-web/www/page.js`). The public demo page
+  (`web/src/scripts/demo.js`) sends one counter record per performance, with a
+  visible notice and an off switch, to `web/metrics-worker/`, which rebuilds it
+  from its own allowlist; hardware details are added only on a post-dropout opt-in.
 
 ## Coding Style & Naming Conventions
 - **Comments**:  All comments must be in concise English.  Do not use Japanese in code comments.
@@ -304,7 +309,9 @@ source-matched versus original computation rule or §9.3.56's five listener laye
     harmonicity projection from `potential_h_from_log2_spectrum`. Habituation is enabled
     by default. The ecology path runs per hop, and `observe_listener_analysis_results`
     runs the same projection per received listener frame; the default GUI has both
-    paths. Explicitly disabling habituation skips these projections.
+    paths. Explicitly disabling habituation skips these projections. Research drives
+    `channel_p` and `channel_q` bypass the root projection and allocate no steady-state
+    drive/projection storage; Q owns one extra channel-state scan allocated at construction.
   - ListenerTwin groups bin masses into local-maximum components with cached mass,
     component-mass and ascent-owner buffers. Its presentation-only E0 predictor owns
     256 completed acoustic windows and preallocated support/history scratch. Initial
@@ -398,8 +405,21 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   keep only their power observer; the latter still excludes own PCM from resources.
   Observer storage is allocated at birth, processing reuses scratch, and publication
   owns H/R/score/level and power scans. Flora retains consumed growth/seed scans
-  in placement-allocated buffers for reports and missing-observation holds. SourceKind separates
-  Voice and Flora identities. Voice observer clones skip NSGT and disable the mixed stream's
+  in placement-allocated buffers for reports and missing-observation holds.
+  A habitat-routed Rain with `leave_drops_out(true)` captures only its impacts'
+  actual habitat PCM (its objects stay in the field) in a placement-allocated hop
+  buffer and one recycled packet entry at first capture. Its H/R observer is built
+  at birth like a Voice observer; publication owns its H/R, score and mass scans.
+  Rain advance, strikes (including `objects_follow_drops` retuning) and rendering
+  allocate nothing in steady state; its `rain_field`/`rain_impact` reports allocate
+  only while reports are enabled. Rain `follow_meter(focus)` (Author rule,
+  Experimental, default 0, live) reads the shared habitat meter, reserved from run
+  start for any positive placement or patch; each detected level's confidence gives
+  `kappa = focus * A1^-1(c)` (cap 512) and weights the impact rate by
+  `exp(sum kappa (cos phi - 1))`, normalised to mean 1 over the slowest level's
+  cycle, so impacts move in time but are not added. Zero leaves the rate and every
+  impact bit-identical; the weight is allocation-free and draws no random numbers. SourceKind separates
+  Voice, Flora and Rain identities. Voice observer clones skip NSGT and disable the mixed stream's
   resource tracker because they consume only H/R. The auditory filterbank, hop
   boxcars and ERB-context scratch allocate at construction and reuse storage.
   Body skip advances filters and hop statistics; selected updates apply S4–S6 once.
@@ -604,7 +624,11 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   the hop. Unknown, stale or unconfirmed observations use continuous allocation without resetting
   the clock; biomass/resources stay continuous. Flora has no `metric()` opt-in or opt-out.
   Supported tonal and residual amplitude targets, including joint normalization,
-  follow current biomass every hop through the existing slew. Confirmed action
+  follow current biomass every hop. A lane's first 80 ms keep the full-scale birth
+  slew; afterwards each new target is reached linearly over 0.5 s (one nominal
+  opportunity at the 2 Hz reference), so window and peak reassignments do not step.
+  The support-action projection reads the same slew plan. Live `amp()` glides over the
+  Flora's `fade()` seconds (at least 80 ms). Confirmed action
   crossings gate births and discrete replacements, not amplitude refreshes.
   Unknown timing retains continuous allocation without resetting the clock.
   Flora `pace(k)` (default 1, initial and live) scales ecological time relative
@@ -638,6 +662,18 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   Voice's SpanGap law, unknown/future handling and independent RNG are reused with
   a Flora discriminator. Release/fade take priority. Reports use span_gap with
   flora_id, generation 0, weighted heard and representative carrier means.
+  Flora initial-only `respond_to_onsets(w)` (Author rule, Experimental, ledger
+  §9.3.135) defaults to 0: no state, no history read and no pace multiplication.
+  Positive finite weights reserve the same shared onset-habituation observer from
+  run start. Each new known observation reads the largest history rise inside the
+  extent, skipping bins within 1.5 ERB (`onset_habituation::SUPPORT_ERB`) of
+  non-Free sounding lanes; the rise owes `w*tau*rho` extra seconds
+  (`tau = satiation_sec/ln 10`), spent at most `w*hop` per hop as a multiplier
+  `1 + spend/hop` on the spec pace before `ecological_pace` saturation. Births stay
+  on crossings; no RNG draw. Unknown/future/regridded observations re-prime without
+  contribution. Loud sharp own attacks can leak past the exclusion; Flora-shaped
+  births at moss level do not (inline acoustic test). Reports add `respond` only
+  for positive weights; storage is allocated at placement and reused.
   Flora residual rendering defaults to false; explicit
   `.residual(true)` remains available.
 
@@ -665,6 +701,14 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - `[psychoacoustics.habituation]`
 - `enabled` (default: `true`), `satiation_sec` (`5.0`), `recovery_sec` (`8.0`),
   `ref_drive` (`0.25`)
+- `drive` (default `"root_projection"`): research alternatives `"channel_p"` and
+  `"channel_q"` drive frequency-channel states from peak-normalized S6 density,
+  without extra smoothing. P uses those states directly; Q averages states at the
+  candidate partials with the H kernel harmonic count and weights (default 16,
+  k^-0.4), linear interpolation, and zero for out-of-grid partials while retaining
+  their denominator weights. Both ecology and listener use the selected drive.
+  These mappings and the unchanged dynamics are Author rules; no default adoption
+  or published-model agreement is claimed. This is not a Rhai composer control.
 - Defaults come from `HabituationParams::default()` in `src/core/habituation.rs`.
 - When `enabled = false` the `_eff` consonance views equal their base variants.
 
@@ -746,8 +790,9 @@ unknown key, or invalid numeric range fails the run.
   proportionally increase exit rate without changing its law.
 - One optional habitat AnalysisStream observer owns attack history from run start
   whenever any effective positive weight appears in the scenario, including later
-  placements. It reuses auditory band powers. Listener, synchronous body, Voice
-  LOO and Flora power observers do not own this history.
+  placements. It reuses auditory band powers. Listener, synchronous body and Flora
+  power observers do not own this history; Voice LOO observers own a copy only
+  for positive `respond_to_onsets`.
 - Band detector and sparse Gaussian storage allocate at construction. Processing
   reuses scratch. Published scans share Arc storage across Voices; copy-on-write
   copies a scan after publication. The private state and dedicated RNG exist only
@@ -758,6 +803,24 @@ unknown key, or invalid numeric range fails the run.
 - Renderer tail completion is registered for rest or span/gap Voices and routed
   by ID and generation. Rest Waiting/Gap freezes both integrals, while private
   attack recovery and ordinary clocks continue. Early Off cancels its pending Off.
+- Voice `respond_to_onsets(w)` (Author rule, Experimental, ledger §9.3.135) is
+  initial-only, default 0: no state, no detector copy, unchanged proposal clock and
+  RNG. It requires free `seek_consonance()`, `sustain()`, rearticulate with
+  `rearticulate_above(0)` and no SQ-1/ME; other forms warn to 0, and missing
+  `leave_self_out(true)` warns once with no effect. A positive weight reserves the
+  mixed attack detector from run start (later placements included) and clones it,
+  with its pre-birth state, into that Voice's LOO observer, which then hears the
+  habitat minus own PCM; publication carries the scan, end and known flag by ID
+  and generation. Never fall back to the shared history. New known observations
+  owe `w*tau*rho` proposal-clock seconds (rho = largest rise inside the pitch range,
+  `tau = satiation_sec/ln 10`), spent at most `w*dt` per control step on the dwell
+  phase path. Until one ordinary proposal threshold of real time has passed since
+  the last pitch change (birth included), nothing is owed or spent, so the move
+  cadence is unchanged. Unknown/future/regridded observations re-prime. The
+  detector copy and previous scan allocate at birth; processing and control steps
+  are allocation-free; copy-on-write follows publication. `respond` reports
+  (spend steps, proposals with cycle extra seconds, moved, protected) allocate only
+  with reports enabled.
 
 ## Rhai Spawn API
 Placement builders produce a `Placement` (defined in `src/scripting/placement.rs`,

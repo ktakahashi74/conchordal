@@ -79,7 +79,6 @@ byId("end").onclick = () => player.requestEnd();
 function commands() {
   for (const command of JSON.parse(gui.take_commands())) {
     if (command === "start" && script && !player.session) byId("start").click();
-    if (command === "end") player.requestEnd();
     if (command === "exit") void player.stop();
   }
   requestAnimationFrame(commands);

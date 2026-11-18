@@ -275,7 +275,7 @@ impl eframe::App for App {
             self.runtime_error.as_deref(),
             &self.exiting,
             &self.start_flag,
-            &self.end_request,
+            Some(&self.end_request),
             &mut self.show_raw_nsgt_power,
         );
     }

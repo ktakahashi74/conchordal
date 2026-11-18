@@ -1,0 +1,8 @@
+---
+import DemoPage from '../../components/DemoPage.astro';
+import { demo } from '../../lib/demo';
+export function getStaticPaths() {
+  return demo() ? [{ params: { demo: 'demo' } }] : [];
+}
+---
+<DemoPage locale="ja" />

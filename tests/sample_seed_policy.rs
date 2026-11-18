@@ -45,6 +45,61 @@ fn top_level_samples_are_unseeded_and_research_assays_are_seeded() {
     assert!(research_count > 0, "expected research assay scripts");
 }
 
+/// Demo pieces are performed live in the browser, so each start must be a new performance.
+#[test]
+fn demo_pieces_are_listed_and_unseeded() {
+    let dir = Path::new("samples/demo");
+    let manifest: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(dir.join("pieces.json")).expect("read samples/demo/pieces.json"),
+    )
+    .expect("parse samples/demo/pieces.json");
+    let mut listed = Vec::new();
+    for piece in manifest.as_array().expect("pieces.json is an array") {
+        let id = piece["id"].as_str().expect("piece id");
+        assert!(
+            !id.is_empty()
+                && id
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-'),
+            "piece id must be lowercase ASCII, digits or '-': {id}"
+        );
+        for key in ["score", "config"] {
+            let Some(name) = piece.get(key).and_then(|v| v.as_str()) else {
+                assert_ne!(key, "score", "{id} has no score");
+                continue;
+            };
+            assert!(
+                !name.contains('/') && dir.join(name).is_file(),
+                "{id}: {key} must name a file in samples/demo: {name}"
+            );
+            listed.push(name.to_owned());
+        }
+        let score = fs::read_to_string(dir.join(piece["score"].as_str().unwrap())).unwrap();
+        assert!(
+            !has_seed_statement(&score),
+            "demo piece should use a fresh scenario seed: {id}"
+        );
+        for key in ["title", "authored", "generated"] {
+            for locale in ["en", "ja"] {
+                assert!(
+                    piece[key][locale].as_str().is_some_and(|s| !s.is_empty()),
+                    "{id}: missing {key}.{locale}"
+                );
+            }
+        }
+        assert!(
+            piece.get("authored_harmony").is_some(),
+            "{id}: authored_harmony must be stated, null when absent"
+        );
+    }
+    for entry in fs::read_dir(dir).expect("read samples/demo") {
+        let name = entry.unwrap().file_name().into_string().unwrap();
+        if name.ends_with(".rhai") || name.ends_with(".toml") {
+            assert!(listed.contains(&name), "unlisted demo file: {name}");
+        }
+    }
+}
+
 #[test]
 fn top_level_sample_material_uses_sample_framing() {
     let mut paths = vec![

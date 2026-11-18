@@ -36,6 +36,9 @@ impl Community {
                     }
                     gap.trace_enabled = self.auto_observe.is_some();
                 }
+                if let Some((params, _)) = self.onset_habituation_config {
+                    flora.configure_respond(params);
+                }
                 self.flora.push(flora);
             }
             Action::UpdateFlora { flora_id, patch } => {
@@ -59,7 +62,7 @@ impl Community {
                 target,
             } => {
                 self.has_placed_rain = true;
-                self.rain.push(Rain::new(
+                let mut rain = Rain::new(
                     rain_id,
                     spec,
                     extent_hz,
@@ -67,7 +70,11 @@ impl Community {
                     self.seed,
                     landscape,
                     self.time.fs,
-                ));
+                    self.time.hop,
+                );
+                self.has_placed_rain_observer |= rain.needs_observer();
+                rain.trace_enabled = self.auto_observe.is_some();
+                self.rain.push(rain);
             }
             Action::UpdateRain { rain_id, patch } => {
                 if let Some(rain) = self.rain.iter_mut().find(|rain| rain.id() == rain_id) {

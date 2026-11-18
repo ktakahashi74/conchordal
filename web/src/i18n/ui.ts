@@ -6,7 +6,7 @@ export type Locale = (typeof locales)[number];
 interface UiStrings {
   description: string;
   keywords: string;
-  navigation: Record<'home' | 'manifesto' | 'technote' | 'docs', string>;
+  navigation: Record<'home' | 'demo' | 'manifesto' | 'technote' | 'docs', string>;
   language: string;
   menu: string;
   quickStart: string;
@@ -26,7 +26,7 @@ export const ui: Record<Locale, UiStrings> = {
   en: {
     description: site.tagline,
     keywords: 'generative music instrument, generative music, algorithmic composition, psychoacoustics, consonance, emergent harmony, music cognition, artificial life, autonomous agents, open source, direct cognitive coupling, rust',
-    navigation: { home: 'Home', manifesto: 'Manifesto', technote: 'Technote', docs: 'Docs' },
+    navigation: { home: 'Home', demo: 'Demo', manifesto: 'Manifesto', technote: 'Technote', docs: 'Docs' },
     language: '日本語', menu: 'Menu', quickStart: 'Quick Start →', toc: 'Table of Contents',
     backToContents: 'Back to contents', provenance: 'Provenance and page details',
     mathRegion: 'Scrollable equation', tableRegion: 'Scrollable table', skip: 'Skip to main content',
@@ -36,7 +36,7 @@ export const ui: Record<Locale, UiStrings> = {
   ja: {
     description: '直接認知結合による生成音楽システム',
     keywords: '生成音楽, 生成音楽楽器, アルゴリズム作曲, 心理音響, 協和, 創発する調和, 音楽認知, 人工生命, 自律エージェント, オープンソース, 直接認知結合, Rust',
-    navigation: { home: 'Home', manifesto: 'Manifesto', technote: 'Technote', docs: 'Docs' },
+    navigation: { home: 'Home', demo: 'Demo', manifesto: 'Manifesto', technote: 'Technote', docs: 'Docs' },
     language: 'EN', menu: 'Menu', quickStart: 'クイックスタート →', toc: '目次',
     backToContents: '目次に戻る', provenance: '出典・ページ情報',
     mathRegion: '横スクロールできる数式', tableRegion: '横スクロールできる表', skip: '本文へ移動',

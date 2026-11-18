@@ -554,6 +554,57 @@ vetoes determine actual On events. The clock continues through `rest_on_habituat
 gaps and is not reset on return. Adaptation, glide and private attack recovery use
 real seconds; the movement-cost window retains its original meaning.
 
+## Responding to heard onsets
+
+`respond_to_onsets(w)` brings a free Voice's pitch proposals forward after it hears
+new onsets from outside its own sound. It is an initial-only author rule with
+default weight 0; zero creates no state and reads nothing.
+
+```rhai
+let line = harmonic().sustain().seek_consonance()
+    .pitch_apply_mode("rearticulate").leave_self_out(true)
+    .respond_to_onsets(2.0);
+place(line, at(196.0));
+place(flora().pace(1.0), random(98.0, 1568.0));
+wait(12.0);
+```
+
+A positive weight gives the Voice's self-exclusion observer a copy of the shared
+attack detector, started from the mixed history before the Voice's birth. That
+observer hears the habitat minus the Voice's own PCM, so the Voice's own attacks do
+not register and no other source is named. Inside the Voice's pitch range, a rise ρ
+of this attack history owes w·τ·ρ seconds of proposal clock, with
+τ = `satiation_sec` / ln 10, spent at most w seconds per second. One new
+unhabituated onset lends at most w·τ·(1−e^(−period/τ)) seconds, where period is the
+onset drive (0.5 s for a basin centred at 2 Hz, about 0.45·w seconds); near
+w = 4.6 one onset lends a whole ordinary 2-second cycle.
+
+After each pitch change, nothing is lent or spent until one ordinary proposal
+threshold of real time has passed, so a new note keeps its ordinary cycle and the
+shortest interval between new notes does not change. The response shortens only
+the wait after a proposal that stayed. An early proposal still uses the same field,
+costs and random stream to decide whether and where to move; no onset is forced.
+
+Lent seconds bring the proposal clock to its threshold sooner, but a proposal still
+waits for its ordinary opportunity. Without `proposal_interval(seconds)`, while the
+production meter holds a beat with positive confidence, that opportunity is the next
+crossing of the meter's subdivision layer after the threshold is reached, not the
+threshold itself. Each proposal restarts the clock from zero, so lent seconds that
+carried it past the threshold are not kept for the next cycle. With
+`proposal_interval(seconds)` the clock keeps the part above the interval.
+
+The supported form is free `seek_consonance()` with `sustain()`,
+`pitch_apply_mode("rearticulate")` and `rearticulate_above(0)`, without
+`follow_own_sequence()` or `melodic_continuity()`; other forms warn and use 0.
+Without `leave_self_out(true)` the weight warns once and has no effect: the Voice
+never falls back to the shared history, which contains its own attacks. It
+combines with `dwell(w)`, whose rate still applies. Unknown, future and regridded
+observations contribute nothing and re-prime the comparison. With
+`[psychoacoustics.habituation] enabled = false` the history stays flat and the run
+warns once. Reports add `respond` records (spent steps and proposals, with the
+cycle's extra seconds and whether the proposal moved) only for positive weights.
+This author rule does not claim that a listener hears the response.
+
 ## Following a Voice's own pitch sequence
 
 `follow_own_sequence(w)` favors pitch intervals that the Voice has learned from

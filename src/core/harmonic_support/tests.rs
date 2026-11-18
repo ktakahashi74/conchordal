@@ -508,7 +508,7 @@ fn support_display_survives_zero_updates_and_gaps_without_enabling_loo() {
     };
     stream.apply_update(zero);
     assert!(stream.process(&pcm).support.is_some());
-    assert!(stream.voice_observer().process(&pcm).support.is_none());
+    assert!(stream.voice_observer(false).process(&pcm).support.is_none());
     stream.gap_to(96_000);
     stream.apply_update(zero);
     assert_eq!(
@@ -519,7 +519,7 @@ fn support_display_survives_zero_updates_and_gaps_without_enabling_loo() {
         support_preference: [Some(1.), None, None],
         ..Default::default()
     });
-    assert!(stream.voice_observer().process(&pcm).support.is_some());
+    assert!(stream.voice_observer(false).process(&pcm).support.is_some());
 }
 
 #[test]

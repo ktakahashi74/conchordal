@@ -166,7 +166,7 @@ fn aud_m1_v4_state() {
             .collect();
         mixed.process(&pcm);
     }
-    let mut observer = crate::core::stream::loo::Observer::new(2, 0, &mixed);
+    let mut observer = crate::core::stream::loo::Observer::new(2, 0, &mixed, false);
     let mut oracle = mixed.clone();
     let mut maximum_clone_error = 0.0_f32;
     let mut maximum_clone_density_l1 = 0.0_f32;

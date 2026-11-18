@@ -657,6 +657,13 @@ impl Voice {
         );
         pitch_ctl.set_adaptation_enabled(effective_control.adaptation.enabled);
         pitch_ctl.dwell_state = initial_dwell;
+        let respond = effective_control.pitch.respond_to_onsets;
+        if respond.is_finite() && respond > 0.0 {
+            pitch_ctl.respond = Some(pitch_controller::OnsetResponse::new(
+                respond,
+                landscape.map_or(0, |landscape| landscape.space.n_bins()),
+            ));
+        }
         if effective_control.pitch.follow_own_sequence > 0.0
             && effective_control.supports_own_sequence()
         {

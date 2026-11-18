@@ -9,11 +9,15 @@ use std::sync::Arc;
 pub(crate) enum SourceKind {
     Voice,
     Flora,
+    /// Rain impacts only; the Rain's resonant objects stay in the observed field.
+    Rain,
 }
 
 pub(crate) struct SourcePcm {
     pub kind: SourceKind,
     pub analyze_hr: bool,
+    /// The Voice observer also owns an attack detector (`respond_to_onsets`).
+    pub onset_history: bool,
     pub tonal_context: Option<bool>,
     pub id: u64,
     pub generation: u32,
@@ -41,6 +45,10 @@ pub(crate) struct Observation {
     pub h_scan: Vec<f32>,
     pub r_scan: Vec<f32>,
     pub score_scan: Arc<[f32]>,
+    /// Attack history without own PCM; `None` unless the source requested it.
+    pub onset_habituation_state_scan: Option<Arc<[f32]>>,
+    pub onset_habituation_end: u64,
+    pub onset_habituation_known: bool,
 }
 
 impl Observation {
@@ -97,6 +105,44 @@ impl FloraObservation {
     }
 }
 
+/// H/R of the habitat without one Rain's impacts, with its score and density mass.
+#[derive(Clone, Debug)]
+pub(crate) struct RainObservation {
+    pub id: u64,
+    pub h_scan: Vec<f32>,
+    pub r_scan: Vec<f32>,
+    pub score_scan: Vec<f32>,
+    pub mass_scan: Vec<f32>,
+}
+
+impl RainObservation {
+    pub(crate) fn revalue(
+        &mut self,
+        space: &crate::core::log2space::Log2Space,
+        params: &LandscapeParams,
+    ) {
+        space.assert_scan_len_named(&self.h_scan, "rain_h_scan");
+        space.assert_scan_len_named(&self.r_scan, "rain_r_scan");
+        space.assert_scan_len_named(&self.score_scan, "rain_score_scan");
+        space.assert_scan_len_named(&self.mass_scan, "rain_mass_scan");
+        let kernel = params.consonance_field_kernel();
+        for ((out, &h), &r) in self
+            .score_scan
+            .iter_mut()
+            .zip(&self.h_scan)
+            .zip(&self.r_scan)
+        {
+            *out = kernel.score(h, r);
+        }
+        crate::core::landscape::consonance_density_mass_scan(
+            params,
+            &self.h_scan,
+            &self.r_scan,
+            &mut self.mass_scan,
+        );
+    }
+}
+
 pub(crate) struct Observer {
     pub kind: SourceKind,
     pub id: u64,
@@ -110,7 +156,12 @@ pub(crate) struct Observer {
 }
 
 impl Observer {
-    pub(crate) fn new(id: u64, generation: u32, before_birth: &AnalysisStream) -> Self {
+    pub(crate) fn new(
+        id: u64,
+        generation: u32,
+        before_birth: &AnalysisStream,
+        onset_history: bool,
+    ) -> Self {
         Self {
             id,
             generation,
@@ -118,7 +169,7 @@ impl Observer {
             tonal: None,
             tonal_ownership: None,
             tonal_shared: false,
-            stream: Some(before_birth.voice_observer()),
+            stream: Some(before_birth.voice_observer(onset_history)),
             power: None,
             pcm: vec![0.; before_birth.hop_samples()],
         }
@@ -139,7 +190,15 @@ impl Observer {
             tonal_shared: false,
             pcm: vec![0.0; before_birth.hop_samples()],
             power: Some(before_birth.resource_observer()),
-            stream: analyze_hr.then(|| before_birth.voice_observer()),
+            stream: analyze_hr.then(|| before_birth.voice_observer(false)),
+        }
+    }
+
+    /// H/R observer of one Rain's impacts, built like a Voice observer.
+    pub(crate) fn rain(id: u64, before_birth: &AnalysisStream) -> Self {
+        Self {
+            kind: SourceKind::Rain,
+            ..Self::new(id, 0, before_birth, false)
         }
     }
 
@@ -228,6 +287,28 @@ impl Observer {
         }
     }
 
+    pub(crate) fn rain_snapshot(&self) -> RainObservation {
+        let Observation {
+            h_scan,
+            r_scan,
+            score_scan,
+            ..
+        } = self.snapshot();
+        RainObservation {
+            id: self.id,
+            h_scan,
+            r_scan,
+            score_scan: score_scan.to_vec(),
+            mass_scan: self
+                .stream
+                .as_ref()
+                .unwrap()
+                .last()
+                .consonance_density_mass
+                .clone(),
+        }
+    }
+
     pub(crate) fn snapshot(&self) -> Observation {
         let frame = self.stream.as_ref().unwrap().last();
         let h_scan: Vec<_> = frame
@@ -248,6 +329,10 @@ impl Observer {
             h_scan,
             r_scan,
             score_scan,
+            onset_habituation_state_scan: (!frame.onset_habituation_state_scan.is_empty())
+                .then(|| frame.onset_habituation_state_scan.clone()),
+            onset_habituation_end: frame.onset_habituation_end,
+            onset_habituation_known: frame.onset_habituation_known,
         }
     }
 }
@@ -267,7 +352,7 @@ mod tests {
             mixed.process(&pcm);
         }
         let before = mixed.tonal_snapshot().unwrap();
-        let mut observer = Observer::new(7, 2, &mixed);
+        let mut observer = Observer::new(7, 2, &mixed, false);
         observer.configure_tonal(&mixed, Some(true), true);
         observer.process(&pcm, &own);
         let born = observer.tonal_snapshot().unwrap();
@@ -311,7 +396,7 @@ mod tests {
         for _ in 0..64 {
             mixed.process(&mix);
         }
-        let mut voice = Observer::new(1, 0, &mixed);
+        let mut voice = Observer::new(1, 0, &mixed, false);
         let mut flora = Observer::flora(2, 0, &mut mixed, true);
         let input = std::env::var("F19B_INPUT").unwrap_or_else(|_| "repeated".into());
         let capture = std::env::var("F19B_PCM")
@@ -343,7 +428,7 @@ mod tests {
                     continue;
                 }
                 if !active {
-                    voice = Observer::new(1, 0, &mixed);
+                    voice = Observer::new(1, 0, &mixed, false);
                     flora = Observer::flora(2, 0, &mut mixed, true);
                     active = true;
                 }
@@ -428,7 +513,7 @@ mod tests {
     fn pcm_loo_steady_state_allocates_nothing() {
         let (nsgt, params) = crate::runtime::body_metabolism_test_core();
         let template = AnalysisStream::new(params, nsgt);
-        let mut observer = Observer::new(7, 2, &template);
+        let mut observer = Observer::new(7, 2, &template, false);
         let mix: Vec<_> = (0..template.hop_samples())
             .map(|i| 0.2 * (i as f32 * 0.13).sin())
             .collect();
@@ -474,12 +559,179 @@ mod tests {
         println!("F19_OBSERVER_ALLOC {counts:?}");
     }
 
+    /// Tone bursts (10 ms attack, 0.25 s hold, 50 ms release) every `period` seconds.
+    fn bursts(hz: f64, offset: f64, period: f64, start: u64, out: &mut [f32], fs: f64) {
+        for (i, x) in out.iter_mut().enumerate() {
+            let t = (start + i as u64) as f64 / fs;
+            let u = (t - offset).rem_euclid(period);
+            let env = if t < offset {
+                0.0
+            } else if u < 0.01 {
+                u / 0.01
+            } else if u < 0.26 {
+                1.0
+            } else if u < 0.31 {
+                (0.31 - u) / 0.05
+            } else {
+                0.0
+            };
+            *x += (0.05 * env * (std::f64::consts::TAU * hz * t).sin()) as f32;
+        }
+    }
+
+    fn onset_mixed() -> AnalysisStream {
+        let (nsgt, mut params) = crate::runtime::body_metabolism_test_core();
+        params.habituation.enabled = true;
+        let mut mixed = AnalysisStream::new(params, nsgt).with_nsgt_power(false);
+        mixed.enable_onset_habituation(0.5);
+        let silence = vec![0.0; mixed.hop_samples()];
+        for _ in 0..400 {
+            mixed.process(&silence);
+        }
+        assert!(mixed.last().onset_habituation_known);
+        mixed
+    }
+
+    #[test]
+    fn onset_history_observer_hears_everything_except_its_own_pcm() {
+        let template = onset_mixed();
+        let hop = template.hop_samples();
+        let fs = f64::from(template.sample_rate());
+        let space = template.last().space.clone();
+        let near = |hz: f32| {
+            let c = space.nearest_index(hz);
+            c.saturating_sub(4)..(c + 5).min(space.n_bins())
+        };
+        for (name, other) in [
+            ("own only", None),
+            ("other pitch", Some((660.0, 0.5))),
+            ("same pitch", Some((440.0, 0.5))),
+        ] {
+            let mut mixed = template.clone();
+            let mut observer = Observer::new(7, 2, &mixed, true);
+            // The observer starts from the mixed pre-birth history.
+            let born = observer.snapshot();
+            assert_eq!(
+                born.onset_habituation_state_scan.as_deref(),
+                Some(&*mixed.last().onset_habituation_state_scan)
+            );
+            assert!(born.onset_habituation_known);
+            let (mut own, mut mix) = (vec![0.0; hop], vec![0.0; hop]);
+            let (mut own_max, mut mixed_max) = (0.0_f32, 0.0_f32);
+            for frame in 0..600_u64 {
+                let start = (400 + frame) * hop as u64;
+                own.fill(0.0);
+                bursts(440.0, 0.0, 1.0, frame * hop as u64, &mut own, fs);
+                mix.copy_from_slice(&own);
+                if let Some((hz, offset)) = other {
+                    bursts(hz, offset, 1.0, frame * hop as u64, &mut mix, fs);
+                }
+                observer.process(&mix, &own);
+                mixed.process(&mix);
+                let heard = observer.snapshot();
+                assert_eq!(heard.onset_habituation_end, start + hop as u64);
+                let scan = heard.onset_habituation_state_scan.unwrap();
+                let region = if name == "other pitch" {
+                    near(660.0)
+                } else {
+                    near(440.0)
+                };
+                own_max = own_max.max(scan[region.clone()].iter().copied().fold(0.0, f32::max));
+                mixed_max = mixed_max.max(
+                    mixed.last().onset_habituation_state_scan[region]
+                        .iter()
+                        .copied()
+                        .fold(0.0, f32::max),
+                );
+            }
+            println!("onset observer {name}: observer_max={own_max} mixed_max={mixed_max}");
+            assert!(
+                mixed_max > 0.1,
+                "{name}: the mixed stream hears the attacks"
+            );
+            if other.is_none() {
+                assert_eq!(own_max, 0.0, "{name}: own attacks are subtracted");
+            } else {
+                assert!(own_max > 0.1, "{name}: external attacks are heard");
+            }
+        }
+    }
+
+    #[test]
+    fn onset_history_observer_reset_and_unrequested_observers_keep_their_contracts() {
+        let mut template = onset_mixed();
+        let hop = template.hop_samples();
+        let fs = f64::from(template.sample_rate());
+        let mut pcm = vec![0.0; hop];
+        for frame in 0..200_u64 {
+            pcm.fill(0.0);
+            bursts(523.0, 0.0, 1.0, frame * hop as u64, &mut pcm, fs);
+            template.process(&pcm);
+        }
+        assert!(
+            template
+                .last()
+                .onset_habituation_state_scan
+                .iter()
+                .any(|&x| x > 0.0)
+        );
+        let silence = vec![0.0; hop];
+        let mut observer = Observer::new(7, 2, &template, true);
+        observer.process(&silence, &silence);
+        observer.reset();
+        let reset = observer.snapshot();
+        // Reset follows the mixed detector: unknown, with the history cleared.
+        assert!(!reset.onset_habituation_known);
+        assert!(
+            reset
+                .onset_habituation_state_scan
+                .is_none_or(|scan| scan.iter().all(|&x| x == 0.0))
+        );
+        let mut frames = 0;
+        while !observer.snapshot().onset_habituation_known {
+            observer.process(&silence, &silence);
+            frames += 1;
+            assert!(frames < 2000);
+        }
+        // Observers that did not request the detector are unchanged.
+        let mut plain = Observer::new(7, 2, &template, false);
+        let mut flora = Observer::flora(8, 0, &mut template, true);
+        for observer in [&mut plain, &mut flora] {
+            observer.process(&pcm, &silence);
+            assert!(observer.last().onset_habituation_state_scan.is_empty());
+            assert!(!observer.last().onset_habituation_known);
+            assert!(observer.snapshot().onset_habituation_state_scan.is_none());
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "profile-alloc")]
+    fn onset_history_observer_steady_state_allocates_nothing() {
+        let template = onset_mixed();
+        let mut observer = Observer::new(7, 2, &template, true);
+        let mix: Vec<_> = (0..template.hop_samples())
+            .map(|i| 0.2 * (i as f32 * 0.13).sin())
+            .collect();
+        let own: Vec<_> = mix.iter().map(|x| x * 0.3).collect();
+        for _ in 0..64 {
+            observer.process(&mix, &own);
+        }
+        crate::runtime_profile::begin_allocations();
+        for _ in 0..1024 {
+            observer.process(&mix, &own);
+        }
+        let counts = crate::runtime_profile::finish_allocations().unwrap();
+        assert_eq!((counts.count, counts.bytes), (0, 0));
+        assert!(observer.last().onset_habituation_known);
+        println!("RESPOND_OBSERVER_ALLOC {counts:?}");
+    }
+
     #[test]
     #[should_panic(expected = "loo_score_scan")]
     fn score_geometry_boundary_is_checked() {
         let (nsgt, params) = crate::runtime::body_metabolism_test_core();
         let template = AnalysisStream::new(params.clone(), nsgt);
-        let mut observation = Observer::new(7, 0, &template).snapshot();
+        let mut observation = Observer::new(7, 0, &template, false).snapshot();
         observation.score_scan = vec![0.].into();
         observation.revalue(&template.last().space, &params);
     }

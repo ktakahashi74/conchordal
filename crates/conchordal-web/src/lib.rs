@@ -50,6 +50,11 @@ impl BrowserEngine {
             .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
+    /// Milliseconds of the last hop's worker, ecology and listener stages.
+    pub fn stage_ms(&self) -> Vec<f64> {
+        self.engine.stage_ms().to_vec()
+    }
+
     pub fn request_end(&mut self) {
         self.engine.request_end();
     }

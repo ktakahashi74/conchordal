@@ -54,7 +54,7 @@ amp(level)
 
 適用対象：`FloraSpec`, `Flora`。
 
-Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end.
+Set Flora's nominal target-amplitude scale in [0, 1], a ceiling rather than a guaranteed level. Squared lane target amplitudes sum to at most amp squared; this does not bound transients or output power. Numeric arguments must be finite before and after f32 conversion. Invalid values raise script errors. Live patches emit at wait, flush or scope end and glide to the new level over this Flora's fade() seconds (at least 80 ms).
 
 **根拠:** 該当なし（初期の身体）：Floraの身体、振幅、fadeの選択。flora、paceを参照。<br>作者規則：背後のスペクトル成長、消費、退出の生態則。聴覚認知のモデルではない。
 
@@ -1557,6 +1557,18 @@ Enable or disable rendering diffuse Flora mass as band noise. Disabled by defaul
 
 **根拠:** 該当なし（初期の身体）：Floraの身体、振幅、fadeの選択。flora、paceを参照。<br>作者規則：背後のスペクトル成長、消費、退出の生態則。聴覚認知のモデルではない。
 
+#### `respond_to_onsets`
+
+```rhai,ignore
+respond_to_onsets(w)
+```
+
+適用対象：`FloraSpec`。
+
+Speed the Flora's ecological time while new external onsets are heard inside its extent (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights read the shared attack history inside the extent, skipping bins within 1.5 ERB of the Flora's sounding lanes. A rise rho owes w*tau*rho extra ecological seconds (tau = satiation_sec/ln 10), spent at most w seconds per second, so unhabituated external onsets run the clock up to 1+w times faster; pace saturation still applies. Births stay on the Flora's own crossings and the field chooses where; no onset, pitch or random draw is added. Unknown or regridded observations only re-prime. Disabled habituation warns once. Invalid values warn and use zero. Initial-only; the observer starts at scene start, including before later Flora placements.
+
+**根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：自分の部分音の外で聴こえた発音の履歴が上がった後に、Floraの生態の時間を速める。重み0で中立（§9.3.135）。
+
 ### Rain
 
 #### `rain`
@@ -1629,6 +1641,30 @@ Set the half range in [0, 5] octaves by which each impact mode strays from impac
 
 **根拠:** 該当なし（初期の身体）：Rainの振幅、fade、打音の素材、物の身体。rainを参照。
 
+#### `ring`
+
+```rhai,ignore
+ring(octaves)
+```
+
+適用対象：`RainSpec`, `Rain`。
+
+Let impacts that land on more consonant places ring longer; up to 2^octaves at the most consonant place of the extent, in [0, 4], default 0. Each hop the eroded consonance score inside the extent is normalised to u in [0, 1]; a flat or silent extent gives u = 0. An impact reads u where its first mode sounds and lengthens the decay of all its modes by 2^(octaves * u). Level is unchanged, decays never shorten, and the pitch objective sign does not invert it. At 0 the field is not read. The bound 4 keeps the longest decay near a minute, within f32 precision. Live patches apply from the next hop.
+
+**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：打音の減衰を2^(ring × u)倍に伸ばす。uは第一のモードが鳴る所の慣れを掛けた協和の評価の値を範囲の中で正規化したもの。片側だけで、大きさは変えない。
+
+#### `follow_meter`
+
+```rhai,ignore
+follow_meter(focus)
+```
+
+適用対象：`RainSpec`, `Rain`。
+
+Gather impacts where the meter heard in the habitat expects its beat, subdivision and measure; finite and non-negative, default 0. Each hop the Rain reads the habitat meter that Flora reads. For the beat, and for the subdivision and measure when detected, the confidence c (how closely heard onsets lock to that level) gives the von Mises concentration kappa whose resultant is c; focus multiplies it, up to 512. The impact rate is multiplied by e^(sum kappa (cos phi - 1)), normalised to mean 1 over a measure, so impacts move in time but are not added. Focus 1 reproduces the heard concentration and larger values sharpen it; the meter hears the impacts, so a beat they gather on gains confidence. An unknown or unconfident meter leaves the rate unweighted. Live patches apply from the next hop.
+
+**根拠:** 原理：入力となる拍の知覚機能（§9.3.56）。<br>候補（照合未了）：habitatの拍の観測のLargeの神経共鳴振動子の形。metric()と同じ。原典一致を認定しない。<br>作者規則：打音の率に、拍・細分・小節についてe^(w × Σκ(cos φ − 1))を平均1に正規化した重みを掛ける。κは各段の確からしさを合成ベクトルの長さとするvon Misesの集中度。重み0で中立。
+
 #### `objects`
 
 ```rhai,ignore
@@ -1664,6 +1700,30 @@ impact_modes(pattern)
 Set the impacts' material as a ModePattern; default modal_table("wine_glass"). The pattern's ratios are taken once at placement, at the extent's geometric centre, and at most eight are used. Mode k has level 0.85^k with a 3 dB spread. Decay is 25 ms at 3.2 kHz, longer at lower centres as (3.2 kHz / f)^0.5, with a log-normal spread; higher modes decay as ratio^-0.5. Each impact starts with a raised-cosine onset of 0.5 to 1.5 ms.
 
 **根拠:** 該当なし（初期の身体）：Rainの振幅、fade、打音の素材、物の身体。rainを参照。
+
+#### `leave_drops_out`
+
+```rhai,ignore
+leave_drops_out(enabled)
+```
+
+適用対象：`RainSpec`。
+
+Let Rain read a habitat field without its own impacts; its objects stay in that field. Default false: Rain reads the mixed field, including its impacts. When true, the actual habitat PCM of this Rain's impacts is removed before the auditory front end, and impact positions under consonance, dissonance and edge, object drift and ring read the remaining field with the shared habituation applied. gap still reads mixed occupancy. Before the first render the mixed field is read; a missing observation keeps the previous distribution. Presentation-only Rain warns and has no effect. Set before placement.
+
+**根拠:** 原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。<br>作者規則：Rainが読む場から何を除くか。自分の打音の実際のhabitatのPCMだけを除き、共鳴する物の音は場に残す。
+
+#### `objects_follow_drops`
+
+```rhai,ignore
+objects_follow_drops(enabled)
+```
+
+適用対象：`RainSpec`。
+
+Let an object hold its pitch only while it rings; once silent, it takes the centre of the next impact that strikes it. Default false. An object is silent when its longest mode's T60 (object_decay for the default body) has passed since its last strike, or before its first strike. A silent object struck by an impact retunes to that impact's centre, clamped to the extent; if the centre lies within 1 ERB of another object, it keeps its pitch and is struck as usual. A ringing object drifts as before. No random number is added, so impact times, levels and struck objects are unchanged. How long a pitch holds follows rate, hit, objects and object_decay: with long decays or frequent strikes, objects rarely fall silent. anchor() wins and warns. Set before placement.
+
+**根拠:** 作者規則：物が高さを保つのは鳴っている間だけ。最後に打たれてからT60が過ぎたら、次に自分を打つ打音の中心の高さを取る。ほかの物から1 ERBの間隔は保つ。
 
 #### `object_decay`
 
@@ -1702,6 +1762,20 @@ phonate_when_viable()
 Withhold the first onset until perceived consonance is viable. Silently settles into the field until consonance reaches the low bound of the voice's consonance-viability window (`consonance_viability()`, or always-viable if that window was never set), then phonates normally and never re-gates. A voice that never settles dies unheard and the respawn policy replaces it -- there is no timeout parameter, the energy economy is the timeout.
 
 **根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
+
+### Pitch Movement
+
+#### `respond_to_onsets`
+
+```rhai,ignore
+respond_to_onsets(w)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Bring pitch proposals forward while new onsets are heard outside the Voice's own sound (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights copy the shared attack detector into the Voice's self-exclusion observer, so it hears everything except its own PCM. A rise rho inside the pitch range owes w*tau*rho proposal-clock seconds (tau = satiation_sec/ln 10), spent at most w seconds per second; one unhabituated onset lends about 0.45*w seconds with a 2 Hz basin. After each pitch change nothing is lent until one ordinary proposal threshold of real time passes. The field still decides whether and where to move; no onset or random draw is added. Requires free seek_consonance(), sustain(), rearticulate, rearticulate_above(0) and no follow_own_sequence()/melodic_continuity(); otherwise warns to 0. Without leave_self_out(true) it warns and has no effect.
+
+**根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：自分のPCMを除いて聴こえた発音の履歴が上がった後に、音高の選び直しを早める。高さを変えた後の一周期は保つ。重み0で中立（§9.3.135）。
 
 ### Directorとglobal parameter
 

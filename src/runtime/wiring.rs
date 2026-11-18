@@ -46,6 +46,7 @@ pub(super) fn build_analysis_runtime_core(
         roughness_aversion: 1.0,
         harmonicity_preference: 1.0,
         habituation: crate::core::habituation::HabituationParams {
+            drive: config.psychoacoustics.habituation.drive,
             enabled: config.psychoacoustics.habituation.enabled,
             satiation_sec: config.psychoacoustics.habituation.satiation_sec,
             recovery_sec: config.psychoacoustics.habituation.recovery_sec,
@@ -479,25 +480,33 @@ pub(super) fn prepare_runtime(
     if tonal_enabled && tonal_decoder.is_none() {
         tracing::warn!("follow_tonal_context requires 48000 Hz; queries remain unknown");
     }
-    let onset_habituation_enabled = scenario.end == crate::scenario::ScenarioEnd::Open
-        || scenario
-            .events
-            .iter()
-            .flat_map(|event| &event.actions)
-            .any(|action| match action {
-                Action::Spawn { spec, .. } => spec.control.phonation.rest_on_habituation > 0.0,
-                Action::PlaceFlora { spec, .. } => spec.rest_on_habituation > 0.0,
-                _ => false,
-            });
+    let actions = || scenario.events.iter().flat_map(|event| &event.actions);
+    let rest_on_habituation = scenario.end == crate::scenario::ScenarioEnd::Open
+        || actions().any(|action| match action {
+            Action::Spawn { spec, .. } => spec.control.phonation.rest_on_habituation > 0.0,
+            Action::PlaceFlora { spec, .. } => spec.rest_on_habituation > 0.0,
+            _ => false,
+        });
+    let respond_to_onsets = actions().any(|action| match action {
+        Action::Spawn { spec, .. } => spec.control.pitch.respond_to_onsets > 0.0,
+        Action::PlaceFlora { spec, .. } => spec.respond_to_onsets > 0.0,
+        _ => false,
+    });
+    let onset_habituation_enabled = rest_on_habituation || respond_to_onsets;
     let onset_period = scenario.meter_shaping.basin_hz.map_or(0.5, |(lo, hi)| {
         let (lo, hi) = crate::core::meter::sane_basin(lo, hi);
         2.0 / f64::from(lo + hi)
     });
     if onset_habituation_enabled {
         analysis_stream.enable_onset_habituation(onset_period);
-        if !core.lparams.habituation.enabled {
+        if !core.lparams.habituation.enabled && rest_on_habituation {
             tracing::warn!(
                 "rest_on_habituation is enabled but habituation is disabled; spans will not exit"
+            );
+        }
+        if !core.lparams.habituation.enabled && respond_to_onsets {
+            tracing::warn!(
+                "respond_to_onsets is enabled but habituation is disabled; nothing will respond"
             );
         }
     }
@@ -669,13 +678,18 @@ pub(super) fn prepare_runtime(
             loo_populations.push(id);
         }
     }
-    // Accumulate acoustic history from run start, even for a later placement.
-    let has_flora = scenario.end == crate::scenario::ScenarioEnd::Open
+    // Accumulate acoustic history from run start, even for a later placement or patch.
+    let habitat_meter = scenario.end == crate::scenario::ScenarioEnd::Open
         || scenario
             .events
             .iter()
             .flat_map(|event| &event.actions)
-            .any(|action| matches!(action, Action::PlaceFlora { .. }));
+            .any(|action| match action {
+                Action::PlaceFlora { .. } => true,
+                Action::PlaceRain { spec, .. } => spec.follow_meter > 0.0,
+                Action::UpdateRain { patch, .. } => patch.follow_meter.is_some_and(|w| w > 0.0),
+                _ => false,
+            });
     let harmonic_relations = harmonic_relations_enabled.then(|| {
         let sources = scenario.harmonic_relation_sources.unwrap_or_else(|| {
             scenario
@@ -712,7 +726,7 @@ pub(super) fn prepare_runtime(
 
     let cfg = WorkerConfig {
         harmonic_relations,
-        has_flora,
+        habitat_meter,
         render_prototype: config.render_prototype,
         temporal_meter_t2: config.temporal_meter_t2,
         onset_comparison: config.temporal_onset_comparison,

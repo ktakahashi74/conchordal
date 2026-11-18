@@ -145,6 +145,36 @@ pub const REST_HABITUATION: &[EvidenceDoc] = &[
     },
 ];
 
+pub const RESPOND_ONSETS: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Principle: habituation as an input function (§9.3.60).",
+        ja: "原理：入力となる馴化の機能（§9.3.60）。",
+    },
+    EvidenceDoc {
+        en: "Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).",
+        ja: "作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。",
+    },
+    EvidenceDoc {
+        en: "Author rule: faster Flora ecological time after rises in heard attack history outside its own partials; neutral at weight 0 (§9.3.135).",
+        ja: "作者規則：自分の部分音の外で聴こえた発音の履歴が上がった後に、Floraの生態の時間を速める。重み0で中立（§9.3.135）。",
+    },
+];
+
+pub const RESPOND_ONSETS_VOICE: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Principle: habituation as an input function (§9.3.60).",
+        ja: "原理：入力となる馴化の機能（§9.3.60）。",
+    },
+    EvidenceDoc {
+        en: "Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).",
+        ja: "作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。",
+    },
+    EvidenceDoc {
+        en: "Author rule: earlier pitch proposals after rises in the attack history heard without the Voice's own PCM; one ordinary proposal cycle is kept after each pitch change; neutral at weight 0 (§9.3.135).",
+        ja: "作者規則：自分のPCMを除いて聴こえた発音の履歴が上がった後に、音高の選び直しを早める。高さを変えた後の一周期は保つ。重み0で中立（§9.3.135）。",
+    },
+];
+
 pub const DWELL: &[EvidenceDoc] = &[
     EvidenceDoc {
         en: "Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).",
@@ -211,6 +241,48 @@ pub const RAIN_OBJECTS: &[EvidenceDoc] = &[
         ja: "作者規則：物は協和の山から始まり、打たれるたびにVoiceの移動費用の既定値で協和の方へ動く。anchor()で固定する。",
     },
 ];
+
+pub const RAIN_RING: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).",
+        ja: "原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。",
+    },
+    EvidenceDoc {
+        en: "Author rule: an impact's decay lengthens by 2^(ring * u), where u is the eroded consonance score where its first mode sounds, normalised within the extent; one-sided, level unchanged.",
+        ja: "作者規則：打音の減衰を2^(ring × u)倍に伸ばす。uは第一のモードが鳴る所の慣れを掛けた協和の評価の値を範囲の中で正規化したもの。片側だけで、大きさは変えない。",
+    },
+];
+
+pub const RAIN_METER: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Principle: beat perception as input (§9.3.56).",
+        ja: "原理：入力となる拍の知覚機能（§9.3.56）。",
+    },
+    EvidenceDoc {
+        en: "Candidate (source match pending): the habitat meter's Large neural-resonance oscillator form, as for metric(); source agreement is not established here.",
+        ja: "候補（照合未了）：habitatの拍の観測のLargeの神経共鳴振動子の形。metric()と同じ。原典一致を認定しない。",
+    },
+    EvidenceDoc {
+        en: "Author rule: the impact rate is weighted by e^(w * sum kappa (cos phi - 1)) over beat, subdivision and measure, normalised to mean 1, with kappa the von Mises concentration whose resultant equals each level's confidence; neutral at weight 0.",
+        ja: "作者規則：打音の率に、拍・細分・小節についてe^(w × Σκ(cos φ − 1))を平均1に正規化した重みを掛ける。κは各段の確からしさを合成ベクトルの長さとするvon Misesの集中度。重み0で中立。",
+    },
+];
+
+pub const RAIN_LEAVE_DROPS_OUT: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).",
+        ja: "原理：入力となるH/Rの感覚機能。個々の式・定数の原典一致を認定する札ではない（§9.3.56、§9.3.104）。",
+    },
+    EvidenceDoc {
+        en: "Author rule: which sound Rain excludes from the field it reads; only its own impacts' actual habitat PCM, while its objects stay in the field.",
+        ja: "作者規則：Rainが読む場から何を除くか。自分の打音の実際のhabitatのPCMだけを除き、共鳴する物の音は場に残す。",
+    },
+];
+
+pub const RAIN_OBJECTS_FOLLOW_DROPS: &[EvidenceDoc] = &[EvidenceDoc {
+    en: "Author rule: an object holds its pitch only while it rings; once its T60 has passed since its last strike, it takes the centre of the next impact that strikes it, keeping 1 ERB from the other objects.",
+    ja: "作者規則：物が高さを保つのは鳴っている間だけ。最後に打たれてからT60が過ぎたら、次に自分を打つ打音の中心の高さを取る。ほかの物から1 ERBの間隔は保つ。",
+}];
 
 pub const SWAY: &[EvidenceDoc] = &[EvidenceDoc {
     en: "Author rule: 1/f fluctuation of activity from nine AR(1) processes between 0.4 and 102 s; motivated by auditory-cortex tuning to 1/f dynamics (Garcia-Lazaro et al. 2006), not a model of it.",

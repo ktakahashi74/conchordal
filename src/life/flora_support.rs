@@ -168,7 +168,7 @@ impl Flora {
                 if target == current {
                     width as f32
                 } else {
-                    (target - current).abs() * SLEW_SEC * self.fs
+                    lane.slew_plan(target, current, self.fs).0 as f32
                 }
             };
             shortest = shortest.min((phase.ceil() as u64).max(1));
@@ -540,17 +540,17 @@ pub(super) fn project(
         } else {
             (target, lane.r)
         };
-        let duration = SLEW_SEC * fs;
-        let left = if target != lane.slew_target || (lane.slew_left == 0 && current != target) {
-            ((target - current).abs() * duration).ceil() as usize
-        } else {
-            lane.slew_left
-        };
+        let (left, step) =
+            if target != lane.slew_target || (lane.slew_left == 0 && current != target) {
+                lane.slew_plan(target, current, fs)
+            } else {
+                (lane.slew_left, lane.slew_step)
+            };
         let left = left.saturating_sub(t + 1);
         let value = if left == 0 {
             target
         } else {
-            target - (target - current).signum() * (1. / duration) * left as f32
+            target - (target - current).signum() * step * left as f32
         };
         if lane.noisy { value.sqrt() } else { value }
     };

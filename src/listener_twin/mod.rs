@@ -1,4 +1,4 @@
-use crate::core::float::sanitize_nonnegative_finite;
+use crate::core::float::{sanitize_nonnegative_finite, sanitize01};
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::meter::{MeterNetwork, MeterState};
@@ -293,60 +293,113 @@ impl ListenerTwin {
         space.assert_scan_len_named(&self.mass_scan, "listener_mass_scan");
         space.assert_scan_len_named(&self.component_mass_scan, "listener_component_mass_scan");
         space.assert_scan_len_named(&self.component_peak_bin, "listener_component_peak_bins");
-        for ((mass, &density), &du) in self
-            .mass_scan
-            .iter_mut()
-            .zip(&landscape.subjective_intensity)
-            .zip(&self.erb_du_scan)
-        {
-            *mass = sanitize_nonnegative_finite(density * du);
-        }
-        self.component_mass_scan.fill(0.0);
-        self.component_peak_bin.fill(usize::MAX);
-        let n = space.n_bins();
-        let mut start = 0;
-        while start < n {
-            let mass = self.mass_scan[start];
-            if mass == 0.0 {
-                start += 1;
-                continue;
-            }
-            let mut end = start + 1;
-            while end < n && self.mass_scan[end] == mass {
-                end += 1;
-            }
-            // Equal-mass plateaus ascend as a block. Higher neighbors win;
-            // equal higher neighbors choose left; flat maxima use the left edge.
-            let left = start > 0 && self.mass_scan[start - 1] > mass;
-            let right = end < n && self.mass_scan[end] > mass;
-            let next = if left && (!right || self.mass_scan[start - 1] >= self.mass_scan[end]) {
-                start - 1
-            } else if right {
-                end
-            } else {
-                start
-            };
-            self.component_peak_bin[start..end].fill(next);
-            start = end;
-        }
-        // Resolve the static ascent forest with path compression before summing.
-        for i in 0..n {
-            if self.mass_scan[i] == 0.0 {
-                continue;
-            }
-            let mut peak = i;
-            while self.component_peak_bin[peak] != peak {
-                peak = self.component_peak_bin[peak];
-            }
-            let mut at = i;
-            while self.component_peak_bin[at] != peak {
-                let next = self.component_peak_bin[at];
-                self.component_peak_bin[at] = peak;
-                at = next;
-            }
-            self.component_mass_scan[peak] += self.mass_scan[i];
-        }
+        group_components(
+            &landscape.subjective_intensity,
+            &self.erb_du_scan,
+            &mut self.mass_scan,
+            &mut self.component_mass_scan,
+            &mut self.component_peak_bin,
+        );
     }
+}
+
+/// Bin mass is S6 density times ERB width; each bin's mass is summed into the
+/// local maximum it ascends to, so a sounding component weighs as its total mass.
+fn group_components(
+    density: &[f32],
+    erb_du: &[f32],
+    mass_scan: &mut [f32],
+    component_mass_scan: &mut [f32],
+    component_peak_bin: &mut [usize],
+) {
+    for ((mass, &density), &du) in mass_scan.iter_mut().zip(density).zip(erb_du) {
+        *mass = sanitize_nonnegative_finite(density * du);
+    }
+    component_mass_scan.fill(0.0);
+    component_peak_bin.fill(usize::MAX);
+    let n = mass_scan.len();
+    let mut start = 0;
+    while start < n {
+        let mass = mass_scan[start];
+        if mass == 0.0 {
+            start += 1;
+            continue;
+        }
+        let mut end = start + 1;
+        while end < n && mass_scan[end] == mass {
+            end += 1;
+        }
+        // Equal-mass plateaus ascend as a block. Higher neighbors win;
+        // equal higher neighbors choose left; flat maxima use the left edge.
+        let left = start > 0 && mass_scan[start - 1] > mass;
+        let right = end < n && mass_scan[end] > mass;
+        let next = if left && (!right || mass_scan[start - 1] >= mass_scan[end]) {
+            start - 1
+        } else if right {
+            end
+        } else {
+            start
+        };
+        component_peak_bin[start..end].fill(next);
+        start = end;
+    }
+    // Resolve the static ascent forest with path compression before summing.
+    for i in 0..n {
+        if mass_scan[i] == 0.0 {
+            continue;
+        }
+        let mut peak = i;
+        while component_peak_bin[peak] != peak {
+            peak = component_peak_bin[peak];
+        }
+        let mut at = i;
+        while component_peak_bin[at] != peak {
+            let next = component_peak_bin[at];
+            component_peak_bin[at] = peak;
+            at = next;
+        }
+        component_mass_scan[peak] += mass_scan[i];
+    }
+}
+
+/// Report-only view of a landscape's sensation: `harmonicity01` and `roughness01`
+/// averaged over the sounding components, each weighted by the same component
+/// mass as the listener's stability level and read at its peak bin. Valuation
+/// weights do not enter. `None` without audible evidence. Allocates its scratch.
+pub(crate) fn component_weighted_sensation(landscape: &Landscape) -> Option<(f32, f32)> {
+    let space = &landscape.space;
+    space.assert_scan_len_named(&landscape.subjective_intensity, "subjective_intensity");
+    space.assert_scan_len_named(&landscape.harmonicity01, "harmonicity01");
+    space.assert_scan_len_named(&landscape.roughness01, "roughness01");
+    let (_, erb_du) = erb_grid(space);
+    if !has_audible_evidence(landscape, &erb_du) {
+        return None;
+    }
+    let n = space.n_bins();
+    let mut mass_scan = vec![0.0; n];
+    let mut component_mass_scan = vec![0.0; n];
+    let mut component_peak_bin = vec![usize::MAX; n];
+    group_components(
+        &landscape.subjective_intensity,
+        &erb_du,
+        &mut mass_scan,
+        &mut component_mass_scan,
+        &mut component_peak_bin,
+    );
+    let (mut h, mut r, mut weight_sum) = (0.0f32, 0.0f32, 0.0f32);
+    for ((&weight, &h01), &r01) in component_mass_scan
+        .iter()
+        .zip(&landscape.harmonicity01)
+        .zip(&landscape.roughness01)
+    {
+        if weight <= 0.0 {
+            continue;
+        }
+        h += weight * sanitize01(h01);
+        r += weight * sanitize01(r01);
+        weight_sum += weight;
+    }
+    (weight_sum > 0.0).then(|| (sanitize01(h / weight_sum), sanitize01(r / weight_sum)))
 }
 
 impl Default for ListenerTwin {
@@ -627,6 +680,35 @@ mod tests {
         let state = ListenerTwin::default().observe_presentation_landscape(0.0, 0, 0, &landscape);
 
         assert!((state.stability_level - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn component_weighted_sensation_uses_stability_weights_without_valuation() {
+        // Bin 3 ascends into bin 2's component (mass 1.5); bin 20 is its own (mass 1.0).
+        let mut landscape = test_landscape(0.0, &[(2, 0.2, 1.0), (3, 0.9, 0.5), (20, 0.8, 1.0)]);
+        landscape.harmonicity01.fill(1.0);
+        landscape.roughness01.fill(1.0);
+        for (idx, h01, r01) in [(2, 0.2, 0.6), (20, 0.8, 0.0)] {
+            landscape.harmonicity01[idx] = h01;
+            landscape.roughness01[idx] = r01;
+        }
+        let (h, r) = component_weighted_sensation(&landscape).unwrap();
+        assert!((h - 0.44).abs() < 1e-6, "h={h}");
+        assert!((r - 0.36).abs() < 1e-6, "r={r}");
+
+        // The listener's stability uses the same component weights and peak bins.
+        let state = ListenerTwin::default().observe_presentation_landscape(0.0, 0, 0, &landscape);
+        assert!((state.stability_level - h).abs() < 1e-6);
+
+        // Valuation views do not enter the sensation.
+        landscape.consonance_field_level_eff.fill(0.0);
+        landscape.consonance_field_score.fill(-3.0);
+        assert_eq!(component_weighted_sensation(&landscape), Some((h, r)));
+
+        assert_eq!(
+            component_weighted_sensation(&test_landscape(0.5, &[])),
+            None
+        );
     }
 
     #[test]

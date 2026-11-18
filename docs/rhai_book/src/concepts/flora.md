@@ -205,3 +205,30 @@ both integrals. The private clock still supplies fallback crossings when no beat
 is confirmed. Release and fade take priority. Reports use `span_gap` and `flora_id`;
 the reported heard value is the weighted mean, and reported frequencies summarize
 the tonal carriers. This author rule does not assert perceived phrases or endings.
+
+## Responding to heard onsets
+
+`flora().respond_to_onsets(w)` lets a Flora's ecology run faster after it hears new
+onsets from outside itself. This initial-only weight defaults to 0; any finite
+nonnegative f32 value is accepted. Negative or nonfinite values, including f32
+overflow, warn and use 0. Zero creates no state and reads nothing.
+
+A positive weight reads the same shared habitat attack history as
+`rest_on_habituation`, which then runs from scene start. Inside the Flora's extent
+it skips bins within 1.5 ERB of its own sounding lanes, retiring tails included, and
+reads how much the history rose since the previous observation. The history rises
+only when an onset reaches a band that is not yet habituated, so familiar attacks
+add less. With τ = `satiation_sec` / ln 10 (about 2.17 s by default), a rise ρ owes
+w·τ·ρ extra seconds of ecological time, spent at most w seconds per second. An
+unhabituated external onset therefore runs the clock up to 1+w times faster. The
+pace saturation still applies: once k·(1+w) reaches 20·r, a larger weight adds nothing.
+
+Growth, spread, seeding, resource recovery, consumption and retirement share the
+faster time. Births and replacements still happen only at the Flora's own beat
+crossings, and the field still decides where they grow. The word adds no onset,
+pitch, opportunity or random draw. Unknown observations and grid changes contribute
+nothing; the next known observation only re-primes the comparison, while time already
+owed is still spent. With `[psychoacoustics.habituation] enabled = false` the history
+stays flat and the run warns once. Reports add `respond` (weight, cumulative rise and
+extra seconds, pending seconds and listened bin count) only for positive weights.
+This author rule does not claim that a listener hears the response.

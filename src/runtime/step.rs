@@ -44,6 +44,9 @@ pub struct StepEngine {
     /// While presentation PCM equals habitat PCM, listener analysis reuses the field's.
     #[cfg(not(feature = "native"))]
     listener_follows: bool,
+    /// Wall-clock milliseconds of the last hop: worker, ecology analysis, listener analysis.
+    #[cfg(not(feature = "native"))]
+    stage_ms: [f64; 3],
     last_presentation: Arc<[f32]>,
     output_gain: f32,
     limiter_mode: crate::audio::limiter::LimiterMode,
@@ -171,6 +174,8 @@ impl StepEngine {
             warnings,
             #[cfg(not(feature = "native"))]
             listener_follows,
+            #[cfg(not(feature = "native"))]
+            stage_ms: [0.; 3],
             last_presentation: Arc::from([]),
             output_gain,
             limiter_mode,
@@ -211,6 +216,8 @@ impl StepEngine {
         if cfg.end_request.load(Ordering::SeqCst) && !state.finish_begun {
             state.request_end(state.timebase.frame_start_tick(state.frame_idx));
         }
+        #[cfg(not(feature = "native"))]
+        let worker_began = crate::clock::Instant::now();
         let ui_output = channels.ui_tx.take();
         process_hop(cfg, channels, state);
         channels.ui_tx = ui_output;
@@ -234,6 +241,9 @@ impl StepEngine {
         }
         #[cfg(not(feature = "native"))]
         {
+            let ms = |began: crate::clock::Instant| began.elapsed().as_secs_f64() * 1000.;
+            self.stage_ms[0] = ms(worker_began);
+            let ecology_began = crate::clock::Instant::now();
             let wiring::AnalysisExecution::Inline(field) = analysis_handle;
             for update in channels.analysis_update_tx.try_iter() {
                 field.update(update);
@@ -246,6 +256,7 @@ impl StepEngine {
                 .expect("worker produced a habitat hop");
             assert!(!field.begin_hop(id), "inline field must be contiguous");
             // The listener's hop is taken first: a split adopts the field's pre-hop state.
+            let listener_began = crate::clock::Instant::now();
             let mut listener = match listener_analysis_handle {
                 Some(wiring::AnalysisExecution::Inline(listener)) => {
                     for update in channels
@@ -279,12 +290,15 @@ impl StepEngine {
                 }
                 None => None,
             };
+            let listener_ms = ms(listener_began);
             if field.observe(id, &habitat, packet.as_ref()) {
                 channels
                     .analysis_result_rx
                     .send((id, Some(field.snapshot())))
                     .expect("field consumed once per hop");
             }
+            let listener_began = crate::clock::Instant::now();
+            self.stage_ms[1] = ms(ecology_began) - listener_ms;
             if let Some((listener, id, pcm, packet)) = listener.as_mut() {
                 let observed = if self.listener_follows {
                     listener.follow(*id, pcm, field)
@@ -300,6 +314,7 @@ impl StepEngine {
                         .expect("listener consumed once per hop");
                 }
             }
+            self.stage_ms[2] = listener_ms + ms(listener_began);
             if let Some(packet) = packet {
                 state.loo_storage = Some(packet.sources);
             }
@@ -352,6 +367,12 @@ impl StepEngine {
     }
     pub fn finished(&self) -> bool {
         self.runtime.state.finished
+    }
+    /// Wall-clock milliseconds of the last hop's worker, ecology and listener stages,
+    /// for the browser host's performance counters.
+    #[cfg(not(feature = "native"))]
+    pub fn stage_ms(&self) -> [f64; 3] {
+        self.stage_ms
     }
     pub fn warnings(&self) -> &[ScriptWarning] {
         &self.warnings
@@ -450,6 +471,52 @@ mod tests {
             "place(sine().sustain().leave_self_out(true).amp(0.05), at(220)); place(flora().amp(0.05).fade(0.1), random(220,880)); wait(4);",
             64,
         );
+    }
+
+    #[test]
+    fn rain_without_its_drops_matches_offline() {
+        compare_offline(
+            "place(rain().amp(0.05).rate(80).hit(0.3).ring(2).fade(0.1).leave_drops_out(true), consonance(200, 2000)); wait(4);",
+            64,
+        );
+    }
+
+    #[test]
+    fn drops_only_rain_observes_the_silent_field() {
+        let mut engine = StepEngine::new(
+            "wait(0.5); place(rain().objects(0).rate(100).leave_drops_out(true), consonance(200, 2000)); wait(2);",
+            "",
+            Some(21),
+            48_000,
+        )
+        .unwrap();
+        let mut output = vec![0.; engine.hop_len()];
+        let mut silent: Option<(Vec<f32>, Vec<f32>)> = None;
+        let (mut checked, mut heard) = (0, false);
+        for hop in 0..200 {
+            assert!(!matches!(engine.step(&mut output), StepStatus::Error(_)));
+            let landscape = &engine.runtime.state.current_landscape;
+            // Placement is at hop 47; hop 45 still holds the field of silence.
+            if hop == 45 {
+                assert!(landscape.rain_observations.is_empty());
+                silent = Some((
+                    landscape.harmonicity01.clone(),
+                    landscape.roughness01.clone(),
+                ));
+            }
+            if let (Some((h, r)), Some(observation)) =
+                (&silent, landscape.rain_observations.first())
+            {
+                assert_eq!(
+                    (&observation.h_scan, &observation.r_scan),
+                    (h, r),
+                    "hop {hop}"
+                );
+                heard |= landscape.harmonicity01 != *h || landscape.roughness01 != *r;
+                checked += 1;
+            }
+        }
+        assert!(checked > 100 && heard, "{checked} {heard}");
     }
 
     #[test]

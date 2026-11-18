@@ -155,7 +155,11 @@ impl Flora {
         // Use the same confidence-weighted velocity as the opportunity clock;
         // phase correction changes opportunities, not the ecological time scale.
         m.pace = self.fs / m.clock.nominal_period_ticks(self.fs).unwrap() as f32 / 2.0;
-        self.pace = ecological_pace(self.spec.pace, m.pace, m.opportunity_ratio);
+        let multiplier = self
+            .respond
+            .as_ref()
+            .map_or(self.spec.pace, |r| self.spec.pace * r.factor);
+        self.pace = ecological_pace(multiplier, m.pace, m.opportunity_ratio);
         m.local_phase_cycles = m.clock.phase_cycles();
         if !m.active {
             m.drops += m.pending.iter().filter(|p| p.is_some()).count() as u64;

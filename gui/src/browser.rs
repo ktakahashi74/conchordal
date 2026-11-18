@@ -21,7 +21,6 @@ struct State {
     raw: bool,
     exit: Arc<AtomicBool>,
     start: Arc<AtomicBool>,
-    end: Arc<AtomicBool>,
     decode_ms: Vec<f64>,
     encode_ms: Vec<f64>,
     ui_ms: Vec<f64>,
@@ -29,8 +28,20 @@ struct State {
     arrivals: VecDeque<(f64, f64)>,
     shown: f64,
     measure: bool,
+    viewport_scale: Option<f32>,
+    /// While hidden by the host, snapshots are still decoded but nothing is repainted.
+    paused: bool,
+    context: Option<egui::Context>,
     decoder: Decoder,
     benchmark: (Decoder, Encoder),
+}
+impl State {
+    /// Idle frames are drawn on demand: only a running performance repaints every frame.
+    fn repaint(&self) {
+        if let (false, Some(context)) = (self.paused, &self.context) {
+            context.request_repaint();
+        }
+    }
 }
 fn now() -> f64 {
     web_sys::window().unwrap().performance().unwrap().now()
@@ -56,7 +67,11 @@ impl WebGui {
             .start(
                 canvas,
                 eframe::WebOptions::default(),
-                Box::new(move |_| Ok(Box::new(BrowserApp(state)))),
+                Box::new(move |cc| {
+                    // The site is dark; do not follow a light system theme.
+                    cc.egui_ctx.set_theme(egui::Theme::Dark);
+                    Ok(Box::new(BrowserApp(state)))
+                }),
             )
             .await
     }
@@ -111,6 +126,7 @@ impl WebGui {
         while s.arrivals.len() >= 2 && s.arrivals[1].0 <= t - RHYTHM_HISTORY_SEC {
             s.arrivals.pop_front();
         }
+        s.repaint();
         Ok(())
     }
     /// Local codec benchmark only: no snapshot or waveform is exported to the host.
@@ -136,18 +152,44 @@ impl WebGui {
     pub fn reset(&self) {
         let mut state = self.state.borrow_mut();
         let measure = state.measure;
+        let viewport_scale = state.viewport_scale;
+        let paused = state.paused;
+        let context = state.context.take();
         *state = State {
             measure,
+            viewport_scale,
+            paused,
+            context,
             ..Default::default()
         };
+        state.repaint();
+    }
+    /// Embedding pages fit the 1200x900 reference layout into their own region.
+    pub fn set_viewport_scale(&self, scale: f32) {
+        if scale.is_finite() {
+            let mut s = self.state.borrow_mut();
+            s.viewport_scale = Some(scale.clamp(0.25, 1.0));
+            s.repaint();
+        }
+    }
+    pub fn set_paused(&self, paused: bool) {
+        let mut s = self.state.borrow_mut();
+        s.paused = paused;
+        s.repaint();
     }
     pub fn set_playback_state(&self, state: &str) {
-        self.state.borrow_mut().frame.meta.playback_state = match state {
+        let state = match state {
             "initializing" | "playing" => PlaybackState::Playing,
             "ending" => PlaybackState::Ending,
             "ended" => PlaybackState::Finished,
             _ => PlaybackState::NotStarted,
         };
+        let mut s = self.state.borrow_mut();
+        // Hosts report state on every status message; repaint only on a change.
+        if s.frame.meta.playback_state != state {
+            s.frame.meta.playback_state = state;
+            s.repaint();
+        }
     }
     pub fn take_commands(&self) -> String {
         serde_json::to_string(&std::mem::take(&mut self.state.borrow_mut().commands)).unwrap()
@@ -182,7 +224,7 @@ impl WebGui {
                     None,
                     &s.exit,
                     &s.start,
-                    &s.end,
+                    None,
                     &mut s.raw,
                 )
             },
@@ -218,7 +260,20 @@ impl WebGui {
 struct BrowserApp(Rc<RefCell<State>>);
 impl eframe::App for BrowserApp {
     fn logic(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-        ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        let mut s = self.0.borrow_mut();
+        if s.context.is_none() {
+            s.context = Some(ctx.clone());
+        }
+        if let Some(scale) = s.viewport_scale.take() {
+            ctx.set_zoom_factor(scale);
+        }
+        let running = matches!(
+            s.frame.meta.playback_state,
+            PlaybackState::Playing | PlaybackState::Ending
+        );
+        if running && !s.paused {
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
     }
     fn ui(&mut self, root: &mut egui::Ui, frame: &mut eframe::Frame) {
         let began = now();
@@ -268,10 +323,10 @@ impl eframe::App for BrowserApp {
             None,
             &s.exit,
             &s.start,
-            &s.end,
+            None,
             &mut s.raw,
         );
-        for (flag, command) in [(&s.exit, "exit"), (&s.start, "start"), (&s.end, "end")] {
+        for (flag, command) in [(&s.exit, "exit"), (&s.start, "start")] {
             if flag.swap(false, Ordering::SeqCst) {
                 s.commands.push(command);
             }

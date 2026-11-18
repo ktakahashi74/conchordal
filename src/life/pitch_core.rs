@@ -1826,6 +1826,10 @@ pub(crate) struct LooInput {
     pub(crate) support_warned: bool,
     pub(crate) tonal_context: Option<Arc<crate::core::tonal_context::Snapshot>>,
     pub(crate) exact_score: Option<Arc<[f32]>>,
+    /// Own-ID attack history without own PCM, for `respond_to_onsets`.
+    pub(crate) onset_habituation_state_scan: Option<Arc<[f32]>>,
+    pub(crate) onset_habituation_end: u64,
+    pub(crate) onset_habituation_known: bool,
     pub(super) rearticulation: Option<RearticulationView>,
     rearticulation_score: Vec<f32>,
     #[cfg(test)]
@@ -2634,11 +2638,11 @@ impl AnyPitchCore {
         freq_hz: f32,
         leave_self_out: bool,
     ) -> (f32, bool) {
-        let input = match self {
-            Self::PitchHillClimb(core) => &core.loo_input,
-            Self::PitchPeakSampler(core) => &core.loo_input,
-        };
-        let scan = input.exact_score.as_deref().filter(|_| leave_self_out);
+        let scan = self
+            .loo_input()
+            .exact_score
+            .as_deref()
+            .filter(|_| leave_self_out);
         let score_scan = scan.unwrap_or(&landscape.consonance_field_score_eff);
         landscape
             .space
@@ -2690,6 +2694,13 @@ impl AnyPitchCore {
         let input = self.loo_input_mut();
         let scan = loo_score_scan(landscape, input);
         sample_ownership_score(landscape, freq_hz.max(1.0).log2(), scan.as_deref())
+    }
+
+    pub(crate) fn loo_input(&self) -> &LooInput {
+        match self {
+            Self::PitchHillClimb(core) => &core.loo_input,
+            Self::PitchPeakSampler(core) => &core.loo_input,
+        }
     }
 
     pub(crate) fn loo_input_mut(&mut self) -> &mut LooInput {

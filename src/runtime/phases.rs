@@ -155,6 +155,7 @@ pub(super) fn advance_population(
             ticks.extend_from_slice(&clock.ticks);
             ticks
         });
+        flora.observe_onsets(&state.current_landscape, now_tick);
         flora.observe_rhythm(state.flora_rhythm, now_tick, cfg.meter_shaping);
         flora.observe_external(&state.current_landscape, state.last_analysis_frame);
         if let Some(gap) = &mut flora.span_gap {
@@ -173,6 +174,7 @@ pub(super) fn advance_population(
         }
     }
     for rain in &mut state.pop.rain {
+        rain.observe_meter(state.flora_rhythm, now_tick);
         rain.advance(&state.current_landscape);
     }
     if state.pop.rest_enabled {
@@ -379,6 +381,11 @@ pub(super) fn advance_population(
             for record in voice.pitch_ctl.dwell_trace.drain(..) {
                 report_try(&mut state.reporter, "dwell", |writer| {
                     writer.write_dwell(id, voice.metadata.generation, cfg.fs as u32, &record)
+                });
+            }
+            for record in voice.pitch_ctl.respond_trace.drain(..) {
+                report_try(&mut state.reporter, "respond", |writer| {
+                    writer.write_respond(id, voice.metadata.generation, cfg.fs as u32, &record)
                 });
             }
         }
@@ -604,6 +611,9 @@ pub(super) fn emit_hop_reports(
             tracked_score_eff,
         )
     });
+    report_try(&mut state.reporter, "habitat sensation", |writer| {
+        writer.write_habitat_sensation(now_sec, &state.current_landscape)
+    });
     let now_tick = state.timebase.frame_start_tick(state.frame_idx);
     let second_ticks = state.timebase.sec_to_tick(1.0).max(1);
     if state.frame_idx == 0
@@ -612,6 +622,11 @@ pub(super) fn emit_hop_reports(
         report_try(&mut state.reporter, "habituation scan", |writer| {
             writer.write_habituation_scan(now_sec, &state.current_landscape)
         });
+        for rain in &state.pop.rain {
+            report_try(&mut state.reporter, "rain field", |writer| {
+                writer.write_rain_field(now_sec, rain, &state.current_landscape.space)
+            });
+        }
     }
     if let Some(listener_state) = listener_state_update {
         let sample = ListenerStateSample {
@@ -674,7 +689,10 @@ pub(super) fn render_and_route_audio(
         runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
     }
     let synthesis_start = state.profile.as_ref().map(|_| Instant::now());
-    if !state.loo_populations.is_empty() || state.pop.has_placed_flora {
+    if !state.loo_populations.is_empty()
+        || state.pop.has_placed_flora
+        || state.pop.has_placed_rain_observer
+    {
         // Reuse one owned packet. Backpressure is included in the audio deadline.
         #[cfg(feature = "native")]
         let recycled = state
@@ -707,6 +725,9 @@ pub(super) fn render_and_route_audio(
             crate::core::stream::loo::SourceKind::Flora => {
                 state.pop.flora.iter().any(|f| f.id == source.id)
             }
+            crate::core::stream::loo::SourceKind::Rain => {
+                state.pop.rain.iter().any(|r| r.id() == source.id)
+            }
         });
         for voice in &state.pop.voices {
             if state
@@ -718,9 +739,11 @@ pub(super) fn render_and_route_audio(
                         && s.generation == voice.metadata.generation
                 })
             {
+                let pitch = &voice.effective_control.pitch;
                 sources.push(crate::core::stream::loo::SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
+                    onset_history: pitch.respond_to_onsets > 0.0 && pitch.leave_self_out,
                     tonal_context: None,
                     id: voice.id(),
                     generation: voice.metadata.generation,
@@ -748,8 +771,25 @@ pub(super) fn render_and_route_audio(
                 sources.push(crate::core::stream::loo::SourcePcm {
                     kind: crate::core::stream::loo::SourceKind::Flora,
                     analyze_hr: flora.needs_hr_observer(),
+                    onset_history: false,
                     tonal_context: None,
                     id: flora.id,
+                    generation: 0,
+                    habitat: vec![0.0; cfg.hop],
+                });
+            }
+        }
+        for rain in state.pop.rain.iter().filter(|rain| rain.needs_observer()) {
+            if !sources
+                .iter()
+                .any(|s| s.kind == crate::core::stream::loo::SourceKind::Rain && s.id == rain.id())
+            {
+                sources.push(crate::core::stream::loo::SourcePcm {
+                    kind: crate::core::stream::loo::SourceKind::Rain,
+                    analyze_hr: true,
+                    onset_history: false,
+                    tonal_context: None,
+                    id: rain.id(),
                     generation: 0,
                     habitat: vec![0.0; cfg.hop],
                 });
@@ -781,6 +821,19 @@ pub(super) fn render_and_route_audio(
                     writer.write_flora_span_gap(flora.id, cfg.fs as u32, &transition)
                 });
             }
+        }
+    }
+    for rain in &mut state.pop.rain {
+        let id = rain.id();
+        for impact in rain.impact_trace.drain(..) {
+            report_try(&mut state.reporter, "rain impact", |writer| {
+                writer.write_rain_impact(
+                    id,
+                    now_tick + impact.offset as u64,
+                    cfg.fs as u32,
+                    &impact,
+                )
+            });
         }
     }
     if let Some(runtime) = state.pop.body_metabolism.as_mut() {

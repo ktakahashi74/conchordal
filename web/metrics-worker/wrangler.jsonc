@@ -1,0 +1,9 @@
+{
+  // Receives the demo page's playback counters. Every other path stays on GitHub Pages.
+  "name": "conchordal-demo-metrics",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "routes": [{ "pattern": "www.conchordal.org/demo/metrics", "zone_name": "conchordal.org" }],
+  "analytics_engine_datasets": [{ "binding": "METRICS", "dataset": "conchordal_demo_metrics" }]
+}

@@ -19,10 +19,13 @@ mod metric;
 #[path = "flora_support.rs"]
 mod support;
 use support::{SupportChoice, SupportScratch, SupportWindow};
+#[path = "flora_respond.rs"]
+mod respond;
 #[path = "flora_span_gap.rs"]
 mod span_gap;
 use metric::MetricState;
 pub(crate) use metric::TemporalObservation;
+use respond::Respond;
 
 struct ErbCell {
     lo_erb: f32,
@@ -97,6 +100,9 @@ const SEED_RAIN_DENSITY: f32 = 0.48;
 const BACKGROUND_SEED_DENSITY: f32 = 9.6e-4;
 const INITIAL_BIOMASS: f32 = 0.5;
 const SLEW_SEC: f32 = 0.08;
+/// A sounding lane reaches each new target over one nominal opportunity at the 2 Hz
+/// reference beat, so window and peak reassignments are heard as swells, not steps.
+pub(super) const CHANGE_SEC: f32 = 0.5;
 const DEAD_MASS: f32 = 0.001;
 
 fn ecological_pace(multiplier: f32, beat_pace: f32, opportunity_ratio: u8) -> f32 {
@@ -195,6 +201,7 @@ struct Lane {
     retirement_decay: f32,
     slew_target: f32,
     slew_left: usize,
+    slew_step: f32,
     z: [f32; 2],
     w: [f32; 2],
     e: [f32; 2],
@@ -239,6 +246,7 @@ impl Lane {
             retirement_decay: 0.0,
             slew_target: 0.0,
             slew_left: 0,
+            slew_step: 0.0,
             z: [1.0, 0.0],
             w: [1.0, 0.0],
             e: [1.0, 0.0],
@@ -256,6 +264,21 @@ impl Lane {
         }
     }
 
+    /// Samples and per-sample step of a new linear slew. A birth keeps the fast
+    /// full-scale onset; a sounding lane spreads each change over CHANGE_SEC.
+    pub(super) fn slew_plan(&self, target: f32, current: f32, fs: f32) -> (usize, f32) {
+        let birth = SLEW_SEC * fs;
+        if (self.age_samples as f32) < birth {
+            (
+                ((target - current).abs() * birth).ceil() as usize,
+                1.0 / birth,
+            )
+        } else {
+            let left = (CHANGE_SEC * fs).ceil() as usize;
+            (left, (target - current).abs() / left as f32)
+        }
+    }
+
     fn slew(&mut self, fs: f32) {
         if self.mode == Mode::Retiring && self.retirement_decay > 0.0 {
             // Shift the metabolic amplitude exponential by the existing dead-mass
@@ -268,8 +291,6 @@ impl Lane {
             }
             return;
         }
-        let duration = SLEW_SEC * fs;
-        let step = 1.0 / duration;
         let target = if self.noisy {
             self.target * self.target
         } else {
@@ -278,7 +299,7 @@ impl Lane {
         let current = if self.noisy { self.q } else { self.r };
         if target != self.slew_target || (self.slew_left == 0 && current != target) {
             self.slew_target = target;
-            self.slew_left = ((target - current).abs() * duration).ceil() as usize;
+            (self.slew_left, self.slew_step) = self.slew_plan(target, current, fs);
         }
         // Pin the deadline rather than letting accumulated rounding add one sample.
         let value = if self.slew_left > 0 {
@@ -286,7 +307,7 @@ impl Lane {
             if self.slew_left == 0 {
                 target
             } else {
-                target - (target - current).signum() * step * self.slew_left as f32
+                target - (target - current).signum() * self.slew_step * self.slew_left as f32
             }
         } else {
             target
@@ -392,6 +413,7 @@ pub(crate) struct Flora {
     pub(crate) harmonic_ticks: Option<Vec<u64>>,
     pub(crate) id: u64,
     pub(crate) span_gap: Option<SpanGap>,
+    respond: Option<Respond>,
     spec: FloraSpec,
     // Temporarily taken only while allocating lanes. Every Flora owns a clock.
     temporal: Option<MetricState>,
@@ -456,6 +478,8 @@ pub(crate) struct FloraReport<'a> {
     temporal: Option<&'a MetricState>,
     #[serde(skip_serializing_if = "Option::is_none")]
     acoustic_observation: Option<&'a TemporalObservation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    respond: Option<&'a Respond>,
     pace: f32,
     time_sec: f64,
     age_sec: f64,
@@ -609,6 +633,8 @@ impl Flora {
                         0.0,
                     )
                 }),
+            respond: (spec.respond_to_onsets.is_finite() && spec.respond_to_onsets > 0.0)
+                .then(|| Respond::new(spec.respond_to_onsets)),
             acoustic_observation: TemporalObservation::default(),
             temporal: Some(MetricState::new(scenario_seed ^ id, fs, hop)),
             extent_hz,
@@ -719,14 +745,15 @@ impl Flora {
         if let Some(pace) = patch.pace {
             self.spec.pace = pace;
             self.pace = ecological_pace(
-                pace,
+                self.respond.as_ref().map_or(pace, |r| pace * r.factor),
                 self.temporal.as_ref().unwrap().pace,
                 self.temporal.as_ref().unwrap().opportunity_ratio,
             );
         }
         if let Some(amp) = patch.amp {
             self.spec.amp = amp;
-            self.amp.to(amp, SLEW_SEC, self.fs);
+            // A live level change is a gesture of the same scale as entry and release.
+            self.amp.to(amp, self.spec.fade_sec.max(SLEW_SEC), self.fs);
             self.refresh_support_template();
         }
     }
@@ -916,6 +943,9 @@ impl Flora {
         }
         self.order = Vec::with_capacity(self.lanes.len());
         self.noise = vec![0.0; 2 * self.noisy_len * self.hop];
+        if let Some(respond) = &mut self.respond {
+            respond.reset_grid(space.n_bins());
+        }
         self.assert_scans();
         self.refresh_support_template();
     }
@@ -1992,6 +2022,7 @@ impl Flora {
             pace: self.pace,
             temporal: self.temporal.as_ref(),
             acoustic_observation: Some(&self.acoustic_observation),
+            respond: self.respond.as_ref(),
             growth_level_scan: &self.growth_level_scan,
             harmonicity_state_scan: &self.harmonicity_state_scan,
             target_partials: self
@@ -3715,6 +3746,39 @@ mod tests {
     }
 
     #[test]
+    fn sounding_lanes_spread_target_changes_and_live_amp_follows_fade() {
+        let fs = 2000.0;
+        let mut lane = Lane::new(false, 440.0_f32.log2());
+        lane.mode = Mode::Current;
+        lane.target = 0.5;
+        // A birth keeps the full-scale onset: half of full scale in half of SLEW_SEC.
+        for _ in 0..80 {
+            lane.slew(fs);
+            lane.age_samples += 1;
+        }
+        assert_eq!(lane.r, 0.5);
+        lane.age_samples = (SLEW_SEC * fs) as usize;
+        lane.target = 0.25;
+        let change = (CHANGE_SEC * fs).ceil() as usize;
+        for _ in 1..change {
+            lane.slew(fs);
+            lane.age_samples += 1;
+        }
+        assert!(lane.r > 0.25 && lane.r < 0.2503, "{}", lane.r);
+        lane.slew(fs);
+        assert_eq!(lane.r, 0.25);
+
+        let l = terrain();
+        let mut f = flora(&l);
+        f.spec.fade_sec = 1.0;
+        f.apply_patch(&FloraPatch {
+            amp: Some(0.25),
+            ..Default::default()
+        });
+        assert_eq!(f.amp.left, f.fs.ceil() as usize);
+    }
+
+    #[test]
     fn atoms_sine_is_unit_and_envelope_step_matches_logged_noise() {
         let mut sine = Lane::new(false, 0.0);
         sine.w = [0.8, 0.6];
@@ -4343,11 +4407,18 @@ mod tests {
     #[cfg(feature = "profile-alloc")]
     fn advance_and_render_allocate_nothing_during_continual_turnover() {
         use crate::runtime_profile::{begin_allocations, finish_allocations};
-        for tone in [FloraTone::Sine, FloraTone::Resonant] {
+        for (tone, respond) in [
+            (FloraTone::Sine, 0.0),
+            (FloraTone::Resonant, 0.0),
+            (FloraTone::Sine, 2.0),
+        ] {
             let mut l = terrain();
             l.harmonicity01.fill(0.0);
+            l.onset_habituation_state_scan = vec![0.0; l.space.n_bins()].into();
+            l.onset_habituation_known = true;
             let mut f = flora(&l);
             f.spec.tone = tone;
+            f.respond = (respond > 0.0).then(|| Respond::new(respond));
             f.on_space_change(&l.space);
             let mut p = vec![0.0; f.hop];
             let mut h = p.clone();
@@ -4370,6 +4441,16 @@ mod tests {
                     }
                 }
                 normalize(&mut f);
+                let history = std::sync::Arc::get_mut(&mut l.onset_habituation_state_scan).unwrap();
+                for (i, x) in history.iter_mut().enumerate() {
+                    *x = if (t + i) % 7 == 0 {
+                        *x + 0.01
+                    } else {
+                        0.9 * *x
+                    };
+                }
+                l.onset_habituation_end = t as u64 * f.hop as u64;
+                f.observe_onsets(&l, l.onset_habituation_end);
                 f.advance(&l);
                 p.fill(0.0);
                 h.fill(0.0);
@@ -4390,10 +4471,12 @@ mod tests {
             }
             let counts = finish_allocations().unwrap();
             assert!(f.births > 0 && f.retirements > 0 && crossings > 0);
+            assert_eq!(f.respond.is_some(), respond > 0.0);
+            assert!(f.respond.as_ref().is_none_or(|r| r.extra_sec > 0.0));
             assert_eq!(counts.count, 0, "{counts:?}");
             assert_eq!(counts.bytes, 0, "{counts:?}");
             println!(
-                "F12_FLORA_ALLOCATIONS tone={tone:?} counts={counts:?} births={} retirements={} crossings={crossings}",
+                "F12_FLORA_ALLOCATIONS tone={tone:?} respond={respond} counts={counts:?} births={} retirements={} crossings={crossings}",
                 f.births, f.retirements
             );
         }

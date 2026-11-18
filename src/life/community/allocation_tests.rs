@@ -76,6 +76,9 @@ fn loo_observation_delivery_steady_state_allocates_nothing() {
             h_scan: vec![0.; landscape.space.n_bins()],
             r_scan: vec![0.; landscape.space.n_bins()],
             score_scan: vec![0.; landscape.space.n_bins()].into(),
+            onset_habituation_state_scan: None,
+            onset_habituation_end: 0,
+            onset_habituation_known: false,
         });
     }
     community.update_loo_ownership(&landscape);

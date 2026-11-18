@@ -52,7 +52,7 @@ MacBook Air では、この配信器をコピーした場所と page directory �
    端末の音声出力を使う。自動検証の専用無音 sink はページ自身では作らない。
 3. GUI を表示し foreground のまま、DEMO-B1 全長約 230 秒の `ended` を待つ。
    `underruns = 0`、`missingFrames = 0` と生成・消費 frame 数の一致を確認する。
-   GUI の End は graceful end、Exit は即時停止。下のボタンでも操作できる。
+   GUI には即時停止の Exit だけを出す。graceful end は下のボタンで操作する。
 4. 最小先行残量、hop 平均・p99・最大、snapshot 平均・p99・最大、GUI decode・UI・
    CPU frame の各時間、browser・端末・背景負荷を記録する。250 ms で途切れた時だけ
    `buffer=500` で再測定する。別の性能比較をする場合は、その比較の取得条件に従う。
@@ -60,6 +60,15 @@ MacBook Air では、この配信器をコピーした場所と page directory �
 URL の seed と入力欄が空なら、開始のたびに host の `crypto.getRandomValues()`
 から seed を作る。明示した seed は再使用する。台本内の seed 指定があれば優先する。
 初期 PCM の到着を待ってから再生し、自然終了では残りを排出する。
+
+## 先行量
+
+`BrowserPlayer.start()` の `bufferMs` は既定 2000 ms で、50〜8000 ms を受け付ける。
+計測ページは URL の `buffer`（既定 250）を渡す。worklet が underrun を知らせるたびに、
+player は worker の先行の目標を倍にする（上限 8 s）。worklet は欠けた所を無音で埋めて
+再生を続ける。8 s は、平均で実時間に間に合う機械が、M5 MacBook Air で見た遅れ
+（約 1.7 倍が約 10 秒）を越えるのに要る約 7 s を超える最小の倍化の段である
+（`docs/design-notes/demo-site.md` N3・N4）。
 
 ## 計測と送信の境界
 
@@ -69,16 +78,24 @@ snapshot は JSON の header と binary の float 配列からなり、周波数
 載る。符号化の状態は演奏ごとの `BrowserEngine` が持ち、復号の状態は GUI が持つ
 （`reset()` で消える）。そのため snapshot は欠かさず順に渡す。
 bytes は main thread へ所有権を移し、そのまま `push_snapshot()` に渡す。
+Worker は先行量のぶん再生より先を計算するので、player は各 snapshot をその hop の
+終わりの frame 位置と一緒に受け取り、AudioWorklet の再生位置から出力の遅れ
+（`baseLatency` と `outputLatency`）を引いた位置がそこに届くまで渡さない。
+画面は聴こえている音に合う。
 JS の JSON 変換は挟まない。hop 時間には計算、limiter、PCM コピー、snapshot の
 構築・encode・転送呼出しを含む。snapshot 時間は構築・encode・wasm からのコピーを
-独立集計する。GUI decode は Rust 内の復号、UI は egui の UI 関数、CPU frame は
+独立集計する。worker の metrics は、一 hop の中の worker、生態の解析、聴き手の解析の
+時間の分布（`BrowserEngine::stage_ms()`）と、台本の時刻で 5 秒ごとに分けた hop の時間の
+平均と最大も持つ。GUI decode は Rust 内の復号、UI は egui の UI 関数、CPU frame は
 eframe の CPU 描画時間であり、GPU 完了時間ではない。
 
 5 秒ごとと状態遷移時に `/metrics` へ性能項目だけを明示列挙して POST する。
 音声、snapshot、波形、peak、非零 sample 数、台本、エラー本文は送らない。
 送る項目は状態、sample rate、buffer 設定と残量、生成・消費・欠損 frame 数、underrun、
 hop/snapshot/GUI の時間分布、browser 情報、論理 CPU 数、device memory、tab の非表示時間。
-ページ内の runId は既存計測方式を維持する。公開版の同意と収集先は WP-5 の決定事項。
+ページ内の runId は既存計測方式を維持する。公開の演奏の場（`web/src/scripts/demo.js`）は
+この page.js を使わず、演奏ごとに一件、端末の情報を除いた別の allowlist で送る
+（`web/scripts/README.md`）。
 GUI の測定は演奏開始ごとにリセットし、その演奏全体を集計する。
 
 GUI が依存する eframe には clipboard、storage、file-drop 等の標準機能があるが、

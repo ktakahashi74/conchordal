@@ -622,7 +622,18 @@ pub fn spectrum_time_freq_axes(
             ]);
             &fallback_history
         } else {
-            ui.label("No salience data");
+            // Keep the plot's height so the panels below do not move once data arrives.
+            let (rect, _) = ui.allocate_exact_size(
+                Vec2::new(ui.available_width(), height),
+                egui::Sense::hover(),
+            );
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "No salience data",
+                egui::TextStyle::Body.resolve(ui.style()),
+                ui.visuals().weak_text_color(),
+            );
             return;
         }
     } else {

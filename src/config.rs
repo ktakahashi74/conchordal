@@ -210,6 +210,8 @@ pub struct HabituationConfig {
     pub recovery_sec: f32,
     #[serde(default = "HabituationConfig::default_ref_drive")]
     pub ref_drive: f32,
+    #[serde(default)]
+    pub drive: crate::core::habituation::HabituationDrive,
 }
 
 impl HabituationConfig {
@@ -230,6 +232,7 @@ impl HabituationConfig {
 impl Default for HabituationConfig {
     fn default() -> Self {
         Self {
+            drive: Default::default(),
             enabled: Self::default_enabled(),
             satiation_sec: Self::default_satiation_sec(),
             recovery_sec: Self::default_recovery_sec(),
@@ -1442,6 +1445,31 @@ roughness_gain = 0.5
         assert_eq!(
             parsed.psychoacoustics.consonance.density.roughness_gain,
             0.5
+        );
+    }
+
+    #[test]
+    fn habituation_research_drive_is_explicit_and_strict() {
+        use crate::core::habituation::HabituationDrive;
+        assert_eq!(
+            AppConfig::from_toml("")
+                .unwrap()
+                .psychoacoustics
+                .habituation
+                .drive,
+            HabituationDrive::RootProjection
+        );
+        for (name, expected) in [
+            ("root_projection", HabituationDrive::RootProjection),
+            ("channel_q", HabituationDrive::ChannelQ),
+            ("channel_p", HabituationDrive::ChannelP),
+        ] {
+            let text = format!("[psychoacoustics.habituation]\ndrive = \"{name}\"\n");
+            let cfg = AppConfig::from_toml(&text).unwrap();
+            assert_eq!(cfg.psychoacoustics.habituation.drive, expected);
+        }
+        assert!(
+            AppConfig::from_toml("[psychoacoustics.habituation]\ndrive = \"channel_x\"").is_err()
         );
     }
 

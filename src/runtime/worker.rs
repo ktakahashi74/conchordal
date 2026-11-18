@@ -3,7 +3,8 @@ use super::*;
 /// Immutable per-run settings and shared control flags for the worker thread.
 pub(super) struct WorkerConfig {
     pub(super) harmonic_relations: Option<(Arc<crate::core::harmonic_support::Geometry>, usize)>,
-    pub(super) has_flora: bool,
+    /// Reserve the habitat audio-only meter (Flora, harmonic rhythm, Rain follow_meter).
+    pub(super) habitat_meter: bool,
     pub(super) render_prototype: bool,
     pub(super) temporal_meter_t2: bool,
     pub(super) onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
@@ -232,7 +233,7 @@ impl WorkerState {
             MeterNetwork::new()
         };
         prod_meter.set_shaping(cfg.meter_shaping);
-        let flora_meter = (cfg.has_flora || cfg.harmonic_rhythm > 0).then(|| {
+        let flora_meter = (cfg.habitat_meter || cfg.harmonic_rhythm > 0).then(|| {
             let mut meter = if cfg.temporal_meter_t2 {
                 MeterNetwork::new_continuous(cfg.fs as u32, cfg.hop as u64)
             } else {
@@ -825,13 +826,13 @@ pub(super) fn process_hop(
             }
         }
     }
-    let mut loo_chunk =
-        (!state.loo_populations.is_empty() || state.pop.has_placed_flora).then(|| {
-            crate::core::stream::loo::PcmPacket {
-                sources: std::mem::take(&mut state.schedule_renderer.loo_pcm),
-                #[cfg(feature = "native")]
-                recycle: state.loo_recycle.0.clone(),
-            }
+    let mut loo_chunk = (!state.loo_populations.is_empty()
+        || state.pop.has_placed_flora
+        || state.pop.has_placed_rain_observer)
+        .then(|| crate::core::stream::loo::PcmPacket {
+            sources: std::mem::take(&mut state.schedule_renderer.loo_pcm),
+            #[cfg(feature = "native")]
+            recycle: state.loo_recycle.0.clone(),
         });
     let channel_peak = [max_abs, max_abs];
 

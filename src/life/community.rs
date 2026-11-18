@@ -96,6 +96,8 @@ pub struct Community {
     pub(crate) has_placed_flora: bool,
     pub(crate) rain: Vec<super::rain::Rain>,
     pub(crate) has_placed_rain: bool,
+    /// A placed Rain reads a field without its own impacts, so hops carry source PCM.
+    pub(crate) has_placed_rain_observer: bool,
     current_frame: u64,
     pub abort_requested: bool,
     pub global_coupling: f32,
@@ -223,7 +225,7 @@ mod frequency;
 mod respawn;
 mod social;
 
-pub(crate) use frequency::field_density_mass;
+pub(crate) use frequency::{field_density_mass, field_target_mass};
 
 use social::*;
 
@@ -262,6 +264,7 @@ impl Community {
             has_placed_flora: false,
             rain: Vec::new(),
             has_placed_rain: false,
+            has_placed_rain_observer: false,
             current_frame: 0,
             abort_requested: false,
             global_coupling: 1.0,
@@ -425,6 +428,11 @@ impl Community {
             self.onset_habituation_config,
         ) {
             gap.configure(params, period);
+        }
+        if let (Some(response), Some((params, _))) =
+            (&mut voice.pitch_ctl.respond, self.onset_habituation_config)
+        {
+            response.configure(params);
         }
         self.rest_enabled |= voice.phonation_engine.tracks_tails();
         if let Some(sequence) = &mut voice.pitch_ctl.own_sequence
@@ -811,6 +819,12 @@ impl Community {
         ) {
             gap.configure(params, period);
         }
+        if let (Some(response), Some((params, _))) = (
+            &mut spawned.pitch_ctl.respond,
+            self.onset_habituation_config,
+        ) {
+            response.configure(params);
+        }
         self.rest_enabled |= spawned.phonation_engine.tracks_tails();
         if let Some(sequence) = &mut spawned.pitch_ctl.own_sequence
             && self
@@ -909,11 +923,10 @@ impl Community {
 
     fn update_loo_ownership(&mut self, landscape: &Landscape) {
         for voice in &mut self.voices {
-            let score = landscape
+            let observation = landscape
                 .loo
                 .iter()
-                .find(|s| s.id == voice.id() && s.generation == voice.metadata.generation)
-                .map(|s| s.score_scan.clone());
+                .find(|s| s.id == voice.id() && s.generation == voice.metadata.generation);
             let temporal = landscape.harmonic_relations_weight != 0.
                 || landscape.harmonic_continuation_weight != 0.;
             let enabled = landscape.support_weights.active() || temporal;
@@ -930,7 +943,11 @@ impl Community {
                     generation: u64::from(voice.metadata.generation),
                 };
             }
-            input.exact_score = score;
+            input.exact_score = observation.map(|s| s.score_scan.clone());
+            input.onset_habituation_state_scan =
+                observation.and_then(|s| s.onset_habituation_state_scan.clone());
+            input.onset_habituation_end = observation.map_or(0, |s| s.onset_habituation_end);
+            input.onset_habituation_known = observation.is_some_and(|s| s.onset_habituation_known);
             input.support = if enabled && excluded {
                 landscape
                     .loo
@@ -1569,6 +1586,9 @@ mod tests {
             h_scan: vec![0.; landscape.space.n_bins()],
             r_scan: vec![0.; landscape.space.n_bins()],
             score_scan: vec![0.; landscape.space.n_bins()].into(),
+            onset_habituation_state_scan: None,
+            onset_habituation_end: 0,
+            onset_habituation_known: false,
         });
         community.update_loo_ownership(&landscape);
         assert!(
@@ -1667,6 +1687,9 @@ mod tests {
                     h_scan: vec![0.0; landscape.space.n_bins()],
                     r_scan: vec![0.0; landscape.space.n_bins()],
                     score_scan: vec![1.2; landscape.space.n_bins()].into(),
+                    onset_habituation_state_scan: None,
+                    onset_habituation_end: 0,
+                    onset_habituation_known: false,
                 });
             }
             community.update_loo_ownership(&landscape);

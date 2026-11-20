@@ -99,6 +99,7 @@ pub(super) fn advance_population(
             .end_sequence
             .as_ref()
             .is_some_and(|end| now_tick >= end.finish_tick);
+    let wet_finish = state.schedule_renderer.room.is_some() && (finish_due || state.finish_begun);
     for receipt in state.schedule_renderer.phrase_receipts.drain(..) {
         if let Some(voice) = state.pop.voices.iter_mut().find(|v| {
             v.id() == receipt.record.voice_id && v.metadata.generation == receipt.record.generation
@@ -181,7 +182,9 @@ pub(super) fn advance_population(
     }
     for rain in &mut state.pop.rain {
         rain.observe_meter(state.flora_rhythm, now_tick);
-        rain.advance(&state.current_landscape);
+        if !wet_finish {
+            rain.advance(&state.current_landscape);
+        }
     }
     if state.pop.rest_enabled {
         state.schedule_renderer.prepare_rest_sources(
@@ -218,15 +221,33 @@ pub(super) fn advance_population(
         request_body_footprints(state, cfg.fs, now_tick);
     }
     if let Some(observer) = state.temporal_expectation.as_mut() {
+        if state
+            .schedule_renderer
+            .room
+            .as_ref()
+            .is_some_and(|room| room.discontinuous(now_tick))
+        {
+            observer.align_to(now_tick);
+            state
+                .schedule_renderer
+                .restart_self_histories(observer, now_tick);
+        }
         // Track from birth, including before a later switch into participation.
         state.schedule_renderer.prepare_self_sound(
-            state.pop.voices.iter().map(|voice| voice.id()),
+            state
+                .pop
+                .voices
+                .iter()
+                .map(|voice| (voice.id(), voice.metadata.generation)),
             now_tick,
             observer,
         );
         for voice in &mut state.pop.voices {
             let id = voice.id();
-            if let Some(own) = state.schedule_renderer.self_sound_history(id) {
+            if let Some(own) = state
+                .schedule_renderer
+                .self_sound_history(id, voice.metadata.generation)
+            {
                 voice
                     .phonation_engine
                     .observe_participation_context(own, |update| {
@@ -253,7 +274,9 @@ pub(super) fn advance_population(
                 voice
                     .phonation_engine
                     .set_outcome_forecast(state.reporter.as_ref().and(shared.as_ref()));
-                let mut own = state.schedule_renderer.self_sound_history(voice.id());
+                let mut own = state
+                    .schedule_renderer
+                    .self_sound_history(voice.id(), voice.metadata.generation);
                 if let (Some(local), Some(own)) = (local.as_mut(), own.as_deref_mut()) {
                     observer.use_external_energy(local, &mut own.external);
                 }
@@ -290,7 +313,7 @@ pub(super) fn advance_population(
             felt.enable_trace(state.reporter.is_some());
         }
     }
-    let phonation_count = if !state.finish_begun {
+    let phonation_count = if !state.finish_begun && !wet_finish {
         state.pop.collect_phonation_batches_into(
             &mut state.generator_model,
             &state.current_landscape,
@@ -399,12 +422,7 @@ pub(super) fn advance_population(
         }
     }
 
-    if finish_dispatched
-        || state
-            .end_sequence
-            .as_ref()
-            .is_some_and(|end| now_tick >= end.finish_tick)
-    {
+    if finish_due {
         state.begin_finish(now_tick);
     }
 
@@ -898,10 +916,19 @@ pub(super) fn render_and_route_audio(
         } else {
             None
         };
-        AudioOutput::push_samples(prod, frame.presentation, reset_underrun_frames);
+        AudioOutput::push_samples(
+            prod,
+            frame.stereo.unwrap_or(frame.presentation),
+            reset_underrun_frames,
+        );
     }
 
     let presentation_chunk: Arc<[f32]> = Arc::from(frame.presentation);
+    let output_chunk = channels.wav_tx.as_ref().map(|_| {
+        frame
+            .stereo
+            .map_or_else(|| Arc::clone(&presentation_chunk), Arc::from)
+    });
     let habitat_chunk: Arc<[f32]> = Arc::from(frame.habitat);
     if state.pop.rest_enabled {
         for source in &state.schedule_renderer.rest_sources {
@@ -974,8 +1001,8 @@ pub(super) fn render_and_route_audio(
                 });
             });
     }
-    if let Some(tx) = channels.wav_tx.as_ref()
-        && let Err(err) = tx.send(Arc::clone(&presentation_chunk))
+    if let (Some(tx), Some(pcm)) = (channels.wav_tx.as_ref(), output_chunk)
+        && let Err(err) = tx.send(pcm)
     {
         state
             .failures

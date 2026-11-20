@@ -69,6 +69,25 @@ fn fill_output(
     }
 }
 
+fn fill_stereo(state: &mut CallbackState, data: &mut [f32], channels: usize, missing: &AtomicU64) {
+    let mut scratch = [0.; 512];
+    for block in data.chunks_mut(channels * 256) {
+        let pcm = &mut scratch[..2 * (block.len() / channels)];
+        let read = state.consumer.pop_slice(pcm);
+        debug_assert_eq!(read % 2, 0);
+        pcm[read..].fill(0.);
+        if read < pcm.len() {
+            missing.fetch_add(((pcm.len() - read) / 2) as u64, Ordering::Relaxed);
+        }
+        state.guard.process_interleaved(pcm, 2);
+        for (frame, pair) in block.chunks_exact_mut(channels).zip(pcm.as_chunks::<2>().0) {
+            let count = channels.min(2);
+            frame[..count].copy_from_slice(&pair[..count]);
+            frame[count..].fill(0.);
+        }
+    }
+}
+
 fn choose_f32_config(
     default: &cpal::SupportedStreamConfig,
     ranges: impl Iterator<Item = cpal::SupportedStreamConfigRange>,
@@ -141,6 +160,7 @@ pub struct AudioOutput {
 pub(crate) use super::telemetry::{AudioCallbackCounters, AudioDeviceInfo};
 
 struct CallbackState {
+    stereo: bool,
     consumer: HeapCons<f32>,
     guard: Limiter,
 }
@@ -177,6 +197,10 @@ fn build_stream(
                 .callback_frames_total
                 .fetch_add((data.len() / channels) as u64, Ordering::Relaxed);
             let state = lease.state.as_mut().expect("callback state lease");
+            if state.stereo {
+                fill_stereo(state, data, channels, &callback_counters.underrun_frames);
+                return;
+            }
             fill_output(
                 &mut state.consumer,
                 data,
@@ -221,6 +245,7 @@ impl AudioOutput {
         guard_meter: Option<Arc<LimiterMeter>>,
         output_gain: f32,
         defer_start: bool,
+        output_channels: usize,
     ) -> anyhow::Result<(Self, HeapProd<f32>)> {
         let host = cpal::default_host();
         let device = host
@@ -255,13 +280,25 @@ impl AudioOutput {
             "Audio buffer config: sr={} ch={} latency_ms={} hop_size={} capacity_frames={}",
             sample_rate, channels, latency_ms, hop_size, capacity_frames
         );
-        let rb =
-            HeapRb::<f32>::try_new(capacity_frames).context("Failed to allocate audio buffer")?;
+        let rb = HeapRb::<f32>::try_new(
+            capacity_frames
+                .checked_mul(output_channels)
+                .context("audio ring size overflow")?,
+        )
+        .context("Failed to allocate audio buffer")?;
         let (prod, cons): (HeapProd<f32>, HeapCons<f32>) = rb.split();
         let counters = Arc::new(AudioCallbackCounters::default());
 
-        let mut guard =
-            Limiter::new(guard_mode, sample_rate, channels as usize).with_input_gain(output_gain);
+        let mut guard = Limiter::new(
+            guard_mode,
+            sample_rate,
+            if output_channels == 2 {
+                2
+            } else {
+                channels as usize
+            },
+        )
+        .with_input_gain(output_gain);
         if let Some(meter) = guard_meter {
             guard = guard.with_meter(meter);
         }
@@ -269,6 +306,7 @@ impl AudioOutput {
         let (recycle_tx, recycle_rx) = bounded(1);
         let lease = CallbackLease {
             state: Some(CallbackState {
+                stereo: output_channels == 2,
                 consumer: cons,
                 guard,
             }),
@@ -413,6 +451,7 @@ mod tests {
         let (tx, rx) = bounded(1);
         let mut lease = CallbackLease {
             state: Some(CallbackState {
+                stereo: false,
                 consumer,
                 guard: Limiter::new(LimiterMode::None, 48_000, 1).with_input_gain(2.0),
             }),
@@ -543,6 +582,30 @@ mod tests {
         fill_output(&mut cons, &mut data, 2, &missing);
         assert_eq!(data, [0.25, 0.25, -0.5, -0.5, 0.0, 0.0, 0.0, 0.0]);
         assert_eq!(missing.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn stereo_devices_get_conditioned_frames_and_count_missing_frames() {
+        for width in [1, 2, 4] {
+            let (mut prod, consumer) = HeapRb::<f32>::new(4).split();
+            prod.push_slice(&[0.1, -0.2, 0.3, -0.4]);
+            let mut state = CallbackState {
+                consumer,
+                stereo: true,
+                guard: Limiter::new(LimiterMode::None, 48000, 2).with_input_gain(2.),
+            };
+            let missing = AtomicU64::new(0);
+            let mut data = vec![9.; width * 3];
+            fill_stereo(&mut state, &mut data, width, &missing);
+            for (frame, pair) in data
+                .chunks_exact(width)
+                .zip([[0.2, -0.4], [0.6, -0.8], [0., 0.]])
+            {
+                assert_eq!(&frame[..width.min(2)], &pair[..width.min(2)]);
+                assert!(frame.iter().skip(2).all(|&x| x == 0.));
+            }
+            assert_eq!(missing.load(Ordering::Relaxed), 1);
+        }
     }
 
     #[test]

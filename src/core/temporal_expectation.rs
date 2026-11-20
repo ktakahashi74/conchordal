@@ -225,6 +225,10 @@ pub(crate) struct OwnSoundHistory {
 }
 
 impl OwnSoundHistory {
+    pub(crate) fn next_frame(&self) -> u64 {
+        self.next_frame
+    }
+
     pub(crate) fn take_prediction_errors(
         &mut self,
     ) -> Option<(
@@ -836,15 +840,7 @@ impl AcousticTemporalExpectation {
         })
     }
 
-    pub(crate) fn process(
-        &mut self,
-        start_frame: u64,
-        mut audio: &[f32],
-        mut report: impl FnMut(TemporalObservation),
-    ) {
-        if audio.is_empty() {
-            return;
-        }
+    pub(crate) fn align_to(&mut self, start_frame: u64) {
         if self.next_input_frame != Some(start_frame) {
             // Missing audio is not observed silence, and partial windows cannot span it.
             let mut temporal = self.energy.temporal.clone();
@@ -870,6 +866,19 @@ impl AcousticTemporalExpectation {
             self.filled = 0;
             self.observed_through_frame = start_frame;
         }
+        self.next_input_frame = Some(start_frame);
+    }
+
+    pub(crate) fn process(
+        &mut self,
+        start_frame: u64,
+        mut audio: &[f32],
+        mut report: impl FnMut(TemporalObservation),
+    ) {
+        if audio.is_empty() {
+            return;
+        }
+        self.align_to(start_frame);
         self.next_input_frame = Some(start_frame + audio.len() as u64);
         while !audio.is_empty() {
             let take = audio.len().min(self.window.len() - self.filled);

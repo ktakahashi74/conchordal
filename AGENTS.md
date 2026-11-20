@@ -64,7 +64,7 @@
       While presentation PCM is bit-identical to habitat PCM, listener analysis
       reuses the field's perception; on the first differing hop it adopts the
       field's pre-hop front end and continues alone.
-      It returns raw presentation PCM; the host applies `output_gain()` and the
+      It returns raw interleaved presentation PCM; the host applies `output_gain()` and the
       Limiter. Endless scores and background-thread analyses are rejected.
   - `temporal_cognition/` (declared by `temporal_cognition.rs`): ordered auditory
     evidence, grouping, body observation, arrival, proposals, and opt-in T2 integration.
@@ -298,20 +298,37 @@ source-matched versus original computation rule or §9.3.56's five listener laye
   the following is a conditional budget, not an exact allocation census.
   - `render_and_route_audio` (`src/runtime/phases.rs`) creates two `Arc<[f32]>`
     chunks for the presentation and habitat buses, shared with WAV/listener/analysis
-    channels as needed. When a scenario has self-exclusion consumers, `process_hop`
+    channels as needed. Wet WAV and StepEngine handoffs also own an interleaved
+    chunk. The device reads the renderer’s prepared stereo scratch via its ring.
+    When a scenario has self-exclusion consumers, `process_hop`
     also transfers one recycled packet of per-Voice habitat PCM. Capture storage is
     allocated at birth and returned by the analysis worker; steady-state capture
     has no per-Voice allocation. Recycling backpressure counts toward worker time.
+    In strict W/W the renderer owns a pre-scanned pool of room streams. Each
+    (kind, ID, generation) with a reader advances once per render hop, including
+    rests and release. SourcePcm.habitat and the self-sound external reader use
+    the same wet contribution, while the body window keeps dry PCM. A Rain
+    contributes only its drops to its own stream. Birth and reuse allocate no
+    room history. Packet recycling and analysis gaps do not advance or reset
+    the room. A clock jump resets every bus and invalidates own histories.
+    D/W reserves P and R. W/W adds H and the reserved own streams. Hop timing
+    counts these buses in reserved, active and peak. R is presentation-only.
+    ListenerTwin, presentation spectra, meters, UI peak and DCC read left P.
+    On normal wet shutdown, keep Ending through dry release and the last wet
+    bus's exclusive FIR end. The hop covering that end is the final output;
+    a bus with no input adds no wait. Compare finite scores before the
+    dispatched Finish tick and measure release and room tails separately.
   - `apply_landscape_updates` (`src/runtime/analysis_sync.rs`) allocates the observed
     field `Arc` for `GeneratorModel::observe_consonance_field_level` only after analysis
     or valuation updates with an available analysis frame.
-  - `drive_and_apply_habituation` (`src/runtime/analysis_sync.rs`) obtains an owned
-    harmonicity projection from `potential_h_from_log2_spectrum`. Habituation is enabled
-    by default. The ecology path runs per hop, and `observe_listener_analysis_results`
-    runs the same projection per received listener frame; the default GUI has both
-    paths. Explicitly disabling habituation skips these projections. Research drives
-    `channel_p` and `channel_q` bypass the root projection and allocate no steady-state
-    drive/projection storage; Q owns one extra channel-state scan allocated at construction.
+  - `drive_and_apply_habituation` (`src/runtime/analysis_sync.rs`) advances the default
+    `channel_p` drive in place from the S6 density: no root projection and no
+    steady-state drive/projection storage. `channel_q` likewise, plus one extra
+    channel-state scan allocated at construction. Only `drive = "root_projection"`
+    obtains an owned harmonicity projection from `potential_h_from_log2_spectrum`: per
+    hop on the ecology path, and per received listener frame in
+    `observe_listener_analysis_results` (the default GUI has both paths). Habituation
+    is enabled by default; explicitly disabling it skips all of this.
   - ListenerTwin groups bin masses into local-maximum components with cached mass,
     component-mass and ascent-owner buffers. Its presentation-only E0 predictor owns
     256 completed acoustic windows and preallocated support/history scratch. Initial
@@ -573,9 +590,9 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - Usage: hill-climb evaluation in `src/life/pitch_core.rs`.
 2. `consonance_field_level`
 - Definition: `sigmoid(beta*(score-theta))`.
-- Usage: base value. Consumed as the habituation drive in
-  `drive_and_apply_habituation` (`src/runtime/analysis_sync.rs`) and as the source for the
-  eroded view. Voice behavior and the listener read variant 6; Flora growth reads
+- Usage: base value and the source for the eroded view. It enters the habituation
+  drive only under `drive = "root_projection"` (`drive_and_apply_habituation`,
+  `src/runtime/analysis_sync.rs`). Voice behavior and the listener read variant 6; Flora growth reads
   this base level because its consumer–resource dynamics already supply band fatigue.
 3. `consonance_field_energy`
 - Definition: `-score`.
@@ -663,7 +680,7 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   a Flora discriminator. Release/fade take priority. Reports use span_gap with
   flora_id, generation 0, weighted heard and representative carrier means.
   Flora initial-only `respond_to_onsets(w)` (Author rule, Experimental, ledger
-  §9.3.135) defaults to 0: no state, no history read and no pace multiplication.
+  §9.3.138) defaults to 0: no state, no history read and no pace multiplication.
   Positive finite weights reserve the same shared onset-habituation observer from
   run start. Each new known observation reads the largest history rise inside the
   extent, skipping bins within 1.5 ERB (`onset_habituation::SUPPORT_ERB`) of
@@ -678,6 +695,15 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   `.residual(true)` remains available.
 
 ## Config Keys
+- Optional research section `[room]` requires `mode`. Omission and `"off"` use dry
+  mono output. At 48000 Hz, `"presentation"` and `"both"` produce stereo output
+  with common direct sound and distinct reflected responses. `"both"` also
+  applies the left room response to the mono habitat and self-return histories.
+  The only enabled self-return setting is `self_return = "strict"` (implicit when
+  omitted). Explicit self-return with `"off"` is invalid. Use `"both"` for offline strict-source research.
+  Both stereo modes use a calibrated default output gain of -10.5 dB when
+  `[audio].output_gain_db` is omitted. Natural endings wait for dry releases
+  and the finite tails of all wet output buses.
 - `[analysis.felt_beat]` enables a research-only joint circular-grid beat/no-beat
   observer on the habitat audio-only MeterNetwork. Omission owns no observer.
   Its source-figure defaults are seconds-coordinate `sigma2=0.05^2`, `v=0.0001`,
@@ -762,7 +788,11 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   rejected before analysis construction. The autonomous Voice pitch range remains
   approximately 29.989..8000 Hz, independently of the auditory grid. T2's separate
   bank and the PS-1/TC sample-rate conditions remain unchanged.
-- `[audio].output_gain_db` (default `4.5`): fixed dB gain before cpal/WAV guards, calibrated from bundled sample peaks and the 0.98 ceiling. Analysis, listener, report and UI inputs stay at their original levels.
+- `[audio].output_gain_db` defaults to +4.5 dB for a dry room and -10.5 dB for
+  `presentation` and `both`, calibrated from bundled sample peaks and the 0.98
+  ceiling. An explicit value takes precedence. The scene gain adds in dB before
+  the cpal, WAV or browser limiter. Analysis, listener, report and UI inputs
+  stay at their original levels.
 - `[psychoacoustics.consonance.field.kernel]`
 - `a, b, c, d` (defaults: `1.0, -1.35, 1.0, 0.0`)
 - `[psychoacoustics.consonance.field.level]`
@@ -774,14 +804,20 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
 - `[psychoacoustics.habituation]`
 - `enabled` (default: `true`), `satiation_sec` (`5.0`), `recovery_sec` (`8.0`),
   `ref_drive` (`0.25`)
-- `drive` (default `"root_projection"`): research alternatives `"channel_p"` and
-  `"channel_q"` drive frequency-channel states from peak-normalized S6 density,
-  without extra smoothing. P uses those states directly; Q averages states at the
-  candidate partials with the H kernel harmonic count and weights (default 16,
-  k^-0.4), linear interpolation, and zero for out-of-grid partials while retaining
-  their denominator weights. Both ecology and listener use the selected drive.
-  These mappings and the unchanged dynamics are Author rules; no default adoption
-  or published-model agreement is claimed. This is not a Rhai composer control.
+- `drive` (default `"channel_p"`, author adoption 2026-11-19, ledger §9.3.140):
+  `"channel_p"` and `"channel_q"` drive frequency-channel states from peak-normalized
+  S6 density, without extra smoothing. P uses those states directly, so only places
+  that sounded erode; Q averages states at the candidate partials with the H kernel
+  harmonic count and weights (default 16, k^-0.4), linear interpolation, and zero for
+  out-of-grid partials while retaining their denominator weights. `"root_projection"`,
+  the former default (field level times the harmonic root projection), also erodes
+  silent harmonic relatives; selecting it reproduces the former law bit for bit.
+  Both ecology and listener use the selected drive. Adaptation of the sounded
+  channels is the principle; the mappings and the unchanged dynamics are Author
+  rules, with no published-model agreement claimed. This is not a Rhai composer
+  control. Under the default `move_cost` a line still does not leave by adaptation
+  alone; that is the composer's `move_cost` choice. The demo piece `line-moss` pins
+  the former default in `samples/demo/root-projection.toml`.
 - Defaults come from `HabituationParams::default()` in `src/core/habituation.rs`.
 - When `enabled = false` the `_eff` consonance views equal their base variants.
 
@@ -876,7 +912,7 @@ unknown key, or invalid numeric range fails the run.
 - Renderer tail completion is registered for rest or span/gap Voices and routed
   by ID and generation. Rest Waiting/Gap freezes both integrals, while private
   attack recovery and ordinary clocks continue. Early Off cancels its pending Off.
-- Voice `respond_to_onsets(w)` (Author rule, Experimental, ledger §9.3.135) is
+- Voice `respond_to_onsets(w)` (Author rule, Experimental, ledger §9.3.138) is
   initial-only, default 0: no state, no detector copy, unchanged proposal clock and
   RNG. It requires free `seek_consonance()`, `sustain()`, rearticulate with
   `rearticulate_above(0)` and no SQ-1/ME; other forms warn to 0, and missing

@@ -37,6 +37,7 @@ fn replacement_keeps_pre_off_pcm_and_overlaps_independent_release_with_fresh_att
                     let key = ToneKey {
                         source_id: batch.source_id,
                         tone_id: old_id,
+                        generation: batch.source_generation,
                     };
                     let mut renderer = ScheduleRenderer::new(time).with_prototype(native);
                     renderer.render(&initial.batches, initial.now, &initial.rhythms);

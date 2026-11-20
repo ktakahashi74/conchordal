@@ -34,11 +34,7 @@ fn assert_config_eq(actual: &AppConfig, expected: &AppConfig) {
     );
     assert_eq!(actual.audio.sample_rate, expected.audio.sample_rate);
     assert_eq!(actual.audio.limiter, expected.audio.limiter);
-    assert_close(
-        actual.audio.output_gain_db,
-        expected.audio.output_gain_db,
-        "audio.output_gain_db",
-    );
+    assert_eq!(actual.audio.output_gain_db, expected.audio.output_gain_db);
     assert_eq!(actual.analysis.nfft, expected.analysis.nfft);
     assert_eq!(actual.analysis.hop_size, expected.analysis.hop_size);
     assert_close(
@@ -148,6 +144,7 @@ fn config_load_custom_values() {
     let path = unique_path("custom.toml");
     let path_str = path.to_string_lossy().to_string();
     let custom = AppConfig {
+        room: None,
         birth_surrogate: false,
         body_metabolism: None,
         render_prototype: false,
@@ -163,7 +160,7 @@ fn config_load_custom_values() {
             latency_ms: 75.0,
             sample_rate: 44_100,
             limiter: LimiterSetting::SoftClip,
-            output_gain_db: -3.0,
+            output_gain_db: Some(-3.0),
         },
         analysis: AnalysisConfig {
             felt_beat: None,

@@ -426,6 +426,8 @@ impl PitchHillClimbPitchCore {
                 }
             }
         }
+        #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+        diagnostic::restore_room_candidates(candidates);
         scored.clear();
         for &candidate in candidates.iter() {
             let mut pitch = candidate.clamp(fmin, fmax);

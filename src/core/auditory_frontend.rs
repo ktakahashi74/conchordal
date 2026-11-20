@@ -225,6 +225,12 @@ impl Bank {
 
     fn read_complex_hop(&mut self, input: impl ExactSizeIterator<Item = Complex32>) {
         let samples = input.len();
+        self.read_boxcar(input);
+        self.finish_boxcar(samples);
+    }
+
+    fn read_boxcar(&mut self, input: impl ExactSizeIterator<Item = Complex32>) {
+        let samples = input.len();
         assert!(samples > 0);
         self.input.clear();
         self.input.extend(input);
@@ -244,6 +250,9 @@ impl Bank {
         if let Some(statistics) = &mut self.statistics {
             statistics.push(&mut self.energy, &mut self.correlation, samples);
         }
+    }
+
+    fn finish_boxcar(&mut self, samples: usize) {
         for c in 0..self.centers.len() {
             self.frequency[c] = self.fs * self.correlation[c].arg() / TAU;
             self.coherence[c] = if self.energy[c] > 0.0 {
@@ -398,6 +407,8 @@ impl Bank {
 #[derive(Clone)]
 pub(crate) struct AuditoryFrontEnd {
     bank: Bank,
+    #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+    oracle: Option<Box<PowerOracle>>,
     #[cfg(test)]
     pair: Option<AnalyticPair>,
     space: Log2Space,
@@ -429,6 +440,9 @@ pub(crate) struct AuditoryFrontEnd {
     #[cfg(test)]
     erb_first: f64,
 }
+
+#[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+include!("../../tests/research/room_oracle_power.rs");
 
 #[cfg(test)]
 pub(crate) type ShadowFrontEnd = AuditoryFrontEnd;
@@ -570,6 +584,8 @@ impl AuditoryFrontEnd {
         let erb_first = erbn(f64::from(bank.centers[0]));
         Self {
             bank,
+            #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+            oracle: None,
             #[cfg(test)]
             pair,
             du: erb_grid(&space).1,
@@ -605,6 +621,10 @@ impl AuditoryFrontEnd {
 
     pub(crate) fn reset(&mut self) {
         self.bank.clear();
+        #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+        if let Some(oracle) = &mut self.oracle {
+            oracle.own.clear();
+        }
         #[cfg(test)]
         if let Some(pair) = &mut self.pair {
             *pair = AnalyticPair::default();
@@ -646,6 +666,17 @@ impl AuditoryFrontEnd {
     }
 
     pub(crate) fn process(&mut self, pcm: &[f32], params: &LandscapeParams) -> bool {
+        #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+        if let Some(oracle) = &mut self.oracle {
+            assert!(self.pair.is_none() && self.bank.spread.is_none());
+            self.bank
+                .read_boxcar(pcm.iter().map(|&x| Complex32::new(x, 0.0)));
+            oracle.subtract(&mut self.bank, pcm.len());
+            self.bank.finish_boxcar(pcm.len());
+            self.reassign(params, pcm.len(), pcm.len() as f32 / params.fs);
+            self.missing_samples = self.missing_samples.saturating_sub(pcm.len());
+            return self.missing_samples == 0;
+        }
         self.process_body_gap(pcm, 1, params)
     }
 

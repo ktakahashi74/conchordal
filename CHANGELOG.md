@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+- Change the default habituation drive to `channel_p`: the modeled listener now tires
+  only where sound was actually heard. The former default, `root_projection`, also
+  eroded silent places harmonically related to the sound, the reverse of the
+  distance fall-off reported for auditory adaptation (ledger §9.3.140). Every
+  consumer of the eroded consonance views changes: Voice pitch choice, `dwell`,
+  Voice spawn placement, Rain, body metabolism, the listener and the GUI display.
+  Existing pieces sound different. Set `drive = "root_projection"` under
+  `[psychoacoustics.habituation]` to keep the former behavior, which is unchanged
+  bit for bit; `channel_q` is a research alternative. The state law and its
+  constants are unchanged, and no script word was added.
+
+- Add experimental `respond_to_onsets(w)` for Flora and Voice, neutral by default.
+  A Flora speeds its ecological time after attacks heard outside its own partials;
+  a Voice brings its next pitch proposal forward after attacks heard without its
+  own sound (requires `leave_self_out(true)`). Births and moves stay on their
+  existing opportunities, and no random draw is added (ledger §9.3.138).
+
+- Add experimental Rain words, all neutral by default: `leave_drops_out` reads a
+  field without the Rain's own impacts, `objects_follow_drops` lets a silent object
+  take the pitch of the impact that strikes it, `ring` lets impacts on more
+  consonant places ring longer, and `follow_meter(focus)` gathers impacts where the
+  meter heard in the habitat expects them without adding any. The impact pool grows
+  from 64 to 256 slots; scenes that never filled 64 render identically
+  (ledger §9.3.139).
+
+- Smooth Flora amplitude transitions. A live `amp()` now glides over the Flora's
+  `fade()` seconds (at least 80 ms), and a lane older than 80 ms reaches each new
+  target linearly over 0.5 s; births keep their slew. Flora scenes sound different
+  where lane amplitudes were redistributed in a few milliseconds.
+
+- Make `spread` the amount of unison layering. With `unison(n)` above one, a copy at
+  relative offset u now has relative amplitude `spread^|u|`, and the squared weights
+  sum to one. With an odd count a small spread gives narrow, shallow layering around
+  the centre copy; an even count has no centre copy, so its central pair keeps equal
+  weight. Spread 1 gives equal copies, now power-normalized instead of
+  amplitude-normalized, so layered bodies keep their mean level of incoherent copies
+  (they were about 4.8 dB quieter with three copies); short-window level and peaks
+  still depend on phase. Single-copy bodies are unchanged bit for bit.
+
+- Add research-only felt-beat settings, off by default: the `[analysis.felt_beat]`
+  observer (expected beat phase and its precision from habitat audio), the header
+  declaration `observe_felt_beat()` for endless pieces, and `syncopate(w)` on
+  explicit `metric()` Voices, which skips or displaces onsets where the beat is
+  already certain. Grouping above the beat is not implemented (ledger §9.3.141).
+
 - Add the live demo page (`/demo/`, `/ja/demo/` on conchordal.org). It performs the
   pieces in `samples/demo/` in the visitor's browser, shows the whole score being
   played, and keeps no recording. Publishing a release builds the demo from its tag

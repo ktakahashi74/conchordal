@@ -364,15 +364,15 @@ mod tests {
 
     #[test]
     fn zero_db_output_gain_preserves_guard_output_bits() {
-        let mut config = crate::config::AudioConfig::default();
-        config.output_gain_db = 0.0;
+        let mut config = crate::config::AppConfig::default();
+        config.audio.output_gain_db = Some(0.0);
         for mode in [
             LimiterMode::None,
             LimiterMode::SoftClip(SoftClipParams::default()),
             LimiterMode::default(),
         ] {
             let mut original = Limiter::new(mode, 48_000, 2);
-            let mut gained = Limiter::new(mode, 48_000, 2).with_input_gain(config.output_gain());
+            let mut gained = Limiter::new(mode, 48_000, 2).with_input_gain(config.output_gain(0.0));
             for _ in 0..3 {
                 let mut expected = [-0.0, 0.0, 0.1, -0.2, 2.0, -3.0];
                 let mut actual = expected;
@@ -385,14 +385,14 @@ mod tests {
 
     #[test]
     fn default_output_gain_scales_samples_with_every_guard_mode() {
-        let config = crate::config::AudioConfig::default();
-        let gain = 10.0f32.powf(config.output_gain_db / 20.0);
+        let config = crate::config::AppConfig::default();
+        let gain = 10.0f32.powf(4.5 / 20.0);
         for mode in [
             LimiterMode::None,
             LimiterMode::SoftClip(SoftClipParams::default()),
             LimiterMode::default(),
         ] {
-            let mut guard = Limiter::new(mode, 48_000, 2).with_input_gain(config.output_gain());
+            let mut guard = Limiter::new(mode, 48_000, 2).with_input_gain(config.output_gain(0.0));
             let mut samples = [0.001, -0.002, 0.0, -0.0];
             let expected = samples.map(|s| s * gain);
             guard.process_interleaved(&mut samples, 2);

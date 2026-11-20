@@ -16,9 +16,9 @@ pub struct AudioConfig {
     pub sample_rate: u32,
     #[serde(default)]
     pub limiter: LimiterSetting,
-    /// Playback/WAV gain only; perception and bus meters stay unscaled.
-    #[serde(default = "AudioConfig::default_output_gain_db")]
-    pub output_gain_db: f32,
+    /// Optional pre-limiter playback/WAV gain. Omission selects the room-mode calibration.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_gain_db: Option<f32>,
 }
 
 impl AudioConfig {
@@ -28,14 +28,6 @@ impl AudioConfig {
     fn default_sample_rate() -> u32 {
         48_000
     }
-    fn default_output_gain_db() -> f32 {
-        // 17 bundled studies x seeds 21..=23: peak 0.5553375, ceiling 0.98, rounded down by 0.5 dB.
-        4.5
-    }
-
-    pub(crate) fn output_gain(&self) -> f32 {
-        10.0f32.powf(self.output_gain_db / 20.0)
-    }
 }
 
 impl Default for AudioConfig {
@@ -44,7 +36,7 @@ impl Default for AudioConfig {
             latency_ms: Self::default_latency_ms(),
             sample_rate: Self::default_sample_rate(),
             limiter: LimiterSetting::default(),
-            output_gain_db: Self::default_output_gain_db(),
+            output_gain_db: None,
         }
     }
 }
@@ -295,9 +287,34 @@ impl Default for PsychoAcousticsConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RoomMode {
+    #[default]
+    Off,
+    Presentation,
+    Both,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SelfReturn {
+    Strict,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RoomConfig {
+    pub mode: RoomMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub self_return: Option<SelfReturn>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct AppConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub room: Option<RoomConfig>,
     /// Evaluate supported birth placements and respawn choices with the legacy body model.
     #[serde(default)]
     pub birth_surrogate: bool,
@@ -532,8 +549,49 @@ impl Default for PlaybackConfig {
 }
 
 impl AppConfig {
+    pub(crate) fn room_mode(&self) -> RoomMode {
+        self.room.map(|room| room.mode).unwrap_or_default()
+    }
+
+    fn resolved_output_gain_db(&self) -> f32 {
+        self.audio
+            .output_gain_db
+            .unwrap_or_else(|| match self.room_mode() {
+                // Original dry calibration: 17 studies x seeds 21..=23, peak 0.5553375.
+                RoomMode::Off => 4.5,
+                // 105 wet renders at 0 dB: peak 3.16746783, ceiling 0.98, round down to 0.5 dB.
+                RoomMode::Presentation | RoomMode::Both => -10.5,
+            })
+    }
+
+    pub(crate) fn output_gain(&self, scene_db: f32) -> f32 {
+        10.0f32.powf((self.resolved_output_gain_db() + scene_db) / 20.0)
+    }
+
+    #[cfg(feature = "native")]
+    pub(crate) fn output_channels(&self) -> usize {
+        1 + usize::from(self.room_mode() != RoomMode::Off)
+    }
+
+    /// Call after resolving the device, offline or host rate.
+    pub(crate) fn validate_runtime(&self) -> Result<()> {
+        let required = crate::core::room::SAMPLE_RATE;
+        let rate = self.audio.sample_rate;
+        ensure!(
+            self.room_mode() == RoomMode::Off || rate == required,
+            "room requires {required} Hz (runtime rate {rate} Hz)"
+        );
+        self.validate()
+    }
+
     /// Validate the dimensions shared by the runtime and the NSGT kernel.
     pub fn validate(&self) -> Result<()> {
+        if let Some(room) = self.room {
+            ensure!(
+                room.mode != RoomMode::Off || room.self_return.is_none(),
+                "room.self_return requires an enabled room.mode"
+            );
+        }
         if let Some(p) = self.analysis.felt_beat {
             ensure!(
                 p.lambda + p.weak_lambda + p.lambda_0 > 0.0,
@@ -657,9 +715,9 @@ impl AppConfig {
             self.audio.latency_ms.is_finite() && self.audio.latency_ms > 0.0,
             "audio.latency_ms must be finite and positive"
         );
-        let output_gain = self.audio.output_gain();
+        let output_gain = self.output_gain(0.0);
         ensure!(
-            self.audio.output_gain_db.is_finite() && output_gain.is_finite() && output_gain > 0.0,
+            output_gain.is_finite() && output_gain > 0.0,
             "audio.output_gain_db must be finite and yield a finite, positive f32 amplitude gain"
         );
         let buffer_frames =
@@ -778,7 +836,7 @@ impl AppConfig {
 
     pub fn round_f32_inplace(&mut self) {
         self.audio.latency_ms = Self::round_f32(self.audio.latency_ms);
-        self.audio.output_gain_db = Self::round_f32(self.audio.output_gain_db);
+        self.audio.output_gain_db = self.audio.output_gain_db.map(Self::round_f32);
         self.analysis.tau_ms = Self::round_f32(self.analysis.tau_ms);
         self.psychoacoustics.loudness_exp = Self::round_f32(self.psychoacoustics.loudness_exp);
         self.psychoacoustics.roughness_k = Self::round_f32(self.psychoacoustics.roughness_k);
@@ -838,7 +896,9 @@ impl AppConfig {
 
         // Only the implicit config.toml path may create a template.
         let default_cfg = Self::default().rounded();
-        if let Ok(text) = toml::to_string_pretty(&default_cfg) {
+        let mut template = default_cfg.clone();
+        template.audio.output_gain_db = Some(default_cfg.resolved_output_gain_db());
+        if let Ok(text) = toml::to_string_pretty(&template) {
             let mut commented = String::new();
             for line in text.lines() {
                 let trimmed = line.trim();
@@ -1121,6 +1181,7 @@ mod tests {
         let path = unique_path("custom.toml");
         let path_str = path.to_string_lossy().to_string();
         let custom = AppConfig {
+            room: None,
             birth_surrogate: false,
             body_metabolism: None,
             render_prototype: false,
@@ -1136,7 +1197,7 @@ mod tests {
                 latency_ms: 75.0,
                 sample_rate: 44_100,
                 limiter: LimiterSetting::SoftClip,
-                output_gain_db: -3.0,
+                output_gain_db: Some(-3.0),
             },
             analysis: AnalysisConfig {
                 felt_beat: None,
@@ -1184,7 +1245,7 @@ mod tests {
         assert_eq!(cfg.audio.latency_ms, 75.0);
         assert_eq!(cfg.audio.sample_rate, 44_100);
         assert_eq!(cfg.audio.limiter, LimiterSetting::SoftClip);
-        assert_eq!(cfg.audio.output_gain_db, -3.0);
+        assert_eq!(cfg.audio.output_gain_db, Some(-3.0));
         assert_eq!(cfg.analysis.nfft, 8192);
         assert_eq!(cfg.analysis.hop_size, 256);
         assert_eq!(cfg.analysis.tau_ms, 60.0);
@@ -1251,10 +1312,8 @@ mod tests {
         assert_eq!(cfg.audio.sample_rate, 44_100);
         assert_eq!(cfg.audio.latency_ms, AudioConfig::default_latency_ms());
         assert_eq!(cfg.audio.limiter, LimiterSetting::default());
-        assert_eq!(
-            cfg.audio.output_gain_db,
-            AudioConfig::default_output_gain_db()
-        );
+        assert_eq!(cfg.audio.output_gain_db, None);
+        assert_eq!(cfg.resolved_output_gain_db(), 4.5);
         assert_eq!(cfg.analysis.nfft, AnalysisConfig::default_nfft());
         assert_eq!(
             cfg.psychoacoustics.loudness_exp,
@@ -1266,10 +1325,30 @@ mod tests {
     }
 
     #[test]
+    fn output_gain_override_survives_config_roundtrip() {
+        for mode in ["off", "presentation", "both"] {
+            for requested in [None, Some(0.0), Some(4.5)] {
+                let mut text = format!("[room]\nmode='{mode}'");
+                if let Some(db) = requested {
+                    text.push_str(&format!("\n[audio]\noutput_gain_db={db}"));
+                }
+                let cfg = AppConfig::from_toml(&text).unwrap();
+                let restored = AppConfig::from_toml(&toml::to_string(&cfg).unwrap()).unwrap();
+                assert_eq!(restored.audio.output_gain_db, requested);
+                let default = if mode == "off" { 4.5 } else { -10.5 };
+                assert_eq!(
+                    restored.resolved_output_gain_db(),
+                    requested.unwrap_or(default)
+                );
+            }
+        }
+    }
+
+    #[test]
     fn output_gain_requires_representable_finite_amplitude() {
         for gain_db in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 1000.0, -1000.0] {
             let mut config = AppConfig::default();
-            config.audio.output_gain_db = gain_db;
+            config.audio.output_gain_db = Some(gain_db);
             assert!(
                 config
                     .validate()
@@ -1280,7 +1359,7 @@ mod tests {
         }
         for gain_db in [-120.0, 0.0, 60.0] {
             let mut config = AppConfig::default();
-            config.audio.output_gain_db = gain_db;
+            config.audio.output_gain_db = Some(gain_db);
             config.validate().unwrap();
         }
     }
@@ -1476,7 +1555,7 @@ roughness_gain = 0.5
     }
 
     #[test]
-    fn habituation_research_drive_is_explicit_and_strict() {
+    fn habituation_drive_defaults_to_channel_p_and_is_strict() {
         use crate::core::habituation::HabituationDrive;
         assert_eq!(
             AppConfig::from_toml("")
@@ -1484,7 +1563,7 @@ roughness_gain = 0.5
                 .psychoacoustics
                 .habituation
                 .drive,
-            HabituationDrive::RootProjection
+            HabituationDrive::ChannelP
         );
         for (name, expected) in [
             ("root_projection", HabituationDrive::RootProjection),

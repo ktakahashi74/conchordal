@@ -133,6 +133,9 @@ impl WorkerState {
             return;
         }
         self.finish_begun = true;
+        if self.schedule_renderer.room.is_some() {
+            self.playback_state = PlaybackState::Ending;
+        }
         self.pop
             .apply_action(Action::Finish, &self.current_landscape);
         self.scenario_end_tick = Some(now_tick);
@@ -367,7 +370,8 @@ pub(super) fn worker_loop(
     if cfg.start_flag.load(Ordering::SeqCst) {
         state.playback_state = PlaybackState::Playing;
     }
-    let idle_silence = vec![0.0f32; cfg.hop];
+    let samples_per_hop = cfg.hop * (1 + usize::from(state.schedule_renderer.room.is_some()));
+    let idle_silence = vec![0.0f32; samples_per_hop];
     #[cfg(test)]
     let mut l1_probe = super::l1_probe::Probe::new("audio");
 
@@ -437,7 +441,7 @@ pub(super) fn worker_loop(
                 state.pending_final_ui_frame = Some(frame);
             }
             if let Some(prod) = channels.audio_prod.as_mut() {
-                while prod.vacant_len() >= cfg.hop {
+                while prod.vacant_len() >= samples_per_hop {
                     AudioOutput::push_samples(prod, &idle_silence, None);
                 }
             }
@@ -450,7 +454,7 @@ pub(super) fn worker_loop(
             while channels
                 .audio_prod
                 .as_ref()
-                .is_some_and(|prod| prod.vacant_len() >= cfg.hop)
+                .is_some_and(|prod| prod.vacant_len() >= samples_per_hop)
                 && !cfg.exiting.load(Ordering::SeqCst)
                 && !state.finished
                 && !state.exit_during_recovery(&cfg)
@@ -727,16 +731,18 @@ pub(super) fn process_hop(
     }
     let frame_idx = state.frame_idx;
     #[cfg(feature = "native")]
+    let output_channels = 1 + usize::from(state.schedule_renderer.room.is_some());
+    #[cfg(feature = "native")]
     let buffer_capacity = channels
         .audio_prod
         .as_ref()
-        .map(|prod| prod.capacity().get())
+        .map(|prod| prod.capacity().get() / output_channels)
         .unwrap_or(cfg.hop);
     #[cfg(feature = "native")]
     let occupancy = channels
         .audio_prod
         .as_ref()
-        .map(|prod| buffer_capacity.saturating_sub(prod.vacant_len()))
+        .map(|prod| buffer_capacity.saturating_sub(prod.vacant_len() / output_channels))
         .unwrap_or(0);
 
     #[cfg(not(feature = "native"))]
@@ -913,7 +919,20 @@ pub(super) fn process_hop(
         cfg.exiting.store(true, Ordering::SeqCst);
     }
 
-    let finished_now = if state.pop.abort_requested
+    let room = state.schedule_renderer.room.as_ref();
+    let normal_wet_finish = state.finish_begun
+        && room.is_some()
+        && state.failures.is_empty()
+        && !cfg.exiting.load(Ordering::SeqCst);
+    let finished_now = if let Some(room) = room {
+        state.finish_begun
+            && room.drained()
+            && state
+                .schedule_renderer
+                .is_idle_at(state.timebase.frame_end_tick(frame_idx))
+            && state.pop.flora.iter().all(|flora| flora.is_finished())
+            && state.pop.rain.iter().all(|rain| rain.is_finished())
+    } else if state.pop.abort_requested
         && !cfg.render_prototype
         && !state.pop.has_placed_flora
         && !state.pop.has_placed_rain
@@ -977,9 +996,7 @@ pub(super) fn process_hop(
                 && let Some(prod) = channels.audio_prod.as_ref()
             {
                 let deadline = Instant::now()
-                    + Duration::from_secs_f64(
-                        2.0 * prod.capacity().get() as f64 / f64::from(cfg.fs),
-                    );
+                    + Duration::from_secs_f64(2.0 * buffer_capacity as f64 / f64::from(cfg.fs));
                 while prod.occupied_len() > 0
                     && Instant::now() < deadline
                     && !cfg.exiting.load(Ordering::SeqCst)
@@ -1006,7 +1023,7 @@ pub(super) fn process_hop(
         analysis_wait,
         listener_wait,
         cfg.underrun_frames.as_deref(),
-        state.finish_begun,
+        state.finish_begun && !normal_wet_finish,
         cfg.telemetry,
         #[cfg(feature = "native")]
         state
@@ -1024,6 +1041,7 @@ pub(super) fn process_hop(
     // Include preceding telemetry in the hop cost, but exclude this record's own write.
     report_try(&mut state.reporter, "hop timing", |writer| {
         writer.write_hop_timing(&HopTimingSample {
+            room_streams: state.schedule_renderer.room.as_ref().map(|r| r.counts()),
             frame_idx,
             time_sec: now_sec,
             elapsed_us: t_start.elapsed().as_secs_f64() * 1_000_000.0,

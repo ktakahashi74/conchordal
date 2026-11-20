@@ -3,7 +3,7 @@ use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
 use crate::life::articulation_core::PinkNoise;
 use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::mode_utils::{
-    active_cluster_unison, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
+    active_cluster_unison, cluster_detune_mul, cluster_spread_cents_from_public, cluster_weights,
 };
 use crate::life::sound::spectral::{
     add_log2_energy, harmonic_gain, harmonic_ratio, spectral_slope_from_brightness,
@@ -907,20 +907,17 @@ fn build_harmonic_lanes(
     // top at render time via the per-lane exponent below.
     let energy = 1.0;
     let damping = genotype.damping.max(0.0);
+    let weights = cluster_weights(cluster_spread_cents, cluster_unison);
 
     for partial_idx in 0..partials.max(1) {
         let k = partial_idx.saturating_add(1);
         let ratio = partial_ratio(ratios, genotype, partial_idx);
-        let partial_gain = cluster_gain(
-            harmonic_gain(genotype, k, energy),
-            cluster_spread_cents,
-            cluster_unison,
-        );
+        let partial_gain = harmonic_gain(genotype, k, energy);
         // Per-partial damping exponent matches harmonic_gain: energy^(damping * k).
         let damp_exp = damping * k as f32;
         for unison_idx in 0..cluster_unison {
             let detune = cluster_detune_mul(cluster_spread_cents, cluster_unison, unison_idx);
-            lanes.push((ratio * detune, partial_gain, damp_exp));
+            lanes.push((ratio * detune, partial_gain * weights[unison_idx], damp_exp));
         }
     }
 

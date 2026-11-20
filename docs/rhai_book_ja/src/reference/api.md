@@ -605,7 +605,7 @@ spread(value)
 
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
-Dimensionless detuning spread in [0,1], default 0.
+Amount of unison layering in [0,1], default 0: width and depth together. With `unison(n)` above one, the copies spread up to ±24·value cents around the centre, and a copy at relative offset u (−1 to 1) has relative amplitude value^|u|. With an odd count a small value gives narrow, shallow layering around the centre copy; an even count has no centre copy, so its central pair keeps equal weight and beats at full depth. 1 gives equal copies. The copies' powers sum to the uncopied power, so the mean level stays the same. Zero leaves a single copy.
 
 **根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
@@ -617,7 +617,7 @@ unison(count)
 
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
-Number of unison detuning copies.
+Number of unison copies (1-9, default 1); `spread` sets how far and how strongly they layer.
 
 **根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
@@ -1567,7 +1567,7 @@ respond_to_onsets(w)
 
 Speed the Flora's ecological time while new external onsets are heard inside its extent (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights read the shared attack history inside the extent, skipping bins within 1.5 ERB of the Flora's sounding lanes. A rise rho owes w*tau*rho extra ecological seconds (tau = satiation_sec/ln 10), spent at most w seconds per second, so unhabituated external onsets run the clock up to 1+w times faster; pace saturation still applies. Births stay on the Flora's own crossings and the field chooses where; no onset, pitch or random draw is added. Unknown or regridded observations only re-prime. Disabled habituation warns once. Invalid values warn and use zero. Initial-only; the observer starts at scene start, including before later Flora placements.
 
-**根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：自分の部分音の外で聴こえた発音の履歴が上がった後に、Floraの生態の時間を速める。重み0で中立（§9.3.135）。
+**根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：自分の部分音の外で聴こえた発音の履歴が上がった後に、Floraの生態の時間を速める。重み0で中立（§9.3.138）。
 
 ### Rain
 
@@ -1775,7 +1775,7 @@ respond_to_onsets(w)
 
 Bring pitch proposals forward while new onsets are heard outside the Voice's own sound (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights copy the shared attack detector into the Voice's self-exclusion observer, so it hears everything except its own PCM. A rise rho inside the pitch range owes w*tau*rho proposal-clock seconds (tau = satiation_sec/ln 10), spent at most w seconds per second; one unhabituated onset lends about 0.45*w seconds with a 2 Hz basin. After each pitch change nothing is lent until one ordinary proposal threshold of real time passes. The field still decides whether and where to move; no onset or random draw is added. Requires free seek_consonance(), sustain(), rearticulate, rearticulate_above(0) and no follow_own_sequence()/melodic_continuity(); otherwise warns to 0. Without leave_self_out(true) it warns and has no effect.
 
-**根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：自分のPCMを除いて聴こえた発音の履歴が上がった後に、音高の選び直しを早める。高さを変えた後の一周期は保つ。重み0で中立（§9.3.135）。
+**根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：自分のPCMを除いて聴こえた発音の履歴が上がった後に、音高の選び直しを早める。高さを変えた後の一周期は保つ。重み0で中立（§9.3.138）。
 
 ### Directorとglobal parameter
 

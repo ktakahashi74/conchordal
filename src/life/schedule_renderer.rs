@@ -1,5 +1,13 @@
 use crate::clock::Instant;
+mod room_buses;
+#[cfg(test)]
+mod strict_tests;
+#[cfg(test)]
+use crate::config::RoomMode;
 use crate::core::modulation::NeuralRhythms;
+use crate::core::room::RoomStream;
+#[cfg(test)]
+use crate::core::room::york_response;
 use crate::core::temporal_expectation::{AcousticTemporalExpectation, OwnSoundHistory};
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::own_sequence::{ExecutionKind, ExecutionRecord};
@@ -8,6 +16,7 @@ use crate::life::phrase_boundary::Receipt;
 use crate::life::sound::Tone;
 use crate::life::voice::PhonationBatch;
 use crate::scenario::control::Routing;
+pub(crate) use room_buses::RoomStreamCounts;
 use std::collections::BTreeMap;
 use tracing::debug;
 
@@ -63,7 +72,7 @@ impl PhraseSource {
     }
 }
 
-// Ordered so the per-tick mixdown sums tones in a fixed (source_id, tone_id)
+// Ordered so the per-tick mixdown sums tones in a fixed (source_id, tone_id, generation)
 // order. HashMap iteration order is process-randomized, which makes the
 // non-associative float accumulation below differ run-to-run. The habitat sum
 // feeds auditory analysis -> landscape -> pitch decisions, so that drift would make
@@ -72,6 +81,7 @@ impl PhraseSource {
 struct ToneKey {
     source_id: u64,
     tone_id: u64,
+    generation: u32,
 }
 
 struct RoutedTone {
@@ -80,7 +90,6 @@ struct RoutedTone {
     tone: Tone,
     routing: Routing,
     self_slot: Option<usize>,
-    source_generation: u32,
     body_slot: Option<(usize, u32)>,
     source_pcm_slot: Option<usize>,
     loo_slot: Option<usize>,
@@ -105,7 +114,7 @@ impl RoutedTone {
         let source = Source {
             kind: 0,
             id: key.source_id,
-            generation: u64::from(self.source_generation),
+            generation: u64::from(key.generation),
         };
         recorder.record(Record {
             sample,
@@ -128,6 +137,7 @@ pub(crate) use crate::core::stream::loo::SourcePcm;
 
 struct SelfSound {
     source_id: u64,
+    generation: u32,
     used: bool,
     body: Vec<f32>,
     habitat: Vec<f32>,
@@ -137,6 +147,7 @@ struct SelfSound {
 pub struct RenderFrame<'a> {
     pub presentation: &'a [f32],
     pub habitat: &'a [f32],
+    pub(crate) stereo: Option<&'a [f32]>,
 }
 
 #[derive(Clone, Copy, Debug, Default, serde::Serialize)]
@@ -166,7 +177,17 @@ pub(crate) struct RestSource {
     used: bool,
 }
 
+pub(crate) struct RoomBuses {
+    presentation: RoomStream,
+    right: RoomStream,
+    right_pcm: Vec<f32>,
+    interleaved: Vec<f32>,
+    habitat: Option<RoomStream>,
+    histories: room_buses::Histories,
+}
+
 pub struct ScheduleRenderer {
+    pub(crate) room: Option<RoomBuses>,
     pub(crate) harmonic_recorder:
         Option<crate::temporal_cognition::harmonic_relations::runtime::Recorder>,
     #[cfg(test)]
@@ -207,7 +228,7 @@ impl ScheduleRenderer {
         let mut result = Body::Silent;
         for (key, routed) in &self.tones {
             if key.source_id != id
-                || routed.source_generation != generation
+                || key.generation != generation
                 || !routed.routing.to_habitat
                 || routed.tone.is_done(now)
             {
@@ -264,7 +285,7 @@ impl ScheduleRenderer {
         for source in &mut self.rest_sources {
             let mut live = false;
             for (key, routed) in &self.tones {
-                if key.source_id == source.id && routed.source_generation == source.generation {
+                if key.source_id == source.id && key.generation == source.generation {
                     source.seen = true;
                     if routed.tone.is_done(now) {
                         let end = routed.tone.end_tick();
@@ -283,6 +304,7 @@ impl ScheduleRenderer {
 
     pub fn new(time: Timebase) -> Self {
         Self {
+            room: None,
             harmonic_recorder: None,
             #[cfg(test)]
             harmonic_execution: None,
@@ -356,7 +378,6 @@ impl ScheduleRenderer {
                         tone: routed.tone.clone(),
                         routing: routed.routing,
                         self_slot: None,
-                        source_generation: routed.source_generation,
                         body_slot: None,
                         source_pcm_slot: None,
                         loo_slot: None,
@@ -367,9 +388,34 @@ impl ScheduleRenderer {
         fork
     }
 
+    #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+    pub(crate) fn oracle_readers(
+        &self,
+        live: &std::collections::BTreeSet<(u64, u32)>,
+        sources: &[SourcePcm],
+        now: Tick,
+    ) -> [usize; 6] {
+        use std::collections::BTreeSet;
+        let retiring = crate::runtime::room_performance::oracle::retiring(live, now);
+        let dorsal: BTreeSet<_> = self
+            .self_sound
+            .iter()
+            .flatten()
+            .map(|s| (s.source_id, s.generation))
+            .collect();
+        [
+            live.len(),
+            retiring,
+            dorsal.len(),
+            self.loo_pcm.len(),
+            sources.len(),
+            self.room.as_ref().unwrap().counts().active - 3,
+        ]
+    }
+
     pub(crate) fn prepare_self_sound(
         &mut self,
-        ids: impl Iterator<Item = u64>,
+        ids: impl Iterator<Item = (u64, u32)>,
         now: Tick,
         observer: &AcousticTemporalExpectation,
     ) {
@@ -379,22 +425,25 @@ impl ScheduleRenderer {
         for sound in self.self_sound.iter_mut().flatten() {
             sound.used = false;
         }
-        for id in ids {
+        for (id, generation) in ids {
             if let Some(sound) = self
                 .self_sound
                 .iter_mut()
                 .flatten()
-                .find(|sound| sound.source_id == id)
+                .find(|sound| sound.source_id == id && sound.generation == generation)
             {
                 sound.used = true;
                 continue;
             }
             debug_assert!(
-                self.tones.keys().all(|key| key.source_id != id),
+                self.tones
+                    .keys()
+                    .all(|key| key.source_id != id || key.generation != generation),
                 "self tracking must start before this source sounds"
             );
             let sound = Box::new(SelfSound {
                 source_id: id,
+                generation,
                 used: true,
                 body: vec![0.0; self.time.hop],
                 habitat: vec![0.0; self.time.hop],
@@ -408,7 +457,7 @@ impl ScheduleRenderer {
                 self.self_sound.len() - 1
             };
             for (key, tone) in &mut self.tones {
-                if key.source_id == id {
+                if key.source_id == id && key.generation == generation {
                     tone.self_slot = Some(slot);
                 }
             }
@@ -425,11 +474,25 @@ impl ScheduleRenderer {
         }
     }
 
-    pub(crate) fn self_sound_history(&mut self, source_id: u64) -> Option<&mut OwnSoundHistory> {
+    pub(crate) fn restart_self_histories(
+        &mut self,
+        observer: &AcousticTemporalExpectation,
+        now: Tick,
+    ) {
+        for sound in self.self_sound.iter_mut().flatten() {
+            sound.history = OwnSoundHistory::new(observer, now);
+        }
+    }
+
+    pub(crate) fn self_sound_history(
+        &mut self,
+        source_id: u64,
+        generation: u32,
+    ) -> Option<&mut OwnSoundHistory> {
         self.self_sound
             .iter_mut()
             .flatten()
-            .find(|sound| sound.source_id == source_id)
+            .find(|sound| sound.source_id == source_id && sound.generation == generation)
             .map(|sound| &mut sound.history)
     }
 
@@ -471,34 +534,36 @@ impl ScheduleRenderer {
             .tones
             .range((after.map_or(Unbounded, Excluded), Unbounded))
             .next()
-            .map(|(k, rt)| (*k, rt.source_generation))
+            .map(|(k, _)| (*k, k.generation))
         {
             after = Some(key);
             let from = ToneKey {
                 source_id: key.source_id,
                 tone_id: 0,
+                generation: 0,
             };
             let through = ToneKey {
                 source_id: key.source_id,
                 tone_id: u64::MAX,
+                generation: u32::MAX,
             };
             // Generations may interleave in ToneKey order; evaluate each group once.
             if self
                 .tones
                 .range(from..key)
-                .any(|(_, rt)| rt.source_generation == generation)
+                .any(|(k, _)| k.generation == generation)
             {
                 continue;
             }
             let residual = self
                 .tones
                 .range(from..=through)
-                .filter(|(_, rt)| rt.source_generation == generation)
+                .filter(|(k, _)| k.generation == generation)
                 .filter_map(|(_, rt)| rt.tone.residual_bound(now))
                 .sum::<f64>();
             if residual <= f64::from(crate::life::voice::Voice::AMP_EPS) {
-                for (_, rt) in self.tones.range_mut(from..=through) {
-                    if rt.source_generation == generation && rt.tone.residual_bound(now).is_some() {
+                for (k, rt) in self.tones.range_mut(from..=through) {
+                    if k.generation == generation && rt.tone.residual_bound(now).is_some() {
                         rt.tone.retire_phase3();
                     }
                 }
@@ -514,26 +579,28 @@ impl ScheduleRenderer {
             .tones
             .range((after.map_or(Unbounded, Excluded), Unbounded))
             .next()
-            .map(|(k, rt)| (*k, rt.source_generation))
+            .map(|(k, _)| (*k, k.generation))
         {
             after = Some(key);
             let from = ToneKey {
                 source_id: key.source_id,
                 tone_id: 0,
+                generation: 0,
             };
             let through = ToneKey {
                 source_id: key.source_id,
                 tone_id: u64::MAX,
+                generation: u32::MAX,
             };
             let residual = self
                 .tones
                 .range(from..=through)
-                .filter(|(_, rt)| rt.source_generation == generation)
+                .filter(|(k, _)| k.generation == generation)
                 .filter_map(|(_, rt)| rt.tone.residual_bound(now))
                 .sum::<f64>();
             if residual <= f64::from(crate::life::voice::Voice::AMP_EPS) {
-                for (_, rt) in self.tones.range_mut(from..=through) {
-                    if rt.source_generation == generation && rt.tone.residual_bound(now).is_some() {
+                for (k, rt) in self.tones.range_mut(from..=through) {
+                    if k.generation == generation && rt.tone.residual_bound(now).is_some() {
                         rt.tone.retire_phase3();
                     }
                 }
@@ -614,8 +681,27 @@ impl ScheduleRenderer {
         if fs <= 0.0 {
             return RenderFrame {
                 presentation: &self.buf_presentation,
+                stereo: None,
                 habitat: &self.buf_habitat,
             };
+        }
+
+        // Normal runtime aligns the shared observer before decisions. A caller
+        // restarting the renderer directly has no pre-gap external observation.
+        if self
+            .room
+            .as_ref()
+            .is_some_and(|room| room.discontinuous(now))
+            && self
+                .self_sound
+                .iter()
+                .flatten()
+                .any(|s| s.history.next_frame() != now)
+        {
+            let mut observer =
+                AcousticTemporalExpectation::new(fs as u32).expect("self-sound observation rate");
+            observer.align_to(now);
+            self.restart_self_histories(&observer, now);
         }
 
         self.update_rest_completion(now);
@@ -635,16 +721,57 @@ impl ScheduleRenderer {
         let rhythms = *rhythms;
         let setup_us = profile_lap(&mut checkpoint);
         self.apply_phonation_batches(phonation_batches, now);
+        #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+        if now == 4608
+            && let Ok(owner) = std::env::var("ROOM_CUE_OWNER")
+        {
+            use crate::life::sound::{BodyKind, RenderModulatorSpec, ToneAdsr};
+            let mut cue = tests::outcome_batch(BodyKind::Sine);
+            cue.source_id = owner.parse().unwrap();
+            cue.source_generation = self
+                .self_sound
+                .iter()
+                .flatten()
+                .find(|v| v.source_id == cue.source_id)
+                .expect("live cue owner")
+                .generation;
+            let spec = &mut cue.tones[0];
+            spec.tone_id = u64::MAX - 1;
+            spec.onset = 4800;
+            spec.hold_ticks = Some(19200);
+            spec.freq_hz = 466.;
+            spec.amp = 0.14;
+            spec.adsr = Some(ToneAdsr {
+                attack_sec: 0.005,
+                decay_sec: 0.01,
+                sustain_level: 1.,
+                release_sec: 0.04,
+            });
+            spec.render_modulator = RenderModulatorSpec::SeqGate { duration_sec: 0.4 };
+            let id = spec.tone_id;
+            if let ToneCmd::On { tone_id, .. } = &mut cue.cmds[0] {
+                *tone_id = id;
+            }
+            cue.cmds.push(ToneCmd::Off {
+                tone_id: id,
+                off_tick: 24000,
+            });
+            eprintln!(
+                "cue owner={} generation={} on=4800 off=24000",
+                cue.source_id, cue.source_generation
+            );
+            self.apply_phonation_batches(&[cue], now);
+        }
         for (key, tone) in &mut self.tones {
             tone.source_pcm_slot = sources.iter().position(|source| {
                 source.kind == crate::core::stream::loo::SourceKind::Voice
                     && source.id == key.source_id
-                    && source.generation == tone.source_generation
+                    && source.generation == key.generation
             });
             tone.loo_slot = self.loo_pcm.iter().position(|source| {
                 source.kind == crate::core::stream::loo::SourceKind::Voice
                     && source.id == key.source_id
-                    && source.generation == tone.source_generation
+                    && source.generation == key.generation
             });
         }
         let commands_us = profile_lap(&mut checkpoint);
@@ -724,6 +851,31 @@ impl ScheduleRenderer {
                     }
                 }
                 let pcm = &self.scratch_pcm[..samples];
+                #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+                if rt.routing.to_habitat
+                    && (rt.loo_slot.is_some()
+                        || rt.self_slot.is_some()
+                        || rt.source_pcm_slot.is_some())
+                {
+                    crate::runtime::room_performance::oracle::tone(
+                        (_key.source_id, _key.generation, _key.tone_id),
+                        now,
+                        pcm,
+                        rt.tone.onset(),
+                        rt.tone.phrase_release(),
+                        rt.tone.end_tick(),
+                    );
+                }
+                #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+                if rt.routing.to_habitat
+                    && crate::runtime::room_performance::oracle::mode() == "census"
+                {
+                    crate::runtime::room_performance::oracle::count_pcm(
+                        (_key.source_id, _key.generation),
+                        now,
+                        pcm,
+                    );
+                }
                 if let (Some(capture), Some(slot)) = (self.body_capture.as_mut(), rt.body_slot) {
                     for (idx, &sample) in pcm.iter().enumerate() {
                         capture.sample(slot, idx, sample, rt.routing);
@@ -788,6 +940,40 @@ impl ScheduleRenderer {
                 source.habitat.copy_from_slice(rain.drops_habitat_pcm());
             }
         }
+        #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+        crate::runtime::room_performance::observe_dry(now, &self.buf_habitat, &self.loo_pcm);
+        if let Some(room) = &mut self.room {
+            room.start_hop(now, hop);
+            room.process_presentation(&self.buf_presentation, &mut self.scratch_pcm);
+            std::mem::swap(&mut self.scratch_pcm, &mut self.buf_presentation);
+            if let Some(stream) = &mut room.habitat {
+                stream.process(&self.buf_habitat, &mut self.scratch_pcm);
+                std::mem::swap(&mut self.scratch_pcm, &mut self.buf_habitat);
+                room.histories
+                    .process(&mut self.self_sound, &mut self.loo_pcm, sources);
+            }
+        }
+        #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+        if crate::runtime::room_performance::oracle::active() {
+            assert!(use_blocks && self.room.as_ref().unwrap().habitat.is_some());
+            crate::runtime::room_performance::oracle::wet(now, &self.buf_habitat, &self.loo_pcm);
+            if crate::runtime::room_performance::oracle::waveform() {
+                for own in self.self_sound.iter_mut().flatten() {
+                    crate::runtime::room_performance::oracle::copy(
+                        (own.source_id, own.generation),
+                        &mut own.habitat,
+                    );
+                }
+                for own in self.loo_pcm.iter_mut().chain(sources) {
+                    if own.kind == crate::core::stream::loo::SourceKind::Voice {
+                        crate::runtime::room_performance::oracle::copy(
+                            (own.id, own.generation),
+                            &mut own.habitat,
+                        );
+                    }
+                }
+            }
+        }
         self.update_rest_completion(end);
         let samples_us = profile_lap(&mut checkpoint);
 
@@ -817,6 +1003,7 @@ impl ScheduleRenderer {
             };
         }
         RenderFrame {
+            stereo: self.room.as_ref().map(|r| r.interleaved.as_slice()),
             presentation: &self.buf_presentation,
             habitat: &self.buf_habitat,
         }
@@ -908,9 +1095,7 @@ impl ScheduleRenderer {
         self.phrase_sources.retain(|key, _| {
             active(key.0, key.1)
                 || tones.iter().any(|(id, rt)| {
-                    id.source_id == key.0
-                        && rt.source_generation == key.1
-                        && rt.tone.phrase.is_some()
+                    id.source_id == key.0 && id.generation == key.1 && rt.tone.phrase.is_some()
                 })
         });
     }
@@ -923,7 +1108,7 @@ impl ScheduleRenderer {
                 continue;
             }
             tone.apply_updates_if_due(at);
-            let owner = (key.source_id, rt.source_generation);
+            let owner = (key.source_id, key.generation);
             let Some(source) = self.phrase_sources.get_mut(&owner) else {
                 continue;
             };
@@ -960,7 +1145,7 @@ impl ScheduleRenderer {
                 .iter()
                 .filter(|(key, rt)| {
                     key.source_id == owner.0
-                        && rt.source_generation == owner.1
+                        && key.generation == owner.1
                         && rt.tone.phrase.is_some()
                         && !rt.tone.phrase_on
                         && rt.tone.phrase_start_due(at)
@@ -968,7 +1153,7 @@ impl ScheduleRenderer {
                 .count();
             let held = self.tones.iter().any(|(key, rt)| {
                 key.source_id == owner.0
-                    && rt.source_generation == owner.1
+                    && key.generation == owner.1
                     && rt.tone.phrase_on
                     && !rt.tone.phrase_off
             });
@@ -996,7 +1181,7 @@ impl ScheduleRenderer {
             let Some(phrase) = &mut tone.phrase else {
                 continue;
             };
-            let owner = (key.source_id, rt.source_generation);
+            let owner = (key.source_id, key.generation);
             let Some(source) = self.phrase_sources.get_mut(&owner) else {
                 continue;
             };
@@ -1049,6 +1234,11 @@ impl ScheduleRenderer {
         self.tones.is_empty()
     }
 
+    // Finished tones are normally reclaimed at the start of the following hop.
+    pub(crate) fn is_idle_at(&self, end: Tick) -> bool {
+        self.tones.values().all(|rt| rt.tone.is_done(end))
+    }
+
     pub(crate) fn active_tone_count(&self) -> usize {
         self.tones.len()
     }
@@ -1076,6 +1266,7 @@ impl ScheduleRenderer {
                         let key = ToneKey {
                             source_id: batch.source_id,
                             tone_id,
+                            generation: batch.source_generation,
                         };
                         let spec = batch.tones.iter().find(|t| t.tone_id == tone_id);
                         if self.tones.contains_key(&key) {
@@ -1150,11 +1341,11 @@ impl ScheduleRenderer {
                                     loo_slot: None,
                                     routing: batch.routing,
                                     self_slot: self.self_sound.iter().position(|sound| {
-                                        sound
-                                            .as_ref()
-                                            .is_some_and(|sound| sound.source_id == batch.source_id)
+                                        sound.as_ref().is_some_and(|sound| {
+                                            sound.source_id == batch.source_id
+                                                && sound.generation == batch.source_generation
+                                        })
                                     }),
-                                    source_generation: batch.source_generation,
                                     body_slot: self.body_capture.as_ref().and_then(|c| {
                                         c.token(batch.source_id, batch.source_generation)
                                     }),
@@ -1166,10 +1357,9 @@ impl ScheduleRenderer {
                         let key = ToneKey {
                             source_id: batch.source_id,
                             tone_id,
+                            generation: batch.source_generation,
                         };
-                        if let Some(rt) = self.tones.get_mut(&key)
-                            && rt.source_generation == batch.source_generation
-                        {
+                        if let Some(rt) = self.tones.get_mut(&key) {
                             let replacement = batch.tones.iter().any(|spec| {
                                 spec.onset == off_tick
                                     && spec.tone_id != tone_id
@@ -1199,13 +1389,11 @@ impl ScheduleRenderer {
                 let key = ToneKey {
                     source_id: batch.source_id,
                     tone_id,
+                    generation: batch.source_generation,
                 };
                 let Some(rt) = self.tones.get_mut(&key) else {
                     continue;
                 };
-                if rt.source_generation != batch.source_generation {
-                    continue;
-                }
                 let tick = at_tick.unwrap_or(now);
                 if !rt.tone.schedule_update(tick, update) {
                     tracing::warn!(
@@ -1249,6 +1437,94 @@ mod tests {
     }
 
     #[test]
+    fn room_buses_preserve_routes_and_their_tails_when_dry_inputs_rejoin() {
+        let time = Timebase {
+            fs: 48000.,
+            hop: 512,
+        };
+        let ir = york_response();
+        let rhythms = NeuralRhythms::default();
+        assert!(
+            RoomBuses::prepare(RoomMode::Off, time.hop, 0)
+                .unwrap()
+                .is_none()
+        );
+        for mode in [RoomMode::Presentation, RoomMode::Both] {
+            for habitat_first in [true, false] {
+                let mut wet = ScheduleRenderer::new(time);
+                wet.room = RoomBuses::prepare(mode, time.hop, 0).unwrap();
+                assert_eq!(
+                    wet.room.as_ref().unwrap().habitat.is_some(),
+                    mode == RoomMode::Both
+                );
+                let mut dry = ScheduleRenderer::new(time);
+                let mut history = [Vec::new(), Vec::new()];
+                for hop in 0..4 {
+                    let now = hop * time.hop as Tick;
+                    let mut batch = outcome_batch(BodyKind::Sine);
+                    batch.tones[0].onset += now;
+                    batch.tones[0].adsr = Some(crate::life::sound::ToneAdsr {
+                        attack_sec: 0.,
+                        decay_sec: 0.,
+                        sustain_level: 1.,
+                        release_sec: 0.,
+                    });
+                    if hop == 0 {
+                        batch.routing = Routing {
+                            to_habitat: habitat_first,
+                            to_presentation: !habitat_first,
+                        };
+                    }
+                    let commands = if hop == 0 || hop == 2 {
+                        std::slice::from_ref(&batch)
+                    } else {
+                        &[]
+                    };
+                    let x = dry.render(commands, now, &rhythms);
+                    let y = wet.render(commands, now, &rhythms);
+                    if hop == 2 {
+                        assert_pcm_bits(x.habitat, x.presentation);
+                        assert!(x.habitat.iter().any(|&v| v != 0.));
+                        assert_ne!(y.habitat, y.presentation);
+                    }
+                    if hop < 2 {
+                        let isolated = if habitat_first {
+                            y.presentation
+                        } else {
+                            y.habitat
+                        };
+                        assert!(isolated.iter().all(|s| s.to_bits() == 0));
+                    }
+                    for (bus, (input, output)) in
+                        [(x.habitat, y.habitat), (x.presentation, y.presentation)]
+                            .into_iter()
+                            .enumerate()
+                    {
+                        history[bus].extend_from_slice(input);
+                        if mode == RoomMode::Presentation && bus == 0 {
+                            assert_pcm_bits(output, input);
+                            continue;
+                        }
+                        for (i, &sample) in output.iter().enumerate() {
+                            let n = now as usize + i;
+                            let expected: f64 = history[bus][..=n]
+                                .iter()
+                                .rev()
+                                .zip(&ir)
+                                .map(|(&x, &h)| f64::from(x) * f64::from(h))
+                                .sum();
+                            assert!(
+                                (f64::from(sample) - expected).abs() < 1e-5,
+                                "hop {hop}, bus {bus}, sample {i}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn expression_modulates_existing_tails_before_every_pcm_branch() {
         use crate::scenario::expression::Expression;
         let time = Timebase {
@@ -1288,6 +1564,7 @@ mod tests {
             let observer = AcousticTemporalExpectation::new(8000).unwrap();
             actual.self_sound.push(Some(Box::new(SelfSound {
                 source_id: 2,
+                generation: 7,
                 used: true,
                 body: vec![0.0; 64],
                 habitat: vec![0.0; 64],
@@ -1509,8 +1786,8 @@ mod tests {
                 for hop in 0..600 {
                     let now = hop * time.hop as Tick;
                     let ids = if hop < 8 { [2, 3, 9] } else { [2, 3, 12] };
-                    actual.prepare_self_sound(ids.into_iter(), now, &observer);
-                    oracle.prepare_self_sound(ids.into_iter(), now, &observer);
+                    actual.prepare_self_sound(ids.into_iter().map(|id| (id, 7)), now, &observer);
+                    oracle.prepare_self_sound(ids.into_iter().map(|id| (id, 7)), now, &observer);
                     // This exact renderer control compares the same observer schedule.
                     // Independent observers deliberately stagger their factor refreshes.
                     for own in actual.self_sound.iter().flatten() {
@@ -1774,6 +2051,7 @@ mod tests {
                 ToneKey {
                     source_id: 2,
                     tone_id,
+                    generation: 7,
                 },
                 RoutedTone {
                     support_shape: None,
@@ -1781,7 +2059,6 @@ mod tests {
                     tone: tone.clone(),
                     routing: Routing::default(),
                     self_slot: None,
-                    source_generation: 7,
                     body_slot: None,
                     source_pcm_slot: None,
                     loo_slot: None,
@@ -1790,14 +2067,19 @@ mod tests {
         }
         renderer.retire_closed_sources(now);
         assert!(renderer.tones.values().all(|rt| !rt.tone.is_done(now)));
-        renderer
-            .tones
-            .get_mut(&ToneKey {
-                source_id: 2,
-                tone_id: 2,
-            })
-            .unwrap()
-            .source_generation = 8;
+        let key = ToneKey {
+            source_id: 2,
+            generation: 7,
+            tone_id: 2,
+        };
+        let tone = renderer.tones.remove(&key).unwrap();
+        renderer.tones.insert(
+            ToneKey {
+                generation: 8,
+                ..key
+            },
+            tone,
+        );
         renderer.retire_closed_sources(now);
         assert!(renderer.tones.values().all(|rt| rt.tone.is_done(now)));
     }
@@ -1900,6 +2182,7 @@ mod tests {
                     .get_mut(&ToneKey {
                         source_id: 2,
                         tone_id: 6,
+                        generation: 7,
                     })
                     .unwrap();
                 rt.tone.schedule_update(
@@ -2188,7 +2471,7 @@ mod tests {
         );
     }
 
-    fn outcome_batch(kind: BodyKind) -> PhonationBatch {
+    pub(super) fn outcome_batch(kind: BodyKind) -> PhonationBatch {
         PhonationBatch {
             body_policy: None,
             source_id: 2,
@@ -2244,7 +2527,7 @@ mod tests {
                 tracked.sample_major_oracle = oracle;
                 let mut voice_only = ScheduleRenderer::new(time).with_prototype(prototype);
                 voice_only.sample_major_oracle = oracle;
-                tracked.prepare_self_sound(std::iter::once(2), 0, &observer);
+                tracked.prepare_self_sound(std::iter::once((2, 7)), 0, &observer);
                 let landscape = Landscape::new(Log2Space::new(110.0, 1760.0, 48));
                 let mut flora = [Flora::new(
                     7,
@@ -2608,6 +2891,7 @@ mod tests {
         let key = ToneKey {
             source_id: 2,
             tone_id,
+            generation: 0,
         };
         let rt = renderer.tones.get(&key).expect("tone");
         assert!((rt.tone.debug_current_freq_hz() - 440.0).abs() < 1e-6);
@@ -2648,6 +2932,7 @@ mod tests {
                     let key = ToneKey {
                         source_id: batch.source_id,
                         tone_id,
+                        generation: batch.source_generation,
                     };
                     let initial = renderer.render(std::slice::from_ref(&batch), 0, &rhythms);
                     let baseline = reference.render(std::slice::from_ref(&batch), 0, &rhythms);
@@ -2751,7 +3036,7 @@ mod tests {
                 let now = hop * 512;
                 // Keep the original sound alive after its participant retires.
                 let id = if hop < 5 { 2 } else { hop + 10 };
-                tracked.prepare_self_sound(std::iter::once(id), now, &observer);
+                tracked.prepare_self_sound(std::iter::once((id, 0)), now, &observer);
                 let batches = if hop == 0 {
                     std::slice::from_ref(&batch)
                 } else {
@@ -2848,6 +3133,7 @@ mod tests {
         let key = ToneKey {
             source_id: 2,
             tone_id,
+            generation: 0,
         };
         let rt = renderer.tones.get(&key).expect("tone");
         assert!((rt.tone.debug_target_freq_hz() - 440.0).abs() < 1e-6);

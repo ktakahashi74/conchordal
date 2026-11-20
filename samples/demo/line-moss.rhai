@@ -25,6 +25,10 @@
 //   the lichen recipes, the six sections, their lengths and the values changed at each
 //   boundary (moss amp 0.035 -> 0.04 -> 0.05 -> 0.04, lichen amp 0.025 -> 0.035, line
 //   temperature 0.10 -> 0.3 -> 0.08 -> 0.05). The author heard this form on 2026-10-30.
+// - Unison layering (2026-11-19, DR-12): unison(3).spread(0.25) on the line (wanderer). The author
+//   heard layering with the moss from spread 1/3 (DR-11) and asked for the other sounds to be
+//   layered more weakly; 0.25 is the next step down on that ladder. Copies sit within +-6 cents
+//   and the companions have a quarter of the centre's amplitude.
 // - No seed is pinned on this page, so every performance differs. The record renders used
 //   seeds 20261109-20261113.
 // - at(196.0) is only the line's starting position: seek_consonance() moves it.
@@ -35,7 +39,7 @@ temporal_basin(1.6, 2.4);
 meter_stability(0.55);
 
 let wanderer = harmonic().brain("drone").sustain().seek_consonance()
-    .modes(harmonic_modes().count(8)).amp(0.04).brightness(0.38)
+    .modes(harmonic_modes().count(8)).amp(0.04).brightness(0.38).unison(3).spread(0.25)
     .temperature(0.10)
     .pitch_apply_mode("rearticulate").leave_self_out(true).adsr(1.5, 0.8, 0.9, 3.0);
 let moss = flora().amp(0.035).fade(6.0).pace(1.0)

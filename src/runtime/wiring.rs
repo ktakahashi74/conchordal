@@ -263,6 +263,8 @@ impl AnalysisExecution {
     }
 }
 
+mod room_reservation;
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn prepare_runtime(
     config: &AppConfig,
@@ -302,7 +304,9 @@ pub(super) fn prepare_runtime(
 
     let mut device_config = config.clone();
     device_config.audio.sample_rate = runtime_sample_rate;
-    device_config.validate().map_err(|err| format!("{err:#}"))?;
+    device_config
+        .validate_runtime()
+        .map_err(|err| format!("{err:#}"))?;
     // Checked against the actual runtime rate (device, render or step), not the config.
     if scenario.remember_pitch_set > 0. && runtime_sample_rate != 48000 {
         let position = scenario
@@ -319,6 +323,24 @@ pub(super) fn prepare_runtime(
     let hop_duration = core.hop_duration;
     let expression_markers = scenario.expression.is_some();
     scenario.prepare_expression(fs, hop);
+    let room_owners = if config.room_mode() == crate::config::RoomMode::Both {
+        #[cfg(feature = "native")]
+        if score.is_some() {
+            return Err("strict room needs a pre-scannable score to bound Voice, Flora and Rain generations".into());
+        }
+        room_reservation::source_bound(&scenario, fs, hop)?
+    } else {
+        0
+    };
+    #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+    let room_owners = if crate::runtime::room_performance::oracle::mode() == "census" {
+        eprintln!("census production bound owners={room_owners}");
+        64
+    } else {
+        room_owners
+    };
+    let room =
+        crate::life::schedule_renderer::RoomBuses::prepare(config.room_mode(), hop, room_owners)?;
     if expression_markers {
         report_try(&mut reporter, "scene markers", |writer| {
             writer.write_scene_markers(&scenario.scene_markers)
@@ -789,6 +811,7 @@ pub(super) fn prepare_runtime(
         state.loo_populations = loo_populations;
         state.body_snapshot = body_capture.as_ref().map(|c| Box::new(c.snapshot()));
         state.schedule_renderer.body_capture = body_capture;
+        state.schedule_renderer.room = room;
         state.profile = profile;
         #[cfg(test)]
         {
@@ -854,7 +877,7 @@ pub(crate) fn init_runtime(
     let (scenario_label, scenario, output_gain, score) = load_scenario(
         path,
         args.seed,
-        &config.audio,
+        &config,
         args.duration,
         &stop_flag,
         &args.end_request,
@@ -876,6 +899,7 @@ pub(crate) fn init_runtime(
     let prepare_tonal = scenario.observe_tonal_context || scenario.events.iter().flat_map(|e| &e.actions).any(
         |a| matches!(a, Action::Spawn { spec, .. } if spec.control.pitch.follow_tonal_context > 0.),
     );
+    let defer_audio = prepare_tonal || config.room_mode() != crate::config::RoomMode::Off;
     // Audio
     let (audio_out, audio_prod, mut audio_init_error) = if args.play {
         match AudioOutput::new(
@@ -884,7 +908,8 @@ pub(crate) fn init_runtime(
             guard_mode,
             guard_meter.clone(),
             output_gain,
-            prepare_tonal,
+            defer_audio,
+            config.output_channels(),
         ) {
             Ok((out, prod)) => (Some(out), Some(prod), None),
             Err(e) => {
@@ -1023,7 +1048,7 @@ pub(crate) fn init_runtime(
         std::process::exit(1);
     });
 
-    if prepare_tonal
+    if defer_audio
         && let Some(out) = &audio_out
         && let Err(error) = out.start_prepared()
     {
@@ -1093,21 +1118,17 @@ pub fn run_render(
     if reserve_runtime_ids_through == u64::MAX {
         return Err("reserve-runtime-ids-through must be less than u64::MAX".to_string());
     }
-    config.validate().map_err(|err| format!("{err:#}"))?;
+    config
+        .validate_runtime()
+        .map_err(|err| format!("{err:#}"))?;
     crate::life::modal::register_modal();
 
     let guard_mode = resolve_limiter_mode(&config);
     let guard_meter = Some(Arc::new(LimiterMeter::default()));
 
     let path = Path::new(scenario_path);
-    let (scenario_label, scenario, output_gain, score) = load_scenario(
-        path,
-        seed,
-        &config.audio,
-        duration_sec,
-        &stop_flag,
-        &end_request,
-    )?;
+    let (scenario_label, scenario, output_gain, score) =
+        load_scenario(path, seed, &config, duration_sec, &stop_flag, &end_request)?;
     validate_run_bounds(
         &scenario,
         duration_sec,
@@ -1132,6 +1153,7 @@ pub fn run_render(
         wav_rx,
         wav_path,
         runtime_sample_rate,
+        config.output_channels(),
         guard_mode,
         guard_meter.clone(),
         output_gain,

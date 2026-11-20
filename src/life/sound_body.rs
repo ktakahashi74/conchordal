@@ -3,7 +3,7 @@ use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
 use crate::life::sound::mode_utils::{
-    active_cluster_unison, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
+    active_cluster_unison, cluster_detune_mul, cluster_spread_cents_from_public, cluster_weights,
     public_spread_from_cluster_spread_cents, sanitize_cluster_unison,
 };
 use crate::life::sound::spectral::{
@@ -257,13 +257,10 @@ impl SoundBody for HarmonicBody {
 
         let mut acc = 0.0;
         let cluster_unison = self.active_cluster_unison();
+        let weights = cluster_weights(self.cluster_spread_cents, cluster_unison);
         for idx in 0..partials {
             let ratio = self.partial_ratio(idx);
-            let part_amp = cluster_gain(
-                self.compute_partial_amp(idx, signal.amplitude),
-                self.cluster_spread_cents,
-                cluster_unison,
-            );
+            let part_amp = self.compute_partial_amp(idx, signal.amplitude);
             if part_amp <= 0.0 {
                 continue;
             }
@@ -276,7 +273,7 @@ impl SoundBody for HarmonicBody {
                 }
                 let phase = &mut self.phases[idx * cluster_unison + unison_idx];
                 *phase = (*phase + 2.0 * PI * freq * dt).rem_euclid(2.0 * PI);
-                acc += part_amp * phase.sin();
+                acc += part_amp * weights[unison_idx] * phase.sin();
             }
         }
         *sample += self.amp * signal.amplitude * acc;
@@ -297,18 +294,15 @@ impl SoundBody for HarmonicBody {
         }
         let amp_scale = self.amp.max(0.0) * signal.amplitude;
         let cluster_unison = self.active_cluster_unison();
+        let weights = cluster_weights(self.cluster_spread_cents, cluster_unison);
         for idx in 0..partials {
             let ratio = self.partial_ratio(idx);
-            let part_amp = cluster_gain(
-                self.compute_partial_amp(idx, signal.amplitude),
-                self.cluster_spread_cents,
-                cluster_unison,
-            );
+            let part_amp = self.compute_partial_amp(idx, signal.amplitude);
             for unison_idx in 0..cluster_unison {
                 let detune =
                     cluster_detune_mul(self.cluster_spread_cents, cluster_unison, unison_idx);
                 let freq = self.base_freq_hz * ratio * detune;
-                let amplitude = amp_scale * part_amp;
+                let amplitude = amp_scale * part_amp * weights[unison_idx];
                 let deviation_hz = self.base_freq_hz * self.genotype.vibrato_depth;
                 if deviation_hz <= 0.0 {
                     add_log2_energy(amps, space, freq, amplitude);

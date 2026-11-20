@@ -63,3 +63,24 @@ test("stop discards queued data and rejects later PCM", () => {
   assert.equal(p.queued, 0);
   assert.equal(process(p).alive, false);
 });
+
+test("stereo consumes frames across packet boundaries and mono devices get left", () => {
+  for (const width of [1, 2, 4]) {
+    const p = processor();
+    p.port.onmessage({ data: { type: "start" } });
+    for (const samples of [[1, -1, 2, -2], [3, -3]]) {
+      p.receive({type: "pcm", channels: 2, buffer: Float32Array.from(samples).buffer});
+    }
+    assert.equal(p.queued, 3);
+    p.receive({type: "end"});
+    for (const left of [[1], [2, 3, 0]]) {
+      const out = Array.from({length: width}, () => new Float32Array(left.length));
+      p.process([], [out]);
+      assert.deepEqual([...out[0]], left);
+      if (width > 1) assert.deepEqual([...out[1]], left.map(x => x ? -x : 0));
+      for (const channel of out.slice(2)) assert.ok(channel.every(x => x === 0));
+    }
+    assert.equal(p.played, 3);
+    assert.equal(p.messages.at(-1).type, "ended");
+  }
+});

@@ -427,7 +427,7 @@ acquisition window; it does not establish arbitrary-load performance or author a
 | Name | Formula | Range | Meaning |
 | :--- | :--- | :--- | :--- |
 | $C_{score}$ | $aH + bR + cHR + d$ | $(-\infty,+\infty)$ | raw fitness from the kernel |
-| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | base sigmoid level; habituation drive and un-eroded view |
+| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | base sigmoid level; un-eroded view (and the drive of the `root_projection` habituation form) |
 | $C_{density\_mass}$ | $\max(0,\;H_{01}^{w_H}(1 - \rho_{eff} R_{01}))$ | $[0,+\infty)$ | base density mass before erosion |
 | $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass}^{eff})$ | $[0,1],\;\Sigma=1$ | normalized global view retained in `Landscape` |
 | $C_{energy}$ | $-C_{score}$ | $(-\infty,+\infty)$ | energy for minimization |
@@ -451,9 +451,11 @@ There is also a distinct, per-Voice adaptation mechanism. `AdaptationContext` tr
 
 ## 3.5 Landscape-Level Habituation
 
-Consonance is not treated as an inexhaustible place. When `[psychoacoustics.habituation]` is enabled, `HabituationField` maintains a per-bin state $h_i\in[0,1]$ for both the ecology's habitat analysis and the `ListenerTwin`'s presentation analysis. The raw drive combines the base consonance level $L_i$ with a fresh common-root projection $P_i$:
+Consonance is not treated as an inexhaustible place. When `[psychoacoustics.habituation]` is enabled, `HabituationField` maintains a per-bin state $h_i\in[0,1]$ for both the ecology's habitat analysis and the `ListenerTwin`'s presentation analysis. The state follows where sound was actually heard. The raw drive is the subjective-intensity density $s_i$ of the analysed sound (§3.1.2), normalized by its maximum over the grid in that hop, and zero in silence:
 
-$$ d_i^{raw}=L_iP_i, \qquad d_i=\frac{d_i^{raw}}{d_i^{raw}+r_{ref}} $$
+$$ d_i^{raw}=\frac{s_i}{\max_j s_j}, \qquad d_i=\frac{d_i^{raw}}{d_i^{raw}+r_{ref}} $$
+
+A place with no sound receives no drive, even when it is harmonically related to what sounds. That frequency channels adapt where sound occurs is a principle-level phenomenon. Using the channel state directly as the erosion at that place (`drive = "channel_p"`, the default) and the constants below are author rules; no agreement with a published adaptation model is claimed. Two other mappings can be selected in the configuration. `"root_projection"`, the former default, drives the state with $L_iP_i$, the base consonance level times a fresh common-root projection of the sound, and therefore also erodes silent harmonic relatives of the sounding components. `"channel_q"` averages the channel states at the partials a candidate would place, with the harmonicity kernel's harmonic count and weights.
 
 The state relaxes asymmetrically toward that drive:
 
@@ -461,7 +463,7 @@ $$ h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \qquad a=e^{-\Delta t/\tau} $$
 
 with $\tau=\tau_e$ when the drive exceeds the current state and $\tau=\tau_r$ otherwise. `satiation_sec` and `recovery_sec` are the times to reduce the discrepancy from the respective equilibrium by 90%, so the implementation uses $\tau_e=T_s/\ln 10$ and $\tau_r=T_r/\ln 10$. The sustained-drive equilibrium depends on drive strength; after complete withdrawal it is zero. The effective score relaxes toward the neutral sigmoid threshold $\theta$, while density mass is eroded multiplicatively, as shown in the table above.
 
-The default is `enabled=true`, with `satiation_sec=5.0`, `recovery_sec=8.0`, and `ref_drive=0.25`. Explicit `enabled=false` is an exact identity: every effective view equals its base view bit-for-bit. When enabled, Voice movement, prediction, metabolism, respawn, Voice density placement, and the listener read effective views; Flora growth and seeding, the UI terrain, and diagnostics retain the base views before erosion. Habituation belongs to the sensation and in-performance listener model; Rhai provides no switch for it. Scientific controls use explicit `enabled=false`.
+The default is `enabled=true`, with `drive="channel_p"`, `satiation_sec=5.0`, `recovery_sec=8.0`, and `ref_drive=0.25`. Explicit `enabled=false` is an exact identity: every effective view equals its base view bit-for-bit. When enabled, Voice movement, prediction, metabolism, respawn, Voice density placement, and the listener read effective views; Flora growth and seeding, the UI terrain, and diagnostics retain the base views before erosion. Habituation belongs to the sensation and in-performance listener model; Rhai provides no switch for it. Scientific controls use explicit `enabled=false`.
 
 With `--report`, an additional `habituation_scan` record at each generated second carries
 `fmin_hz`, `bins_per_octave`, `n_bins`, and the habitat's `state_scan`, `raw_score_scan`,
@@ -571,7 +573,7 @@ The `BodyMethod` enum defines three synthesis body types, each projecting a dist
     *   `damping`: Energy-dependent thinning of upper partials. A slow spectral-energy envelope tracks the excitation (fast attack, ~0.5 s release) and darkens the tone as drive fades. Its floor bounds the relative partial balance; it does not create a free tail in the excitation renderer.
     *   `vibrato_rate` / `vibrato_depth`: LFO-based pitch modulation.
     *   `jitter`: 1/f pink noise FM strength for organic fluctuation.
-    *   `unison`: Detuned copy amount for chorus-like thickening.
+    *   `unison` / `spread`: Detuned copies for layering. `spread` sets width and depth together: copies lie within ±24·spread cents, a copy at relative offset u has relative amplitude spread^|u| (an even count has no centre copy, so its central pair keeps equal weight), and the copies' squared weights sum to one.
     *   `mode`: Harmonic (integer multiples) vs. Metallic (non-integer ratios).
 *   **`Modal`**: Resonator-based synthesis via `ModalEngine`, supporting arbitrary mode frequency ratios and decay times. Mode patterns can be specified as harmonic, odd harmonics, power-law, stiff string, or custom ratios.
 
@@ -1733,6 +1735,7 @@ The Manifesto declares commitments; this chapter records which of them the curre
 | `habituation.satiation_sec` | `HabituationParams` | Seconds | Time to reduce the discrepancy from a sustained-drive equilibrium by 90% (default 5.0). |
 | `habituation.recovery_sec` | `HabituationParams` | Seconds | Time to recover 90% after drive withdrawal (default 8.0). |
 | `habituation.ref_drive` | `HabituationParams` | Float | Half-saturation drive in the habituation transfer function (default 0.25). |
+| `habituation.drive` | `HabituationParams` | Enum | What drives the state: `channel_p` (default, the sounded channels), `root_projection` (former default) or `channel_q` (§3.5). |
 | `loudness_exp` | `LandscapeParams` | Float | Compressive exponent applied to the A-weighted critical-band context power in the subjective-intensity front end (§3.1.2; default 0.23). |
 | `tau_ms` | `LandscapeParams` | Milliseconds | S6 subjective-intensity smoothing time constant (`[analysis].tau_ms`). |
 | `stability` | `MeterShaping` | 0.0-1.0 | Beat attractor depth (`meter_stability`): scales entrainment forcing and tempo learning. |
@@ -1772,9 +1775,12 @@ $$ C_{density\_mass} = \max(0,\; H_{01}(1 - \rho R_{01})) $$
 **Landscape habituation and effective views:**
 
 $$
-d_i=\frac{L_iP_i}{L_iP_i+r_{ref}}, \qquad
+d_i^{raw}=\frac{s_i}{\max_j s_j}, \qquad
+d_i=\frac{d_i^{raw}}{d_i^{raw}+r_{ref}}, \qquad
 h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \quad a=e^{-\Delta t/\tau_{rise/fall}}
 $$
+
+With `drive = "root_projection"`, $d_i^{raw}=L_iP_i$.
 
 $$
 C_{score,i}^{eff}=\theta+(C_{score,i}-\theta)(1-h_i), \qquad

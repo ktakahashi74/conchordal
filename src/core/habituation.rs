@@ -5,13 +5,18 @@
 
 const LN_STALE: f32 = std::f32::consts::LN_10; // "stale" = 90% eroded
 
-/// Research alternatives; channel-to-field mappings remain author rules.
+/// What drives the per-bin state. Adaptation of the sounded frequency channels
+/// is the principle; each channel-to-field mapping is an author rule.
 #[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HabituationDrive {
-    #[default]
+    /// Former default: field level times the harmonic root projection, which
+    /// also erodes silent harmonic relatives of the sounding components.
     RootProjection,
+    /// Research alternative: channel states averaged at a candidate's partials.
     ChannelQ,
+    /// Default: only the channels that actually sounded erode.
+    #[default]
     ChannelP,
 }
 
@@ -109,7 +114,7 @@ impl HabituationField {
     ) {
         use crate::core::float::sanitize_nonnegative_finite;
         assert_ne!(self.drive, HabituationDrive::RootProjection);
-        space.assert_scan_len(density);
+        space.assert_scan_len_named(density, "subjective_intensity_scan");
         assert_eq!(density.len(), self.h.len());
         if !self.enabled || density.is_empty() {
             return;

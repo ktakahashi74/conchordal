@@ -38,7 +38,7 @@ fn tc1b_capture() {
     let (label, scenario, _, score) = super::scenario_load::load_scenario(
         Path::new(&path),
         Some(21),
-        &config.audio,
+        &config,
         None,
         &AtomicBool::new(false),
         &AtomicBool::new(false),
@@ -802,7 +802,7 @@ fn final_ui_snapshot_is_retried_after_a_full_channel_becomes_available() {
 
 #[test]
 fn flora_force_stop_ends_generation_without_waiting_for_release() {
-    for prototype in [false, true] {
+    for (prototype, room) in [(false, "off"), (true, "off"), (false, "both")] {
         let dir = std::env::temp_dir().join(format!(
             "conchordal-flora-stop-{}-{prototype}-{}",
             std::process::id(),
@@ -843,7 +843,7 @@ fn flora_force_stop_ends_generation_without_waiting_for_release() {
             )
             .unwrap(),
         );
-        let mut config = AppConfig::default();
+        let mut config = AppConfig::from_toml(&format!("[room]\nmode='{room}'")).unwrap();
         config.analysis.nfft = 2048;
         config.render_prototype = prototype;
         let wiring = wire_runtime(
@@ -972,7 +972,7 @@ fn ph1_offline_acquisition() {
     let (label, scenario, gain, score) = super::scenario_load::load_scenario(
         std::path::Path::new(&path),
         Some(21),
-        &config.audio,
+        &config,
         None,
         &AtomicBool::new(false),
         &AtomicBool::new(false),
@@ -1067,6 +1067,7 @@ fn ph1_offline_acquisition() {
         rx,
         directory.join("audio.wav").to_string_lossy().into_owned(),
         48000,
+        config.output_channels(),
         super::wiring::resolve_limiter_mode(&config),
         guard.clone(),
         gain,
@@ -2174,6 +2175,28 @@ fn gui1_listener_replay_cost() {
 }
 
 #[test]
+fn room_checks_device_rate_before_starting_workers() {
+    let (scenario, _) = ScriptHost::compile_source("wait(0.1);", Some(2)).unwrap();
+    for mode in ["presentation", "both"] {
+        let config = AppConfig::from_toml(&format!("[room]\nmode='{mode}'")).unwrap();
+        let error = wire_runtime(
+            &config,
+            44100,
+            "room".into(),
+            scenario.clone(),
+            Arc::new(AtomicBool::new(false)),
+            options(),
+        )
+        .err()
+        .expect("device rate overrides configured 48000 Hz");
+        assert!(
+            error.contains("requires 48000 Hz (runtime rate 44100 Hz)"),
+            "{error}"
+        );
+    }
+}
+
+#[test]
 fn remember_pitch_set_checks_the_runtime_sample_rate() {
     let directory =
         std::env::temp_dir().join(format!("conchordal-pitch-set-rate-{}", std::process::id()));
@@ -2189,7 +2212,7 @@ fn remember_pitch_set_checks_the_runtime_sample_rate() {
     let loaded = super::scenario_load::load_scenario(
         &path,
         Some(1),
-        &config.audio,
+        &config,
         None,
         &AtomicBool::new(false),
         &AtomicBool::new(false),
@@ -2242,4 +2265,77 @@ fn natural_end_waits_for_the_queued_audio_tail() {
     );
     assert!(consumed >= 2400);
     join(wiring).unwrap();
+}
+
+#[test]
+fn wet_finish_follows_the_actual_dry_release_of_each_body() {
+    let n = crate::core::room::york_response().len();
+    for (prototype, body) in [
+        (
+            false,
+            "place(sine().sustain().anchor().adsr(0,0,1,0.1), at(220));",
+        ),
+        (
+            true,
+            "place(sine().sustain().anchor().adsr(0,0,1,0.1), at(220));",
+        ),
+        (
+            false,
+            "place(flora().amp(0.1).fade(0.2), random(220, 880));",
+        ),
+        (
+            false,
+            "place(rain().amp(0.1).objects(4).rate(100).fade(0.2), consonance(220, 2000));",
+        ),
+    ] {
+        let config = AppConfig::from_toml(&format!(
+            "render_prototype={prototype}\n[room]\nmode='presentation'"
+        ))
+        .unwrap();
+        let (scene, _) =
+            ScriptHost::compile_source(&format!("{body} wait(0.5);"), Some(21)).unwrap();
+        let last = Arc::new(AtomicU64::new(0));
+        let observed = last.clone();
+        let mut opts = options();
+        opts.offline_body_probe = Some(Box::new(move |state, now, proposals, pcm| {
+            if state.finish_begun {
+                assert_eq!(state.playback_state, PlaybackState::Ending);
+                assert_eq!(proposals, 0);
+                assert!(state.pop.voices.is_empty());
+            }
+            // Both sends are identical dry inputs; in D/W habitat remains dry.
+            if let Some(i) = pcm[0].iter().rposition(|&x| x != 0.) {
+                observed.store(now + i as Tick, Ordering::Relaxed);
+            }
+        }));
+        let (tx, rx) = bounded(4);
+        opts.wav_tx = Some(tx);
+        let wiring = wire_runtime(
+            &config,
+            48_000,
+            "wet finish".into(),
+            scene,
+            Arc::new(AtomicBool::new(false)),
+            opts,
+        )
+        .unwrap();
+        let mut hops = 0;
+        let mut final_pcm = None;
+        for pcm in rx {
+            hops += 1;
+            final_pcm = Some(pcm);
+        }
+        join(wiring).unwrap();
+        let s = last.load(Ordering::Relaxed) as usize;
+        assert!(
+            s > 24_000usize.next_multiple_of(512),
+            "{body}, last dry={s}"
+        );
+        let end = s + n;
+        assert_eq!(hops, end.div_ceil(512), "{body}");
+        let valid = 2 * (end - (hops - 1) * 512);
+        let pcm = final_pcm.unwrap();
+        assert!(pcm[..valid].iter().any(|&x| x != 0.));
+        assert!(pcm[valid..].iter().all(|&x| x.to_bits() == 0));
+    }
 }

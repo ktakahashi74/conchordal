@@ -100,6 +100,22 @@ impl OnsetResponse {
         }
     }
 
+    #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+    pub(crate) fn oracle_step(&mut self, frame: &crate::core::landscape::Landscape, dt: f32) {
+        let mut input = super::pitch_core::LooInput::default();
+        input.onset_habituation_state_scan = Some(frame.onset_habituation_state_scan.clone());
+        input.onset_habituation_end = frame.onset_habituation_end;
+        input.onset_habituation_known = frame.onset_habituation_known;
+        self.step(
+            &input,
+            Some(input.onset_habituation_end),
+            &frame.space,
+            0..frame.space.n_bins(),
+            dt,
+            0.5,
+        );
+    }
+
     /// One control step: reads a new own observation inside `bins` and returns the
     /// clock seconds spent. Unknown, future or regridded observations re-prime
     /// without contribution; the shared mixed history is never used.

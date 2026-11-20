@@ -605,7 +605,7 @@ spread(value)
 
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-Dimensionless detuning spread in [0,1], default 0.
+Amount of unison layering in [0,1], default 0: width and depth together. With `unison(n)` above one, the copies spread up to ±24·value cents around the centre, and a copy at relative offset u (−1 to 1) has relative amplitude value^|u|. With an odd count a small value gives narrow, shallow layering around the centre copy; an even count has no centre copy, so its central pair keeps equal weight and beats at full depth. 1 gives equal copies. The copies' powers sum to the uncopied power, so the mean level stays the same. Zero leaves a single copy.
 
 **Evidence:** Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
 
@@ -617,7 +617,7 @@ unison(count)
 
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
-Number of unison detuning copies.
+Number of unison copies (1-9, default 1); `spread` sets how far and how strongly they layer.
 
 **Evidence:** Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
 
@@ -1567,7 +1567,7 @@ Applies to: `FloraSpec`.
 
 Speed the Flora's ecological time while new external onsets are heard inside its extent (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights read the shared attack history inside the extent, skipping bins within 1.5 ERB of the Flora's sounding lanes. A rise rho owes w*tau*rho extra ecological seconds (tau = satiation_sec/ln 10), spent at most w seconds per second, so unhabituated external onsets run the clock up to 1+w times faster; pace saturation still applies. Births stay on the Flora's own crossings and the field chooses where; no onset, pitch or random draw is added. Unknown or regridded observations only re-prime. Disabled habituation warns once. Invalid values warn and use zero. Initial-only; the observer starts at scene start, including before later Flora placements.
 
-**Evidence:** Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: faster Flora ecological time after rises in heard attack history outside its own partials; neutral at weight 0 (§9.3.135).
+**Evidence:** Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: faster Flora ecological time after rises in heard attack history outside its own partials; neutral at weight 0 (§9.3.138).
 
 ### Rain
 
@@ -1775,7 +1775,7 @@ Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` 
 
 Bring pitch proposals forward while new onsets are heard outside the Voice's own sound (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights copy the shared attack detector into the Voice's self-exclusion observer, so it hears everything except its own PCM. A rise rho inside the pitch range owes w*tau*rho proposal-clock seconds (tau = satiation_sec/ln 10), spent at most w seconds per second; one unhabituated onset lends about 0.45*w seconds with a 2 Hz basin. After each pitch change nothing is lent until one ordinary proposal threshold of real time passes. The field still decides whether and where to move; no onset or random draw is added. Requires free seek_consonance(), sustain(), rearticulate, rearticulate_above(0) and no follow_own_sequence()/melodic_continuity(); otherwise warns to 0. Without leave_self_out(true) it warns and has no effect.
 
-**Evidence:** Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: earlier pitch proposals after rises in the attack history heard without the Voice's own PCM; one ordinary proposal cycle is kept after each pitch change; neutral at weight 0 (§9.3.135).
+**Evidence:** Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: earlier pitch proposals after rises in the attack history heard without the Voice's own PCM; one ordinary proposal cycle is kept after each pitch change; neutral at weight 0 (§9.3.138).
 
 ### Director & Global Parameters
 

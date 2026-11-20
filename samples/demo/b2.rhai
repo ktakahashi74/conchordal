@@ -5,6 +5,11 @@
 // (consonance placement, then held). Sections, ranges, amplitudes, the rain's mean rate and
 // sway depth, Flora pace and the roughness-aversion arc are the drafter's composer choices
 // for the author to reshape.
+// - Unison layering (2026-11-19, DR-12): unison(3).spread(0.25) on the two heard fields (heard_field, second_field); the habitat-only field
+//   that no listener hears is left single. The author
+//   heard layering with the moss from spread 1/3 (DR-11) and asked for the other sounds to be
+//   layered more weakly; 0.25 is the next step down on that ladder. Copies sit within +-6 cents
+//   and the companions have a quarter of the centre's amplitude.
 
 output_gain(4.5);
 temporal_basin(1.6, 2.4);
@@ -15,10 +20,10 @@ let field = harmonic().brain("drone").sustain().anchor()
     .modes(harmonic_modes().count(8)).amp(0.045).brightness(0.32)
     .adsr(6.0, 1.0, 0.95, 8.0);
 let heard_field = harmonic().brain("drone").sustain().anchor()
-    .modes(harmonic_modes().count(8)).amp(0.03).brightness(0.28)
+    .modes(harmonic_modes().count(8)).amp(0.03).brightness(0.28).unison(3).spread(0.25)
     .adsr(14.0, 1.0, 0.95, 10.0);
 let second_field = harmonic().brain("drone").sustain().anchor()
-    .modes(harmonic_modes().count(8)).amp(0.028).brightness(0.36)
+    .modes(harmonic_modes().count(8)).amp(0.028).brightness(0.36).unison(3).spread(0.25)
     .adsr(10.0, 1.0, 0.95, 10.0);
 let moss = flora().amp(0.028).fade(10.0).pace(1.0).pitch_apply_mode("rearticulate");
 // The rain's strength follows its 1/f sway alone; only its entry and exit are written

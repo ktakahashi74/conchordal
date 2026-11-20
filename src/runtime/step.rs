@@ -66,7 +66,9 @@ impl StepEngine {
         };
         let mut config = AppConfig::from_toml(config_toml).map_err(|e| error(format!("{e:#}")))?;
         config.audio.sample_rate = sample_rate;
-        config.validate().map_err(|e| error(format!("{e:#}")))?;
+        config
+            .validate_runtime()
+            .map_err(|e| error(format!("{e:#}")))?;
         if config.temporal_meter_t2
             || config.temporal_t2.is_some()
             || config.temporal_onset_comparison.is_some()
@@ -103,8 +105,7 @@ impl StepEngine {
             ));
         }
         let limiter_mode = wiring::resolve_limiter_mode(&config);
-        let output_gain =
-            10.0f32.powf((config.audio.output_gain_db + scenario.output_gain_db) / 20.0);
+        let output_gain = config.output_gain(scenario.output_gain_db);
         if !output_gain.is_finite() || output_gain <= 0. {
             return Err(error(
                 "combined output gain must be finite and positive".into(),
@@ -191,12 +192,17 @@ impl StepEngine {
         self.runtime.cfg.hop
     }
 
-    /// Raw mono presentation PCM, before the host output gain and limiter.
+    pub fn output_channels(&self) -> usize {
+        1 + usize::from(self.runtime.state.schedule_renderer.room.is_some())
+    }
+
+    /// Raw interleaved presentation PCM, before the host output gain and limiter.
     /// A Finished result may contain the final complete hop. Subsequent calls return silence.
     pub fn step(&mut self, presentation: &mut [f32]) -> StepStatus {
-        if presentation.len() != self.hop_len() {
+        let samples = self.hop_len() * self.output_channels();
+        if presentation.len() != samples {
             presentation.fill(0.);
-            return StepStatus::Error(format!("expected {} samples", self.hop_len()));
+            return StepStatus::Error(format!("expected {samples} samples"));
         }
         presentation.fill(0.);
         if !self.runtime.state.failures.is_empty() {
@@ -212,7 +218,9 @@ impl StepEngine {
             analysis_handle,
             listener_analysis_handle,
         } = &mut self.runtime;
-        state.playback_state = PlaybackState::Playing;
+        if state.playback_state == PlaybackState::NotStarted {
+            state.playback_state = PlaybackState::Playing;
+        }
         if cfg.end_request.load(Ordering::SeqCst) && !state.finish_begun {
             state.request_end(state.timebase.frame_start_tick(state.frame_idx));
         }
@@ -330,15 +338,21 @@ impl StepEngine {
 
     /// Build a snapshot when the host requests a GUI update.
     pub fn ui_frame(&mut self) -> Option<UiFrame> {
+        let left = if self.output_channels() == 2 {
+            self.last_presentation
+                .iter()
+                .step_by(2)
+                .copied()
+                .collect::<Arc<[f32]>>()
+        } else {
+            self.last_presentation.clone()
+        };
         let runtime = &mut self.runtime;
         #[cfg(feature = "native")]
         for _ in self.ui.try_iter() {}
         #[cfg(not(feature = "native"))]
         for _ in runtime.channels.ui_tx.as_ref()?.try_iter() {}
-        let peak = self
-            .last_presentation
-            .iter()
-            .fold(0.0f32, |p, x| p.max(x.abs()));
+        let peak = left.iter().fold(0.0f32, |p, x| p.max(x.abs()));
         let now = runtime
             .state
             .timebase
@@ -347,7 +361,7 @@ impl StepEngine {
             &mut runtime.state,
             &runtime.channels,
             &runtime.cfg,
-            self.last_presentation.clone(),
+            left,
             peak,
             [peak; 2],
             now,
@@ -386,8 +400,8 @@ impl StepEngine {
 mod tests {
     use super::*;
 
-    fn compare_offline(script: &str, end_hop: usize) {
-        let config = AppConfig::from_toml("").unwrap();
+    fn compare_offline(script: &str, end_hop: usize, config_toml: &str) {
+        let config = AppConfig::from_toml(config_toml).unwrap();
         let (scenario, _) = ScriptHost::compile_source(script, Some(21)).unwrap();
         let (tx, rx) = bounded(16);
         let wiring = wiring::wire_runtime(
@@ -420,16 +434,19 @@ mod tests {
             },
         )
         .unwrap();
-        let mut engine = StepEngine::new(script, "", Some(21), 48_000).unwrap();
-        let mut actual = vec![0.; engine.hop_len()];
+        let mut engine = StepEngine::new(script, config_toml, Some(21), 48_000).unwrap();
+        let mut actual = vec![0.; engine.hop_len() * engine.output_channels()];
         let mut count = 0;
         let mut audible = false;
         while let Ok(expected) = rx.recv() {
-            if count == end_hop {
+            if count == end_hop || count == end_hop + 1 {
                 engine.request_end();
             }
             let status = engine.step(&mut actual);
             assert!(!matches!(status, StepStatus::Error(_)), "{status:?}");
+            if count >= end_hop && status == StepStatus::Running {
+                assert_eq!(engine.runtime.state.playback_state, PlaybackState::Ending);
+            }
             let mismatch = expected
                 .iter()
                 .zip(&actual)
@@ -441,7 +458,13 @@ mod tests {
             audible |= actual.iter().any(|x| *x != 0.);
             if count % 37 == 0 {
                 let frame = engine.ui_frame().unwrap();
-                assert_eq!(frame.wave.samples.as_ref(), actual);
+                assert!(
+                    frame
+                        .wave
+                        .samples
+                        .iter()
+                        .eq(actual.iter().step_by(engine.output_channels()))
+                );
             }
             count += 1;
         }
@@ -462,7 +485,7 @@ mod tests {
 
     #[test]
     fn demo_presentation_matches_ordered_offline_and_graceful_end() {
-        compare_offline(include_str!("../../tests/fixtures/step_demo.rhai"), 384);
+        compare_offline(include_str!("../../tests/fixtures/step_demo.rhai"), 384, "");
     }
 
     #[test]
@@ -470,6 +493,7 @@ mod tests {
         compare_offline(
             "place(sine().sustain().leave_self_out(true).amp(0.05), at(220)); place(flora().amp(0.05).fade(0.1), random(220,880)); wait(4);",
             64,
+            "",
         );
     }
 
@@ -478,6 +502,16 @@ mod tests {
         compare_offline(
             "place(rain().amp(0.05).rate(80).hit(0.3).ring(2).fade(0.1).leave_drops_out(true), consonance(200, 2000)); wait(4);",
             64,
+            "",
+        );
+    }
+
+    #[test]
+    fn wet_requested_end_matches_native_duration_through_the_final_pcm() {
+        compare_offline(
+            "place(sine().anchor().sustain().adsr(0,0,1,0.08), at(220)); wait(4);",
+            12,
+            "[room]\nmode='both'",
         );
     }
 
@@ -546,5 +580,96 @@ mod tests {
         assert!(matches!(engine.step(&mut output), StepStatus::Error(_)));
         assert_eq!(engine.runtime.state.frame_idx, 0);
         assert_eq!(output, [0.; 3]);
+    }
+}
+
+#[cfg(all(test, feature = "native"))]
+mod strict_room_readers {
+    use super::*;
+
+    const CONFIG: &str = "[room]\nmode='both'";
+
+    #[test]
+    fn consecutive_respawns_include_both_sides_of_cleanup_in_the_room_bound() {
+        let script = r#"place(sine().brain("drone").sustain().anchor().leave_self_out(true)
+            .respawn_random().respawn_capacity(1).respawn_background_death_rate(100000.0),at(330));
+            wait(1);"#;
+        let mut step = StepEngine::new(script, CONFIG, Some(21), 48000).unwrap();
+        let mut pcm = vec![0.; step.hop_len() * step.output_channels()];
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..15 {
+            assert_eq!(step.step(&mut pcm), StepStatus::Running);
+            seen.extend(step.runtime.state.pop.voices.iter().map(|v| v.id()));
+        }
+        let counts = step
+            .runtime
+            .state
+            .schedule_renderer
+            .room
+            .as_ref()
+            .unwrap()
+            .counts();
+        assert!(seen.len() > 10);
+        assert_eq!((counts.reserved, counts.peak), (6, 6));
+    }
+
+    #[test]
+    fn flora_resource_and_growth_receive_external_power_and_fields() {
+        let mut step = StepEngine::new(
+            "place(flora().tone(\"sine\").amp(0.2).leave_self_out(true),random(220,880)); wait(4);",
+            CONFIG,
+            Some(21),
+            48000,
+        )
+        .unwrap();
+        let mut pcm = vec![0.; step.hop_len() * step.output_channels()];
+        let mut heard = false;
+        for _ in 0..150 {
+            assert_eq!(step.step(&mut pcm), StepStatus::Running);
+            heard |= pcm.iter().any(|&x| x != 0.);
+        }
+        let state = &mut step.runtime.state;
+        let field = &state.current_landscape;
+        assert!(heard && field.harmonicity.iter().any(|&x| x > 0.));
+        let observation = &field.flora_observations[0];
+        assert!(
+            observation
+                .power_scan
+                .as_ref()
+                .unwrap()
+                .iter()
+                .all(|&x| x == 0.)
+        );
+        assert!(
+            observation
+                .perception
+                .as_ref()
+                .unwrap()
+                .h_scan
+                .iter()
+                .all(|&x| x == 0.)
+        );
+        let report = serde_json::to_value(state.pop.flora[0].report(1.6, field)).unwrap();
+        assert_eq!(report["external_current"], true);
+        for name in ["external_consumption_scan", "harmonicity_state_scan"] {
+            assert!(
+                report[name]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|x| x.as_f64() == Some(0.))
+            );
+        }
+        assert_eq!(
+            report["growth_level_scan"],
+            serde_json::to_value(&observation.level_scan).unwrap()
+        );
+        state.pop.flora[0].observe_external(field, None);
+        let missing = serde_json::to_value(state.pop.flora[0].report(1.6, field)).unwrap();
+        assert_eq!(missing["external_current"], false);
+        assert_eq!(
+            missing["external_observed_frame"],
+            report["external_observed_frame"]
+        );
     }
 }

@@ -35,8 +35,10 @@ class ConchordalOutput extends AudioWorkletProcessor {
   receive(data) {
     if (this.closed) return;
     if (data.type === "pcm") {
-      this.queue.push(new Float32Array(data.buffer));
-      this.queued += this.queue.at(-1).length;
+      const samples = new Float32Array(data.buffer);
+      const channels = data.channels ?? 1;
+      this.queue.push({samples, channels});
+      this.queued += samples.length / channels;
     } else if (data.type === "end") {
       this.ended = true;
     } else if (data.type === "primed") {
@@ -64,14 +66,23 @@ class ConchordalOutput extends AudioWorkletProcessor {
     const out = channels[0];
     let written = 0;
     while (written < out.length && this.head < this.queue.length) {
-      const chunk = this.queue[this.head];
-      const count = Math.min(chunk.length - this.offset, out.length - written);
-      out.set(chunk.subarray(this.offset, this.offset + count), written);
+      const {samples, channels: width} = this.queue[this.head];
+      const frames = samples.length / width;
+      const count = Math.min(frames - this.offset, out.length - written);
+      if (width === 1) {
+        const mono = samples.subarray(this.offset, this.offset + count);
+        for (const channel of channels) channel.set(mono, written);
+      } else {
+        for (let i = 0; i < count; i++) {
+          out[written+i] = samples[2*(this.offset+i)];
+          if (channels[1]) channels[1][written+i] = samples[2*(this.offset+i)+1];
+        }
+      }
       this.offset += count;
       written += count;
       this.queued -= count;
       this.played += count;
-      if (this.offset === chunk.length) {
+      if (this.offset === frames) {
         this.head++;
         this.offset = 0;
       }
@@ -80,7 +91,6 @@ class ConchordalOutput extends AudioWorkletProcessor {
       this.queue.splice(0, this.head);
       this.head = 0;
     }
-    for (let channel = 1; channel < channels.length; channel++) channels[channel].set(out);
     for (let i = 0; i < written; i++) {
       this.outputPeak = Math.max(this.outputPeak, Math.abs(out[i]));
       if (out[i] !== 0) this.nonzeroFrames++;

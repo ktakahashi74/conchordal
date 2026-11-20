@@ -53,8 +53,31 @@ pub(crate) fn cluster_detune_mul(spread_cents: f32, unison: usize, unison_idx: u
     2.0f32.powf(offset_cents / 1200.0)
 }
 
-pub(crate) fn cluster_gain(base_gain: f32, spread_cents: f32, unison: usize) -> f32 {
-    base_gain / active_cluster_unison(spread_cents, unison) as f32
+/// Per-copy amplitude weights of a unison cluster, indexed like `cluster_detune_mul`.
+/// The copy at normalized offset u in [-1, 1] has relative amplitude s^|u|, with s the
+/// public spread in [0, 1]: a small spread gives narrow, shallow layering around a
+/// dominant centre and spread 1 gives equal copies. The weights are power-normalized,
+/// so layering keeps the mean level of incoherent copies. Unused entries are zero.
+pub(crate) fn cluster_weights(spread_cents: f32, unison: usize) -> [f32; MAX_TIMBRE_UNISON] {
+    let unison = active_cluster_unison(spread_cents, unison);
+    let mut weights = [0.0; MAX_TIMBRE_UNISON];
+    if unison <= 1 {
+        weights[0] = 1.0;
+        return weights;
+    }
+    let spread = public_spread_from_cluster_spread_cents(spread_cents);
+    let center = (unison - 1) as f32 * 0.5;
+    let denom = center.max(0.5);
+    let mut power = 0.0;
+    for (idx, weight) in weights[..unison].iter_mut().enumerate() {
+        *weight = spread.powf(((idx as f32 - center) / denom).abs());
+        power += *weight * *weight;
+    }
+    let norm = power.sqrt();
+    for weight in &mut weights[..unison] {
+        *weight /= norm;
+    }
+    weights
 }
 
 pub(crate) fn sanitize_mode_ratios(mut ratios: Vec<f32>) -> Vec<f32> {
@@ -103,10 +126,11 @@ pub(crate) fn modal_modes_from_ratios(
         return base_modes;
     }
 
+    let weights = cluster_weights(cluster_spread_cents, active_cluster_unison);
     let mut clustered = Vec::with_capacity(base_modes.len() * active_cluster_unison);
     for mode in base_modes {
-        let gain = cluster_gain(mode.gain, cluster_spread_cents, active_cluster_unison);
         for unison_idx in 0..active_cluster_unison {
+            let gain = mode.gain * weights[unison_idx];
             let detune =
                 cluster_detune_mul(cluster_spread_cents, active_cluster_unison, unison_idx);
             let ratio = mode.ratio * detune;
@@ -177,7 +201,35 @@ mod tests {
         assert!(modes[0].ratio < 1.0);
         assert!((modes[1].ratio - 1.0).abs() <= 1.0e-6);
         assert!(modes[2].ratio > 1.0);
-        let total_gain: f32 = modes.iter().map(|mode| mode.gain).sum();
-        assert!((total_gain - 1.0).abs() <= 1.0e-5);
+        let total_power: f32 = modes.iter().map(|mode| mode.gain * mode.gain).sum();
+        assert!((total_power - 1.0).abs() <= 1.0e-5);
+        assert!(modes[1].gain > modes[0].gain);
+        assert_eq!(modes[0].gain, modes[2].gain);
+    }
+
+    #[test]
+    fn cluster_weights_keep_power_and_shrink_companions_with_spread() {
+        for unison in 1..=MAX_TIMBRE_UNISON {
+            for spread in [0.01, 0.1, 1.0 / 6.0, 0.5, 1.0] {
+                let weights = cluster_weights(cluster_spread_cents_from_public(spread), unison);
+                let power: f32 = weights.iter().map(|w| w * w).sum();
+                assert!(
+                    (power - 1.0).abs() <= 1.0e-5,
+                    "unison {unison} spread {spread}"
+                );
+                assert!(weights[unison..].iter().all(|&w| w == 0.0));
+            }
+        }
+        assert_eq!(cluster_weights(0.0, 3)[..3], [1.0, 0.0, 0.0]);
+        // Spread 1: equal copies, as before the companion taper.
+        let equal = cluster_weights(cluster_spread_cents_from_public(1.0), 3);
+        assert!((equal[0] - equal[1]).abs() <= 1.0e-6 && (equal[1] - equal[2]).abs() <= 1.0e-6);
+        // Three copies: companions at s relative to the centre.
+        let w = cluster_weights(cluster_spread_cents_from_public(1.0 / 6.0), 3);
+        assert!((w[0] / w[1] - 1.0 / 6.0).abs() <= 1.0e-5);
+        assert_eq!(w[0], w[2]);
+        // Five copies: inner companions at sqrt(s), outer at s.
+        let w = cluster_weights(cluster_spread_cents_from_public(0.25), 5);
+        assert!((w[1] / w[2] - 0.5).abs() <= 1.0e-5 && (w[0] / w[2] - 0.25).abs() <= 1.0e-5);
     }
 }

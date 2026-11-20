@@ -114,9 +114,10 @@ fn render_case(
         wav_rx,
         directory.join("audio.wav").to_string_lossy().into_owned(),
         config.audio.sample_rate,
+        config.output_channels(),
         guard_mode,
         guard_meter.clone(),
-        config.audio.output_gain(),
+        config.output_gain(0.0),
     );
     let wiring = wire_runtime(
         &config,

@@ -392,7 +392,7 @@ previewには観測器、sample時刻、座標のversionが付く。Voiceは利�
 | 名前 | 式 | 範囲 | 意味 |
 | :--- | :--- | :--- | :--- |
 | $C_{score}$ | $aH + bR + cHR + d$ | $(-\infty,+\infty)$ | カーネルからの生の適応度 |
-| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | 馴化のdriveと非浸食viewに使うbase level |
+| $C_{level01}$ | $\sigma(\beta(C_{score} - \theta))$ | $[0,1]$ | 非浸食viewに使うbase level（慣れの`root_projection`の形ではdriveにも使う） |
 | $C_{density\_mass}$ | $\max(0,\;H_{01}^{w_H}(1 - \rho_{eff} R_{01}))$ | $[0,+\infty)$ | 浸食前のbase density mass |
 | $C_{density\_pmf}$ | $\text{normalize}(C_{density\_mass}^{eff})$ | $[0,1],\;\Sigma=1$ | `Landscape`に残る全域正規化view |
 | $C_{energy}$ | $-C_{score}$ | $(-\infty,+\infty)$ | 最小化用エネルギー |
@@ -416,9 +416,11 @@ previewには観測器、sample時刻、座標のversionが付く。Voiceは利�
 
 ## 3.5 Landscape-level habituation
 
-協和は無尽蔵な場所ではない。`[psychoacoustics.habituation]`を有効にすると、`HabituationField`が各ビンの状態$h_i\in[0,1]$を保持する。ecologyのhabitat解析と、`ListenerTwin`のpresentation解析には、それぞれ独立した状態がある。raw driveはbase consonance level $L_i$と新たに計算したcommon-root projection $P_i$を組み合わせる。
+協和は無尽蔵な場所ではない。`[psychoacoustics.habituation]`を有効にすると、`HabituationField`が各ビンの状態$h_i\in[0,1]$を保持する。ecologyのhabitat解析と、`ListenerTwin`のpresentation解析には、それぞれ独立した状態がある。状態は、実際に音が聴こえた所に従う。raw driveは、解析した音の主観的強度の密度$s_i$（§3.1.2）を、そのhopの格子全体の最大で割った値で、無音では0になる。
 
-$$ d_i^{raw}=L_iP_i, \qquad d_i=\frac{d_i^{raw}}{d_i^{raw}+r_{ref}} $$
+$$ d_i^{raw}=\frac{s_i}{\max_j s_j}, \qquad d_i=\frac{d_i^{raw}}{d_i^{raw}+r_{ref}} $$
+
+音の無い所は、鳴っている音と倍音で結ばれていても、driveを受けない。順応が鳴った周波数のchannelに起きることは、原理の水準の現象である。channelの状態をその所の浸食にそのまま使うこと（`drive = "channel_p"`、既定）と、以下の定数は作者規則であり、公表された順応の模型との一致は主張しない。設定では、ほかに二つの形を選べる。以前の既定の`"root_projection"`は、base consonance level $L_i$と、新たに計算したcommon-root projection $P_i$の積$L_iP_i$で状態を駆動する。このため、鳴っている成分と倍音で結ばれた無音の所も浸食する。`"channel_q"`は、候補の音が部分音を置く所のchannelの状態を、調波性カーネルの倍音の数と重みで平均する。
 
 状態はこのdriveへ非対称に緩和する。
 
@@ -426,7 +428,7 @@ $$ h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \qquad a=e^{-\Delta t/\tau} $$
 
 driveが現在の状態を上回るときは$\tau=\tau_e$、それ以外は$\tau=\tau_r$を使う。`satiation_sec`と`recovery_sec`は、それぞれの平衡状態までの差が90%縮む時間であり、実装は$\tau_e=T_s/\ln 10$、$\tau_r=T_r/\ln 10$とする。持続刺激の平衡状態はdriveの強さに依存し、完全に刺激を取り去った後は0となる。effective scoreはsigmoidの中立閾値$\theta$へ近づき、density massは上表のとおり乗算的に浸食される。
 
-既定は`enabled=true`、`satiation_sec=5.0`、`recovery_sec=8.0`、`ref_drive=0.25`である。`enabled=false`を明示したときは完全な恒等写像となり、全effective viewはbase viewとbit単位で一致する。有効時には、Voiceの移動、予測、代謝、respawn、density placementとlistenerがeffective viewを読む。Floraの成長と種まき、UIの地形表示、診断は浸食前のbase viewを使う。慣れは感覚モデルと演奏中の聴き手の状態に属し、Rhaiから切り替える語彙は設けていない。科学的な対照では`enabled=false`を明示する。
+既定は`enabled=true`、`drive="channel_p"`、`satiation_sec=5.0`、`recovery_sec=8.0`、`ref_drive=0.25`である。`enabled=false`を明示したときは完全な恒等写像となり、全effective viewはbase viewとbit単位で一致する。有効時には、Voiceの移動、予測、代謝、respawn、density placementとlistenerがeffective viewを読む。Floraの成長と種まき、UIの地形表示、診断は浸食前のbase viewを使う。慣れは感覚モデルと演奏中の聴き手の状態に属し、Rhaiから切り替える語彙は設けていない。科学的な対照では`enabled=false`を明示する。
 
 `--report`では、生成時刻の1秒ごとに`habituation_scan`も出力する。
 `fmin_hz`、`bins_per_octave`、`n_bins`と、habitatの`state_scan`、`raw_score_scan`、
@@ -557,7 +559,7 @@ basinは、`metric()`のVoiceが自走を始める周期にも作用する。met
     *   `damping`: エネルギー依存の上部倍音の減衰。緩やかなスペクトルエネルギー包絡が励振を追従し（速いアタック、約0.5秒のリリース）、励振が弱まるにつれて音色を暗くする。床値は部分音間の相対的なバランスを保つためのものであり、励振rendererで駆動停止後の鳴りを生むものではない。
     *   `vibrato_rate` / `vibrato_depth`: LFOベースのピッチ変調。
     *   `jitter`: 有機的なゆらぎのための 1/f ピンクノイズFM強度。
-    *   `unison`: コーラス的な厚みのためのデチューンコピー量。
+    *   `unison` / `spread`: 重ねのためのデチューンコピー。`spread` が幅と深さを一緒に決める。コピーは ±24·spread cent の内に並び、相対位置 u のコピーは spread^|u| の相対振幅を持つ（偶数本には中心のコピーが無く、中央の一対が同じ重みで残る）。重みの二乗の和は 1 である。
     *   `mode`: Harmonic（整数倍）vs. Metallic（非整数比）。
 *   **Modal**: 減衰共振器バンクによるモーダル合成。`AnyBackend::Resonator(ModalEngine)` を使用する。`ModeShape` が各モードの周波数比、T60減衰時間、ゲインを定義し、`ResonatorBank` が物理的な減衰振動子として実装される。ノイズ駆動により、打楽器的・金属的な音色や物理モデル的な質感を実現する。
 
@@ -1418,6 +1420,7 @@ Manifesto は公約を宣言する。本章は、現在の実装がそのうち�
 | `habituation.satiation_sec` | `HabituationParams` | 秒 | 持続刺激の平衡状態までの差が90%縮む時間（既定5.0）。 |
 | `habituation.recovery_sec` | `HabituationParams` | 秒 | driveがなくなってから90%回復する時間（デフォルト 8.0）。 |
 | `habituation.ref_drive` | `HabituationParams` | Float | habituationの伝達関数における半飽和drive（デフォルト 0.25）。 |
+| `habituation.drive` | `HabituationParams` | Enum | 状態を駆動するもの。`channel_p`（既定、鳴ったchannel）、`root_projection`（以前の既定）、`channel_q`（§3.5）。 |
 | `loudness_exp` | `LandscapeParams` | Float | subjective-intensity front endで、A-weightingを掛けた臨界帯域の文脈のpowerに適用する圧縮指数（§3.1.2、デフォルト 0.23）。 |
 | `tau_ms` | `LandscapeParams` | ミリ秒 | S6の主観強度密度のleaky平滑の時定数（`[analysis].tau_ms`）。 |
 | `stability` | `MeterShaping` | 0.0-1.0 | ビートアトラクタ深度（`meter_stability`）：強制力とテンポ学習をスケール。 |
@@ -1457,9 +1460,12 @@ $$ C_{density\_mass} = \max(0,\; H_{01}(1 - \rho R_{01})) $$
 **Landscape habituationとeffective view：**
 
 $$
-d_i=\frac{L_iP_i}{L_iP_i+r_{ref}}, \qquad
+d_i^{raw}=\frac{s_i}{\max_j s_j}, \qquad
+d_i=\frac{d_i^{raw}}{d_i^{raw}+r_{ref}}, \qquad
 h_i(t+\Delta t)=a h_i(t)+(1-a)d_i, \quad a=e^{-\Delta t/\tau_{rise/fall}}
 $$
+
+`drive = "root_projection"`では$d_i^{raw}=L_iP_i$となる。
 
 $$
 C_{score,i}^{eff}=\theta+(C_{score,i}-\theta)(1-h_i), \qquad

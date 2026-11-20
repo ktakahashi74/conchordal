@@ -155,8 +155,8 @@ pub const RESPOND_ONSETS: &[EvidenceDoc] = &[
         ja: "作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。",
     },
     EvidenceDoc {
-        en: "Author rule: faster Flora ecological time after rises in heard attack history outside its own partials; neutral at weight 0 (§9.3.135).",
-        ja: "作者規則：自分の部分音の外で聴こえた発音の履歴が上がった後に、Floraの生態の時間を速める。重み0で中立（§9.3.135）。",
+        en: "Author rule: faster Flora ecological time after rises in heard attack history outside its own partials; neutral at weight 0 (§9.3.138).",
+        ja: "作者規則：自分の部分音の外で聴こえた発音の履歴が上がった後に、Floraの生態の時間を速める。重み0で中立（§9.3.138）。",
     },
 ];
 
@@ -170,8 +170,8 @@ pub const RESPOND_ONSETS_VOICE: &[EvidenceDoc] = &[
         ja: "作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。",
     },
     EvidenceDoc {
-        en: "Author rule: earlier pitch proposals after rises in the attack history heard without the Voice's own PCM; one ordinary proposal cycle is kept after each pitch change; neutral at weight 0 (§9.3.135).",
-        ja: "作者規則：自分のPCMを除いて聴こえた発音の履歴が上がった後に、音高の選び直しを早める。高さを変えた後の一周期は保つ。重み0で中立（§9.3.135）。",
+        en: "Author rule: earlier pitch proposals after rises in the attack history heard without the Voice's own PCM; one ordinary proposal cycle is kept after each pitch change; neutral at weight 0 (§9.3.138).",
+        ja: "作者規則：自分のPCMを除いて聴こえた発音の履歴が上がった後に、音高の選び直しを早める。高さを変えた後の一周期は保つ。重み0で中立（§9.3.138）。",
     },
 ];
 

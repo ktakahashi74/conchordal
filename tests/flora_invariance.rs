@@ -32,6 +32,28 @@ hop_size = 512
 enabled = true
 "#;
 
+// The former default drive; its render must keep the pre-change `habituation` hash.
+const HABITUATION_ROOT_CONFIG: &str = r#"
+[audio]
+sample_rate = 48000
+output_gain_db = 0.0
+[analysis]
+nfft = 2048
+hop_size = 512
+[psychoacoustics.habituation]
+enabled = true
+drive = "root_projection"
+"#;
+
+const HABITUATION_SCRIPT: &str = r#"
+seed(14);
+let v = harmonic().amp(0.04).sustain().seek_consonance();
+let g = place(v, consonance(196.0, 784.0).count(3));
+wait(3.0);
+release(g);
+wait(0.5);
+"#;
+
 const CASES: &[(&str, &str, &str)] = &[
     (
         "sine",
@@ -74,17 +96,11 @@ release(g);
 wait(0.8);
 "#,
     ),
+    ("habituation", HABITUATION_CONFIG, HABITUATION_SCRIPT),
     (
-        "habituation",
-        HABITUATION_CONFIG,
-        r#"
-seed(14);
-let v = harmonic().amp(0.04).sustain().seek_consonance();
-let g = place(v, consonance(196.0, 784.0).count(3));
-wait(3.0);
-release(g);
-wait(0.5);
-"#,
+        "habituation_root_projection",
+        HABITUATION_ROOT_CONFIG,
+        HABITUATION_SCRIPT,
     ),
 ];
 

@@ -108,6 +108,8 @@ pub(crate) struct TemporalMeterSample {
 /// Wall-clock telemetry only; never used by the synthesis or ecology controls.
 #[derive(Debug, Serialize)]
 pub(crate) struct HopTimingSample {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) room_streams: Option<crate::life::schedule_renderer::RoomStreamCounts>,
     pub(crate) frame_idx: u64,
     pub(crate) time_sec: f64,
     pub(crate) elapsed_us: f64,

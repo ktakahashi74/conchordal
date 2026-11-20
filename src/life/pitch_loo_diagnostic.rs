@@ -6,6 +6,12 @@ use std::collections::BTreeMap;
 use std::io::{BufWriter, Write};
 use std::sync::{Mutex, OnceLock};
 
+#[cfg(all(test, feature = "native"))]
+#[path = "../../tests/research/room_choice.rs"]
+mod room_choice;
+#[cfg(all(test, feature = "native"))]
+pub(super) use room_choice::restore_room_candidates;
+
 #[derive(Default)]
 struct Capture {
     variant: &'static str,
@@ -124,6 +130,21 @@ pub(crate) fn replay(
                 "salience":proposal.salience}));
         });
     }
+    #[cfg(all(test, feature = "native"))]
+    let room = room_choice::rescore(
+        hill,
+        rng,
+        current,
+        target,
+        freq,
+        window,
+        landscape,
+        adaptation,
+        features,
+        neighbors,
+        salience,
+        &variants[1],
+    );
     let owner = CAPTURE.with_borrow(|s| s.owner);
     let row = serde_json::json!({"voice":owner.0,"population":owner.1,"generation":owner.2,
         "tick":owner.3,"current":current,"current_target":target,
@@ -161,6 +182,8 @@ pub(crate) fn replay(
             writeln!(f).expect("witness newline");
         }
     }
+    #[cfg(all(test, feature = "native"))]
+    let row = if let Some(room) = room { room } else { row };
     let mut writer = output.lock().expect("trace lock");
     serde_json::to_writer(&mut *writer, &row).expect("trace row");
     writeln!(writer).expect("trace newline");

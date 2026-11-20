@@ -237,6 +237,19 @@ impl AnalysisStream {
         self.analysis.nsgt.clone()
     }
 
+    #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+    pub(crate) fn oracle_attacks(&self) -> impl Iterator<Item = usize> + '_ {
+        self.onset_habituation
+            .as_ref()
+            .unwrap()
+            .attacks_at(self.next_sample)
+    }
+
+    #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+    pub(crate) fn oracle_own(&mut self, own: &[f32], guard: bool) {
+        self.analysis.frontend.oracle_own(own, guard);
+    }
+
     pub fn last(&self) -> &Landscape {
         &self.analysis.landscape
     }

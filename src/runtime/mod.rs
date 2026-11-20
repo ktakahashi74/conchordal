@@ -172,3 +172,7 @@ pub(crate) mod test_output_directory;
 
 #[cfg(feature = "native")]
 use crate::audio::output::AudioOutput;
+
+#[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+#[path = "../../tests/research/room_performance.rs"]
+pub(crate) mod room_performance;

@@ -28,6 +28,7 @@ pub(crate) mod onset_habituation;
 pub(crate) mod peak_extraction;
 pub(crate) mod phase;
 pub mod psycho_state;
+pub mod room;
 pub(crate) mod roughness_kernel;
 pub(crate) mod spectral_history;
 pub(crate) mod stream;

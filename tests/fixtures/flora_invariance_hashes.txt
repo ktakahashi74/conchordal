@@ -1,3 +1,10 @@
+# DR-1 (2026-11-19): the default habituation drive became channel_p (author adoption,
+# ledger 9.3.140). `habituation` renders the default drive and was recaptured.
+# `habituation_root_projection` pins the former drive with the same script and seed;
+# it must keep the previous `habituation` value in both registered groups.
+# sine/harmonic/modal run with habituation disabled and are unchanged.
+# Previous DR-1 fma=1,avx2=1,avx512f=1 habituation 49d6ca3b7c684bef
+# Previous DR-1 fma=0,avx2=0,avx512f=0 habituation 49d6ca3b7c684bef
 # HR-2: provisional auditory extent approximately 20.015 Hz..12.5 kHz.
 # Stage 1 preserved the old production hashes in both registered feature groups.
 # Stage 2 changes extent-dependent normalization and field-driven behavior;
@@ -47,9 +54,10 @@
 # Previous fma=1,avx2=1,avx512f=1 modal c6c27eb401a2ea1d
 # Previous fma=1,avx2=1,avx512f=1 habituation 99fd0901f51c87fc
 # Input: tests/flora_invariance.rs CASES (embedded scripts, no sample files).
-# Seeds: sine=11, harmonic=12, modal=13, habituation=14.
+# Seeds: sine=11, harmonic=12, modal=13, habituation=14, habituation_root_projection=14.
 # Config: 48000 Hz mono PCM16; nfft=2048; hop_size=512; other keys default.
-# Habituation: sine/harmonic/modal=false; habituation=true.
+# Habituation: sine/harmonic/modal=false; habituation=true (default drive);
+#   habituation_root_projection=true with drive="root_projection".
 # Renderer: conchordal-render, deterministic offline analysis, dev profile.
 # Toolchain: rustc 1.99.0 (b940084d7 2026-09-28)
 # Features: default; platform: Linux x86_64 (GNU).
@@ -61,9 +69,11 @@
 fma=1,avx2=1,avx512f=1 sine ca0c6c6a83db43f8
 fma=1,avx2=1,avx512f=1 harmonic f6e11a76e6a1841b
 fma=1,avx2=1,avx512f=1 modal 1aba2388df1f02e9
-fma=1,avx2=1,avx512f=1 habituation 49d6ca3b7c684bef
+fma=1,avx2=1,avx512f=1 habituation 3b0fda4f2499dde0
+fma=1,avx2=1,avx512f=1 habituation_root_projection 49d6ca3b7c684bef
 # Capture fma=0,avx2=0,avx512f=0: rustc 1.99.0 (b940084d7 2026-09-28); RUSTFLAGS=-C target-cpu=x86-64
 fma=0,avx2=0,avx512f=0 sine ca0c6c6a83db43f8
 fma=0,avx2=0,avx512f=0 harmonic f6e11a76e6a1841b
 fma=0,avx2=0,avx512f=0 modal 1aba2388df1f02e9
-fma=0,avx2=0,avx512f=0 habituation 49d6ca3b7c684bef
+fma=0,avx2=0,avx512f=0 habituation 3b0fda4f2499dde0
+fma=0,avx2=0,avx512f=0 habituation_root_projection 49d6ca3b7c684bef

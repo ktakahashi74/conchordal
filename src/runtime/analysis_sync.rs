@@ -511,14 +511,15 @@ pub(super) fn compose_consonance_field_score_level_with_params(
 #[cfg(test)]
 mod habituation_tests {
     use super::*;
-    #[cfg(feature = "profile-alloc")]
     use crate::core::habituation::HabituationDrive;
     use crate::core::habituation::HabituationField;
 
     #[test]
-    fn default_habituation_preserves_legacy_bits() {
+    fn root_projection_drive_preserves_legacy_bits() {
         let core = super::super::wiring::build_analysis_runtime_core(&AppConfig::default(), 48000);
-        let params = core.lparams;
+        let mut params = core.lparams;
+        assert_eq!(params.habituation.drive, HabituationDrive::ChannelP);
+        params.habituation.drive = HabituationDrive::RootProjection;
         let mut actual = core.landscape;
         let mut legacy = actual.clone();
         let n = actual.space.n_bins();

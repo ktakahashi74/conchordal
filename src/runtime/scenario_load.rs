@@ -236,7 +236,7 @@ pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
 pub(super) fn load_scenario(
     path: &Path,
     seed: Option<u64>,
-    audio: &crate::config::AudioConfig,
+    config: &crate::config::AppConfig,
     bound: Option<f64>,
     exiting: &AtomicBool,
     end_request: &AtomicBool,
@@ -271,9 +271,8 @@ pub(super) fn load_scenario(
             warning.count
         );
     }
-    let db = audio.output_gain_db + scenario.output_gain_db;
-    let output_gain = 10.0f32.powf(db / 20.0);
-    if !db.is_finite() || !output_gain.is_finite() || output_gain <= 0.0 {
+    let output_gain = config.output_gain(scenario.output_gain_db);
+    if !output_gain.is_finite() || output_gain <= 0.0 {
         let position = scenario
             .output_gain_position
             .map(|(line, column)| format!(":{line}:{column}"))

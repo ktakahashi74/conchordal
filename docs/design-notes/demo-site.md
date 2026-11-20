@@ -277,10 +277,10 @@ WP-5／WP-5R の `web/src/pages/demo.astro`、`web/src/pages/ja/demo.astro`、`w
 
 - 演奏の場は `demo-release.json` が指す一つの release の版で動く。page の版の表示は tag と commit である。
 - 古い版を `/demo/v/<tag>/` に残すことは、asset が各 Release に残るので安くできる。最初の公開でするかは後で決める（§8）。
-- 載せる曲が要る engine の機能は、その版の main に入っていなければならない。今の候補の曲は、研究の branch の機能に頼っている。
-  - `respond_to_onsets`：`research/rs1-respond-20261114` にあり、commit 済み・未 push。main より二つ遅れていて、`step.rs` で解く hunk がある。台帳の節番号の付け直しも要る。
-  - 聴き手の慣れの形 P（`drive = "channel_p"`）：HB-2 の patch で、未 commit。既定を変えるかは別の判断なので、曲の設定（`samples/demo/<id>.toml`）で選ぶ研究の設定として入れる形になる。
-- 曲が決まれば、どれを main に入れるかが決まる。
+- 載せる曲が要る engine の機能は、その版の main に入っていなければならない。
+  - 2026-11-19 の統合（台帳 §9.3.142）で、`respond_to_onsets`、雨の語、感じられた拍の研究の設定を、既定 0 のまま一本にまとめた。台帳の節番号も付け直した（`respond_to_onsets` は §9.3.138）。
+  - 聴き手の慣れは、同じ日に既定が形 P（`drive = "channel_p"`）になった（台帳 §9.3.140）。聴いた形を保つ「線と苔」は、`samples/demo/root-projection.toml` で以前の形を指定する。ほかの曲は既定で鳴らす（台帳 §9.3.142 の DR-2）。曲ごとの設定は `pieces.json` の `config` で選ぶ。
+- 送り手の音型（GT）に頼る曲は、まだ載せられない。GT は研究の branch に残っている。
 
 ### 5.9 WP-5／WP-5R から移すもの、改めるもの
 

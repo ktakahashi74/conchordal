@@ -643,3 +643,55 @@ fn native_body_models_exclude_modal_sources() {
         );
     }
 }
+
+#[test]
+fn strict_room_advances_own_sound_between_selected_metabolism_hops() {
+    use crate::config::RoomMode;
+    use crate::life::schedule_renderer::{RoomBuses, ScheduleRenderer};
+    let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+    let mut config = settings(8);
+    config.updates_per_hop = 1;
+    let mut runtime = BodyMetabolism::new(nsgt, &params, config);
+    let voices = [voice(1, 0, BodyMethod::Sine), voice(2, 0, BodyMethod::Sine)];
+    let mut renderer = ScheduleRenderer::new(runtime.time);
+    renderer.room = RoomBuses::prepare(RoomMode::Both, runtime.time.hop, 2).unwrap();
+    let note = batch(1, &voices[0].representative_body_recipe(params.fs, 3000));
+    let rhythms = crate::core::modulation::NeuralRhythms::default();
+    let mut visits = [0; 2];
+    let mut heard_external = false;
+    for hop in 0..60 {
+        let now = hop * runtime.time.hop as u64;
+        runtime.prepare(&voices, now, &params);
+        let frame = renderer.render_with_source_pcm(
+            if hop == 0 {
+                std::slice::from_ref(&note)
+            } else {
+                &[]
+            },
+            now,
+            &rhythms,
+            &mut runtime.pcm,
+            &mut [],
+            &mut [],
+            |_, _, _, _| {},
+        );
+        assert_eq!(
+            frame.habitat,
+            runtime.pcm.iter().find(|s| s.id == 1).unwrap().habitat
+        );
+        runtime.observe(now, frame.habitat, &params);
+        for s in &runtime.sources {
+            if s.selected_hop == now {
+                visits[s.id as usize - 1] += 1;
+                let h = &s.environment.landscape.harmonicity;
+                if s.id == 1 {
+                    assert!(h.iter().all(|&x| x == 0.));
+                } else {
+                    heard_external |= h.iter().any(|&x| x > 0.);
+                }
+            }
+        }
+    }
+    assert_eq!(visits, [30, 30]);
+    assert!(heard_external);
+}

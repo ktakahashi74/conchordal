@@ -8,8 +8,8 @@
       "ja": "B2（仮の試作）"
     },
     "authored": {
-      "en": "The orchestration lead chose the first sustained pitch, the register ranges, the rain's mean rate and sway depth, Flora's pace and the section structure. This draft stands in until the author chooses the work for this page.",
-      "ja": "最初の持続音の高さ、音域、雨の平均の速さと揺れの深さ、Flora の速さ、区間の構成は、試作者である統括が決めました。この page に載せる作品を作者が選ぶまでの仮の曲です。"
+      "en": "The orchestration lead chose the first sustained pitch, the layering of the heard sustained sounds (three copies within ±6 cents), the register ranges, the rain's mean rate and sway depth, Flora's pace and the section structure. This draft stands in until the author chooses the work for this page.",
+      "ja": "最初の持続音の高さ、聞こえる持続音の重ね（±6 cent の三つの写し）、音域、雨の平均の速さと揺れの深さ、Flora の速さ、区間の構成は、試作者である統括が決めました。この page に載せる作品を作者が選ぶまでの仮の曲です。"
     },
     "generated": {
       "en": "Two Flora populations grow, spread and fade through their own ecology on the heard terrain. The second sustained sound is placed by the ecology. No Voice melody is used.",
@@ -38,14 +38,15 @@
   {
     "id": "line-moss",
     "score": "line-moss.rhai",
+    "config": "root-projection.toml",
     "duration_sec": 354,
     "title": {
       "en": "Line and moss",
       "ja": "線と苔"
     },
     "authored": {
-      "en": "The orchestration lead chose the line's starting pitch (196 Hz) and temperatures, the ranges and amplitudes of the moss and the lichen, and the six sections. The moss's response weight (respond_to_onsets 8) was chosen by rule from rendered records.",
-      "ja": "線の最初の高さ（196 Hz）と温度、苔と地衣の音域と大きさ、六つの区間は、試作者である統括が決めました。苔の応答の重み（respond_to_onsets 8）は、描いた記録から規則で選びました。"
+      "en": "The orchestration lead chose the line's starting pitch (196 Hz), temperatures and layering (three copies within ±6 cents), the ranges and amplitudes of the moss and the lichen, and the six sections. The moss's response weight (respond_to_onsets 8) was chosen by rule from rendered records. The listener's habituation drive is set to the former default, \"root_projection\", under which this piece was written.",
+      "ja": "線の最初の高さ（196 Hz）と温度と重ね（±6 cent の三つの写し）、苔と地衣の音域と大きさ、六つの区間は、試作者である統括が決めました。苔の応答の重み（respond_to_onsets 8）は、描いた記録から規則で選びました。聴き手の慣れの駆動は、この曲を書いた時の既定だった \"root_projection\" を設定で指定しています。"
     },
     "generated": {
       "en": "One line (a Voice) chooses each new pitch from the consonance field it hears without itself. Moss and lichen (Flora) grow, spread and fade on the heard terrain. While the moss hears new onsets from other sounds in its range, its ecological time runs faster; no pitch or onset time is written for it.",
@@ -63,8 +64,8 @@
       "ja": "線と苔（慣れの形 P）"
     },
     "authored": {
-      "en": "The same score as “Line and moss”, except two choices: the line's movement cost (move_cost 0.125, chosen by rule from rendered records) and a research listener setting, the habituation drive \"channel_p\" (form P).",
-      "ja": "「線と苔」と同じ台本です。違いは二つです。線の移動の費用（move_cost 0.125、描いた記録から規則で選んだ値）と、研究用の聴き手の設定（慣れの駆動 \"channel_p\"、形 P）です。"
+      "en": "The same score as “Line and moss”, except two choices: the line's movement cost (move_cost 0.125, chosen by rule from rendered records) and the listener's habituation drive, \"channel_p\" (form P, the current default), where “Line and moss” keeps the former default.",
+      "ja": "「線と苔」と同じ台本です。違いは二つです。線の移動の費用（move_cost 0.125、描いた記録から規則で選んだ値）と、聴き手の慣れの駆動です。この曲は \"channel_p\"（形 P、今の既定）で、「線と苔」は以前の既定のままです。"
     },
     "generated": {
       "en": "As in “Line and moss”. The modeled listener tires only at places where sound was heard, so a line that stays erodes its own place and moves more readily. In the default model, silent places that share a root with the sound also tire.",
@@ -99,8 +100,8 @@
       "ja": "線と苔（鋭い応答、研究）"
     },
     "authored": {
-      "en": "The orchestration lead chose the line's attack, brightness and temperature, its entry range, the moss's response weight (respond_to_onsets 16), the line's two 12-second absences and the sections (from “Line and moss”, shortened to about two minutes).",
-      "ja": "線の立ち上がり、明るさ、温度、入る音域、苔の応答の重み（respond_to_onsets 16）、線が二度 12 秒いなくなること、区間（「線と苔」から取り、約 2 分に縮めたもの）は、試作者である統括が決めました。"
+      "en": "The orchestration lead chose the line's attack and brightness, its layering (three copies within ±8 cents), its entry range, the moss's response weight (respond_to_onsets 16), the line's two 12-second absences and the sections (from “Line and moss”, shortened to about two minutes). The line draws no lottery (temperature 0) and its movement cost is 0.125; both were chosen by rule from rendered records.",
+      "ja": "線の立ち上がり、明るさ、重ね（±8 cent の三つの写し）、入る音域、苔の応答の重み（respond_to_onsets 16）、線が二度 12 秒いなくなること、区間（「線と苔」から取り、約 2 分に縮めたもの）は、試作者である統括が決めました。線は揺れの抽選を使わず（temperature 0）、移動の費用は 0.125 です。この二つは、描いた記録から規則で選びました。"
     },
     "generated": {
       "en": "One line (a Voice) enters where the field offers and chooses each new pitch from the consonance field it hears without itself. While the moss hears new onsets from other sounds in its range, its ecological time runs faster; when the line is away, the moss slows and quiets. No pitch or onset time is written for the moss.",

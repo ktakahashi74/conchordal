@@ -215,20 +215,29 @@ Common operations:
 
 Meter input configuration is documented in the [rhythm guide](docs/rhai_book/src/concepts/rhythm.md#continuous-audio-recurrence).
 
-`[audio].output_gain_db` controls fixed output gain in dB for both playback and
-offline WAV rendering. It is applied immediately before the selected output
-limiter, after the ecology and modeled listener receive their audio. Analysis,
-JSONL reports and UI meters keep the original bus levels. `0.0` restores the
-original output level; `limiter = "none"` still applies the configured gain.
-The default is **+4.5 dB**, the greatest 0.5 dB step at or below
-`20 * log10(0.98 / max_peak)`, measured across all 17 top-level samples with seeds
-21, 22 and 23 at 0 dB. The maximum input peak was 0.5553374886512756
-(`07_heartbeat.rhai`, seed 23), yielding 4.933381674334326 dB before rounding.
-The 0.98 ceiling comes from the default peak limiter.
-Other seeds, scripts, levels or limiter modes can engage the guard.
-The setting must be finite and convert to a finite, positive `f32` amplitude
-multiplier; its bounds come from that representation rather than a listening
-level target. For example, to restore unity output gain:
+`[audio].output_gain_db` sets playback and offline WAV gain. An explicit value
+overrides the room-mode default. The engine adds the scene's `output_gain()` in
+dB and applies the combined gain immediately before the output limiter, including
+when `limiter = "none"`. The ecology, modeled listener, JSONL bus records and UI
+meters receive the original bus levels.
+
+With the room off or omitted, the default is **+4.5 dB**. Its original calibration
+used 17 top-level samples at 0 dB with seeds 21, 22 and 23. The peak was
+0.5553374886512756 (`07_heartbeat.rhai`, seed 23), giving 4.933381674334326 dB
+before rounding.
+
+With `[room].mode = "presentation"` or `"both"`, the default is **-10.5 dB**.
+At 0 dB, the same three seeds and the current 18 top-level samples yielded 54
+presentation and 51 both renders. The three both runs of
+`12_emergence_and_resolution.rhai` exceeded available memory. The largest
+limiter input peak across both channels was 3.1674678325653076
+(`17_flora.rhai`, seed 22, `presentation`). Both calibrations use the greatest
+0.5 dB step at or below `20 * log10(0.98 / max_peak)`, where 0.98 is the default
+peak limiter ceiling. The room result before rounding was -10.189722747565469 dB.
+Other scripts, seeds and gain settings can engage the limiter.
+
+The configured and combined gains must each yield a finite, positive `f32`
+amplitude multiplier. This setting adds 0 dB to the scene gain in every room mode.
 
 ```toml
 [audio]

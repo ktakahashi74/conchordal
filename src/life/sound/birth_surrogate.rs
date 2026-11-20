@@ -1,7 +1,7 @@
 //! Renderer-conformed density for Field birth and legacy final respawn selection.
 
 use super::mode_utils::{
-    active_cluster_unison, cluster_detune_mul, cluster_gain, cluster_spread_cents_from_public,
+    active_cluster_unison, cluster_detune_mul, cluster_spread_cents_from_public, cluster_weights,
     public_spread_from_cluster_spread_cents, sanitize_cluster_unison,
 };
 use super::spectral::{
@@ -195,12 +195,13 @@ impl BirthSurrogate {
                 };
                 let spread = cluster_spread_cents_from_public(body.spread);
                 let unison = active_cluster_unison(spread, body.unison);
+                let weights = cluster_weights(spread, unison);
                 for idx in 0..ratios.map_or(DEFAULT_MODE_COUNT, |r| r.len()) {
                     let raw = ratios
                         .map_or_else(|| harmonic_ratio(&genotype, idx + 1), |r| r[idx].max(0.1));
-                    let gain = cluster_gain(harmonic_gain(&genotype, idx + 1, 1.0), spread, unison);
+                    let gain = harmonic_gain(&genotype, idx + 1, 1.0);
                     for u in 0..unison {
-                        let amplitude = amp * gain;
+                        let amplitude = amp * gain * weights[u];
                         self.lanes.push(Lane {
                             ratio: raw * cluster_detune_mul(spread, unison, u),
                             power: amplitude * amplitude,
@@ -215,11 +216,12 @@ impl BirthSurrogate {
                 let tilt_exp = (1.85 - tilt * 1.45).clamp(0.12, 2.2);
                 let spread = cluster_spread_cents_from_public(body.spread);
                 let unison = active_cluster_unison(spread, body.unison);
+                let weights = cluster_weights(spread, unison);
                 let t = 72.0f64 * self.time.hop as f64 / f64::from(self.time.fs);
                 // The first base mode's gain is one, so the legacy peak normalization is neutral.
                 for (idx, &ratio) in ratios.iter().enumerate() {
                     let k = (idx + 1) as f32;
-                    let gain = cluster_gain(1.0 / k.powf(tilt_exp), spread, unison);
+                    let gain = 1.0 / k.powf(tilt_exp);
                     let in_gain = (1.0 / (1.0 + 0.04 * k)).max(0.02);
                     let t60 = ((0.35 + tilt * 1.4) / (1.0 + 0.09 * k))
                         .max(0.03)
@@ -227,11 +229,11 @@ impl BirthSurrogate {
                     let x = 2.0 * 1000.0f64.ln() * t / f64::from(t60);
                     let decay = if x == 0.0 { 1.0 } else { -(-x).exp_m1() / x };
                     let amplitude = amp * gain * in_gain;
-                    let power = (f64::from(amplitude) * f64::from(amplitude) * decay) as f32;
                     for u in 0..unison {
+                        let amplitude = amplitude * weights[u];
                         self.lanes.push(Lane {
                             ratio: ratio * cluster_detune_mul(spread, unison, u),
-                            power,
+                            power: (f64::from(amplitude) * f64::from(amplitude) * decay) as f32,
                         });
                     }
                 }

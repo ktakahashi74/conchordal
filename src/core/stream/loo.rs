@@ -5,7 +5,7 @@ use crate::core::landscape::LandscapeParams;
 use crate::handoff::Sender;
 use std::sync::Arc;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum SourceKind {
     Voice,
     Flora,
@@ -244,6 +244,14 @@ impl Observer {
             });
         }
         if let Some(stream) = &mut self.stream {
+            #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+            if self.kind == SourceKind::Voice
+                && crate::runtime::room_performance::oracle::mode() == "power"
+            {
+                stream.oracle_own(own, true);
+                stream.process(mix);
+                return;
+            }
             stream.process(&self.pcm);
         }
         if let Some(power) = &mut self.power {

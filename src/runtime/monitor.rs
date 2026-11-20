@@ -63,7 +63,7 @@ impl AudioMonitor {
         analysis_wait: Duration,
         listener_wait: Duration,
         underrun_frames: Option<&AtomicU64>,
-        finish_begun: bool,
+        warn_if_audio_active: bool,
         telemetry: bool,
         #[cfg(feature = "native")] score: Option<&crate::scripting::score::ScoreStream>,
         pop: &mut Community,
@@ -111,7 +111,7 @@ impl AudioMonitor {
                     current_time, chunk_peak, frame_idx
                 );
                 self.last_clip_log = Instant::now();
-            } else if finish_begun && chunk_peak > 1e-4 {
+            } else if warn_if_audio_active && chunk_peak > 1e-4 {
                 warn!(
                     "[t={:.6}] Scenario done but audio active: peak={:.4}",
                     current_time, chunk_peak

@@ -47,7 +47,7 @@ fn indefinite_estimator_precision_v7() {
             let generation = drone.metadata.generation;
             let own = state
                 .schedule_renderer
-                .self_sound_history(drone_id)
+                .self_sound_history(drone_id, generation)
                 .unwrap();
             let (shared_id, shared_issues) = observer.reference_identity();
             let (own_id, own_issues) = own.external.reference_identity();
@@ -99,7 +99,7 @@ fn indefinite_estimator_precision_v7() {
         }
         let own = state
             .schedule_renderer
-            .self_sound_history(drone_id)
+            .self_sound_history(drone_id, generation)
             .unwrap();
         // Exercise the drone's comparison learner without changing its phonation.
         // The render observes own PCM before shared PCM, so query only aligned clocks.

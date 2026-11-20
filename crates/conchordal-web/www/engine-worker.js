@@ -56,7 +56,7 @@ function pump() {
         const bytes = engine.snapshot();
         snapshotTimes.push(performance.now() - began);
         // The snapshot describes the score up to the end of this hop's PCM.
-        postMessage({ type: "snapshot", buffer: bytes.buffer, frame: produced + pcm.length }, [bytes.buffer]);
+        postMessage({ type: "snapshot", buffer: bytes.buffer, frame: produced + engine.hop_len() }, [bytes.buffer]);
         nextSnapshot = performance.now() + UI_MIN_INTERVAL_MS;
       }
       const elapsed = performance.now() - start;
@@ -66,8 +66,8 @@ function pump() {
       windows[w].hops++;
       windows[w].sum += elapsed;
       windows[w].max = Math.max(windows[w].max, elapsed);
-      produced += pcm.length;
-      port.postMessage({ type: "pcm", buffer: pcm.buffer }, [pcm.buffer]);
+      produced += engine.hop_len();
+      port.postMessage({ type: "pcm", channels: engine.output_channels(), buffer: pcm.buffer }, [pcm.buffer]);
     }
     if (engine.finished()) {
       completed = true;

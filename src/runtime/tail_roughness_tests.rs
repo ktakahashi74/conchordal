@@ -23,7 +23,7 @@ fn render(directory: &Path, script: &str, mut config: AppConfig, native: bool) {
     let (label, scenario, output_gain, score) = load_scenario(
         &script_path,
         Some(1128749181177961461),
-        &config.audio,
+        &config,
         None,
         &stop_flag,
         &end_request,
@@ -58,6 +58,7 @@ fn render(directory: &Path, script: &str, mut config: AppConfig, native: bool) {
         wav_rx,
         directory.join("audio.wav").to_string_lossy().into_owned(),
         config.audio.sample_rate,
+        config.output_channels(),
         resolve_limiter_mode(&config),
         guard_meter.clone(),
         output_gain,

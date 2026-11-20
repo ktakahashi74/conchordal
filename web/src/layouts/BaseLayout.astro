@@ -3,8 +3,8 @@ import { getAbsoluteLocaleUrl } from 'astro:i18n';
 import { site } from '../data/site';
 import { ui, type Locale } from '../i18n/ui';
 import '../styles/accessibility.css';
-interface Props { locale: Locale; slug: string; title?: string; description?: string; top?: boolean; notFound?: boolean }
-const { locale, slug, title, description, top = false, notFound = false } = Astro.props;
+interface Props { locale: Locale; slug: string; title?: string; description?: string; top?: boolean; notFound?: boolean; englishOnly?: boolean }
+const { locale, slug, title, description, top = false, notFound = false, englishOnly = false } = Astro.props;
 const strings = ui[locale];
 const pageTitle = top ? `${site.title} · ${site.tagline}` : `${title} | ${site.title}`;
 const canonical = new URL(notFound ? '/' : Astro.url.pathname, Astro.site);
@@ -42,9 +42,9 @@ const structuredData = [
     <meta name="twitter:description" content={strings.description} />
     <meta name="twitter:image" content={image} />
     <link rel="canonical" href={canonical} />
-    <link rel="alternate" hreflang="en" href={english} />
-    <link rel="alternate" hreflang="ja" href={japanese} />
-    <link rel="alternate" hreflang="x-default" href={english} />
+    {!englishOnly && <link rel="alternate" hreflang="en" href={english} />}
+    {!englishOnly && <link rel="alternate" hreflang="ja" href={japanese} />}
+    {!englishOnly && <link rel="alternate" hreflang="x-default" href={english} />}
     {top && structuredData.map(value => <script type="application/ld+json" set:html={JSON.stringify(value)} />)}
     <slot name="styles" />
   </head>

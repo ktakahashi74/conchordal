@@ -10,10 +10,10 @@ export interface DemoPiece {
   score: string;
   config?: string;
   duration_sec: number;
-  title: Record<'en' | 'ja', string>;
-  authored: Record<'en' | 'ja', string>;
-  generated: Record<'en' | 'ja', string>;
-  authored_harmony: Record<'en' | 'ja', string> | null;
+  title: string;
+  authored: string;
+  generated: string;
+  authored_harmony: string | null;
   scoreText: string;
   configText: string | null;
 }

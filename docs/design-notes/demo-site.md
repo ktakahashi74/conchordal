@@ -10,7 +10,7 @@
 
 ## 0. 要約
 
-- 次版の公開に合わせて、`conchordal.org/demo/`（日本語は `/ja/demo/`）に、Conchordal の作品を聴き手の browser の中で生で演奏する場を置く。
+- 次版の公開に合わせて、`conchordal.org/demo/`（英語だけ。2026-11-20 に作者が日本語の page を外した）に、Conchordal の作品を聴き手の browser の中で生で演奏する場を置く。
 - conchordal.space は、将来の作品を共有する SNS のために空けておく。この場の「一つの作品を生で演奏する単位」は、SNS が作品の page として再利用できる形で作る（§11）。
 - 録音は置かない。音は手元で生まれ、どこにも保存・送信されず、演奏が終われば消える。配るのは台本と楽器（wasm）だけである。
 - 台本は折りたたまずに、楽器のすぐ下に見せる。短い台本と生態から音楽が生まれることを、その場で見せるためである。
@@ -58,7 +58,7 @@
 
 ## 3. 置き場所は conchordal.org/demo/（推奨で決めた）
 
-conchordal.org の `/demo/` と `/ja/demo/` に置き、org の home と navigation からつなぐ。理由は四つある。
+conchordal.org の `/demo/` に置き、org の home と navigation からつなぐ（日本語の navigation も英語の `/demo/` へつなぐ）。理由は四つある。
 
 - **conchordal.space は SNS のために空ける。** 今デモを置くと、SNS の設計の前に、その root、URL の形、privacy の形（cookie を持たず、受け取るのは性能の数値だけの場）が決まってしまう。SNS には登録や投稿が要るので、デモの場で約束した privacy の形と食い違う。
 - **既存の試作がそのまま使える。** WP-5／WP-5R は org の Astro の中に作られている。
@@ -81,7 +81,7 @@ conchordal.org の `/demo/` と `/ja/demo/` に置き、org の home と navigat
 - **F6** 自然な終わりの後は、この演奏が終わったことを示し、新しい演奏を始められるようにする。展示のための繰り返しは残す（WP-5 の Repeat と `?repeat=1`）。
 - **F7** 曲の台本を、GUI のすぐ下に、折りたたまずに読み取り専用で見せる。download でき、Rhai の本と GitHub の source へのリンクを付ける。編集の欄にはしない（live coding と誤解させないため。既存の位置づけ）。
 - **F8** 曲が複数ある時は選べる。切り替えでは、前の演奏が止まってから次を起動する（WP-5 の直列化）。
-- **F9** 日本語と英語を持つ（`/demo/` と `/ja/demo/`。org の i18n の routing に従う）。
+- **F9** 英語だけにする（2026-11-20、作者「日本語はいらないな、英語ページのみでいいかも。Demo として」）。page の題は Demo、言語の切り替えと hreflang は出さない。目録 `pieces.json` も英語だけ。
 - **F10** 対応しない browser では、足りないもの（WebAssembly SIMD、AudioWorklet、WebGL2）を示す。録音で代わりにしない。
 - **F11** 楽器の版と commit、各曲の「作曲者が書いたもの／生態が生むもの」、第三者の license、privacy の説明を載せる。
 - **F12** 演奏の場の asset を含む build では、org の home と navigation から演奏の場へリンクし、sitemap に載せる。asset の無い build には、page も link も無い（§12）。
@@ -141,15 +141,15 @@ engine と音の経路は今の `crates/conchordal-web` をそのまま使う。
 
 ### 5.2 page
 
-WP-5／WP-5R の `web/src/pages/demo.astro`、`web/src/pages/ja/demo.astro`、`web/src/components/DemoPage.astro`、`web/src/scripts/demo.js` を基盤にする（BaseLayout、Navigation、Footer を使う）。
+WP-5／WP-5R の `web/src/pages/demo.astro`、`web/src/components/DemoPage.astro`、`web/src/scripts/demo.js` を基盤にする（BaseLayout、Navigation、Footer を使う）。
 
-画面は上から次の順に並べる（WP-5R の構成を保つ）。
+画面は上から次の順に並べる。2026-11-20 に作者の「デモページをもっと簡素に」「ページのレイアウト洗練させて」で整えた。英語だけの page で、題は Demo。
 
-1. 題、一文の説明、音量の注意、Start。Start の下に、性能の数値を送ることを示す一行と、送信を止める切り替え、送る中身を開く link を置く（F13）。演奏中はその場所に「止める」、Repeat、GUI の表示の切り替え、全画面が出る。
-2. GUI の canvas。既定で表示する。1200×900 の基準 layout を区画に収める縮尺は、WP-5 の `gui/src/browser.rs` の変更を移す。
-3. 台本。読み取り専用で折りたたまずに見せ、download と Rhai の本への link を付ける（F7、§5.10）。
-4. この曲について。作曲者が書いたもの／生態が生むもの、長さ。
-5. 操作の意味、到達点の表（WP-5R の `demo-progress.ts`、technote §9.1 が正本）、この場について（録音しないこと、手元で動いていること、送る数値の項目、privacy、版と commit、license）。
+1. 題（Demo）と版。その下に曲目のリスト（一行に一曲、曲名と長さ、選んだ曲に印）。曲が増えたら行を足す（2026-11-20、作者「Line, Rain が曲名のようにみえない。これから増やしてゆくので、リスト形式がいいかな？」）。
+2. 演奏の panel を一つ。上の一列に、Start と Stop、状態と経過時間、右に Repeat、Room、Display、Full screen。音量の注意は準備完了の状態の表示に含める。
+3. GUI の canvas。既定で表示する。1200×900 の基準 layout を区画に収める縮尺は、WP-5 の `gui/src/browser.rs` の変更を移す。panel の下端に、性能の数値を送る切り替え（Send performance counters）と「No sound is sent」、詳細への link（F13）、対象の browser と読み込みの量を一行で置く。
+4. その下に二段：左に台本（読み取り専用、折りたたまない、Download と GitHub の link。F7、§5.10）。台本の題の下に「Every Start is a new performance of the same score.」を添え、自然に終わった時の状態の表示は「Ended. Start again for a new performance.」にする（2026-11-20、作者「演奏するたびに違うということをさりげなく強調したい」。seed は Start ごとに新しく引く）。右に曲の題と、人が書いた和声がある時の警告、作曲者が書いたもの／生態が生むもの。台本と、それが何を決め何を生態に任せたかを並べて読める。幅の狭い画面では一段。
+5. 性能カウンターの詳細（送る項目、送らないもの、止め方、保持の期間、いまの演奏の記録）を折りたたんで置く。版と commit、license は page の末尾。到達点の表は外した（technote §9.1 が正本）。
 
 状態の遷移は次のとおり。
 
@@ -208,7 +208,7 @@ WP-5／WP-5R の `web/src/pages/demo.astro`、`web/src/pages/ja/demo.astro`、`w
 - **page の CSP（`<meta http-equiv>`）。** 演奏の場の page に次を置く。GitHub Pages は header を設定できないので、まず meta で掛ける。
   - `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self'; form-action 'none'; base-uri 'none'`
   - meta の CSP は document にだけ効き、Worker の script の中の通信は縛らない。また `frame-ancestors` と Permissions-Policy は meta では掛からない。
-- **Cloudflare の Transform Rule（作者の一度だけの作業）。** `/demo/*`、`/ja/demo/*`、`/demo-assets/*` の response に、同じ CSP と `frame-ancestors 'none'`、`Permissions-Policy: microphone=(), camera=(), geolocation=()`、`Referrer-Policy: no-referrer` を足す。これで Worker と AudioWorklet の script も同じ方針で縛られる。
+- **Cloudflare の Transform Rule（作者の一度だけの作業）。** `/demo/*`、`/demo-assets/*` の response に、同じ CSP と `frame-ancestors 'none'`、`Permissions-Policy: microphone=(), camera=(), geolocation=()`、`Referrer-Policy: no-referrer` を足す。これで Worker と AudioWorklet の script も同じ方針で縛られる。
 - **server。** GitHub Pages は静的な file だけを返す。POST を受けるのは、§5.6.1 の数値の受け口だけである。
 - **検査（§6）。** wasm の import の一覧（WP-5 の方法）、一曲の全長の間の network の記録（同じ origin の GET と、数値の受け口への明示した項目の POST だけであること）、CSP の違反 0。
 - **説明。** Cloudflare と GitHub は IP などを配信と security のために扱う。privacy の説明にそう書く。訪問の数は Cloudflare の server 側の集計で見て、client の解析 script は置かない。
@@ -279,7 +279,7 @@ WP-5／WP-5R の `web/src/pages/demo.astro`、`web/src/pages/ja/demo.astro`、`w
 - 古い版を `/demo/v/<tag>/` に残すことは、asset が各 Release に残るので安くできる。最初の公開でするかは後で決める（§8）。
 - 載せる曲が要る engine の機能は、その版の main に入っていなければならない。
   - 2026-11-19 の統合（台帳 §9.3.142）で、`respond_to_onsets`、雨の語、感じられた拍の研究の設定を、既定 0 のまま一本にまとめた。台帳の節番号も付け直した（`respond_to_onsets` は §9.3.138）。
-  - 聴き手の慣れは、同じ日に既定が形 P（`drive = "channel_p"`）になった（台帳 §9.3.140）。聴いた形を保つ「線と苔」は、`samples/demo/root-projection.toml` で以前の形を指定する。ほかの曲は既定で鳴らす（台帳 §9.3.142 の DR-2）。曲ごとの設定は `pieces.json` の `config` で選ぶ。
+  - 聴き手の慣れは、同じ日に既定が形 P（`drive = "channel_p"`）になった（台帳 §9.3.140）。載せる二曲は既定で鳴らす。曲ごとの設定は `pieces.json` の `config` で選べる。
 - 送り手の音型（GT）に頼る曲は、まだ載せられない。GT は研究の branch に残っている。
 
 ### 5.9 WP-5／WP-5R から移すもの、改めるもの
@@ -324,7 +324,7 @@ WP-5／WP-5R の `web/src/pages/demo.astro`、`web/src/pages/ja/demo.astro`、`w
 2. **S-2** asset の組み立て（目録の `samples/demo/` への移動、`build.json`、license の一覧）と smoke の検査。S-1 の後。
 3. **S-3** `demo_assets.yml`、`web_deploy.yml` の取り込み、`demo-release.json`。S-2 の後。
 4. **S-3b** 性能の数値の送信（page の側の表示と切り替え、窓ごとの列、`StepEngine` の段ごとの時刻、音切れの後のハードの情報の問い、受け口の Worker、保存先）と、載せる曲の基準機での基準の列。S-1 の後。配備は作者の login と許可の後。
-5. **S-4** 曲が要る機能の main への統合。作者が曲を選んだ後。
+5. **S-4** 曲が要る機能の main への統合。作者が曲を選んだ後（2026-11-20 に選んだ）。
 6. **S-5** 実機の受入。S-1〜S-4 の後。M5 は作者の手元で行う。
 7. **S-6** 公開。`demo-release.json` の tag を、asset の付いた release に書き換える（link と sitemap は asset に従って出る）。作者の許可の後。
 
@@ -335,16 +335,17 @@ S-1〜S-3b は、曲が決まる前に、main で動く仮の台本で進めら�
 **いま決める：0 件。**
 
 **別の選択で自動的に決まる：**
-- main に入れる研究の機能（§5.8）は、載せる曲で決まる。
+- main に入れる研究の機能（§5.8）は、載せる二曲で決まった（苔の `respond_to_onsets`、雨の `follow_meter`、部屋の第 1 段階）。
 
 **後で足りる（公開の前に）：**
 
-1. 載せる曲（作品の約束）。
-   - 問い：公開の時に演奏する曲はどれか。一曲か、数曲か。
-   - 推奨：作者が採った一曲から始める。理由は第一印象の基準で、WP-5R も一曲に絞った。
-   - 効くもの：§5.8 の統合の量と、N1 の受入の本数。
-2. 古い版を残すか（`/demo/v/<tag>/`）。
+1. 古い版を残すか（`/demo/v/<tag>/`）。
    - 推奨：最初の公開では残さない。作品の継承（§9.3.129 の経路の 4）を実例で確かめる時に開く。asset が各 Release に残るので、後から足しても費用は小さい。
+
+**作者が決めたこと（2026-11-20）：**
+- 載せる曲は「雨と苔（研究）」と「線と苔（鋭い応答、研究）」の二曲（作者「2分になってるもの二件を採用」）。部屋の響きを入れた page で六曲を聴き直した後の答えである。ほかの四曲（B2、拍を聴く雨の B2、線と苔、慣れの形 P の線と苔）は目録と `samples/demo/` から外した。台本は `3180847b` に残る。
+- 続けて作者は、二曲の順を逆に（「線と苔」が先）、曲名を簡素に（「線と苔」「雨と苔」）とし、これまで印象がよかったものから協和のデモと、できれば temporal DCC のデモを二、三足したいと述べた。候補として sample 13（「三つの窓」。2026-10-12 に E-2 の四曲が「どれもまえのsamples より格段に音楽的」と評され、13 は直した版より元の形が好まれた）と sample 08（「群れ」。作者は「徐々に歩調をあわせてゆくようにきこえる」と述べた）を、台本の code を変えずに目録へ足した。作者は聴いて「たした二つの曲は、基準に足っしてないのでやめる」と答え、二曲とも外した。載せる曲は「線と苔」と「雨と苔」の二曲のまま。
+- 曲名は作者が推奨を採り、Line と Rain にした（2026-11-20、両言語とも英語）。苔は両方の曲にいるので、題は二曲の違いを指す。雨は平均 0.5 滴/秒から最初の 46 秒で 6 滴/秒へ増やして入り、その後は 1/f の揺れだけで変わる（作者「最初はポツポツからはじめてだんだん増やしていきたい」）。
 
 **作者が決めたこと（2026-11-16）：**
 - 性能の改善のため、性能の数値を送る。送っていることを表示する（作者「性能改善のため、パフォーマンスカウンタを仕込んでることは表示したほうがよいね」）。送り方の細部（§5.6.1）は推奨で決めた（§9）。
@@ -353,11 +354,11 @@ S-1〜S-3b は、曲が決まる前に、main で動く仮の台本で進めら�
 - Cloudflare の dashboard で、§5.6 の Transform Rule（response header）を org の zone に置く。公開の前に要る。
 - 数値の受け口の Worker を wrangler で配備する時に、Cloudflare に login する（配備そのものも作者の許可で行う）。
 
-**決まれば動くこと：** 曲が決まれば S-4 と S-5 に着手できる。
+**決まれば動くこと：** 曲が決まったので、S-4（main への統合）と、その後の S-5 に着手できる。
 
 ## 9. 推奨で決めたこと（違えば戻せる）
 
-- 置き場所は conchordal.org の `/demo/` と `/ja/demo/`（§3）。conchordal.space は SNS のために使わない。
+- 置き場所は conchordal.org の `/demo/`（§3、英語だけ）。conchordal.space は SNS のために使わない。
 - 演奏の場の build は release の tag から行い、Release の asset を org の配備が取り込む。版は `demo-release.json` で固定する。
 - 基盤は WP-5／WP-5R の試作。
 - 曲の目録と台本は `samples/demo/` に置く。
@@ -367,7 +368,7 @@ S-1〜S-3b は、曲が決まる前に、main で動く仮の台本で進めら�
 - 送るのは演奏ごとに一件で、5 秒の窓ごとの列と段ごとの時間を含める。ハードの情報（core の数、memory、architecture、GPU の名前）は既定で送らず、音切れが起きた演奏の後に本人が選んだ時だけ付ける。browser と OS は受け口が User-Agent から粗くまとめる。
 - 速さは、基準機で複数の seed で取った同じ曲・同じ窓の中央値との比で読む。
 - 受け口は `www.conchordal.org/demo/metrics` の Cloudflare の Worker とし、配備は wrangler で手で行う（CI に秘密を置かない）。
-- sample 01〜16 は載せない。playground は入れない。
+- sample 01〜16 は載せない（2026-11-20 に 13 と 08 を候補として試し、作者が基準に達していないと答えた）。playground は入れない。
 - seed は画面に出さない。
 - モバイルでは止めずに、desktop の browser 向けであることを知らせる。
 - 先行の既定は 2000 ms とし、underrun の後は倍にする。

@@ -80,12 +80,10 @@ fn demo_pieces_are_listed_and_unseeded() {
             "demo piece should use a fresh scenario seed: {id}"
         );
         for key in ["title", "authored", "generated"] {
-            for locale in ["en", "ja"] {
-                assert!(
-                    piece[key][locale].as_str().is_some_and(|s| !s.is_empty()),
-                    "{id}: missing {key}.{locale}"
-                );
-            }
+            assert!(
+                piece[key].as_str().is_some_and(|s| !s.is_empty()),
+                "{id}: missing {key}"
+            );
         }
         assert!(
             piece.get("authored_harmony").is_some(),

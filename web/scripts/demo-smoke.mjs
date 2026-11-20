@@ -98,7 +98,7 @@ try {
   const failures = [];
   const results = [];
   const live = "JSON.parse(document.getElementById('demo-metrics').textContent || 'null')";
-  for (const locale of ['', 'ja/']) {
+  for (const locale of ['']) {
     await page('Page.navigate', { url: `${origin}/${locale}demo/` });
     if (!await until("!document.getElementById('demo-start').disabled", 60000)) {
       failures.push(`${locale || 'en'}: Start never enabled: ${await evaluate("document.getElementById('demo-state').textContent")}`);

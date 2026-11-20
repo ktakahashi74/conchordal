@@ -1,214 +1,199 @@
 ---
 import { compile } from 'sass';
-import { getRelativeLocaleUrl } from 'astro:i18n';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Navigation from './Navigation.astro';
 import Footer from './Footer.astro';
-import type { Locale } from '../i18n/ui';
 import { demo } from '../lib/demo';
-import { progress } from '../data/demo-progress';
 const theme = compile('sass/main.scss', { style: 'compressed' }).css;
-const { locale } = Astro.props as { locale: Locale };
-const ja = locale === 'ja';
-const i = ja ? 1 : 0;
-const t = (en: string, jp: string) => ja ? jp : en;
 const { build, base, pieces } = demo()!;
-const ledger = ja ? '/ja/technote/#9-1-tai-zhang' : '/technote/#9-1-the-ledger';
-const voice = 'https://github.com/ktakahashi74/conchordal/blob/main/docs/design-notes/technote-ledger.md#93127-2026-11-05-voice-line-randomness-contextual-pitch-selection-and-the-stop-of-voice-melody-generation';
 const source = `https://github.com/ktakahashi74/conchordal/blob/${build.tag ?? build.commit}/samples/demo/`;
-const book = getRelativeLocaleUrl(locale, 'docs/rhai');
-const minutes = (sec: number) => t(`about ${Math.round(sec / 60)} minutes`, `約 ${Math.round(sec / 60)} 分`);
 const loadMb = Math.round(build.wasmBytes / 1e6);
 const release = `${build.tag ?? `v${build.version}-dev`} alpha preview`;
+const length = (sec: number) => sec < 60 ? `${Math.round(sec / 10) * 10} s` : `${Math.round(sec / 60)} min`;
+const version = build.tag ? `Conchordal ${build.tag}` : `Development build after v${build.version}, commit ${build.commit}${build.dirty ? ' (local changes)' : ''}`;
 // No request may leave this origin: scripts, styles, workers and data come from 'self'.
 // Inline script and style stay allowed because the site layout inlines small bundles.
 const csp = "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; worker-src 'self'; img-src 'self' data:; font-src 'self'; media-src 'none'; object-src 'none'; form-action 'none'; base-uri 'none'";
 ---
-<BaseLayout locale={locale} slug="demo" title={release}
-  description={t('Conchordal performing live in your browser.', 'ブラウザーの中で Conchordal が演奏します。')}>
+<BaseLayout locale="en" slug="demo" title="Demo" englishOnly
+  description="Conchordal performing live in your browser.">
   <meta slot="styles" http-equiv="Content-Security-Policy" content={csp} />
   <style slot="styles" is:inline set:html={theme}></style>
-  <Navigation locale={locale} slug="demo" />
-  <main id="main-content" class="main demo-page" tabindex="-1" data-locale={locale} data-assets={base}
+  <Navigation locale="en" slug="demo" />
+  <main id="main-content" class="main demo-page" tabindex="-1" data-assets={base}
     data-tag={build.tag ?? ''} data-version={build.version} data-commit={build.commit}>
     <article class="page"><div class="container">
-      <header class="page-header">
-        <h1 class="page-title">Conchordal <span class="release">{release}</span></h1>
-        <p class="page-subtitle">{t('An ecology of sound makes music on a terrain shaped by models of human hearing.', '人の聴覚のモデルから作った地形の上で、音の生態が自ら音楽を作ります。')}</p>
+      <header class="demo-header">
+        <h1 class="page-title">Demo</h1>
+        <p class="release">Conchordal {release}</p>
       </header>
-      <section class="instrument" aria-label={t('Play Conchordal', 'Conchordal を演奏する')}>
-        <div class="playbar">
-          {pieces.length > 1 && <div class="piece-list" role="group" aria-label={t('Piece', '曲')}>{pieces.map((piece, n) =>
-            <button class="piece" data-piece={piece.id} aria-pressed={n === 0 ? 'true' : 'false'} disabled><strong>{piece.title[locale]}</strong><span>{minutes(piece.duration_sec)}</span></button>
-          )}</div>}
-          <p class="volume-note" id="volume-note">{t('Mind your volume.', '音量に注意してください。')}</p>
-          <div class="toolbar">
-            <button id="demo-start" aria-describedby="volume-note" disabled>{t('Start', '開始')}</button>
-            <button id="demo-stop" disabled>{t('Stop', '止める')}</button>
-            <label><input id="demo-repeat" type="checkbox" /> {t('Repeat', '繰り返す')}</label>
-            <button id="demo-view" aria-pressed="true">{t('Display', '表示')}</button>
-            <button id="demo-fullscreen">{t('Full screen', '全画面にする')}</button>
+
+      <ul class="program" aria-label="Pieces">{pieces.map((piece, n) =>
+        <li><button class="piece" data-piece={piece.id} aria-pressed={n === 0 ? 'true' : 'false'} disabled><span class="piece-title">{piece.title}</span><span class="piece-length">{length(piece.duration_sec)}</span></button></li>
+      )}</ul>
+
+      <section class="instrument" aria-label="Play Conchordal">
+        <div class="controls">
+          <div class="transport">
+            <button id="demo-start" disabled>Start</button>
+            <button id="demo-stop" disabled>Stop</button>
           </div>
-          <p class="metrics-note">
-            <label><input id="demo-send" type="checkbox" checked /> {t('Send performance counters', '性能カウンターを送る')}</label>
-            <span>{t('To improve performance, this page sends performance counters (dropouts, computation time) after each performance. No sound, and nothing made from sound, is sent.', '性能の改善のため、演奏ごとに性能カウンター（音切れの数、計算時間など）を送ります。音と、音から作った値は送りません。')}</span>
-            <a href="#demo-sent">{t('What is sent', '送る中身')}</a>
-          </p>
-          <div class="status">
-            <p id="demo-state" role="status" aria-live="polite">{t('Loading Conchordal…', 'Conchordal を読み込んでいます…')}</p>
-            <p id="demo-time"></p>
-          </div>
-          <p id="demo-error" role="alert" hidden></p>
-          <div id="demo-hardware" class="hardware" role="region" aria-label={t('Dropout report', '音切れの報告')} hidden>
-            <p>{t('There was a dropout in this performance. To help find the cause, may we also send these details about this computer?', 'この演奏で音切れがありました。原因を調べるため、この機械の次の情報も送ってよいですか。')}</p>
-            <pre id="demo-hardware-values"></pre>
-            <div class="toolbar">
-              <button id="demo-hardware-yes">{t('Send these too', 'この情報も送る')}</button>
-              <button id="demo-hardware-no">{t('Counters only', 'カウンターだけ送る')}</button>
-            </div>
+          <p class="status"><span id="demo-state" role="status" aria-live="polite">Loading Conchordal…</span><span id="demo-time"></span></p>
+          <div class="options">
+            <label><input id="demo-repeat" type="checkbox" /> Repeat</label>
+            <label><input id="demo-room" type="checkbox" checked /> Room</label>
+            <button id="demo-view" aria-pressed="true">Display</button>
+            <button id="demo-fullscreen">Full screen</button>
           </div>
         </div>
-        <div class="canvas-wrap"><canvas id="demo-gui" aria-label={t('Live ecology, rhythm, roughness and harmonicity', '生態・拍・粗さ・調波性の表示')}></canvas></div>
+        <p id="demo-error" role="alert" hidden></p>
+        <div id="demo-hardware" class="hardware" role="region" aria-label="Dropout report" hidden>
+          <p>There was a dropout in this performance. To help find the cause, may we also send these details about this computer?</p>
+          <pre id="demo-hardware-values"></pre>
+          <div class="hardware-actions">
+            <button id="demo-hardware-yes">Send these too</button>
+            <button id="demo-hardware-no">Counters only</button>
+          </div>
+        </div>
+        <div class="canvas-wrap"><canvas id="demo-gui" aria-label="Live ecology, rhythm, roughness and harmonicity"></canvas></div>
+        <div class="panel-foot">
+          <p class="consent"><label><input id="demo-send" type="checkbox" checked /> Send performance counters</label> <span>No sound is sent. <a href="#demo-sent">Details</a></span></p>
+          <p>Desktop Chrome, Firefox and Safari. First load about {loadMb} MB.</p>
+        </div>
       </section>
-      <div class="availability">
-        <p>{t('For desktop Chrome, Firefox and Safari. Phones are not supported yet.', 'パソコンの Chrome・Firefox・Safari が対象です。スマートフォンは現在対象外です。')}</p>
-        <p>{t(`First load: about ${loadMb} MB before compression.`, `初回の読み込みは、圧縮前で約 ${loadMb} MB です。`)}</p>
-      </div>
-      <div class="page-content">
-        <section aria-labelledby="score-heading">
-          <h2 id="score-heading">{t('The score', '台本')}</h2>
-          <p>{t('The whole score being performed. It also runs in the desktop version of Conchordal.', '演奏している台本の全文です。パソコン版の Conchordal でも動かせます。')}</p>
+
+      <div class="demo-body">
+        <section class="score-column" aria-labelledby="score-heading">
+          <h2 id="score-heading">Score</h2>
+          <p class="caption">Every Start is a new performance of the same score.</p>
           {pieces.map((piece, n) => (
             <div class="piece-score" data-piece={piece.id} hidden={n > 0}>
               <pre class="score"><code>{piece.scoreText}</code></pre>
-              {piece.configText && <details><summary>{t('Settings for this score', 'この台本の設定')} ({piece.config})</summary><pre class="config"><code>{piece.configText}</code></pre></details>}
+              {piece.configText && <details><summary>Settings for this score ({piece.config})</summary><pre class="config"><code>{piece.configText}</code></pre></details>}
               <p class="score-links">
-                <a href={`${base}pieces/${piece.score}`} download={piece.score}>{t('Download the score', '台本を保存する')} ({piece.score})</a>
-                <a href={`${source}${piece.score}`}>{t('Source on GitHub', 'GitHub で見る')}</a>
-                <a href={book}>{t('How to read and write scores', '台本の読み方と書き方')}</a>
+                <a href={`${base}pieces/${piece.score}`} download={piece.score}>Download</a>
+                <a href={`${source}${piece.score}`}>GitHub</a>
               </p>
             </div>
           ))}
         </section>
-        <section aria-labelledby="pieces-heading">
-          <h2 id="pieces-heading">{t('About this piece', 'この曲について')}</h2>
+        <aside class="notes" aria-label="About the piece">
           {pieces.map((piece, n) => (
             <div class="piece-about" data-piece={piece.id} hidden={n > 0}>
-              <h3>{piece.title[locale]} <span class="secondary">{minutes(piece.duration_sec)}</span></h3>
-              {piece.authored_harmony && <p class="warning"><strong>{t('Written harmony: ', '人が書いた和声：')}</strong>{piece.authored_harmony[locale]}</p>}
-              <dl>
-                <dt>{t('Written by the composer', '作曲者が書いたもの')}</dt><dd>{piece.authored[locale]}</dd>
-                <dt>{t('Made by the ecology', '生態が生むもの')}</dt><dd>{piece.generated[locale]}</dd>
-              </dl>
+              <h2>{piece.title}</h2>
+              {piece.authored_harmony && <p class="warning"><strong>Written harmony.</strong> {piece.authored_harmony}</p>}
+              <h3>Written by the composer</h3>
+              <p>{piece.authored}</p>
+              <h3>Made by the ecology</h3>
+              <p>{piece.generated}</p>
             </div>
           ))}
-        </section>
-        <section id="demo-sent" aria-labelledby="sent-heading">
-          <h2 id="sent-heading">{t('Performance counters', '性能カウンター')}</h2>
-          <p>{t('After each performance, this page sends one record of performance counters to this site, to improve performance on computers we cannot test ourselves.', '演奏が終わるたびに、性能カウンターの記録を一件、この site へ送ります。手元で試せない機械での性能を改善するためです。')}</p>
-          <ul>
-            <li>{t('The piece and the Conchordal version; how the performance ended and how long it lasted.', '曲と Conchordal の版、演奏の終わり方と長さ。')}</li>
-            <li>{t('Dropouts and when they happened; how much sound was prepared ahead; the audio output latency.', '音切れの数と時刻、先に作っておいた音の量、音声出力の遅れ。')}</li>
-            <li>{t('Computation time per step, as a whole, per stage and per 5-second window; display times; time spent in a background tab.', '計算にかかった時間（全体、段ごと、5 秒ごと）、表示にかかった時間、tab が裏にあった時間。')}</li>
-            <li>{t('The browser and operating system, as named in the request your browser already sends.', 'ブラウザーと OS の種類（ブラウザーがふだん送る request の情報から）。')}</li>
-          </ul>
-          <p>{t('Not sent: sound, anything made from sound, the score, error text, identifiers or details of your computer. Only when a dropout happens does the page ask whether to add the computer details it shows you.', '送らないもの：音、音から作った値、台本、error の文面、識別子、機械の情報。音切れが起きた時だけ、機械の情報を見せて、送ってよいかを尋ねます。')}</p>
-          <p>{t('Turn off “Send performance counters” to stop; this page remembers that choice in this browser. Browsers that signal Global Privacy Control start with sending off. Records are kept for up to three months, without IP addresses.', '「性能カウンターを送る」を外すと送りません。その選択はこのブラウザーに残ります。Global Privacy Control を示すブラウザーでは、はじめから送りません。記録は IP アドレスを含まず、最長 3 か月で消えます。')}</p>
-          <details><summary>{t('The record for the current performance', 'いまの演奏の記録')}</summary><pre id="demo-metrics"></pre></details>
-        </section>
-        <section aria-labelledby="progress-heading">
-          <h2 id="progress-heading">{t('What works so far', 'いま、できていること')}</h2>
-          <p>{t('Conchordal is still in development. These stages follow the technical note’s implementation ledger (§9.1); they describe mechanisms, not musical quality.', 'Conchordal は開発中です。以下の段階は技術ノートの実装台帳（§9.1）に基づきます。機構の実装状況を示すもので、音楽としての完成度ではありません。')}</p>
-          <div class="table-scroll"><table><thead><tr><th scope="col">{t('Aspect', '側面')}</th><th scope="col">{t('Stage', '段階')}</th><th scope="col">{t('What you can hear', 'このデモとの関係')}</th></tr></thead><tbody>{progress.map(row => <tr><th scope="row">{row.title[i]}</th><td>{row.stage[i]}</td><td>{row.text[i]}</td></tr>)}</tbody></table></div>
-          <p><a href={ledger}>{t('Read the implementation ledger (§9.1)', '実装台帳（§9.1）を読む')}</a></p>
-          <h3>{t('Still in development', '開発を続けていること')}</h3>
-          <p>{t('Voice melody generation is paused while its pitch choices are being reconsidered.', 'Voice の旋律生成は停止し、音高の選び方を見直しています。')} <a href={voice}>{t('Research decision', '研究方針')}</a></p>
-          <p>{t('The browser version is new. Testing across desktop browsers and computers is ongoing.', 'ブラウザー版は新しく、各ブラウザーやパソコンでの動作を確かめている途中です。')}</p>
-        </section>
+        </aside>
       </div>
-      <footer class="page-footer"><p class="version">{build.tag ? `Conchordal ${build.tag}` : t(`Development build after v${build.version}`, `v${build.version} 以降の開発版`)}, commit {build.commit}{build.dirty ? t(' (local changes)', '（未コミットの変更あり）') : ''} · <a href={`${base}licenses.txt`}>{t('Third-party licenses', '第三者のライセンス')}</a></p></footer>
+
+      <details id="demo-sent" class="sent"><summary>Performance counters</summary>
+        <p>After each performance, this page sends one record of performance counters to this site, to improve performance on computers we cannot test ourselves.</p>
+        <ul>
+          <li>The piece and the Conchordal version; how the performance ended and how long it lasted.</li>
+          <li>Dropouts and when they happened; how much sound was prepared ahead; the audio output latency.</li>
+          <li>Computation time per step, as a whole, per stage and per 5-second window; display times; time spent in a background tab.</li>
+          <li>The browser and operating system, as named in the request your browser already sends.</li>
+        </ul>
+        <p>Not sent: sound, anything made from sound, the score, error text, identifiers or details of your computer. Only when a dropout happens does the page ask whether to add the computer details it shows you.</p>
+        <p>Turn off “Send performance counters” to stop; this page remembers that choice in this browser. Browsers that signal Global Privacy Control start with sending off. Records are kept for up to three months, without IP addresses.</p>
+        <details><summary>The record for the current performance</summary><pre id="demo-metrics"></pre></details>
+      </details>
+
+      <footer class="demo-footer"><p>{version}</p><p><a href={`${base}licenses.txt`}>Third-party licenses</a></p></footer>
     </div></article>
   </main>
-  <Footer locale={locale} />
+  <Footer locale="en" />
   <script src="../scripts/demo.js"></script>
 </BaseLayout>
 <style>
   /* Tokens follow sass/main.scss so the demo reads as one of the site's inner pages. */
-  .demo-page { color-scheme:dark; --bg2:#111; --bg3:#1a1a1a; --line:#27272a; --line2:#3f3f46; --text:#e4e4e7; --text2:#d4d4d8; --muted:#a1a1aa; --accent:#3b82f6; --accent2:#1d4ed8; }
-  .page-header { margin-bottom:2rem; }
-  .page-title .release { display:block; margin-top:.5rem; font-size:1.125rem; font-weight:400; color:var(--muted); }
-  .instrument { background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:0 12px 12px; scroll-margin-top:5rem; }
+  .demo-page { color-scheme:dark; --bg2:#111; --bg3:#1a1a1a; --line:#27272a; --line2:#3f3f46; --text:#e4e4e7; --text2:#d4d4d8; --muted:#a1a1aa; --accent:#3b82f6; --accent2:#1d4ed8; --selected:rgba(59,130,246,.16); }
+  .demo-header { text-align:center; margin-bottom:1.75rem; }
+  .demo-header .page-title { margin-bottom:.25rem; }
+  .release { margin:0; color:var(--muted); font-size:1rem; }
+
+  /* The instrument: one panel, controls in a single row above the display. */
+  .instrument { background:var(--bg2); border:1px solid var(--line); border-radius:8px; padding:0 12px; scroll-margin-top:5rem; }
   .instrument:fullscreen { width:100%; height:100%; border:0; border-radius:0; display:flex; flex-direction:column; }
   .instrument:fullscreen .canvas-wrap { flex:1; height:auto; min-height:0; }
-  .playbar { padding:12px 4px 0; }
-  .playbar p { margin:0; }
-  .volume-note { font-size:.875rem; color:var(--text2); margin-bottom:8px !important; }
-  .toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-  button { font:inherit; font-size:.9375rem; font-weight:500; color:var(--text); background:var(--bg3); border:1px solid var(--line2); border-radius:6px; min-height:44px; padding:8px 18px; cursor:pointer; transition:border-color .2s ease, background-color .2s ease; }
+  .controls { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; padding:12px 0; }
+  .transport, .options { display:flex; align-items:center; gap:8px; }
+  .options { margin-left:auto; }
+  button { font:inherit; font-size:.9375rem; font-weight:500; color:var(--text); background:var(--bg3); border:1px solid var(--line2); border-radius:6px; min-height:40px; padding:6px 16px; cursor:pointer; transition:border-color .15s ease, background-color .15s ease; }
   button:hover:not(:disabled) { border-color:var(--accent); }
+  button:focus-visible, input:focus-visible { outline:2px solid #60a5fa; outline-offset:2px; }
   button:disabled { opacity:.45; cursor:default; }
-  button[aria-pressed="false"] { color:var(--muted); }
-  #demo-start { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; min-width:112px; }
+  #demo-start { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; min-width:96px; }
   #demo-start:hover:not(:disabled) { background:var(--accent2); border-color:var(--accent2); }
-  #demo-view { margin-left:auto; }
-  label { display:flex; align-items:center; gap:8px; cursor:pointer; }
-  .toolbar label { padding:8px; font-size:.9375rem; color:var(--text2); }
-  input { width:18px; height:18px; accent-color:var(--accent); }
-  input:focus-visible { outline:2px solid #60a5fa; outline-offset:3px; }
-  .metrics-note { display:flex; flex-wrap:wrap; align-items:center; gap:0 .8rem; margin-top:6px !important; font-size:.8125rem; line-height:1.6; color:var(--muted); }
-  .metrics-note label { padding:4px 0; color:var(--text2); }
-  .metrics-note span { flex:1 1 32ch; }
-  .status { display:flex; gap:1.5rem; align-items:baseline; min-height:2.2rem; padding:8px 0; font-size:.875rem; color:var(--muted); }
-  #demo-time { font-variant-numeric:tabular-nums; }
-  #demo-error { margin-bottom:8px !important; color:#fca5a5; overflow-wrap:anywhere; }
+  #demo-view[aria-pressed="false"] { color:var(--muted); }
+  /* The programme: one row per piece, the selected one marked. It grows as pieces are added. */
+  .program { list-style:none; max-width:34rem; margin:0 auto 1.75rem; padding:0; border-top:1px solid var(--line); }
+  .program li { margin:0; border-bottom:1px solid var(--line); }
+  .piece { display:flex; justify-content:space-between; align-items:baseline; gap:1rem; width:100%; min-height:48px; padding:10px 14px; border:0; border-radius:0; background:transparent; text-align:left; color:var(--muted); }
+  .piece:hover:not(:disabled) { color:var(--text); background:var(--bg2); }
+  .piece:disabled { opacity:1; }
+  .piece-title { font-size:1.0625rem; font-weight:600; }
+  .piece-length { font-size:.875rem; font-variant-numeric:tabular-nums; }
+  .piece[aria-pressed="true"] { color:var(--text); background:var(--selected); box-shadow:inset 3px 0 0 var(--accent); }
+  .piece[aria-pressed="true"] .piece-length { color:var(--text2); }
+  .status { display:flex; gap:12px; align-items:baseline; margin:0; min-width:12rem; font-size:.875rem; color:var(--muted); }
+  #demo-time { font-variant-numeric:tabular-nums; color:var(--text2); }
+  label { display:flex; align-items:center; gap:6px; cursor:pointer; font-size:.9375rem; color:var(--text2); }
+  .options label { padding:0 4px; }
+  input { width:16px; height:16px; margin:0; accent-color:var(--accent); }
+  #demo-error { margin:0 0 12px; color:#fca5a5; overflow-wrap:anywhere; }
   .hardware { border:1px solid var(--accent); border-radius:8px; padding:12px; margin-bottom:12px; background:var(--bg3); }
-  .hardware p { margin-bottom:8px; }
-  .hardware pre { font-family:"SF Mono","Monaco","Cascadia Code","Roboto Mono",Consolas,monospace; font-size:.8125rem; padding:12px; margin-bottom:8px; background:var(--bg2); border-radius:6px; overflow:auto; }
-  .canvas-wrap { height:clamp(320px,calc(100svh - 400px),720px); background:#000; border-radius:4px; overflow:hidden; }
+  .hardware p { margin:0 0 8px; }
+  .hardware pre { font-size:.8125rem; padding:12px; margin:0 0 8px; background:var(--bg2); border-radius:6px; overflow:auto; }
+  .hardware-actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .canvas-wrap { height:clamp(320px,calc(100svh - 300px),760px); background:#000; border-radius:4px; overflow:hidden; }
   .canvas-wrap[hidden] { display:none; }
   canvas { display:block; width:100%; height:100%; }
-  .availability { display:flex; flex-wrap:wrap; justify-content:space-between; gap:.25rem 2rem; padding:.75rem 4px 0; font-size:.875rem; color:var(--muted); }
-  .availability p { margin:0; }
-  .page-content section:first-child h2 { margin-top:2.5rem; }
-  .page-content pre.score { max-height:70svh; tab-size:4; font-size:.8125rem; line-height:1.55; margin-top:0; }
-  .page-content pre#demo-metrics { font-size:.8125rem; margin-top:0; }
-  /* The site sizes inline code at .875rem; inside these blocks the pre sets the size. */
-  .page-content pre code { font-size:inherit; }
-  .score-links { display:flex; flex-wrap:wrap; gap:.4rem 1.6rem; }
-  details { margin-bottom:1rem; }
-  summary { cursor:pointer; color:var(--text2); width:fit-content; margin-bottom:.5rem; }
+  .panel-foot { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:4px 24px; padding:10px 0; font-size:.8125rem; color:var(--muted); }
+  .panel-foot p { margin:0; }
+  .consent { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; }
+  .consent label { font-size:.8125rem; }
+
+  /* Below the instrument: the score beside what it means. */
+  .demo-body { display:grid; grid-template-columns:minmax(0,1fr) minmax(16rem,22rem); gap:2.5rem; margin-top:3rem; }
+  .demo-body h2 { font-size:1.25rem; font-weight:600; color:var(--text); margin:0 0 1rem; }
+  .score-column pre { margin:0; }
+  .score-column h2 { margin-bottom:.25rem; }
+  .caption { margin:0 0 1rem; font-size:.9375rem; color:var(--muted); }
+  pre.score, pre.config { background:var(--bg2); border:1px solid var(--line); border-radius:6px; overflow:auto; tab-size:4; font-size:.8125rem; line-height:1.55; padding:1.25rem; }
+  pre.score { max-height:70svh; }
+  pre code { font-size:inherit; }
+  .score-links { display:flex; gap:1.5rem; margin:.75rem 0 0; font-size:.9375rem; }
+  .notes { font-size:.9375rem; line-height:1.65; color:var(--text2); }
+  .notes h3 { font-size:.9375rem; font-weight:600; color:var(--text); margin:1.25rem 0 .25rem; }
+  .notes p { margin:0; }
+  .warning { border-left:3px solid var(--accent); padding-left:.75rem; }
+  details { margin-top:.75rem; }
+  summary { cursor:pointer; color:var(--text2); width:fit-content; }
   summary:hover { color:var(--text); }
-  .secondary { color:var(--muted); font-size:.9375rem; font-weight:400; }
-  /* Above Start/Stop: choosing while a piece plays switches to the chosen one. */
-  .piece-list { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
-  .piece { text-align:left; padding:6px 14px; line-height:1.3; }
-  .piece[aria-pressed="true"] { border-color:var(--accent); }
-  .piece strong, .piece span { display:block; }
-  .piece span { font-size:.8125rem; font-weight:400; color:var(--muted); }
-  .warning { border-left:4px solid var(--accent); padding-left:1rem; color:var(--text2); }
-  dl { display:grid; grid-template-columns:max-content 1fr; gap:.5rem 1.5rem; margin-bottom:1rem; }
-  dt { font-weight:600; }
-  dd { margin:0; color:var(--text2); }
-  table { width:100%; border-collapse:collapse; font-size:.9375rem; line-height:1.6; }
-  th, td { text-align:left; vertical-align:top; padding:.75rem 1rem; border-bottom:1px solid var(--line); }
-  thead th { color:var(--muted); font-weight:500; font-size:.875rem; border-bottom-color:var(--line2); }
-  tbody th { width:25%; font-weight:600; }
-  td { color:var(--text2); }
-  td:nth-child(2) { width:14%; white-space:nowrap; }
-  .version { margin:0; color:var(--muted); font-size:.875rem; }
+
+  .sent { max-width:46rem; margin-top:3rem; font-size:.9375rem; color:var(--text2); }
+  .sent > summary { font-weight:600; }
+  .sent p, .sent ul { margin:.75rem 0 0; }
+  .sent pre { font-size:.8125rem; margin-top:.5rem; }
+  .demo-footer { display:flex; flex-wrap:wrap; justify-content:space-between; gap:.5rem 2rem; margin-top:3rem; padding-top:1rem; border-top:1px solid var(--line); font-size:.875rem; color:var(--muted); }
+  .demo-footer p { margin:0; }
+
+  @media(max-width:900px) {
+    .demo-body { grid-template-columns:1fr; gap:2rem; }
+    .options { margin-left:0; }
+  }
   @media(max-width:640px) {
-    .instrument { padding:0 8px 8px; }
-    .page-content pre.score { padding:1rem; }
-    .toolbar { gap:8px 6px; }
-    button { padding:8px 10px; }
-    #demo-start { min-width:80px; }
-    #demo-view { margin-left:0; }
+    .instrument { padding:0 8px; }
+    .controls { gap:8px; }
+    button { padding:6px 10px; }
     .canvas-wrap { height:300px; }
-    dl { grid-template-columns:1fr; gap:.25rem; }
-    dd { margin-bottom:.7rem; }
-    th, td { padding:.6rem .4rem; font-size:.875rem; }
-    tbody th { width:28%; }
-    td:nth-child(2) { width:20%; }
+    pre.score { padding:1rem; }
   }
   @media(prefers-reduced-motion:reduce) { button { transition:none; } }
 </style>

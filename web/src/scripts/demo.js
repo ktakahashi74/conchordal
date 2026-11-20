@@ -1,18 +1,16 @@
 const byId = (id) => document.getElementById(`demo-${id}`);
 const page = document.querySelector('.demo-page');
-const ja = page.dataset.locale === 'ja';
-const text = (en, jp) => ja ? jp : en;
 const assets = page.dataset.assets;
 const state = byId('state');
 const pieceButtons = [...document.querySelectorAll('button.piece[data-piece]')];
 let selected = document.querySelector('.piece-score[data-piece]').dataset.piece;
 let gui, player, busy = false, epoch = 0, queue = Promise.resolve();
 const labels = {
-  idle: text('Ready', '準備完了'),
-  initializing: text('Preparing…', '準備中…'),
-  playing: text('Playing', '演奏中'),
-  ended: text('Ended', '演奏が終わりました'),
-  stopped: text('Ready', '準備完了'),
+  idle: 'Ready. Mind your volume.',
+  initializing: 'Preparing…',
+  playing: 'Playing',
+  ended: 'Ended. Start again for a new performance.',
+  stopped: 'Ready. Mind your volume.',
 };
 // Matches the engine's live amplitude ramp; long enough to stop without a click.
 const STOP_FADE_SEC = 0.08;
@@ -138,14 +136,30 @@ document.addEventListener('visibilitychange', () => {
   else if (run.hiddenSince !== null) { run.hiddenMs += performance.now() - run.hiddenSince; run.hiddenSince = null; }
 });
 
+// The details link opens the folded counters section before jumping to it.
+document.querySelector('a[href="#demo-sent"]').onclick = () => { byId('sent').open = true; };
+
+// ---- Room ----
+// The toggle edits the shown scores, so the score on the page stays the score performed.
+const ROOM_LINE = 'room("presentation");\n';
+function applyRoom() {
+  for (const code of document.querySelectorAll('.piece-score pre.score code')) {
+    const plain = code.textContent.startsWith(ROOM_LINE) ? code.textContent.slice(ROOM_LINE.length) : code.textContent;
+    code.textContent = byId('room').checked ? ROOM_LINE + plain : plain;
+  }
+}
+byId('room').onchange = applyRoom;
+applyRoom();
+
 // ---- Playback ----
 function controls() {
   byId('start').disabled = busy || !player || !!player.session;
+  byId('room').disabled = busy || !!player?.session;
   byId('stop').disabled = !player || (!busy && !player.session && player.result.state === 'idle');
 }
 function failure(error) {
   state.dataset.state = 'error';
-  state.textContent = text('Unable to play. Try Start again. ', '演奏を開始できません。「開始」で再試行してください。') + String(error);
+  state.textContent = 'Unable to play. Try Start again. ' + String(error);
   byId('error').hidden = false;
   byId('error').textContent = state.textContent;
 }
@@ -229,11 +243,11 @@ byId('fullscreen').onclick = async () => {
     else await document.querySelector('.instrument').requestFullscreen();
   } catch (error) {
     byId('error').hidden = false;
-    byId('error').textContent = text('Full screen is unavailable in this browser. ', 'このブラウザーでは全画面に切り替えられません。') + String(error);
+    byId('error').textContent = 'Full screen is unavailable in this browser. ' + String(error);
   }
 };
 document.addEventListener('fullscreenchange', () => {
-  byId('fullscreen').textContent = document.fullscreenElement ? text('Leave full screen', '全画面を戻す') : text('Full screen', '全画面にする');
+  byId('fullscreen').textContent = document.fullscreenElement ? 'Leave full screen' : 'Full screen';
 });
 // The embedded canvas must not trap the document's scroll gesture.
 byId('gui').addEventListener('wheel', (event) => {
@@ -251,8 +265,7 @@ if (typeof AudioWorkletNode === 'undefined') missing.push('AudioWorklet');
 if (!document.createElement('canvas').getContext('webgl2')) missing.push('WebGL2');
 if (missing.length) {
   state.dataset.state = 'unsupported';
-  state.textContent = text(`This browser cannot run Conchordal (missing: ${missing.join(', ')}).`,
-    `このブラウザーでは Conchordal を動かせません（足りないもの：${missing.join('、')}）。`);
+  state.textContent = `This browser cannot run Conchordal (missing: ${missing.join(', ')}).`;
 } else {
   try {
     const [{ BrowserPlayer }, guiModule] = await Promise.all([
@@ -302,6 +315,6 @@ if (missing.length) {
     });
   } catch (error) {
     state.dataset.state = 'error';
-    state.textContent = text('Conchordal could not load. Reload this page to retry. ', 'Conchordal を読み込めませんでした。ページを再読み込みしてください。') + String(error);
+    state.textContent = 'Conchordal could not load. Reload this page to retry. ' + String(error);
   }
 }

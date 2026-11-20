@@ -11,6 +11,8 @@ const strings = ui[locale];
 const home = getRelativeLocaleUrl(locale);
 // The demo link exists only when the build carries the live instrument.
 const navigation = demo() ? [site.navigation[0], { key: 'demo', slug: 'demo' } as const, ...site.navigation.slice(1)] : site.navigation;
+// The demo page is English only.
+const href = (target?: string) => getRelativeLocaleUrl(target === 'demo' ? 'en' : locale, target);
 ---
 {top ? (
   <nav class="navbar navbar-expand-lg navbar-light fixed-top" id="mainNav">
@@ -22,7 +24,7 @@ const navigation = demo() ? [site.navigation[0], { key: 'demo', slug: 'demo' } a
       </button>
       <div class="collapse navbar-collapse" id="navbarResponsive">
         <ul class="navbar-nav ms-auto">
-          {navigation.map(item => <li class="nav-item"><a class="nav-link" href={item.slug ? getRelativeLocaleUrl(locale, item.slug) : `${home}#page-top`}>{strings.navigation[item.key]}</a></li>)}
+          {navigation.map(item => <li class="nav-item"><a class="nav-link" href={item.slug ? href(item.slug) : `${home}#page-top`}>{strings.navigation[item.key]}</a></li>)}
           {site.social.map(item => <li class="nav-item"><a class="nav-link" href={item.url} target="_blank" rel="noopener" aria-label={item.label}><Icon name={item.icon} />{item.key === 'github' && ' GitHub'}</a></li>)}
         </ul>
       </div>
@@ -35,12 +37,12 @@ const navigation = demo() ? [site.navigation[0], { key: 'demo', slug: 'demo' } a
         <a href={home} class="nav-brand">{site.title}</a>
         <button class="nav-toggle" type="button" aria-controls="site-nav" aria-expanded="false">{strings.menu}</button>
         <div class="nav-menu" id="site-nav">
-          {navigation.map(item => <a href={getRelativeLocaleUrl(locale, item.slug)} class="nav-link">{strings.navigation[item.key]}</a>)}
+          {navigation.map(item => <a href={href(item.slug)} class="nav-link">{strings.navigation[item.key]}</a>)}
           {site.social.map(item => <a href={item.url} class="nav-link" target="_blank" rel="noopener" aria-label={item.label}>
             <Icon name={item.icon} />{item.key === 'github' && ' GitHub'}
           </a>)}
         </div>
-        <div class="inner-language"><LanguageSwitch locale={locale} slug={slug} /></div>
+        {slug !== 'demo' && <div class="inner-language"><LanguageSwitch locale={locale} slug={slug} /></div>}
       </div>
     </nav>
   </header>

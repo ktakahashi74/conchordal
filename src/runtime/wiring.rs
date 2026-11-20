@@ -181,17 +181,38 @@ pub(super) struct RuntimeWiring {
 
 #[cfg(test)]
 thread_local! {
+    pub(super) static ROOM_OWNER_OVERRIDE: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
     pub(super) static DISABLE_GUI_SUPPORT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
-/// Wiring shared by both runtime paths: analysis core, channels, analysis
-/// worker threads, Community/Conductor setup, and the worker thread spawn.
-#[cfg(feature = "native")]
+#[cfg(all(test, feature = "native"))]
 pub(super) fn wire_runtime(
     config: &AppConfig,
     runtime_sample_rate: u32,
     scenario_label: String,
     scenario: Scenario,
+    stop_flag: Arc<AtomicBool>,
+    opts: WiringOptions,
+) -> Result<RuntimeWiring, String> {
+    let score = prepare_score(config, runtime_sample_rate, scenario, opts.score.is_some())?;
+    start_runtime(
+        config,
+        runtime_sample_rate,
+        scenario_label,
+        score,
+        stop_flag,
+        opts,
+    )
+}
+
+/// Wiring shared by both runtime paths: analysis core, channels, analysis
+/// worker threads, Community/Conductor setup, and the worker thread spawn.
+#[cfg(feature = "native")]
+fn start_runtime(
+    config: &AppConfig,
+    runtime_sample_rate: u32,
+    scenario_label: String,
+    scenario: PreparedScore,
     stop_flag: Arc<AtomicBool>,
     opts: WiringOptions,
 ) -> Result<RuntimeWiring, String> {
@@ -265,16 +286,71 @@ impl AnalysisExecution {
 
 mod room_reservation;
 
+pub(super) struct PreparedScore {
+    scenario: Scenario,
+    expression_markers: bool,
+    room: Option<crate::life::schedule_renderer::RoomBuses>,
+}
+
+// Resolve physical event times and reserve the pool before opening output files.
+pub(super) fn prepare_score(
+    config: &AppConfig,
+    rate: u32,
+    mut scenario: Scenario,
+    streaming: bool,
+) -> Result<PreparedScore, String> {
+    let fs = rate as f32;
+    let hop = config.analysis.hop_size;
+    let mut effective = config.clone();
+    effective.audio.sample_rate = rate;
+    effective.validate_runtime().map_err(|e| format!("{e:#}"))?;
+    let expression_markers = scenario.expression.is_some();
+    scenario.prepare_expression(fs, hop);
+    let room_owners = if config.room_mode() == crate::config::RoomMode::Both {
+        if streaming {
+            return Err("strict room needs a pre-scannable score to bound Voice, Flora and Rain generations".into());
+        }
+        room_reservation::source_bound(&scenario, fs, hop, !config.temporal_meter_t2)?
+    } else {
+        0
+    };
+    #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+    let room_owners = if crate::runtime::room_performance::oracle::mode() == "census" {
+        eprintln!("census production bound owners={room_owners}");
+        64
+    } else {
+        room_owners
+    };
+    #[cfg(test)]
+    let room_owners = ROOM_OWNER_OVERRIDE.get().unwrap_or(room_owners);
+    let room = crate::life::schedule_renderer::RoomBuses::prepare(
+        config.room_mode(),
+        hop,
+        room_owners,
+        !scenario.sites.is_empty(),
+    )?;
+    Ok(PreparedScore {
+        scenario,
+        expression_markers,
+        room,
+    })
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn prepare_runtime(
     config: &AppConfig,
     runtime_sample_rate: u32,
     scenario_label: String,
-    mut scenario: Scenario,
+    prepared: PreparedScore,
     stop_flag: Arc<AtomicBool>,
     opts: WiringOptions,
     inline: bool,
 ) -> Result<PreparedRuntime<impl FnOnce(&WorkerConfig) -> WorkerState + use<>>, String> {
+    let PreparedScore {
+        scenario,
+        expression_markers,
+        room,
+    } = prepared;
     let WiringOptions {
         #[cfg(feature = "native")]
         score,
@@ -302,11 +378,6 @@ pub(super) fn prepare_runtime(
         audio_counters,
     } = opts;
 
-    let mut device_config = config.clone();
-    device_config.audio.sample_rate = runtime_sample_rate;
-    device_config
-        .validate_runtime()
-        .map_err(|err| format!("{err:#}"))?;
     // Checked against the actual runtime rate (device, render or step), not the config.
     if scenario.remember_pitch_set > 0. && runtime_sample_rate != 48000 {
         let position = scenario
@@ -320,27 +391,11 @@ pub(super) fn prepare_runtime(
     let core = build_analysis_runtime_core(config, runtime_sample_rate);
     let fs = core.fs;
     let hop = core.hop;
+    let mut sites = crate::life::schedule_renderer::SiteBuses::prepare(&scenario.sites, hop);
+    if let Some(sites) = &mut sites {
+        sites.plan(&scenario, crate::core::timebase::Timebase { fs, hop });
+    }
     let hop_duration = core.hop_duration;
-    let expression_markers = scenario.expression.is_some();
-    scenario.prepare_expression(fs, hop);
-    let room_owners = if config.room_mode() == crate::config::RoomMode::Both {
-        #[cfg(feature = "native")]
-        if score.is_some() {
-            return Err("strict room needs a pre-scannable score to bound Voice, Flora and Rain generations".into());
-        }
-        room_reservation::source_bound(&scenario, fs, hop)?
-    } else {
-        0
-    };
-    #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
-    let room_owners = if crate::runtime::room_performance::oracle::mode() == "census" {
-        eprintln!("census production bound owners={room_owners}");
-        64
-    } else {
-        room_owners
-    };
-    let room =
-        crate::life::schedule_renderer::RoomBuses::prepare(config.room_mode(), hop, room_owners)?;
     if expression_markers {
         report_try(&mut reporter, "scene markers", |writer| {
             writer.write_scene_markers(&scenario.scene_markers)
@@ -812,6 +867,21 @@ pub(super) fn prepare_runtime(
         state.body_snapshot = body_capture.as_ref().map(|c| Box::new(c.snapshot()));
         state.schedule_renderer.body_capture = body_capture;
         state.schedule_renderer.room = room;
+        if let (Some(buses), Some(body)) = (&sites, &mut state.pop.body_metabolism) {
+            body.prepare_sites(&buses.full);
+        }
+        if let Some(sites) = &sites {
+            state.current_landscape.sites = sites
+                .full
+                .iter()
+                .map(|p| {
+                    let mut local = state.current_landscape.clone();
+                    local.site_end = Some(0);
+                    (p.id, Arc::new(local))
+                })
+                .collect();
+        }
+        state.schedule_renderer.sites = sites;
         state.profile = profile;
         #[cfg(test)]
         {
@@ -866,18 +936,13 @@ fn start_analysis(
 #[cfg(feature = "native")]
 pub(crate) fn init_runtime(
     args: crate::cli::Args,
-    config: AppConfig,
+    mut config: AppConfig,
     stop_flag: Arc<AtomicBool>,
 ) -> RuntimeInit {
-    if let Err(err) = config.validate() {
-        eprintln!("{err:#}");
-        std::process::exit(1);
-    }
     let path = Path::new(&args.scenario_path);
-    let (scenario_label, scenario, output_gain, score) = load_scenario(
+    let (scenario_label, scenario, score) = load_scenario(
         path,
         args.seed,
-        &config,
         args.duration,
         &stop_flag,
         &args.end_request,
@@ -886,6 +951,22 @@ pub(crate) fn init_runtime(
         eprintln!("{err}");
         std::process::exit(1);
     });
+    let output_gain = resolve_effective_room(&mut config, &scenario, &path.to_string_lossy())
+        .unwrap_or_else(|err| {
+            eprintln!("{err}");
+            std::process::exit(1);
+        })
+        .output_gain;
+    if let Err(err) = check_site_host(&scenario) {
+        eprintln!(
+            "{}:{}:{}: {}",
+            path.display(),
+            err.line.unwrap_or(0),
+            err.column.unwrap_or(0),
+            err.message
+        );
+        std::process::exit(1);
+    }
     crate::life::modal::register_modal();
     let latency_ms = config.audio.latency_ms;
     let guard_mode = resolve_limiter_mode(&config);
@@ -960,6 +1041,13 @@ pub(crate) fn init_runtime(
         eprintln!("{err}");
         std::process::exit(1);
     }
+    let seed = scenario.seed;
+    let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
+    let prepared = prepare_score(&config, runtime_sample_rate, scenario, score.is_some())
+        .unwrap_or_else(|err| {
+            eprintln!("{err}");
+            std::process::exit(1);
+        });
     let mut reporter = args
         .report
         .as_deref()
@@ -969,15 +1057,12 @@ pub(crate) fn init_runtime(
             eprintln!("{err}");
             std::process::exit(1);
         });
-    report_try(&mut reporter, "meta", |writer| {
-        writer.write_meta(scenario.seed)
-    });
-    if scenario.expression.is_none() {
+    report_try(&mut reporter, "meta", |writer| writer.write_meta(seed));
+    if !prepared.expression_markers {
         report_try(&mut reporter, "scene markers", |writer| {
-            writer.write_scene_markers(&scenario.scene_markers)
+            writer.write_scene_markers(&prepared.scenario.scene_markers)
         });
     }
-    let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
     let deterministic_analysis = (reporter.is_some() || observing) && !args.play;
     let profile = args.profile.as_deref().map(|path| {
         if let Some(report_path) = args.report.as_deref()
@@ -995,7 +1080,7 @@ pub(crate) fn init_runtime(
         let coupling = config.dcc.coupling_strength;
         RunProfile::create(
             path,
-            scenario.seed,
+            seed,
             reporter.is_some(),
             coupling,
             false,
@@ -1011,11 +1096,11 @@ pub(crate) fn init_runtime(
         })
     });
 
-    let wiring = wire_runtime(
+    let wiring = start_runtime(
         &config,
         runtime_sample_rate,
         scenario_label,
-        scenario,
+        prepared,
         stop_flag.clone(),
         WiringOptions {
             score,
@@ -1107,7 +1192,7 @@ pub fn run_headless(args: crate::cli::Args, config: AppConfig, stop_flag: Arc<At
 pub fn run_render(
     scenario_path: &str,
     wav_path: String,
-    config: AppConfig,
+    mut config: AppConfig,
     stop_flag: Arc<AtomicBool>,
     seed: Option<u64>,
     report_path: Option<&str>,
@@ -1118,17 +1203,17 @@ pub fn run_render(
     if reserve_runtime_ids_through == u64::MAX {
         return Err("reserve-runtime-ids-through must be less than u64::MAX".to_string());
     }
-    config
-        .validate_runtime()
-        .map_err(|err| format!("{err:#}"))?;
     crate::life::modal::register_modal();
 
     let guard_mode = resolve_limiter_mode(&config);
     let guard_meter = Some(Arc::new(LimiterMeter::default()));
 
     let path = Path::new(scenario_path);
-    let (scenario_label, scenario, output_gain, score) =
-        load_scenario(path, seed, &config, duration_sec, &stop_flag, &end_request)?;
+    let (scenario_label, scenario, score) =
+        load_scenario(path, seed, duration_sec, &stop_flag, &end_request)?;
+    let output_gain = resolve_effective_room(&mut config, &scenario, scenario_path)
+        .map_err(|e| e.message)?
+        .output_gain;
     validate_run_bounds(
         &scenario,
         duration_sec,
@@ -1138,20 +1223,20 @@ pub fn run_render(
         report_path.is_some(),
         false,
     )?;
+    let runtime_sample_rate = config.audio.sample_rate;
+    let prepared = prepare_score(&config, runtime_sample_rate, scenario, score.is_some())?;
     let mut reporter = report_path.map(JsonlReporter::create).transpose()?;
     if let Some(writer) = reporter.as_mut() {
-        writer.write_meta(scenario.seed)?;
-        if scenario.expression.is_none() {
-            writer.write_scene_markers(&scenario.scene_markers)?;
+        writer.write_meta(prepared.scenario.seed)?;
+        if !prepared.expression_markers {
+            writer.write_scene_markers(&prepared.scenario.scene_markers)?;
         }
     }
 
-    // Render mode never opens an audio device: use configured sample-rate directly.
-    let runtime_sample_rate = config.audio.sample_rate;
     let (wav_tx, wav_rx) = bounded::<Arc<[f32]>>(16);
     let wav_handle = crate::audio::writer::WavOutput::run(
         wav_rx,
-        wav_path,
+        wav_path.clone(),
         runtime_sample_rate,
         config.output_channels(),
         guard_mode,
@@ -1159,11 +1244,11 @@ pub fn run_render(
         output_gain,
     );
 
-    let wiring = wire_runtime(
+    let wiring = start_runtime(
         &config,
         runtime_sample_rate,
         scenario_label,
-        scenario,
+        prepared,
         stop_flag,
         WiringOptions {
             score,
@@ -1198,6 +1283,7 @@ pub fn run_render(
             ("listener-analysis", wiring.listener_analysis_handle),
         ],
     );
+    let runtime_result = runtime_result.map_err(|e| format!("{e} (partial WAV {wav_path})"));
     let wav_result = join_thread("wav", wav_handle).and_then(|result| result);
     match (runtime_result, wav_result) {
         (Ok(()), Ok(())) => Ok(()),

@@ -59,23 +59,66 @@ impl Respond {
 }
 
 impl Flora {
+    #[cfg(test)]
+    pub(crate) fn fixed_lane_response_probe(&self, hz: f32) -> Self {
+        let mut probe = self.clone();
+        for lane in &mut probe.lanes {
+            lane.mode = Mode::Free;
+        }
+        let lane = &mut probe.lanes[0];
+        lane.mode = Mode::Current;
+        lane.r = 0.1;
+        lane.sounding_log2 = hz.log2();
+        probe
+    }
+
     pub(crate) fn configure_respond(&mut self, params: HabituationParams) {
         if let Some(respond) = &mut self.respond {
             respond.tau = satiation_tau(params);
         }
     }
 
-    /// Reads a new shared onset-history observation and sets this hop's clock factor.
+    pub(crate) fn needs_onset_history(&self) -> bool {
+        self.respond.is_some() || self.span_gap.is_some()
+    }
+
+    pub(crate) fn needs_external_onsets(&self) -> bool {
+        self.respond.is_some() && self.needs_hr_observer()
+    }
+
+    /// Reads a new onset-history observation and sets this hop's clock factor.
     /// A rise rho owes w*tau*rho extra seconds, spent at most w*hop_dt per hop.
     pub(crate) fn observe_onsets(&mut self, landscape: &Landscape, now: u64) {
+        let excluded = landscape.site_end.is_some()
+            && self.rendered_samples != 0
+            && self.needs_external_onsets();
         let Some(respond) = &mut self.respond else {
             return;
         };
-        let end = landscape.onset_habituation_end;
-        if !landscape.onset_habituation_known || end > now {
+        let (scan, end, known) = if excluded {
+            landscape
+                .flora_observations
+                .iter()
+                .find(|s| s.id == self.id && s.generation == 0)
+                .and_then(|s| s.perception.as_ref())
+                .and_then(|s| {
+                    Some((
+                        s.onset_habituation_state_scan.as_deref()?,
+                        s.onset_habituation_end,
+                        s.onset_habituation_known,
+                    ))
+                })
+                .unwrap_or((&[], 0, false))
+        } else {
+            (
+                landscape.onset_habituation_state_scan.as_ref(),
+                landscape.onset_habituation_end,
+                landscape.onset_habituation_known,
+            )
+        };
+        if !known || end > now {
             respond.primed = false;
         } else if !respond.primed || end > respond.prev_end {
-            let scan = &landscape.onset_habituation_state_scan;
             self.space
                 .assert_scan_len_named(scan, "onset_habituation_state_scan");
             if respond.primed {

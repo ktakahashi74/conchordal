@@ -27,12 +27,26 @@ pub(super) fn merge_latest_analysis_results(
     loop {
         match analysis_result_rx.try_recv() {
             Ok((analyzed_id, Some(frame))) => {
+                if !frame.sites.is_empty() && analyzed_id >= frame_idx {
+                    continue;
+                }
                 *last_analysis_frame = Some(analyzed_id);
                 latest_audio = Some((analyzed_id, frame));
             }
             Ok((_, None)) => {
                 unavailable = true;
                 current_landscape.support = None;
+                for (_, site) in &mut current_landscape.sites {
+                    let site = Arc::make_mut(site);
+                    site.loo.clear();
+                    site.flora_observations.clear();
+                    site.rain_observations.clear();
+                    site.tonal_observations.clear();
+                    site.tonal_context = None;
+                    site.onset_habituation_known = false;
+                    site.support = None;
+                    site.site_resource_power = None;
+                }
                 current_landscape.onset_habituation_known = false;
                 current_landscape.tonal_context = None;
                 current_landscape.tonal_observations.clear();
@@ -47,6 +61,17 @@ pub(super) fn merge_latest_analysis_results(
             Err(TryRecvError::Disconnected) => {
                 unavailable = true;
                 current_landscape.support = None;
+                for (_, site) in &mut current_landscape.sites {
+                    let site = Arc::make_mut(site);
+                    site.loo.clear();
+                    site.flora_observations.clear();
+                    site.rain_observations.clear();
+                    site.tonal_observations.clear();
+                    site.tonal_context = None;
+                    site.onset_habituation_known = false;
+                    site.support = None;
+                    site.site_resource_power = None;
+                }
                 current_landscape.onset_habituation_known = false;
                 current_landscape.tonal_context = None;
                 current_landscape.tonal_observations.clear();
@@ -89,6 +114,7 @@ pub(super) fn merge_latest_analysis_results(
     current_landscape.support = frame.support;
     current_landscape.subjective_intensity = frame.subjective_intensity;
     current_landscape.nsgt_power = frame.nsgt_power;
+    current_landscape.sites = frame.sites;
     current_landscape.loo = frame.loo;
     current_landscape.tonal_context = frame.tonal_context;
     current_landscape.pitch_set = frame.pitch_set;
@@ -165,6 +191,13 @@ pub(super) fn drive_and_apply_habituation(
             &lparams.harmonicity_kernel.params,
             dt_sec,
         ),
+    }
+    for (_, local) in &mut landscape.sites {
+        Arc::make_mut(local).apply_habituation(
+            hab.state(),
+            hab.theta(),
+            &lparams.consonance_representation,
+        );
     }
     landscape.apply_habituation(hab.state(), hab.theta(), &lparams.consonance_representation);
 }
@@ -356,6 +389,14 @@ pub(super) fn apply_landscape_updates(
         cfg.fs,
         state.frame_idx,
     );
+    let shared = &mut state.current_landscape;
+    for (_, local) in &mut shared.sites {
+        let local = Arc::make_mut(local);
+        local.rhythm = shared.rhythm;
+        local.pitch_set = shared.pitch_set.clone();
+        local.pitch_set_weight = shared.pitch_set_weight;
+        local.support_weights = shared.support_weights;
+    }
     state
         .generator_model
         .update_gate_from_rhythm(now_tick, &state.current_landscape.rhythm);

@@ -28,6 +28,7 @@ fn voice(generation: u32, at: u64, tone_id: u64, routing: Routing) -> PhonationB
 
 fn source(kind: SourceKind, generation: u32) -> SourcePcm {
     SourcePcm {
+        site_id: 0,
         kind,
         id: 2,
         generation,
@@ -40,7 +41,7 @@ fn source(kind: SourceKind, generation: u32) -> SourcePcm {
 
 fn wet(owners: usize) -> ScheduleRenderer {
     let mut r = ScheduleRenderer::new(TIME);
-    r.room = RoomBuses::prepare(RoomMode::Both, TIME.hop, owners).unwrap();
+    r.room = RoomBuses::prepare(RoomMode::Both, TIME.hop, owners, false).unwrap();
     r
 }
 
@@ -58,21 +59,23 @@ fn solo_history_without_packet_excludes_the_entire_tail() {
     let rhythms = NeuralRhythms::default();
     let mut r = wet(1);
     let mut observer = AcousticTemporalExpectation::new(48000).unwrap();
-    r.prepare_self_sound(std::iter::once((2, 7)), 0, &observer);
+    r.prepare_self_sound(std::iter::once((2, 7, 0)), 0, &observer);
     let batch = voice(7, 5, 1, Routing::default());
     let mut heard_body = false;
     let mut heard_tail = false;
     for hop in 0..692 {
         let now = hop * 512;
-        let frame = r.render(
-            if hop == 0 {
-                std::slice::from_ref(&batch)
-            } else {
-                &[]
-            },
-            now,
-            &rhythms,
-        );
+        let frame = r
+            .render(
+                if hop == 0 {
+                    std::slice::from_ref(&batch)
+                } else {
+                    &[]
+                },
+                now,
+                &rhythms,
+            )
+            .unwrap();
         observer.process(now, frame.habitat, |_| {});
         let own = r.self_sound[0].as_ref().unwrap();
         assert_eq!(r.buf_habitat, own.habitat);
@@ -107,7 +110,7 @@ fn rebirth_in_release_shares_one_wet_stem_across_all_three_readers() {
     for hop in 0..7 {
         let now = hop * 512;
         let generation = if hop == 0 { 7 } else { 8 };
-        r.prepare_self_sound(std::iter::once((2, generation)), now, &observer);
+        r.prepare_self_sound(std::iter::once((2, generation, 0)), now, &observer);
         let (mut old, mut new) = (Vec::new(), Vec::new());
         if hop == 0 {
             old.push(voice(7, 13, 1, Routing::default()));
@@ -128,8 +131,8 @@ fn rebirth_in_release_shares_one_wet_stem_across_all_three_readers() {
                 },
             ));
         }
-        prior_stem.extend_from_slice(prior.render(&old, now, &rhythms).habitat);
-        new_stem.extend_from_slice(other.render(&new, now, &rhythms).habitat);
+        prior_stem.extend_from_slice(prior.render(&old, now, &rhythms).unwrap().habitat);
+        new_stem.extend_from_slice(other.render(&new, now, &rhythms).unwrap().habitat);
         old.extend(new);
         r.loo_pcm.clear();
         r.loo_pcm.push(source(SourceKind::Voice, generation));
@@ -137,15 +140,17 @@ fn rebirth_in_release_shares_one_wet_stem_across_all_three_readers() {
             r.loo_pcm.push(source(SourceKind::Voice, 7));
         }
         let mut metabolism = [source(SourceKind::Voice, generation)];
-        let frame = r.render_with_source_pcm(
-            &old,
-            now,
-            &rhythms,
-            &mut metabolism,
-            &mut [],
-            &mut [],
-            |_, _, _, _| {},
-        );
+        let frame = r
+            .render_with_source_pcm(
+                &old,
+                now,
+                &rhythms,
+                &mut metabolism,
+                &mut [],
+                &mut [],
+                |_, _, _, _| {},
+            )
+            .unwrap();
         let mix = frame.habitat.to_vec();
         let own = r.self_sound.iter().flatten().next().unwrap();
         assert_eq!(own.habitat, metabolism[0].habitat);
@@ -192,7 +197,7 @@ fn analysis_delivery_gap_keeps_room_tail_and_render_jump_resets_all_buses() {
     let rhythms = NeuralRhythms::default();
     let mut r = wet(1);
     let observer = AcousticTemporalExpectation::new(48000).unwrap();
-    r.prepare_self_sound(std::iter::once((2, 7)), 0, &observer);
+    r.prepare_self_sound(std::iter::once((2, 7, 0)), 0, &observer);
     let mut sources = [source(SourceKind::Voice, 7)];
     let input = [voice(7, 3, 1, Routing::default())];
     for hop in 0..6 {
@@ -203,30 +208,34 @@ fn analysis_delivery_gap_keeps_room_tail_and_render_jump_resets_all_buses() {
         if hop == 1 || hop == 4 {
             r.loo_pcm.push(source(SourceKind::Voice, 7));
         }
-        let frame = r.render_with_source_pcm(
-            if hop == 0 { &input } else { &[] },
-            hop * 512,
-            &rhythms,
-            &mut sources,
-            &mut [],
-            &mut [],
-            |_, _, _, _| {},
-        );
+        let frame = r
+            .render_with_source_pcm(
+                if hop == 0 { &input } else { &[] },
+                hop * 512,
+                &rhythms,
+                &mut sources,
+                &mut [],
+                &mut [],
+                |_, _, _, _| {},
+            )
+            .unwrap();
         assert_eq!(frame.habitat, sources[0].habitat);
         assert!(frame.habitat.iter().any(|&x| x != 0.));
         if let Some(loo) = r.loo_pcm.first() {
             assert_eq!(loo.habitat, sources[0].habitat);
         }
     }
-    let frame = r.render_with_source_pcm(
-        &[],
-        12 * 512,
-        &rhythms,
-        &mut sources,
-        &mut [],
-        &mut [],
-        |_, _, _, _| {},
-    );
+    let frame = r
+        .render_with_source_pcm(
+            &[],
+            12 * 512,
+            &rhythms,
+            &mut sources,
+            &mut [],
+            &mut [],
+            |_, _, _, _| {},
+        )
+        .unwrap();
     for pcm in [frame.habitat, frame.presentation, &sources[0].habitat] {
         assert!(pcm.iter().all(|&x| x == 0.));
     }
@@ -241,7 +250,9 @@ fn analysis_delivery_gap_keeps_room_tail_and_render_jump_resets_all_buses() {
 
 #[test]
 fn opposite_phase_inputs_cancel_on_bus_and_route_off_keeps_the_own_tail() {
-    let mut room = RoomBuses::prepare(RoomMode::Both, 512, 2).unwrap().unwrap();
+    let mut room = RoomBuses::prepare(RoomMode::Both, 512, 2, false)
+        .unwrap()
+        .unwrap();
     let mut inputs = [source(SourceKind::Voice, 7), source(SourceKind::Flora, 0)];
     let ir = york_response();
     let mut mixture = [0.0; 512];
@@ -262,7 +273,12 @@ fn opposite_phase_inputs_cancel_on_bus_and_route_off_keeps_the_own_tail() {
             .as_mut()
             .unwrap()
             .process(&mixture, &mut wet_mix);
-        room.histories.process(&mut [], &mut inputs, &mut []);
+        room.histories
+            .bind_readers(hop * 512, &[], &inputs, &[])
+            .unwrap();
+        room.histories
+            .process(hop * 512, &mut [], &mut inputs, &mut [])
+            .unwrap();
         for (i, &mixed) in wet_mix.iter().enumerate() {
             let t = hop as usize * 512 + i;
             let tap = t.checked_sub(511).map_or(0., |j| ir[j]);
@@ -318,15 +334,17 @@ fn rain_removes_drops_and_preserves_the_ringing_objects() {
                 .map(|(&total, &drops)| total - drops),
         );
         drops_heard |= dry.drops_habitat_pcm().iter().any(|&x| x != 0.);
-        let frame = renderer.render_with_source_pcm(
-            &[],
-            hop * 512,
-            &NeuralRhythms::default(),
-            &mut [],
-            &mut [],
-            &mut rain,
-            |_, _, _, _| {},
-        );
+        let frame = renderer
+            .render_with_source_pcm(
+                &[],
+                hop * 512,
+                &NeuralRhythms::default(),
+                &mut [],
+                &mut [],
+                &mut rain,
+                |_, _, _, _| {},
+            )
+            .unwrap();
         let mix = frame.habitat.to_vec();
         let own = &renderer.loo_pcm[0].habitat;
         for i in (0..512).step_by(17) {
@@ -363,19 +381,21 @@ fn onset_tonal_and_hr_consume_the_same_wet_packet_on_the_render_frame() {
     for hop in 0..130 {
         let mut command = voice(7, hop * 512, hop, Routing::default());
         command.tones[0].hold_ticks = Some(7000);
-        let frame = r.render_with_source_pcm(
-            if hop == 20 || hop == 60 {
-                std::slice::from_ref(&command)
-            } else {
-                &[]
-            },
-            hop * 512,
-            &NeuralRhythms::default(),
-            &mut [],
-            &mut [],
-            &mut [],
-            |_, _, _, _| {},
-        );
+        let frame = r
+            .render_with_source_pcm(
+                if hop == 20 || hop == 60 {
+                    std::slice::from_ref(&command)
+                } else {
+                    &[]
+                },
+                hop * 512,
+                &NeuralRhythms::default(),
+                &mut [],
+                &mut [],
+                &mut [],
+                |_, _, _, _| {},
+            )
+            .unwrap();
         let mix = frame.habitat.to_vec();
         // The renderer still advances during a dropped analysis hop.
         if hop == 85 {
@@ -383,6 +403,7 @@ fn onset_tonal_and_hr_consume_the_same_wet_packet_on_the_render_frame() {
         }
         assert_eq!(analysis.begin_hop(hop), hop == 86);
         let head = PcmPacket {
+            sites: Vec::new(),
             sources: std::mem::take(&mut r.loo_pcm),
             recycle: tx.clone(),
         };
@@ -391,7 +412,7 @@ fn onset_tonal_and_hr_consume_the_same_wet_packet_on_the_render_frame() {
         let ready = analysis.observe(hop, &mix, Some(&head));
         assert_eq!(ready, silent_reference.observe(hop, &[0.; 512], None));
         drop(head);
-        r.loo_pcm = rx.try_recv().unwrap();
+        r.loo_pcm = rx.try_recv().unwrap().0;
         if hop == 86 {
             assert!(!ready);
         }
@@ -442,7 +463,9 @@ fn onset_tonal_and_hr_consume_the_same_wet_packet_on_the_render_frame() {
 #[cfg(feature = "profile-alloc")]
 #[test]
 fn strict_room_pool_birth_replacement_and_reader_fanout_allocate_nothing() {
-    let mut room = RoomBuses::prepare(RoomMode::Both, 512, 2).unwrap().unwrap();
+    let mut room = RoomBuses::prepare(RoomMode::Both, 512, 2, false)
+        .unwrap()
+        .unwrap();
     let mut a = [source(SourceKind::Voice, 0), source(SourceKind::Voice, 1)];
     let mut b = [source(SourceKind::Voice, 0)];
     crate::runtime_profile::begin_allocations();
@@ -461,16 +484,55 @@ fn strict_room_pool_birth_replacement_and_reader_fanout_allocate_nothing() {
             .as_mut()
             .unwrap()
             .process(&a[0].habitat, &mut left);
-        room.histories.process(&mut [], &mut a, &mut b);
+        room.histories
+            .bind_readers(u64::from(generation) * 512, &[], &a, &b)
+            .unwrap();
+        room.histories
+            .process(u64::from(generation) * 512, &mut [], &mut a, &mut b)
+            .unwrap();
         assert_eq!(a[0].habitat, b[0].habitat);
     }
     let allocation = crate::runtime_profile::finish_allocations().unwrap();
     assert_eq!((allocation.count, allocation.bytes), (0, 0));
 }
 
+#[cfg(feature = "profile-alloc")]
+#[test]
+fn site_capture_and_reflections_reuse_storage() {
+    let (score, _) = crate::scripting::ScriptHost::compile_source(
+        "place(sine().sustain().leave_self_out(true),at(375).site(1,12)); wait(1);",
+        Some(21),
+    )
+    .unwrap();
+    for mode in [RoomMode::Off, RoomMode::Presentation, RoomMode::Both] {
+        let mut r = ScheduleRenderer::new(TIME);
+        r.sites = SiteBuses::prepare(&score.sites, 512);
+        r.sites.as_mut().unwrap().plan(&score, TIME);
+        r.room = RoomBuses::prepare(mode, 512, 1, true).unwrap();
+        let mut captured = source(SourceKind::Voice, 7);
+        captured.site_id = 1;
+        r.loo_pcm.push(captured);
+        let mut batch = voice(7, 0, 0, Routing::default());
+        batch.body_policy = Some(crate::life::action_candidates::PolicySnapshot {
+            site_id: 1,
+            at: 0,
+            is_alive: true,
+            gate_allows_onset: true,
+        });
+        batch.tones[0].hold_ticks = Some(48000);
+        r.render(&[batch], 0, &NeuralRhythms::default()).unwrap();
+        for n in 1..64 {
+            crate::runtime_profile::begin_allocations();
+            r.render(&[], n * 512, &NeuralRhythms::default()).unwrap();
+            let alloc = crate::runtime_profile::finish_allocations().unwrap();
+            assert_eq!((alloc.count, alloc.bytes), (0, 0), "{mode:?}, hop {n}");
+        }
+    }
+}
+
 #[test]
 fn strict_room_rejects_an_unaddressable_pool_during_preparation() {
-    let error = RoomBuses::prepare(RoomMode::Both, TIME.hop, usize::MAX / 4)
+    let error = RoomBuses::prepare(RoomMode::Both, TIME.hop, usize::MAX / 4, false)
         .err()
         .unwrap();
     assert!(error.contains("addressable storage"), "{error}");

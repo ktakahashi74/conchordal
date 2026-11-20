@@ -162,13 +162,14 @@ pub(super) fn advance_population(
             ticks.extend_from_slice(&clock.ticks);
             ticks
         });
-        flora.observe_onsets(&state.current_landscape, now_tick);
+        let local = state.current_landscape.at_site(flora.site_id());
+        flora.observe_onsets(local, now_tick);
         flora.observe_rhythm(state.flora_rhythm, now_tick, cfg.meter_shaping);
-        flora.observe_external(&state.current_landscape, state.last_analysis_frame);
+        flora.observe_external(local, state.last_analysis_frame);
         if let Some(gap) = &mut flora.span_gap {
-            gap.observe(&state.current_landscape, now_tick);
+            gap.observe(local, now_tick);
         }
-        flora.advance(&state.current_landscape);
+        flora.advance(local);
         if flora.is_finished()
             && let Some(gap) = &mut flora.span_gap
         {
@@ -183,7 +184,7 @@ pub(super) fn advance_population(
     for rain in &mut state.pop.rain {
         rain.observe_meter(state.flora_rhythm, now_tick);
         if !wet_finish {
-            rain.advance(&state.current_landscape);
+            rain.advance(state.current_landscape.at_site(rain.site_id()));
         }
     }
     if state.pop.rest_enabled {
@@ -221,11 +222,15 @@ pub(super) fn advance_population(
         request_body_footprints(state, cfg.fs, now_tick);
     }
     if let Some(observer) = state.temporal_expectation.as_mut() {
+        if let Some(sites) = &mut state.schedule_renderer.sites {
+            sites.align_energy(now_tick);
+        }
         if state
             .schedule_renderer
             .room
             .as_ref()
             .is_some_and(|room| room.discontinuous(now_tick))
+            || (state.schedule_renderer.sites.is_some() && observer.discontinuous(now_tick))
         {
             observer.align_to(now_tick);
             state
@@ -234,11 +239,13 @@ pub(super) fn advance_population(
         }
         // Track from birth, including before a later switch into participation.
         state.schedule_renderer.prepare_self_sound(
-            state
-                .pop
-                .voices
-                .iter()
-                .map(|voice| (voice.id(), voice.metadata.generation)),
+            state.pop.voices.iter().map(|voice| {
+                (
+                    voice.id(),
+                    voice.metadata.generation,
+                    voice.effective_control.body.site_id,
+                )
+            }),
             now_tick,
             observer,
         );
@@ -270,16 +277,24 @@ pub(super) fn advance_population(
                 .needs_temporal_context(now_tick, frame_end)
             {
                 let mut local = shared;
-                // Audit the unmodified habitat forecast; leave-self-out is a decision view.
-                voice
-                    .phonation_engine
-                    .set_outcome_forecast(state.reporter.as_ref().and(shared.as_ref()));
+                let spatial = state.schedule_renderer.sites.is_some();
                 let mut own = state
                     .schedule_renderer
                     .self_sound_history(voice.id(), voice.metadata.generation);
+                if own.as_ref().is_some_and(|h| !observer.aligned_history(h)) {
+                    local = None;
+                }
                 if let (Some(local), Some(own)) = (local.as_mut(), own.as_deref_mut()) {
                     observer.use_external_energy(local, &mut own.external);
                 }
+                let outcome = if spatial {
+                    local.as_ref()
+                } else {
+                    shared.as_ref()
+                };
+                voice
+                    .phonation_engine
+                    .set_outcome_forecast(state.reporter.as_ref().and(outcome));
                 voice
                     .phonation_engine
                     .set_temporal_context(local.as_ref(), own.map_or([0.0; 3], |own| own.profile));
@@ -411,7 +426,7 @@ pub(super) fn advance_population(
                 voice
                     .phonation_engine
                     .drain_participation_predictions()
-                    .map(|prediction| (id, prediction)),
+                    .map(|prediction| (id, voice.metadata.generation, prediction)),
             );
             state.participation_decisions.extend(
                 voice
@@ -729,7 +744,7 @@ pub(super) fn render_and_route_audio(
     cfg: &WorkerConfig,
     now_tick: Tick,
     phonation_count: usize,
-) -> (Arc<[f32]>, Arc<[f32]>, f32, Duration) {
+) -> Result<(Arc<[f32]>, Arc<[f32]>, f32, Duration), String> {
     state.schedule_renderer.harmonic_recorder = state.current_landscape.harmonic_recorder.clone();
     for flora in &mut state.pop.flora {
         flora.harmonic_recorder = state.current_landscape.harmonic_recorder.clone();
@@ -747,7 +762,8 @@ pub(super) fn render_and_route_audio(
         runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
     }
     let synthesis_start = state.profile.as_ref().map(|_| Instant::now());
-    if !state.loo_populations.is_empty()
+    if state.schedule_renderer.sites.is_some()
+        || !state.loo_populations.is_empty()
         || state.pop.has_placed_flora
         || state.pop.has_placed_rain_observer
     {
@@ -764,7 +780,12 @@ pub(super) fn render_and_route_audio(
             .take()
             .ok_or_else(|| "inline LOO storage is missing".to_string());
         state.schedule_renderer.loo_pcm = match recycled {
-            Ok(sources) => sources,
+            Ok((sources, full)) => {
+                state
+                    .schedule_renderer
+                    .receive_site_buffers(now_tick, &state.pop, full);
+                sources
+            }
             Err(error) => {
                 state
                     .failures
@@ -799,6 +820,7 @@ pub(super) fn render_and_route_audio(
             {
                 let pitch = &voice.effective_control.pitch;
                 sources.push(crate::core::stream::loo::SourcePcm {
+                    site_id: voice.effective_control.body.site_id,
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
                     onset_history: pitch.respond_to_onsets > 0.0 && pitch.leave_self_out,
@@ -827,9 +849,11 @@ pub(super) fn render_and_route_audio(
                 .any(|s| s.kind == crate::core::stream::loo::SourceKind::Flora && s.id == flora.id)
             {
                 sources.push(crate::core::stream::loo::SourcePcm {
+                    site_id: flora.site_id(),
                     kind: crate::core::stream::loo::SourceKind::Flora,
                     analyze_hr: flora.needs_hr_observer(),
-                    onset_history: false,
+                    onset_history: state.schedule_renderer.sites.is_some()
+                        && flora.needs_external_onsets(),
                     tonal_context: None,
                     id: flora.id,
                     generation: 0,
@@ -843,6 +867,7 @@ pub(super) fn render_and_route_audio(
                 .any(|s| s.kind == crate::core::stream::loo::SourceKind::Rain && s.id == rain.id())
             {
                 sources.push(crate::core::stream::loo::SourcePcm {
+                    site_id: rain.site_id(),
                     kind: crate::core::stream::loo::SourceKind::Rain,
                     analyze_hr: true,
                     onset_history: false,
@@ -871,7 +896,7 @@ pub(super) fn render_and_route_audio(
                 writer.write_local_prediction_match(id, cfg.fs as u32, start, window, matched)
             });
         },
-    );
+    )?;
     for flora in &mut state.pop.flora {
         if let Some(gap) = &mut flora.span_gap {
             for transition in gap.trace.drain(..) {
@@ -895,7 +920,7 @@ pub(super) fn render_and_route_audio(
         }
     }
     if let Some(runtime) = state.pop.body_metabolism.as_mut() {
-        runtime.observe(now_tick, frame.habitat, &state.lparams);
+        runtime.observe_at_sites(now_tick, frame.habitat, frame.sites, &state.lparams);
     }
     let synthesis_elapsed = synthesis_start
         .map(|start| start.elapsed())
@@ -1049,7 +1074,7 @@ pub(super) fn render_and_route_audio(
             writer.write_phrase_execution(receipt)
         });
     }
-    (presentation_chunk, habitat_chunk, max_p, synthesis_elapsed)
+    Ok((presentation_chunk, habitat_chunk, max_p, synthesis_elapsed))
 }
 
 pub(super) fn participation_outcome(
@@ -1096,15 +1121,36 @@ pub(super) fn drive_production_meter(
         observer.process(now, habitat_chunk, |observation| {
             state
                 .participation_predictions
-                .retain(|(voice_id, prediction)| {
-                    let Some(sample) = participation_outcome(
+                .retain(|(voice_id, generation, prediction)| {
+                    let mut sample_observation = observation;
+                    let local_energy = if state.schedule_renderer.sites.is_some() {
+                        state
+                            .schedule_renderer
+                            .self_sound_history(*voice_id, *generation)
+                            .and_then(|h| {
+                                h.observed_external_energy(
+                                    observation.start_frame,
+                                    observation.end_frame,
+                                )
+                            })
+                    } else {
+                        Some(observation.band_energy)
+                    };
+                    if let Some(energy) = local_energy {
+                        sample_observation.band_energy = energy;
+                    }
+                    let Some(mut sample) = participation_outcome(
                         *voice_id,
                         cfg.fs as u32,
                         *prediction,
-                        Some(observation),
+                        Some(sample_observation),
                     ) else {
                         return true;
                     };
+                    if local_energy.is_none() {
+                        sample.status = "input_gap";
+                        sample.observed_habitat_band_energy = None;
+                    }
                     report_try(&mut state.reporter, "participation outcome", |writer| {
                         writer.write_participation_outcome(&sample)
                     });

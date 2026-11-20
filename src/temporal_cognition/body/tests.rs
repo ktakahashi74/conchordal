@@ -471,19 +471,25 @@ fn private_capture_matches_isolated_render_for_every_body_and_route() {
             let mut pcm = [Vec::new(), Vec::new()];
             for now in (0..6400).step_by(64) {
                 let batches = if now == 0 { &all[..] } else { &[] };
-                let actual = tracked.render(batches, now, &NeuralRhythms::default());
-                let reference = control.render(batches, now, &NeuralRhythms::default());
+                let actual = tracked
+                    .render(batches, now, &NeuralRhythms::default())
+                    .unwrap();
+                let reference = control
+                    .render(batches, now, &NeuralRhythms::default())
+                    .unwrap();
                 assert_eq!(actual.habitat, reference.habitat);
                 assert_eq!(actual.presentation, reference.presentation);
-                let private = isolated.render(
-                    if now == 0 {
-                        std::slice::from_ref(&actor)
-                    } else {
-                        &[]
-                    },
-                    now,
-                    &NeuralRhythms::default(),
-                );
+                let private = isolated
+                    .render(
+                        if now == 0 {
+                            std::slice::from_ref(&actor)
+                        } else {
+                            &[]
+                        },
+                        now,
+                        &NeuralRhythms::default(),
+                    )
+                    .unwrap();
                 pcm[0].extend_from_slice(private.habitat);
                 pcm[1].extend_from_slice(private.presentation);
             }

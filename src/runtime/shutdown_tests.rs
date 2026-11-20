@@ -35,10 +35,9 @@ fn tc1b_capture() {
     std::fs::create_dir_all(&directory).unwrap();
     let config = AppConfig::default();
     crate::life::modal::register_modal();
-    let (label, scenario, _, score) = super::scenario_load::load_scenario(
+    let (label, scenario, score) = super::scenario_load::load_scenario(
         Path::new(&path),
         Some(21),
-        &config,
         None,
         &AtomicBool::new(false),
         &AtomicBool::new(false),
@@ -964,20 +963,22 @@ fn ph1_offline_acquisition() {
     let path = std::env::var("PH1_SCENE").unwrap();
     let directory = std::path::PathBuf::from(std::env::var("PH1_OUTPUT").unwrap());
     std::fs::create_dir_all(&directory).unwrap();
-    let config = std::env::var("PH1_CONFIG").map_or_else(
+    let mut config = std::env::var("PH1_CONFIG").map_or_else(
         |_| AppConfig::default(),
         |path| AppConfig::load_or_default(Some(&path)).unwrap(),
     );
     crate::life::modal::register_modal();
-    let (label, scenario, gain, score) = super::scenario_load::load_scenario(
+    let (label, scenario, score) = super::scenario_load::load_scenario(
         std::path::Path::new(&path),
         Some(21),
-        &config,
         None,
         &AtomicBool::new(false),
         &AtomicBool::new(false),
     )
     .unwrap();
+    let gain = resolve_effective_room(&mut config, &scenario, &path)
+        .unwrap()
+        .output_gain;
     let mut reporter =
         JsonlReporter::create(directory.join("report.jsonl").to_str().unwrap()).unwrap();
     reporter.write_meta(scenario.seed).unwrap();
@@ -2212,19 +2213,18 @@ fn remember_pitch_set_checks_the_runtime_sample_rate() {
     let loaded = super::scenario_load::load_scenario(
         &path,
         Some(1),
-        &config,
         None,
         &AtomicBool::new(false),
         &AtomicBool::new(false),
     );
     std::fs::remove_dir_all(&directory).unwrap();
     // The configured rate is not the runtime rate: a 48 kHz device may still run it.
-    let (label, scenario, _, _) = loaded.unwrap();
+    let (label, scenario, _) = loaded.unwrap();
     let Err(message) = super::wiring::prepare_runtime(
         &config,
         44_100,
         label,
-        scenario,
+        super::wiring::prepare_score(&config, 44_100, scenario, false).unwrap(),
         Arc::new(AtomicBool::new(false)),
         options(),
         false,
@@ -2235,6 +2235,89 @@ fn remember_pitch_set_checks_the_runtime_sample_rate() {
         message.starts_with("pitch_set:1:") && message.contains("requires 48000 Hz"),
         "{message}"
     );
+}
+
+#[test]
+fn strict_exhaustion_joins_waiting_worker_and_discards_the_failed_hop() {
+    let dir = std::env::temp_dir().join(format!("conchordal-room-failure-{}", std::process::id()));
+    let _output = super::test_output_directory::TestOutputDirectory::new(dir.clone());
+    let path = dir.join("report.jsonl");
+    let (ui, frames) = bounded(8);
+    let (wav, pcm) = bounded(8);
+    let mut opts = options();
+    opts.wait_user_exit = true;
+    opts.listener_forced = true;
+    opts.reporter = Some(JsonlReporter::create(path.to_str().unwrap()).unwrap());
+    opts.ui_tx = Some(ui);
+    opts.wav_tx = Some(wav);
+    let config = AppConfig::from_toml("[room]\nmode='both'").unwrap();
+    let (scene, _) = ScriptHost::compile_source(
+        "place(sine().sustain().leave_self_out(true), at(330).count(2)); wait(1);",
+        Some(21),
+    )
+    .unwrap();
+    let stop = Arc::new(AtomicBool::new(false));
+    wiring::ROOM_OWNER_OVERRIDE.set(Some(1));
+    let wiring = wire_runtime(&config, 48000, "room".into(), scene, stop.clone(), opts);
+    wiring::ROOM_OWNER_OVERRIDE.set(None);
+    let wiring = wiring.unwrap();
+    let (done, result) = bounded(1);
+    thread::spawn(move || done.send(join(wiring)).unwrap());
+    let err = result
+        .recv_timeout(Duration::from_secs(20))
+        .expect("workers joined on failure")
+        .unwrap_err();
+    assert!(
+        err.contains("tick 0: need 2 owner slots, reserved 1"),
+        "{err}"
+    );
+    assert!(err.contains(path.to_str().unwrap()), "{err}");
+    assert!(stop.load(Ordering::SeqCst));
+    assert_eq!(pcm.iter().count(), 0);
+    assert!(frames.iter().all(|frame| frame.wave.samples.is_empty()));
+    assert_eq!(std::fs::read(path).unwrap(), b"");
+}
+
+#[test]
+fn strict_partial_files_end_at_last_completed_hop_and_preparation_preserves_them() {
+    let dir = std::env::temp_dir().join(format!("conchordal-room-prefix-{}", std::process::id()));
+    let _output = super::test_output_directory::TestOutputDirectory::new(dir.clone());
+    let score = dir.join("input.rhai");
+    let wav = dir.join("partial.wav");
+    let report = dir.join("partial.jsonl");
+    std::fs::write(&score, "place(sine().sustain().leave_self_out(true),at(330)); wait(0.021); place(sine().sustain().leave_self_out(true),at(440)); wait(1);").unwrap();
+    let render = |owners| {
+        wiring::ROOM_OWNER_OVERRIDE.set(Some(owners));
+        let result = run_render(
+            score.to_str().unwrap(),
+            wav.to_str().unwrap().into(),
+            AppConfig::from_toml("[room]\nmode='both'").unwrap(),
+            Arc::new(AtomicBool::new(false)),
+            Some(21),
+            report.to_str(),
+            0,
+            None,
+            Arc::new(AtomicBool::new(false)),
+        );
+        wiring::ROOM_OWNER_OVERRIDE.set(None);
+        result.unwrap_err()
+    };
+    let err = render(1);
+    assert!(
+        err.contains("2 complete hops")
+            && err.contains("partial.wav")
+            && err.contains("partial.jsonl"),
+        "{err}"
+    );
+    assert_eq!(hound::WavReader::open(&wav).unwrap().duration(), 1024);
+    let prefix = std::fs::read_to_string(&report).unwrap();
+    let last: serde_json::Value = serde_json::from_str(prefix.lines().last().unwrap()).unwrap();
+    assert_eq!(last["type"], "hop_timing");
+    assert_eq!(last["frame_idx"], 1);
+    let audio = std::fs::read(&wav).unwrap();
+    assert!(render(usize::MAX).contains("overflow"));
+    assert_eq!(std::fs::read_to_string(report).unwrap(), prefix);
+    assert_eq!(std::fs::read(wav).unwrap(), audio);
 }
 
 #[test]

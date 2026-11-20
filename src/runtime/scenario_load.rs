@@ -115,11 +115,137 @@ pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug)]
+pub(super) struct ResolvedRoom {
+    pub(super) output_gain: f32,
+    pub(super) diagnostic: String,
+}
+
+pub(super) fn check_site_host(scenario: &Scenario) -> Result<(), step::ScriptDiagnostics> {
+    if let Some(site) = scenario.sites.first() {
+        return Err(step::ScriptDiagnostics {
+            message: "site requires finite offline rendering with conchordal-render".into(),
+            line: site.position.line(),
+            column: site.position.position(),
+        });
+    }
+    Ok(())
+}
+
+/// Apply the whole-score declaration before choosing a device layout or preparing a pool.
+pub(super) fn resolve_effective_room(
+    config: &mut AppConfig,
+    scenario: &Scenario,
+    label: &str,
+) -> Result<ResolvedRoom, step::ScriptDiagnostics> {
+    use crate::config::{RoomConfig, RoomMode};
+    let diagnostic = |message: &str, position: Option<(usize, usize)>| {
+        let at = position
+            .map(|(l, c)| format!(":{l}:{c}"))
+            .unwrap_or_default();
+        step::ScriptDiagnostics {
+            message: format!("{label}{at}: {message}"),
+            line: position.map(|p| p.0),
+            column: position.map(|p| p.1),
+        }
+    };
+    if let Some(first) = scenario.sites.first() {
+        for (i, site) in scenario.sites.iter().enumerate() {
+            site.check(&scenario.sites[..i]).map_err(|msg| {
+                diagnostic(msg, site.position.line().zip(site.position.position()))
+            })?;
+        }
+        for action in scenario.events.iter().flat_map(|e| &e.actions) {
+            let name = match action {
+                Action::FollowHarmonicRelations { weight } if *weight != 0. => {
+                    "follow_harmonic_relations"
+                }
+                Action::FollowHarmonicContinuation { weight } if *weight != 0. => {
+                    "follow_harmonic_continuation"
+                }
+                Action::UpdateLandscape { update }
+                    if update.harmonic_relations_weight.is_some_and(|w| w != 0.) =>
+                {
+                    "follow_harmonic_relations"
+                }
+                Action::UpdateLandscape { update }
+                    if update.harmonic_continuation_weight.is_some_and(|w| w != 0.) =>
+                {
+                    "follow_harmonic_continuation"
+                }
+                _ => continue,
+            };
+            return Err(diagnostic(
+                &format!("site cannot be combined with nonzero {name}"),
+                first.position.line().zip(first.position.position()),
+            ));
+        }
+        if scenario.end == crate::scenario::ScenarioEnd::Open {
+            return Err(diagnostic(
+                "site requires a finite score",
+                first.position.line().zip(first.position.position()),
+            ));
+        }
+    }
+    let mode = scenario.room.unwrap_or_else(|| config.room_mode());
+    let source = if scenario.room.is_some() {
+        "script"
+    } else if config.room.is_some() {
+        "TOML"
+    } else {
+        "default"
+    };
+    let strategy = config.room.and_then(|room| room.self_return);
+    if scenario.room.is_none() && mode == RoomMode::Off && strategy.is_some() {
+        return Err(diagnostic(
+            "room.self_return requires an enabled room.mode",
+            None,
+        ));
+    }
+    if mode == RoomMode::Both && scenario.end == crate::scenario::ScenarioEnd::Open {
+        return Err(diagnostic(
+            "strict room needs a pre-scannable score to bound Voice, Flora and Rain generations",
+            None,
+        ));
+    }
+    if scenario.room.is_some() {
+        config.room = Some(RoomConfig {
+            mode,
+            self_return: strategy.filter(|_| mode == RoomMode::Both),
+        });
+    }
+    let gain = config.output_gain(scenario.output_gain_db, !scenario.sites.is_empty());
+    if !gain.is_finite() || gain <= 0.0 {
+        return Err(diagnostic(
+            "output_gain + audio.output_gain_db must yield a finite, positive f32 amplitude gain",
+            scenario.output_gain_position,
+        ));
+    }
+    let strategy = match (mode, strategy) {
+        (RoomMode::Both, Some(_)) => "strict (TOML)",
+        (RoomMode::Both, None) => "strict (default)",
+        (_, Some(_)) => "inactive (TOML strict)",
+        (_, None) => "inactive",
+    };
+    let diagnostic = format!(
+        "room: {} ({source}), self_return: {strategy}, output gain: {gain}",
+        mode.as_str()
+    );
+    #[cfg(feature = "native")]
+    eprintln!("{diagnostic}");
+    Ok(ResolvedRoom {
+        output_gain: gain,
+        diagnostic,
+    })
+}
+
 #[cfg(feature = "native")]
 pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
     let path = Path::new(&args.scenario_path);
     crate::life::modal::register_modal();
     validate_scenario_script_extension(path)?;
+    let mut config =
+        AppConfig::load_for_compile(args.config.as_deref()).map_err(|err| format!("{err:#}"))?;
     let stop = AtomicBool::new(false);
     let (scenario, session, warnings) = ScriptHost::load_incremental(
         &path.to_string_lossy(),
@@ -129,12 +255,13 @@ pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
         &args.end_request,
     )
     .map_err(|error| error.to_string())?;
+    resolve_effective_room(&mut config, &scenario, &path.to_string_lossy())
+        .map_err(|e| e.message)?;
+    config.validate_runtime().map_err(|e| format!("{e:#}"))?;
     if let Some(session) = session {
         if args.duration.is_none() {
             return Err("compile-only of an endless scenario requires --duration".into());
         }
-        let config =
-            AppConfig::load_or_default(args.config.as_deref()).map_err(|e| e.to_string())?;
         let tb = crate::core::timebase::Timebase {
             fs: config.audio.sample_rate as f32,
             hop: config.analysis.hop_size,
@@ -236,7 +363,6 @@ pub fn run_compile_only(args: crate::cli::Args) -> Result<(), String> {
 pub(super) fn load_scenario(
     path: &Path,
     seed: Option<u64>,
-    config: &crate::config::AppConfig,
     bound: Option<f64>,
     exiting: &AtomicBool,
     end_request: &AtomicBool,
@@ -244,7 +370,6 @@ pub(super) fn load_scenario(
     (
         String,
         Scenario,
-        f32,
         Option<crate::scripting::score::ScriptSession>,
     ),
     String,
@@ -271,22 +396,11 @@ pub(super) fn load_scenario(
             warning.count
         );
     }
-    let output_gain = config.output_gain(scenario.output_gain_db);
-    if !output_gain.is_finite() || output_gain <= 0.0 {
-        let position = scenario
-            .output_gain_position
-            .map(|(line, column)| format!(":{line}:{column}"))
-            .unwrap_or_default();
-        return Err(format!(
-            "{}{position}: output_gain + audio.output_gain_db must yield a finite, positive f32 amplitude gain",
-            path.display()
-        ));
-    }
     info!(
         "scenario seed: {} (replay with --seed {})",
         scenario.seed, scenario.seed
     );
-    Ok((scenario_label, scenario, output_gain, score))
+    Ok((scenario_label, scenario, score))
 }
 
 #[allow(clippy::too_many_arguments)]

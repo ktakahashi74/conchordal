@@ -270,6 +270,10 @@ pub(crate) struct Rain {
 }
 
 impl Rain {
+    pub(crate) fn site_id(&self) -> u32 {
+        self.spec.site_id
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         id: u64,

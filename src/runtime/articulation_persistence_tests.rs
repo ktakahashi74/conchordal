@@ -117,7 +117,7 @@ fn render_case(
         config.output_channels(),
         guard_mode,
         guard_meter.clone(),
-        config.output_gain(0.0),
+        config.output_gain(0.0, false),
     );
     let wiring = wire_runtime(
         &config,

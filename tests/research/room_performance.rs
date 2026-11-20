@@ -37,13 +37,12 @@ fn acquire() {
     let script = PathBuf::from(var("ROOM_SCORE"));
     let out = PathBuf::from(var("ROOM_OUTPUT"));
     let seed: u64 = var("ROOM_SEED").parse().unwrap();
-    let config = AppConfig::load_or_default(Some(&var("ROOM_CONFIG"))).unwrap();
-    config.validate_runtime().unwrap();
+    let mut config = AppConfig::load_or_default(Some(&var("ROOM_CONFIG"))).unwrap();
     crate::life::modal::register_modal();
     let stop = Arc::new(AtomicBool::new(false));
     let end = Arc::new(AtomicBool::new(false));
-    let (label, scenario, _, score) =
-        load_scenario(&script, Some(seed), &config, None, &stop, &end).unwrap();
+    let (label, scenario, score) = load_scenario(&script, Some(seed), None, &stop, &end).unwrap();
+    resolve_effective_room(&mut config, &scenario, &script.to_string_lossy()).unwrap();
     let paired = std::env::var_os("ROOM_RESCORE").is_some();
     let report = if paired || oracle::active() {
         PathBuf::from("/dev/null")
@@ -229,4 +228,164 @@ fn acquire() {
     if let Some(listener) = wiring.listener_analysis_handle {
         join_thread("listener", listener).unwrap();
     }
+}
+
+// Run in separate processes with the same binary/seed to compare the full
+// stereo WAV, decision trace and report against the DR-27 diagnostic capacity.
+#[test]
+#[ignore = "explicit finite strict room capacity comparison"]
+fn render_reservation() {
+    let out = PathBuf::from(std::env::var_os("ROOM_OUTPUT").unwrap());
+    let score = std::env::var("ROOM_SCORE").unwrap();
+    let mut config =
+        AppConfig::load_or_default(Some(&std::env::var("ROOM_CONFIG").unwrap())).unwrap();
+    let seed = std::env::var("ROOM_SEED").unwrap().parse().unwrap();
+    if std::env::var_os("ROOM_REFERENCE_64").is_some() {
+        wiring::ROOM_OWNER_OVERRIDE.set(Some(64));
+    }
+    let stop = Arc::new(AtomicBool::new(false));
+    let end = Arc::new(AtomicBool::new(false));
+    crate::life::modal::register_modal();
+    let (label, mut scenario, score) =
+        load_scenario(Path::new(&score), Some(seed), None, &stop, &end).unwrap();
+    let default_site = std::env::var_os("ROOM_DEFAULT_SITE").is_some();
+    if default_site {
+        crate::scenario::Site::register(&mut scenario.sites, Some(crate::scenario::Site::DEFAULT));
+    }
+    let resolved = resolve_effective_room(&mut config, &scenario, &label).unwrap();
+    eprintln!(
+        "output channels={} gain={}",
+        config.output_channels(),
+        resolved.output_gain
+    );
+    let time = config.analysis.hop_size;
+    let kernel = crate::core::room::RoomKernel::new(&crate::core::room::york_response(), time);
+    eprintln!("bytes per stream = {}", kernel.stream_bytes());
+    let mut actions = BufWriter::new(File::create(out.join("actions.jsonl")).unwrap());
+    let probe: OfflineBodyProbe = Box::new(move |s, tick, n, _| {
+        let voices: Vec<_> = s
+            .pop
+            .voices
+            .iter()
+            .map(|v| {
+                (
+                    v.id(),
+                    v.metadata.generation,
+                    v.is_alive(),
+                    v.target_pitch_log2(),
+                    v.pitch_ctl.rng_state_for_test(),
+                )
+            })
+            .collect();
+        let notes: Vec<_> = s.phonation_batches_buf[..n]
+            .iter()
+            .map(|b| json!([b.source_id, b.source_generation, b.cmds, b.tones, b.onsets]))
+            .collect();
+        writeln!(actions, "{}", json!([tick, voices, notes])).unwrap();
+    });
+    let mut reporter = JsonlReporter::create(out.join("report.jsonl").to_str().unwrap()).unwrap();
+    reporter.write_meta(seed).unwrap();
+    reporter
+        .write_scene_markers(&scenario.scene_markers)
+        .unwrap();
+    let (wav, pcm) = bounded(8);
+    let wiring = wire_runtime(
+        &config,
+        config.audio.sample_rate,
+        label,
+        scenario,
+        stop,
+        WiringOptions {
+            score,
+            end_request: end,
+            duration_sec: None,
+            offline_body_probe: Some(probe),
+            raw_t2_delay: Duration::ZERO,
+            ui_tx: None,
+            listener_forced: true,
+            wait_user_exit: false,
+            start_playing: true,
+            audio_prod: None,
+            wav_tx: Some(wav),
+            reporter: Some(reporter),
+            deterministic_analysis: true,
+            deterministic_footprints: true,
+            guard_meter: None,
+            underrun_frames: None,
+            reserve_runtime_ids_through: 0,
+            profile: None,
+            telemetry: false,
+            audio_counters: None,
+        },
+    )
+    .unwrap();
+    let mut writer = hound::WavWriter::create(
+        out.join("audio.wav"),
+        hound::WavSpec {
+            channels: config.output_channels() as u16,
+            sample_rate: config.audio.sample_rate,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        },
+    )
+    .unwrap();
+    let channels = config.output_channels();
+    let mut guards = default_site.then(|| {
+        [0f32, 9.].map(|db| {
+            let gain = 10f32.powf(db / 20.);
+            let meter = Arc::new(crate::audio::limiter::LimiterMeter::default());
+            let limiter = crate::audio::limiter::Limiter::new(
+                wiring::resolve_limiter_mode(&config),
+                config.audio.sample_rate,
+                channels,
+            )
+            .with_input_gain(gain)
+            .with_meter(meter.clone());
+            (gain, limiter, meter, [0f32; 2], [0f32; 2], None, None)
+        })
+    });
+    let mut frame = 0;
+    let mut post = Vec::new();
+    for chunk in pcm {
+        for &sample in chunk.iter() {
+            writer.write_sample(sample).unwrap();
+        }
+        if let Some(guards) = &mut guards {
+            for (gain, limiter, _, pre_peak, post_peak, first, last) in guards {
+                post.clear();
+                post.extend_from_slice(&chunk);
+                limiter.process_interleaved(&mut post, channels);
+                for (i, (&raw, &y)) in chunk.iter().zip(&post).enumerate() {
+                    let ch = i % channels;
+                    let x = raw * *gain;
+                    pre_peak[ch] = pre_peak[ch].max(x.abs());
+                    post_peak[ch] = post_peak[ch].max(y.abs());
+                    if (x - y).abs() > 1e-7 {
+                        first.get_or_insert(frame + i / channels);
+                        *last = Some(frame + i / channels);
+                    }
+                }
+            }
+        }
+        frame += chunk.len() / channels;
+    }
+    if let Some(guards) = guards {
+        for (gain, _, meter, pre, post, first, last) in guards {
+            let stats = meter.take_snapshot().unwrap_or_default();
+            eprintln!(
+                "SCORE gain={gain} frames={frame} pre={pre:?} post={post:?} over={} reduction_db={} first={first:?} last={last:?}",
+                stats.num_over, stats.max_reduction_db
+            );
+        }
+    }
+    writer.finalize().unwrap();
+    join_runtime(
+        Some(wiring.worker_handle),
+        [
+            ("analysis", Some(wiring.analysis_handle)),
+            ("listener", wiring.listener_analysis_handle),
+        ],
+    )
+    .unwrap();
+    wiring::ROOM_OWNER_OVERRIDE.set(None);
 }

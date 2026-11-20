@@ -196,6 +196,7 @@ impl Default for TimbreControl {
 
 #[derive(Debug, Clone)]
 pub struct BodyControl {
+    pub(crate) site_id: u32,
     pub method: BodyMethod,
     pub amp: f32,
     pub timbre: TimbreControl,
@@ -210,6 +211,7 @@ impl Default for BodyControl {
         let method = BodyMethod::default();
         Self {
             method,
+            site_id: 0,
             amp: 0.18,
             timbre: TimbreControl::default(),
             modes: None,

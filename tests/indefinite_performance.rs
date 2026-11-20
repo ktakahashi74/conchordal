@@ -391,3 +391,100 @@ fn oversized_item_after_header_is_reported_and_ecology_continues() {
     );
     assert!(fs::metadata(dir.join("failed-script.wav")).unwrap().len() > 44);
 }
+
+#[test]
+fn compile_only_resolves_finite_and_endless_rooms_without_creating_a_template() {
+    let (dir, _cleanup) = fixture();
+    fs::remove_file(dir.join("config.toml")).unwrap();
+    fs::write(dir.join("input.rhai"), "wait(0.01);").unwrap();
+    let compile = || {
+        Command::new(env!("CARGO_BIN_EXE_conchordal"))
+            .current_dir(&dir)
+            .args(["input.rhai", "--compile-only"])
+            .output()
+            .unwrap()
+    };
+    let result = compile();
+    assert!(result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("room: off (default)"));
+    assert!(!dir.join("config.toml").exists());
+
+    fs::write(
+        dir.join("config.toml"),
+        "[room]\nmode='both'\nself_return='strict'",
+    )
+    .unwrap();
+    for (source, success, expected) in [
+        (
+            "wait(0.01);",
+            true,
+            "room: both (TOML), self_return: strict (TOML)",
+        ),
+        (
+            r#"room("presentation"); wait(0.01); room("off");"#,
+            true,
+            "room: off (script), self_return: inactive (TOML strict)",
+        ),
+        (
+            r#"endless(); room("presentation"); place(sine(), at(220)); loop { wait(0.01); }"#,
+            true,
+            "room: presentation (script)",
+        ),
+        (
+            r#"endless(); room("off"); place(sine(), at(220)); wait(0.01);
+room("presentation");"#,
+            false,
+            "before time advances",
+        ),
+        (
+            r#"endless(); room("off"); place(sine(), at(220)); wait(0.01);
+at(220).site(1, 0);"#,
+            false,
+            "site requires a finite score",
+        ),
+    ] {
+        fs::write(dir.join("input.rhai"), source).unwrap();
+        let out = instrument(&dir, &["--compile-only", "--duration", "0.04"]);
+        let msg = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(out.status.success(), success, "{msg}");
+        assert!(msg.contains(expected), "{msg}");
+        if !success {
+            assert!(msg.contains("line 2") || msg.contains("2:"), "{msg}");
+        }
+    }
+}
+
+#[test]
+fn native_entries_validate_the_rate_after_resolving_the_score() {
+    let (dir, _cleanup) = fixture();
+    fs::write(
+        dir.join("config.toml"),
+        "[audio]\nsample_rate=44100\n[room]\nmode='both'\nself_return='strict'",
+    )
+    .unwrap();
+    for (mode, success) in [("off", true), ("presentation", false), ("both", false)] {
+        fs::write(
+            dir.join("input.rhai"),
+            format!(r#"wait(0.01); room("{mode}");"#),
+        )
+        .unwrap();
+        let wav = format!("{mode}.wav");
+        let report = dir.join(format!("{mode}.jsonl"));
+        for output in [
+            instrument(&dir, &["--compile-only"]),
+            instrument(&dir, &["--report", report.to_str().unwrap()]),
+            render(&dir, &wav, &[]),
+        ] {
+            let msg = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(output.status.success(), success, "{msg}");
+            if !success {
+                assert!(
+                    msg.contains("requires 48000 Hz (runtime rate 44100 Hz)"),
+                    "{msg}"
+                );
+            }
+        }
+        assert_eq!(dir.join(wav).exists(), success);
+        assert_eq!(report.exists(), success);
+    }
+}

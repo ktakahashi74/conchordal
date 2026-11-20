@@ -24,6 +24,7 @@ impl Voice {
             onset_allowed: target_amp > Self::AMP_EPS && self.phonation_gate_open,
         };
         out.body_policy = Some(super::super::action_candidates::PolicySnapshot {
+            site_id: self.effective_control.body.site_id,
             at: now,
             is_alive: state.is_alive,
             gate_allows_onset: state.onset_allowed,

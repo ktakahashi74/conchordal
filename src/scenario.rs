@@ -16,6 +16,7 @@ pub(crate) const FLORA_PACE_MIN: f32 = 1.0 / 64.0;
 
 #[derive(Debug, Clone, Copy)]
 pub struct FloraSpec {
+    pub(crate) site_id: u32,
     pub pace: f32,
     pub amp: f32,
     pub fade_sec: f32,
@@ -31,6 +32,7 @@ pub struct FloraSpec {
 impl Default for FloraSpec {
     fn default() -> Self {
         Self {
+            site_id: 0,
             pace: 1.0,
             amp: 0.03,
             fade_sec: 2.0,
@@ -67,6 +69,7 @@ pub enum FloraSeeding {
 /// Impacts drawn one by one over a frequency extent, with resonant objects they strike.
 #[derive(Debug, Clone)]
 pub struct RainSpec {
+    pub(crate) site_id: u32,
     pub amp: f32,
     pub fade_sec: f32,
     /// Mean impacts per second.
@@ -102,6 +105,7 @@ pub struct RainSpec {
 impl Default for RainSpec {
     fn default() -> Self {
         Self {
+            site_id: 0,
             amp: 0.02,
             fade_sec: 2.0,
             rate: 40.0,
@@ -135,8 +139,64 @@ pub struct RainPatch {
     pub follow_meter: Option<f32>,
 }
 
+/// Placement in metres from the shared listening point; internal to the finite score.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Site {
+    pub x: f64,
+    pub y: f64,
+    pub position: rhai::Position,
+}
+
+pub(crate) fn implicit_site(id: &u32) -> bool {
+    *id == 0
+}
+
+impl Site {
+    pub(crate) const DEFAULT: Self = Self {
+        x: 0.,
+        y: 12.,
+        position: rhai::Position::NONE,
+    };
+
+    /// Zero is the implicit placement, shared by all unspecified sources.
+    pub(crate) fn register(sites: &mut Vec<Site>, explicit: Option<Site>) -> u32 {
+        let Some(site) = explicit else { return 0 };
+        if sites.is_empty() {
+            sites.push(Self {
+                position: site.position,
+                ..Self::DEFAULT
+            });
+        }
+        let i = sites
+            .iter()
+            .position(|s| s.x == site.x && s.y == site.y)
+            .unwrap_or_else(|| {
+                let i = sites.len();
+                sites.push(site);
+                i
+            });
+        u32::try_from(i).expect("more than 2^32 distinct placements")
+    }
+
+    pub(crate) fn check(&self, previous: &[Site]) -> Result<(), &'static str> {
+        if !self.x.is_finite() || !self.y.is_finite() {
+            return Err("site coordinates must be finite");
+        }
+        if !self.x.hypot(self.y).is_finite()
+            || previous
+                .iter()
+                .any(|p| !(self.x - p.x).hypot(self.y - p.y).is_finite())
+        {
+            return Err("site distance is not representable");
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Scenario {
+    pub(crate) room: Option<crate::config::RoomMode>,
+    pub(crate) sites: Vec<Site>,
     pub(crate) observe_tonal_context: bool,
     pub(crate) observe_felt_beat: bool,
     pub(crate) harmonic_relation_sources: Option<usize>,

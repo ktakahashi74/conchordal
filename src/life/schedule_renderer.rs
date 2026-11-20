@@ -1,6 +1,8 @@
 use crate::clock::Instant;
 mod room_buses;
 #[cfg(test)]
+mod site_tests;
+#[cfg(test)]
 mod strict_tests;
 #[cfg(test)]
 use crate::config::RoomMode;
@@ -16,7 +18,7 @@ use crate::life::phrase_boundary::Receipt;
 use crate::life::sound::Tone;
 use crate::life::voice::PhonationBatch;
 use crate::scenario::control::Routing;
-pub(crate) use room_buses::RoomStreamCounts;
+pub(crate) use room_buses::{RoomStreamCounts, SiteBuses};
 use std::collections::BTreeMap;
 use tracing::debug;
 
@@ -85,6 +87,7 @@ struct ToneKey {
 }
 
 struct RoutedTone {
+    site_id: u32,
     support_shape: Option<crate::life::sound::BodySnapshot>,
     harmonic_sounding: bool,
     tone: Tone,
@@ -136,6 +139,7 @@ impl RoutedTone {
 pub(crate) use crate::core::stream::loo::SourcePcm;
 
 struct SelfSound {
+    site_id: u32,
     source_id: u64,
     generation: u32,
     used: bool,
@@ -145,6 +149,7 @@ struct SelfSound {
 }
 
 pub struct RenderFrame<'a> {
+    pub(crate) sites: Option<&'a SiteBuses>,
     pub presentation: &'a [f32],
     pub habitat: &'a [f32],
     pub(crate) stereo: Option<&'a [f32]>,
@@ -187,6 +192,7 @@ pub(crate) struct RoomBuses {
 }
 
 pub struct ScheduleRenderer {
+    pub(crate) sites: Option<SiteBuses>,
     pub(crate) room: Option<RoomBuses>,
     pub(crate) harmonic_recorder:
         Option<crate::temporal_cognition::harmonic_relations::runtime::Recorder>,
@@ -305,6 +311,7 @@ impl ScheduleRenderer {
     pub fn new(time: Timebase) -> Self {
         Self {
             room: None,
+            sites: None,
             harmonic_recorder: None,
             #[cfg(test)]
             harmonic_execution: None,
@@ -377,6 +384,7 @@ impl ScheduleRenderer {
                         harmonic_sounding: false,
                         tone: routed.tone.clone(),
                         routing: routed.routing,
+                        site_id: routed.site_id,
                         self_slot: None,
                         body_slot: None,
                         source_pcm_slot: None,
@@ -415,7 +423,7 @@ impl ScheduleRenderer {
 
     pub(crate) fn prepare_self_sound(
         &mut self,
-        ids: impl Iterator<Item = (u64, u32)>,
+        ids: impl Iterator<Item = (u64, u32, u32)>,
         now: Tick,
         observer: &AcousticTemporalExpectation,
     ) {
@@ -425,7 +433,7 @@ impl ScheduleRenderer {
         for sound in self.self_sound.iter_mut().flatten() {
             sound.used = false;
         }
-        for (id, generation) in ids {
+        for (id, generation, site_id) in ids {
             if let Some(sound) = self
                 .self_sound
                 .iter_mut()
@@ -442,12 +450,16 @@ impl ScheduleRenderer {
                 "self tracking must start before this source sounds"
             );
             let sound = Box::new(SelfSound {
+                site_id,
                 source_id: id,
                 generation,
                 used: true,
                 body: vec![0.0; self.time.hop],
                 habitat: vec![0.0; self.time.hop],
-                history: OwnSoundHistory::new(observer, now),
+                history: self.sites.as_ref().map_or_else(
+                    || OwnSoundHistory::new(observer, now),
+                    |s| s.birth_energy(site_id).newborn(now),
+                ),
             });
             let slot = if let Some(slot) = self.self_sound.iter().position(Option::is_none) {
                 self.self_sound[slot] = Some(sound);
@@ -480,8 +492,32 @@ impl ScheduleRenderer {
         now: Tick,
     ) {
         for sound in self.self_sound.iter_mut().flatten() {
-            sound.history = OwnSoundHistory::new(observer, now);
+            sound.history = self.sites.as_ref().map_or_else(
+                || OwnSoundHistory::new(observer, now),
+                |s| s.birth_energy(sound.site_id).newborn(now),
+            );
         }
+    }
+
+    pub(crate) fn receive_site_buffers(
+        &mut self,
+        now: Tick,
+        pop: &crate::life::community::Community,
+        recycled: Vec<crate::core::stream::loo::SitePcm>,
+    ) {
+        if let Some(sites) = &mut self.sites {
+            if sites.full.is_empty() {
+                sites.full = recycled;
+            }
+            sites.retain_readers(now, pop, |id| {
+                self.self_sound.iter().flatten().any(|s| s.site_id == id)
+            });
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn habitat_output(&self) -> &[f32] {
+        &self.buf_habitat
     }
 
     pub(crate) fn self_sound_history(
@@ -518,7 +554,7 @@ impl ScheduleRenderer {
         phonation_batches: &[PhonationBatch],
         now: Tick,
         rhythms: &NeuralRhythms,
-    ) -> RenderFrame<'_> {
+    ) -> Result<RenderFrame<'_>, String> {
         self.render_with_prediction_matches(phonation_batches, now, rhythms, |_, _, _, _| {})
     }
 
@@ -614,7 +650,7 @@ impl ScheduleRenderer {
         now: Tick,
         rhythms: &NeuralRhythms,
         emit: impl FnMut(u64, u64, usize, &crate::core::history_prediction::PredictionMatch<'_>),
-    ) -> RenderFrame<'_> {
+    ) -> Result<RenderFrame<'_>, String> {
         self.render_with_source_pcm(
             phonation_batches,
             now,
@@ -636,7 +672,7 @@ impl ScheduleRenderer {
         flora: &mut [super::flora::Flora],
         rain: &mut [super::rain::Rain],
         mut emit: impl FnMut(u64, u64, usize, &crate::core::history_prediction::PredictionMatch<'_>),
-    ) -> RenderFrame<'_> {
+    ) -> Result<RenderFrame<'_>, String> {
         for source in &mut self.loo_pcm {
             source.habitat.fill(0.);
         }
@@ -672,6 +708,9 @@ impl ScheduleRenderer {
         }
         self.buf_presentation.fill(0.0);
         self.buf_habitat.fill(0.0);
+        if let Some(sites) = &mut self.sites {
+            sites.clear();
+        }
         for sound in self.self_sound.iter_mut().flatten() {
             sound.body.fill(0.0);
             sound.habitat.fill(0.0);
@@ -679,11 +718,12 @@ impl ScheduleRenderer {
 
         let fs = self.time.fs;
         if fs <= 0.0 {
-            return RenderFrame {
+            return Ok(RenderFrame {
+                sites: self.sites.as_ref(),
                 presentation: &self.buf_presentation,
                 stereo: None,
                 habitat: &self.buf_habitat,
-            };
+            });
         }
 
         // Normal runtime aligns the shared observer before decisions. A caller
@@ -702,6 +742,14 @@ impl ScheduleRenderer {
                 AcousticTemporalExpectation::new(fs as u32).expect("self-sound observation rate");
             observer.align_to(now);
             self.restart_self_histories(&observer, now);
+        }
+
+        if let Some(room) = &mut self.room {
+            room.start_hop(now, hop);
+            if room.habitat.is_some() {
+                room.histories
+                    .bind_readers(now, &self.self_sound, &self.loo_pcm, sources)?;
+            }
         }
 
         self.update_rest_completion(now);
@@ -894,13 +942,19 @@ impl ScheduleRenderer {
                         }
                     }
                 }
+                let (presentation, habitat) = if let Some(sites) = &mut self.sites {
+                    let site = &mut sites.dry[rt.site_id as usize];
+                    (&mut site.presentation, &mut site.habitat)
+                } else {
+                    (&mut self.buf_presentation, &mut self.buf_habitat)
+                };
                 if rt.routing.to_presentation {
-                    for (out, sample) in self.buf_presentation.iter_mut().zip(pcm) {
+                    for (out, sample) in presentation.iter_mut().zip(pcm) {
                         *out += sample;
                     }
                 }
                 if rt.routing.to_habitat {
-                    for (out, sample) in self.buf_habitat.iter_mut().zip(pcm) {
+                    for (out, sample) in habitat.iter_mut().zip(pcm) {
                         *out += sample;
                     }
                     if let Some(slot) = rt.loo_slot {
@@ -920,7 +974,12 @@ impl ScheduleRenderer {
             self.render_sample_major_oracle(now, end, rhythms, sources);
         }
         for flora in flora {
-            flora.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
+            if let Some(sites) = &mut self.sites {
+                let site = &mut sites.dry[flora.site_id() as usize];
+                flora.render_add(&mut site.presentation, &mut site.habitat);
+            } else {
+                flora.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
+            }
             if let Some(source) = self
                 .loo_pcm
                 .iter_mut()
@@ -931,7 +990,12 @@ impl ScheduleRenderer {
         }
         // Before the self-sound history reads the habitat bus: Voices hear Rain as external.
         for rain in rain {
-            rain.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
+            if let Some(sites) = &mut self.sites {
+                let site = &mut sites.dry[rain.site_id() as usize];
+                rain.render_add(&mut site.presentation, &mut site.habitat);
+            } else {
+                rain.render_add(&mut self.buf_presentation, &mut self.buf_habitat);
+            }
             if let Some(source) = self
                 .loo_pcm
                 .iter_mut()
@@ -942,16 +1006,26 @@ impl ScheduleRenderer {
         }
         #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
         crate::runtime::room_performance::observe_dry(now, &self.buf_habitat, &self.loo_pcm);
-        if let Some(room) = &mut self.room {
-            room.start_hop(now, hop);
+        if let Some(sites) = &mut self.sites {
+            sites.mix(
+                self.room.as_mut(),
+                &mut self.buf_presentation,
+                &mut self.buf_habitat,
+                &mut self.scratch_pcm,
+            );
+        } else if let Some(room) = &mut self.room {
             room.process_presentation(&self.buf_presentation, &mut self.scratch_pcm);
             std::mem::swap(&mut self.scratch_pcm, &mut self.buf_presentation);
             if let Some(stream) = &mut room.habitat {
                 stream.process(&self.buf_habitat, &mut self.scratch_pcm);
                 std::mem::swap(&mut self.scratch_pcm, &mut self.buf_habitat);
-                room.histories
-                    .process(&mut self.self_sound, &mut self.loo_pcm, sources);
             }
+        }
+        if let Some(room) = &mut self.room
+            && room.strict()
+        {
+            room.histories
+                .process(now, &mut self.self_sound, &mut self.loo_pcm, sources)?;
         }
         #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
         if crate::runtime::room_performance::oracle::active() {
@@ -964,7 +1038,7 @@ impl ScheduleRenderer {
                         &mut own.habitat,
                     );
                 }
-                for own in self.loo_pcm.iter_mut().chain(sources) {
+                for own in self.loo_pcm.iter_mut().chain(sources.iter_mut()) {
                     if own.kind == crate::core::stream::loo::SourceKind::Voice {
                         crate::runtime::room_performance::oracle::copy(
                             (own.id, own.generation),
@@ -982,9 +1056,19 @@ impl ScheduleRenderer {
                 now,
                 &sound.body,
                 &sound.habitat,
-                &self.buf_habitat,
+                self.sites
+                    .as_ref()
+                    .map_or(self.buf_habitat.as_slice(), |s| s.local(sound.site_id)),
                 |start, window, matched| emit(sound.source_id, start, window, matched),
             );
+        }
+        if let Some(sites) = &mut self.sites {
+            sites.advance_energy(now);
+            for source in self.loo_pcm.iter_mut().chain(sources.iter_mut()) {
+                for (own, full) in source.habitat.iter_mut().zip(sites.local(source.site_id)) {
+                    *own = *full - *own;
+                }
+            }
         }
         let history_us = profile_lap(&mut checkpoint);
 
@@ -1002,11 +1086,12 @@ impl ScheduleRenderer {
                 capture_delivery_us,
             };
         }
-        RenderFrame {
+        Ok(RenderFrame {
+            sites: self.sites.as_ref(),
             stereo: self.room.as_ref().map(|r| r.interleaved.as_slice()),
             presentation: &self.buf_presentation,
             habitat: &self.buf_habitat,
-        }
+        })
     }
 
     // Sample-major execution is required for chronological PX-1 receipts.
@@ -1071,11 +1156,17 @@ impl ScheduleRenderer {
                         sound.habitat[idx] += sample;
                     }
                 }
+                let (p, h) = if let Some(sites) = &mut self.sites {
+                    let site = &mut sites.dry[rt.site_id as usize];
+                    (&mut site.presentation[idx], &mut site.habitat[idx])
+                } else {
+                    (&mut acc_presentation, &mut acc_habitat)
+                };
                 if rt.routing.to_presentation {
-                    acc_presentation += sample;
+                    *p += sample;
                 }
                 if rt.routing.to_habitat {
-                    acc_habitat += sample;
+                    *h += sample;
                     if let Some(slot) = rt.loo_slot {
                         self.loo_pcm[slot].habitat[idx] += sample;
                     }
@@ -1340,6 +1431,7 @@ impl ScheduleRenderer {
                                     source_pcm_slot: None,
                                     loo_slot: None,
                                     routing: batch.routing,
+                                    site_id: batch.body_policy.map_or(0, |source| source.site_id),
                                     self_slot: self.self_sound.iter().position(|sound| {
                                         sound.as_ref().is_some_and(|sound| {
                                             sound.source_id == batch.source_id
@@ -1442,17 +1534,22 @@ mod tests {
             fs: 48000.,
             hop: 512,
         };
-        let ir = york_response();
         let rhythms = NeuralRhythms::default();
         assert!(
-            RoomBuses::prepare(RoomMode::Off, time.hop, 0)
+            RoomBuses::prepare(RoomMode::Off, time.hop, 0, false)
                 .unwrap()
                 .is_none()
         );
         for mode in [RoomMode::Presentation, RoomMode::Both] {
+            let mut ir = york_response();
+            if mode == RoomMode::Presentation {
+                for tap in &mut ir[1..] {
+                    *tap *= 12. / 23.5;
+                }
+            }
             for habitat_first in [true, false] {
                 let mut wet = ScheduleRenderer::new(time);
-                wet.room = RoomBuses::prepare(mode, time.hop, 0).unwrap();
+                wet.room = RoomBuses::prepare(mode, time.hop, 0, false).unwrap();
                 assert_eq!(
                     wet.room.as_ref().unwrap().habitat.is_some(),
                     mode == RoomMode::Both
@@ -1480,8 +1577,8 @@ mod tests {
                     } else {
                         &[]
                     };
-                    let x = dry.render(commands, now, &rhythms);
-                    let y = wet.render(commands, now, &rhythms);
+                    let x = dry.render(commands, now, &rhythms).unwrap();
+                    let y = wet.render(commands, now, &rhythms).unwrap();
                     if hop == 2 {
                         assert_pcm_bits(x.habitat, x.presentation);
                         assert!(x.habitat.iter().any(|&v| v != 0.));
@@ -1544,6 +1641,7 @@ mod tests {
             actual.sample_major_oracle = oracle;
             let mut baseline = ScheduleRenderer::new(time);
             let mut source = [SourcePcm {
+                site_id: 0,
                 kind: crate::core::stream::loo::SourceKind::Voice,
                 analyze_hr: true,
                 onset_history: false,
@@ -1553,6 +1651,7 @@ mod tests {
                 habitat: vec![0.0; 64],
             }];
             actual.loo_pcm = vec![SourcePcm {
+                site_id: 0,
                 kind: source[0].kind,
                 analyze_hr: true,
                 onset_history: false,
@@ -1563,6 +1662,7 @@ mod tests {
             }];
             let observer = AcousticTemporalExpectation::new(8000).unwrap();
             actual.self_sound.push(Some(Box::new(SelfSound {
+                site_id: 0,
                 source_id: 2,
                 generation: 7,
                 used: true,
@@ -1582,17 +1682,20 @@ mod tests {
                 };
                 let expected = baseline
                     .render(commands, now, &NeuralRhythms::default())
+                    .unwrap()
                     .habitat
                     .to_vec();
-                let frame = actual.render_with_source_pcm(
-                    commands,
-                    now,
-                    &NeuralRhythms::default(),
-                    &mut source,
-                    &mut [],
-                    &mut [],
-                    |_, _, _, _| {},
-                );
+                let frame = actual
+                    .render_with_source_pcm(
+                        commands,
+                        now,
+                        &NeuralRhythms::default(),
+                        &mut source,
+                        &mut [],
+                        &mut [],
+                        |_, _, _, _| {},
+                    )
+                    .unwrap();
                 let pcm = frame.habitat.to_vec();
                 assert_pcm_bits(frame.presentation, &pcm);
                 for i in 0..64 {
@@ -1677,6 +1780,7 @@ mod tests {
                     .into_iter()
                     .enumerate()
                     .map(|(index, id)| SourcePcm {
+                        site_id: 0,
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
                         onset_history: false,
@@ -1689,6 +1793,7 @@ mod tests {
                 let mut expected_sources = sources
                     .iter()
                     .map(|s| SourcePcm {
+                        site_id: 0,
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
                         onset_history: false,
@@ -1786,8 +1891,8 @@ mod tests {
                 for hop in 0..600 {
                     let now = hop * time.hop as Tick;
                     let ids = if hop < 8 { [2, 3, 9] } else { [2, 3, 12] };
-                    actual.prepare_self_sound(ids.into_iter().map(|id| (id, 7)), now, &observer);
-                    oracle.prepare_self_sound(ids.into_iter().map(|id| (id, 7)), now, &observer);
+                    actual.prepare_self_sound(ids.into_iter().map(|id| (id, 7, 0)), now, &observer);
+                    oracle.prepare_self_sound(ids.into_iter().map(|id| (id, 7, 0)), now, &observer);
                     // This exact renderer control compares the same observer schedule.
                     // Independent observers deliberately stagger their factor refreshes.
                     for own in actual.self_sound.iter().flatten() {
@@ -1867,26 +1972,30 @@ mod tests {
                     }
                     let mut matches = Vec::new();
                     let mut expected_matches = Vec::new();
-                    let frame = actual.render_with_source_pcm(
-                        &commands,
-                        now,
-                        &rhythms,
-                        &mut sources,
-                        &mut [],
-                        &mut [],
-                        |id, start, window, m| matches.push(match_bits(id, start, window, m)),
-                    );
-                    let expected = oracle.render_with_source_pcm(
-                        &commands,
-                        now,
-                        &rhythms,
-                        &mut expected_sources,
-                        &mut [],
-                        &mut [],
-                        |id, start, window, m| {
-                            expected_matches.push(match_bits(id, start, window, m))
-                        },
-                    );
+                    let frame = actual
+                        .render_with_source_pcm(
+                            &commands,
+                            now,
+                            &rhythms,
+                            &mut sources,
+                            &mut [],
+                            &mut [],
+                            |id, start, window, m| matches.push(match_bits(id, start, window, m)),
+                        )
+                        .unwrap();
+                    let expected = oracle
+                        .render_with_source_pcm(
+                            &commands,
+                            now,
+                            &rhythms,
+                            &mut expected_sources,
+                            &mut [],
+                            &mut [],
+                            |id, start, window, m| {
+                                expected_matches.push(match_bits(id, start, window, m))
+                            },
+                        )
+                        .unwrap();
                     assert_pcm_bits(frame.presentation, expected.presentation);
                     assert_pcm_bits(frame.habitat, expected.habitat);
                     sounded |= frame.habitat.iter().any(|v| *v != 0.);
@@ -1998,10 +2107,14 @@ mod tests {
                 batch.tones[0].hold_ticks = Some(512);
                 batch.tones[0].render_modulator =
                     RenderModulatorSpec::SeqGate { duration_sec: 2.0 };
-                renderer.render(std::slice::from_ref(&batch), 0, &NeuralRhythms::default());
+                renderer
+                    .render(std::slice::from_ref(&batch), 0, &NeuralRhythms::default())
+                    .unwrap();
                 crate::runtime_profile::begin_allocations();
                 for now in (64..96_000).step_by(64) {
-                    let frame = renderer.render(&[], now, &NeuralRhythms::default());
+                    let frame = renderer
+                        .render(&[], now, &NeuralRhythms::default())
+                        .unwrap();
                     std::hint::black_box(frame);
                 }
                 let count = crate::runtime_profile::finish_allocations().unwrap();
@@ -2054,6 +2167,7 @@ mod tests {
                     generation: 7,
                 },
                 RoutedTone {
+                    site_id: 0,
                     support_shape: None,
                     harmonic_sounding: false,
                     tone: tone.clone(),
@@ -2121,11 +2235,13 @@ mod tests {
                 })
                 .collect();
             for now in (0..600).step_by(100) {
-                renderer.render(
-                    if now == 0 { &batches } else { &[] },
-                    now,
-                    &NeuralRhythms::default(),
-                );
+                renderer
+                    .render(
+                        if now == 0 { &batches } else { &[] },
+                        now,
+                        &NeuralRhythms::default(),
+                    )
+                    .unwrap();
                 let mut previous = None;
                 for receipt in renderer.phrase_receipts.drain(..) {
                     assert_eq!(receipt.record.available_at, now + 100);
@@ -2193,7 +2309,9 @@ mod tests {
                     },
                 );
             }
-            renderer.render(&next, 600, &NeuralRhythms::default());
+            renderer
+                .render(&next, 600, &NeuralRhythms::default())
+                .unwrap();
             let on = renderer
                 .phrase_receipts
                 .iter()
@@ -2211,10 +2329,13 @@ mod tests {
             let mut fork = renderer.fork_source(2);
             let expected = renderer
                 .render(&[], 700, &NeuralRhythms::default())
+                .unwrap()
                 .habitat
                 .to_vec();
             assert_eq!(
-                fork.render(&[], 700, &NeuralRhythms::default()).habitat,
+                fork.render(&[], 700, &NeuralRhythms::default())
+                    .unwrap()
+                    .habitat,
                 expected
             );
         }
@@ -2230,7 +2351,9 @@ mod tests {
         let mut a = outcome_batch(BodyKind::Sine);
         a.tones[0].phrase = Some(PhraseTone { reservation: None });
         a.tones[0].hold_ticks = Some(1000);
-        renderer.render(&[a.clone()], 0, &NeuralRhythms::default());
+        renderer
+            .render(&[a.clone()], 0, &NeuralRhythms::default())
+            .unwrap();
         renderer.phrase_receipts.clear();
         a.cmds = vec![
             ToneCmd::Off {
@@ -2248,26 +2371,30 @@ mod tests {
         ];
         a.tones[0].tone_id = 2;
         a.tones[0].onset = 113;
-        renderer.render(&[a], 100, &NeuralRhythms::default());
+        renderer
+            .render(&[a], 100, &NeuralRhythms::default())
+            .unwrap();
         let receipts = &renderer.phrase_receipts;
         assert_eq!(receipts.len(), 2);
         assert_eq!(receipts[0].record.kind, ExecutionKind::Off);
         assert_eq!(receipts[1].record.kind, ExecutionKind::On);
         assert_eq!(receipts[0].record.sample, receipts[1].record.sample);
         renderer.phrase_receipts.clear();
-        renderer.render(
-            &[PhonationBatch {
-                source_id: 2,
-                source_generation: 7,
-                cmds: vec![ToneCmd::Off {
-                    tone_id: 1,
-                    off_tick: 201,
+        renderer
+            .render(
+                &[PhonationBatch {
+                    source_id: 2,
+                    source_generation: 7,
+                    cmds: vec![ToneCmd::Off {
+                        tone_id: 1,
+                        off_tick: 201,
+                    }],
+                    ..Default::default()
                 }],
-                ..Default::default()
-            }],
-            200,
-            &NeuralRhythms::default(),
-        );
+                200,
+                &NeuralRhythms::default(),
+            )
+            .unwrap();
         assert!(renderer.phrase_receipts.is_empty());
     }
 
@@ -2289,7 +2416,9 @@ mod tests {
             tone_id: 2,
             kick: OnsetKick { strength: 1. },
         };
-        renderer.render(&[first, second.clone()], 0, &NeuralRhythms::default());
+        renderer
+            .render(&[first, second.clone()], 0, &NeuralRhythms::default())
+            .unwrap();
         assert!(
             renderer
                 .phrase_receipts
@@ -2315,7 +2444,9 @@ mod tests {
             tone_id: 3,
             kick: OnsetKick { strength: 1. },
         };
-        renderer.render(&[second], 100, &NeuralRhythms::default());
+        renderer
+            .render(&[second], 100, &NeuralRhythms::default())
+            .unwrap();
         assert!(
             renderer
                 .phrase_receipts
@@ -2361,7 +2492,9 @@ mod tests {
                     ..Default::default()
                 },
             });
-            renderer.render(&[batch], 0, &NeuralRhythms::default());
+            renderer
+                .render(&[batch], 0, &NeuralRhythms::default())
+                .unwrap();
             let first: Vec<_> = records.try_iter().collect();
             assert_eq!(first.iter().filter(|r| r.flags & ONSET != 0).count(), 1);
             assert!(first.iter().all(|r| r.flags & OPPORTUNITY == 0));
@@ -2381,13 +2514,17 @@ mod tests {
                 tone_id: 1,
                 off_tick: 99,
             }];
-            renderer.render(&[off], 100, &NeuralRhythms::default());
+            renderer
+                .render(&[off], 100, &NeuralRhythms::default())
+                .unwrap();
             let closing: Vec<_> = records.try_iter().collect();
             assert_eq!(closing.len(), 1);
             assert_eq!((closing[0].sample, closing[0].flags), (100, OFFSET));
             assert!(!closing[0].trajectory.unwrap().sounding);
             assert!(!renderer.is_idle());
-            renderer.render(&[], 200, &NeuralRhythms::default());
+            renderer
+                .render(&[], 200, &NeuralRhythms::default())
+                .unwrap();
             assert!(renderer.is_idle());
             assert!(records.try_iter().next().is_none());
         }
@@ -2410,17 +2547,23 @@ mod tests {
             sustain_level: 1.,
             release_sec: 0.,
         });
-        renderer.render(&[batch], 0, &NeuralRhythms::default());
+        renderer
+            .render(&[batch], 0, &NeuralRhythms::default())
+            .unwrap();
         assert_eq!(renderer.phrase_receipts.len(), 1);
         assert_eq!(renderer.phrase_receipts[0].record.kind, ExecutionKind::On);
         renderer.phrase_receipts.clear();
-        renderer.render(&[], 100, &NeuralRhythms::default());
+        renderer
+            .render(&[], 100, &NeuralRhythms::default())
+            .unwrap();
         assert_eq!(renderer.phrase_receipts.len(), 1);
         let off = &renderer.phrase_receipts[0].record;
         assert_eq!(off.kind, ExecutionKind::Off);
         assert_eq!((off.sample, off.available_at), (100, 200));
         renderer.phrase_receipts.clear();
-        renderer.render(&[], 200, &NeuralRhythms::default());
+        renderer
+            .render(&[], 200, &NeuralRhythms::default())
+            .unwrap();
         assert!(renderer.phrase_receipts.is_empty());
     }
 
@@ -2462,7 +2605,7 @@ mod tests {
         assert!(context.onset.is_none());
         context.body = renderer.support_body(2, 7, 0, &rhythms, &shape);
         assert_eq!(context.choose(512, 1024, Action::Onset), Action::Onset);
-        renderer.render(&[batch], 0, &rhythms);
+        renderer.render(&[batch], 0, &rhythms).unwrap();
         context.body = renderer.support_body(2, 7, 64, &rhythms, &shape);
         assert!(matches!(context.body, Body::Unknown));
         assert_eq!(
@@ -2527,7 +2670,7 @@ mod tests {
                 tracked.sample_major_oracle = oracle;
                 let mut voice_only = ScheduleRenderer::new(time).with_prototype(prototype);
                 voice_only.sample_major_oracle = oracle;
-                tracked.prepare_self_sound(std::iter::once((2, 7)), 0, &observer);
+                tracked.prepare_self_sound(std::iter::once((2, 7, 0)), 0, &observer);
                 let landscape = Landscape::new(Log2Space::new(110.0, 1760.0, 48));
                 let mut flora = [Flora::new(
                     7,
@@ -2558,6 +2701,7 @@ mod tests {
                     RenderModulatorSpec::SeqGate { duration_sec: 1.0 };
                 let rhythms = NeuralRhythms::default();
                 let mut sources = [SourcePcm {
+                    site_id: 0,
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
                     onset_history: false,
@@ -2574,16 +2718,18 @@ mod tests {
                         &[]
                     };
                     flora[0].advance(&landscape);
-                    let actual = tracked.render_with_source_pcm(
-                        batches,
-                        now,
-                        &rhythms,
-                        &mut sources,
-                        &mut flora,
-                        &mut [],
-                        |_, _, _, _| {},
-                    );
-                    let control = voice_only.render(batches, now, &rhythms);
+                    let actual = tracked
+                        .render_with_source_pcm(
+                            batches,
+                            now,
+                            &rhythms,
+                            &mut sources,
+                            &mut flora,
+                            &mut [],
+                            |_, _, _, _| {},
+                        )
+                        .unwrap();
+                    let control = voice_only.render(batches, now, &rhythms).unwrap();
                     assert_eq!(actual.presentation, control.presentation);
                     assert_ne!(actual.habitat, control.habitat);
                     expected_history.process(
@@ -2636,6 +2782,7 @@ mod tests {
             let mut own_reference = ScheduleRenderer::new(time);
             let mut scratch = [
                 SourcePcm {
+                    site_id: 0,
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
                     onset_history: false,
@@ -2645,6 +2792,7 @@ mod tests {
                     habitat: vec![0.; time.hop],
                 },
                 SourcePcm {
+                    site_id: 0,
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
                     onset_history: false,
@@ -2654,6 +2802,7 @@ mod tests {
                     habitat: vec![0.; time.hop],
                 },
                 SourcePcm {
+                    site_id: 0,
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
                     onset_history: false,
@@ -2666,6 +2815,7 @@ mod tests {
             captured.loo_pcm = scratch
                 .iter()
                 .map(|s| SourcePcm {
+                    site_id: 0,
                     kind: crate::core::stream::loo::SourceKind::Voice,
                     analyze_hr: true,
                     onset_history: false,
@@ -2678,27 +2828,31 @@ mod tests {
             for frame in 0..20 {
                 let now = frame * time.hop as Tick;
                 let commands = if frame == 0 { &batches[..] } else { &[] };
-                let actual = captured.render_with_source_pcm(
-                    commands,
-                    now,
-                    &rhythms,
-                    &mut scratch,
-                    &mut [],
-                    &mut [],
-                    |_, _, _, _| {},
-                );
-                let expected = ordinary.render(commands, now, &rhythms);
+                let actual = captured
+                    .render_with_source_pcm(
+                        commands,
+                        now,
+                        &rhythms,
+                        &mut scratch,
+                        &mut [],
+                        &mut [],
+                        |_, _, _, _| {},
+                    )
+                    .unwrap();
+                let expected = ordinary.render(commands, now, &rhythms).unwrap();
                 assert_eq!(actual.habitat, expected.habitat);
                 assert_eq!(actual.presentation, expected.presentation);
-                let expected_own = own_reference.render(
-                    if frame == 0 {
-                        std::slice::from_ref(&own)
-                    } else {
-                        &[]
-                    },
-                    now,
-                    &rhythms,
-                );
+                let expected_own = own_reference
+                    .render(
+                        if frame == 0 {
+                            std::slice::from_ref(&own)
+                        } else {
+                            &[]
+                        },
+                        now,
+                        &rhythms,
+                    )
+                    .unwrap();
                 for (a, b) in captured.loo_pcm.iter().zip(&scratch) {
                     assert_eq!(a.habitat, b.habitat);
                 }
@@ -2784,18 +2938,20 @@ mod tests {
                         Vec::new()
                     };
                     assert_eq!(
-                        live.render(&all, now, &rhythms).habitat,
-                        reference.render(&all, now, &rhythms).habitat
+                        live.render(&all, now, &rhythms).unwrap().habitat,
+                        reference.render(&all, now, &rhythms).unwrap().habitat
                     );
-                    owned_reference.render(
-                        if now == 0 {
-                            std::slice::from_ref(&actor)
-                        } else {
-                            &[]
-                        },
-                        now,
-                        &rhythms,
-                    );
+                    owned_reference
+                        .render(
+                            if now == 0 {
+                                std::slice::from_ref(&actor)
+                            } else {
+                                &[]
+                            },
+                            now,
+                            &rhythms,
+                        )
+                        .unwrap();
                     for _ in 0..time.hop {
                         rhythms.advance_in_place(1.0 / time.fs);
                     }
@@ -2804,15 +2960,19 @@ mod tests {
                 let mut absent = live.fork_source(200);
                 let mut future_rhythms = rhythms;
                 for now in [64, 96, 128] {
-                    let result = fork.render(&[], now, &future_rhythms);
+                    let result = fork.render(&[], now, &future_rhythms).unwrap();
                     assert_eq!(
                         result.habitat,
-                        owned_reference.render(&[], now, &future_rhythms).habitat
+                        owned_reference
+                            .render(&[], now, &future_rhythms)
+                            .unwrap()
+                            .habitat
                     );
                     assert!(result.presentation.iter().all(|x| *x == 0.0));
                     assert!(
                         absent
                             .render(&[], now, &future_rhythms)
+                            .unwrap()
                             .habitat
                             .iter()
                             .all(|x| *x == 0.0)
@@ -2824,8 +2984,8 @@ mod tests {
                 // Advancing the fork must not consume live phases, noise, or queued updates.
                 for now in [64, 96, 128] {
                     assert_eq!(
-                        live.render(&[], now, &rhythms).habitat,
-                        reference.render(&[], now, &rhythms).habitat
+                        live.render(&[], now, &rhythms).unwrap().habitat,
+                        reference.render(&[], now, &rhythms).unwrap().habitat
                     );
                     for _ in 0..time.hop {
                         rhythms.advance_in_place(1.0 / time.fs);
@@ -2886,7 +3046,7 @@ mod tests {
             }],
             onsets: Vec::new(),
         };
-        renderer.render(&[batch], 0, &rhythms);
+        renderer.render(&[batch], 0, &rhythms).unwrap();
 
         let key = ToneKey {
             source_id: 2,
@@ -2934,8 +3094,12 @@ mod tests {
                         tone_id,
                         generation: batch.source_generation,
                     };
-                    let initial = renderer.render(std::slice::from_ref(&batch), 0, &rhythms);
-                    let baseline = reference.render(std::slice::from_ref(&batch), 0, &rhythms);
+                    let initial = renderer
+                        .render(std::slice::from_ref(&batch), 0, &rhythms)
+                        .unwrap();
+                    let baseline = reference
+                        .render(std::slice::from_ref(&batch), 0, &rhythms)
+                        .unwrap();
                     assert!(initial.habitat.iter().any(|sample| *sample != 0.));
                     assert_eq!(initial.habitat, baseline.habitat);
                     assert_eq!(initial.presentation, baseline.presentation);
@@ -2952,8 +3116,8 @@ mod tests {
                         } else {
                             &[]
                         };
-                        let actual = renderer.render(batches, now, &rhythms);
-                        let unchanged = reference.render(&[], now, &rhythms);
+                        let actual = renderer.render(batches, now, &rhythms).unwrap();
+                        let unchanged = reference.render(&[], now, &rhythms).unwrap();
                         let applied = generation == 7 && now >= at_tick.unwrap_or(32);
                         if applied {
                             assert_ne!(actual.habitat, unchanged.habitat);
@@ -3036,14 +3200,14 @@ mod tests {
                 let now = hop * 512;
                 // Keep the original sound alive after its participant retires.
                 let id = if hop < 5 { 2 } else { hop + 10 };
-                tracked.prepare_self_sound(std::iter::once((id, 0)), now, &observer);
+                tracked.prepare_self_sound(std::iter::once((id, 0, 0)), now, &observer);
                 let batches = if hop == 0 {
                     std::slice::from_ref(&batch)
                 } else {
                     &[]
                 };
-                let actual = tracked.render(batches, now, &rhythms);
-                let expected = control.render(batches, now, &rhythms);
+                let actual = tracked.render(batches, now, &rhythms).unwrap();
+                let expected = control.render(batches, now, &rhythms).unwrap();
                 assert_eq!(actual.presentation, expected.presentation);
                 assert_eq!(actual.habitat, expected.habitat);
                 observer.process(now, expected.habitat, |_| {});
@@ -3128,7 +3292,7 @@ mod tests {
             }],
             onsets: Vec::new(),
         };
-        renderer.render(&[batch], 0, &rhythms);
+        renderer.render(&[batch], 0, &rhythms).unwrap();
 
         let key = ToneKey {
             source_id: 2,
@@ -3178,11 +3342,11 @@ mod tests {
             }],
             onsets: Vec::new(),
         };
-        renderer.render(&[batch], 0, &rhythms);
+        renderer.render(&[batch], 0, &rhythms).unwrap();
         assert!(!renderer.is_idle());
         renderer.shutdown_at(0);
         let done_at = default_release_ticks(tb) + 2;
-        renderer.render(&[], done_at, &rhythms);
+        renderer.render(&[], done_at, &rhythms).unwrap();
         assert!(renderer.is_idle());
     }
 
@@ -3212,6 +3376,7 @@ mod tests {
                 third.tones[0].hold_ticks = Some(120);
                 let mut sources = [
                     SourcePcm {
+                        site_id: 0,
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
                         onset_history: false,
@@ -3221,6 +3386,7 @@ mod tests {
                         habitat: vec![0.; 64],
                     },
                     SourcePcm {
+                        site_id: 0,
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
                         onset_history: false,
@@ -3230,27 +3396,31 @@ mod tests {
                         habitat: vec![0.; 64],
                     },
                 ];
-                renderer.render_with_source_pcm(
-                    &[batch, second, third],
-                    0,
-                    &rhythms,
-                    &mut sources,
-                    &mut [],
-                    &mut [],
-                    |_, _, _, _| {},
-                );
-                assert!(renderer.rest_sources.iter().all(|s| s.quiet_at.is_none()));
-                let mut done = None;
-                for at in (64..80000).step_by(64) {
-                    renderer.render_with_source_pcm(
-                        &[],
-                        at,
+                renderer
+                    .render_with_source_pcm(
+                        &[batch, second, third],
+                        0,
                         &rhythms,
                         &mut sources,
                         &mut [],
                         &mut [],
                         |_, _, _, _| {},
-                    );
+                    )
+                    .unwrap();
+                assert!(renderer.rest_sources.iter().all(|s| s.quiet_at.is_none()));
+                let mut done = None;
+                for at in (64..80000).step_by(64) {
+                    renderer
+                        .render_with_source_pcm(
+                            &[],
+                            at,
+                            &rhythms,
+                            &mut sources,
+                            &mut [],
+                            &mut [],
+                            |_, _, _, _| {},
+                        )
+                        .unwrap();
                     assert!(renderer.rest_sources[1].quiet_at.is_none());
                     if let Some(q) = renderer.rest_sources[0].quiet_at {
                         let offset = q.saturating_sub(at).min(64) as usize;
@@ -3261,15 +3431,17 @@ mod tests {
                 }
                 let done = done.expect("finite generation completes with another held");
                 for at in ((done + 64)..(done + 4064)).step_by(64) {
-                    renderer.render_with_source_pcm(
-                        &[],
-                        at,
-                        &rhythms,
-                        &mut sources,
-                        &mut [],
-                        &mut [],
-                        |_, _, _, _| {},
-                    );
+                    renderer
+                        .render_with_source_pcm(
+                            &[],
+                            at,
+                            &rhythms,
+                            &mut sources,
+                            &mut [],
+                            &mut [],
+                            |_, _, _, _| {},
+                        )
+                        .unwrap();
                     assert!(sources[0].habitat.iter().all(|x| *x == 0.));
                 }
                 let at = done + 4064;
@@ -3282,9 +3454,9 @@ mod tests {
                     }],
                     ..Default::default()
                 };
-                renderer.render(&[off], at, &rhythms);
+                renderer.render(&[off], at, &rhythms).unwrap();
                 for now in ((at + 64)..(at + 80000)).step_by(64) {
-                    renderer.render(&[], now, &rhythms);
+                    renderer.render(&[], now, &rhythms).unwrap();
                     if renderer.rest_sources[1].quiet_at.is_some() {
                         break;
                     }
@@ -3305,6 +3477,7 @@ mod tests {
         let rhythms = NeuralRhythms::default();
         let mut renderer = ScheduleRenderer::new(tb).with_prototype(true);
         renderer.loo_pcm.push(SourcePcm {
+            site_id: 0,
             kind: crate::core::stream::loo::SourceKind::Voice,
             analyze_hr: true,
             onset_history: false,
@@ -3314,11 +3487,13 @@ mod tests {
             habitat: vec![0.; tb.hop],
         });
         renderer.prepare_rest_sources([(2, 7)].into_iter());
-        renderer.render(&[outcome_batch(BodyKind::Modal)], 0, &rhythms);
+        renderer
+            .render(&[outcome_batch(BodyKind::Modal)], 0, &rhythms)
+            .unwrap();
         for at in (64..16000).step_by(64) {
             crate::runtime_profile::begin_allocations();
             renderer.prepare_rest_sources([(2, 7)].into_iter());
-            renderer.render(&[], at, &rhythms);
+            renderer.render(&[], at, &rhythms).unwrap();
             let n = crate::runtime_profile::finish_allocations().unwrap();
             assert_eq!((n.count, n.bytes), (0, 0));
         }
@@ -3357,6 +3532,7 @@ mod tests {
             )];
             let mut renderer = ScheduleRenderer::new(time);
             renderer.loo_pcm.push(SourcePcm {
+                site_id: 0,
                 kind: crate::core::stream::loo::SourceKind::Flora,
                 analyze_hr: true,
                 onset_history: false,
@@ -3366,27 +3542,31 @@ mod tests {
                 habitat: vec![0.0; time.hop],
             });
             flora[0].advance(&landscape);
-            renderer.render_with_source_pcm(
-                &[],
-                0,
-                &NeuralRhythms::default(),
-                &mut [],
-                &mut flora,
-                &mut [],
-                |_, _, _, _| {},
-            );
-            crate::runtime_profile::begin_allocations();
-            for frame in 1..301 {
-                flora[0].advance(&landscape);
-                renderer.render_with_source_pcm(
+            renderer
+                .render_with_source_pcm(
                     &[],
-                    frame * time.hop as u64,
+                    0,
                     &NeuralRhythms::default(),
                     &mut [],
                     &mut flora,
                     &mut [],
                     |_, _, _, _| {},
-                );
+                )
+                .unwrap();
+            crate::runtime_profile::begin_allocations();
+            for frame in 1..301 {
+                flora[0].advance(&landscape);
+                renderer
+                    .render_with_source_pcm(
+                        &[],
+                        frame * time.hop as u64,
+                        &NeuralRhythms::default(),
+                        &mut [],
+                        &mut flora,
+                        &mut [],
+                        |_, _, _, _| {},
+                    )
+                    .unwrap();
             }
             let counts = crate::runtime_profile::finish_allocations().unwrap();
             println!("T37_CAPTURE_ALLOC tone={tone:?} counts={counts:?} hops=300");

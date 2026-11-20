@@ -224,6 +224,69 @@ pub(crate) struct OwnSoundHistory {
     reported_prediction_frame: u64,
 }
 
+/// The part of a receiver's pre-birth history inherited by a newborn Voice.
+pub(crate) struct SiteEnergyHistory {
+    energy: BandEnergyHistory,
+    dorsal: DorsalStream,
+    window: Vec<f32>,
+    filled: usize,
+    next: u64,
+    rate: u32,
+}
+
+impl SiteEnergyHistory {
+    pub(crate) fn new(rate: u32, now: u64) -> Self {
+        let window = (rate as f64 / 100.).round() as usize;
+        Self {
+            energy: BandEnergyHistory::new(window as f32 / rate as f32, 0),
+            dorsal: DorsalStream::new(rate as f32),
+            window: vec![0.; window],
+            filled: 0,
+            next: now,
+            rate,
+        }
+    }
+
+    pub(crate) fn align(&mut self, now: u64) {
+        if self.next != now {
+            *self = Self::new(self.rate, now);
+        }
+    }
+
+    pub(crate) fn process(&mut self, now: u64, mut pcm: &[f32]) {
+        self.align(now);
+        self.next += pcm.len() as u64;
+        while !pcm.is_empty() {
+            let count = pcm.len().min(self.window.len() - self.filled);
+            self.window[self.filled..self.filled + count].copy_from_slice(&pcm[..count]);
+            self.filled += count;
+            pcm = &pcm[count..];
+            if self.filled == self.window.len() {
+                self.dorsal.process(&self.window);
+                let m = self.dorsal.last_metrics();
+                self.energy.observe([m.e_low, m.e_mid, m.e_high], |_| {});
+                self.filled = 0;
+            }
+        }
+    }
+
+    pub(crate) fn newborn(&self, now: u64) -> OwnSoundHistory {
+        assert_eq!(self.next, now);
+        OwnSoundHistory {
+            external: self.energy.clone(),
+            profile: [0.; 3],
+            body_dorsal: DorsalStream::new(self.rate as f32),
+            external_dorsal: self.dorsal.clone(),
+            body_window: vec![0.; self.window.len()],
+            external_window: self.window.clone(),
+            filled: self.filled,
+            next_frame: now,
+            profile_decay: (-self.energy.step_sec / 2.).exp(),
+            reported_prediction_frame: now - self.filled as u64,
+        }
+    }
+}
+
 impl OwnSoundHistory {
     pub(crate) fn next_frame(&self) -> u64 {
         self.next_frame
@@ -838,6 +901,16 @@ impl AcousticTemporalExpectation {
             next_input_frame: None,
             observed_through_frame: 0,
         })
+    }
+
+    pub(crate) fn discontinuous(&self, tick: u64) -> bool {
+        self.next_input_frame.unwrap_or(0) != tick
+    }
+
+    pub(crate) fn aligned_history(&self, history: &OwnSoundHistory) -> bool {
+        self.next_input_frame.unwrap_or(0) == history.next_frame
+            && self.filled == history.filled
+            && self.model.step_index == history.external.step_index
     }
 
     pub(crate) fn align_to(&mut self, start_frame: u64) {
@@ -1528,6 +1601,56 @@ mod tests {
         }
         assert!(forecast.sustained_energy_at(f64::NAN).is_none());
         assert!(forecast.sustained_energy_at(0.0).is_none());
+    }
+
+    #[test]
+    fn site_late_voice_inherits_the_partial_window_and_uses_shared_recurrence() {
+        let mut shared = AcousticTemporalExpectation::new(48000).unwrap();
+        let mut reference = AcousticTemporalExpectation::new(48000).unwrap();
+        let mut site = SiteEnergyHistory::new(48000, 0);
+        let (mut actual, mut expected) = (None, None);
+        for hop in 0..180 {
+            let now = hop * 512;
+            let local = std::array::from_fn::<_, 512, _>(|i| {
+                let t = (now + i as u64) as f32 / 48000.;
+                0.02 * (std::f32::consts::TAU * 440. * t).sin() * (1. - (t * 4.).fract())
+            });
+            if hop == 73 {
+                assert_ne!(site.filled, 0);
+                actual = Some(site.newborn(now));
+                expected = Some(OwnSoundHistory::new(&reference, now));
+            }
+            if let (Some(a), Some(r)) = (&mut actual, &mut expected) {
+                assert!(shared.aligned_history(a));
+                // Equal-pitch body and neighbour: one path subtracts the owner,
+                // the independent reference receives only the neighbour.
+                a.process(now, &local, &local, &local.map(|x| 2. * x), |_, _, _| {});
+                r.process(now, &local, &[0.; 512], &local, |_, _, _| {});
+                assert_eq!(a.profile, r.profile);
+                let end = a.observed_through_frame();
+                assert_eq!(
+                    a.observed_external_energy(end - 480, end),
+                    r.observed_external_energy(end - 480, end)
+                );
+            }
+            site.process(now, &local);
+            reference.process(now, &local, |_| {});
+            shared.process(now, &local.map(|x| 0.2 * x), |_| {});
+        }
+        let mut a = actual.unwrap();
+        let mut r = expected.unwrap();
+        let baseline = shared.forecast().unwrap();
+        let (mut fa, mut fr) = (baseline, baseline);
+        shared.use_external_energy(&mut fa, &mut a.external);
+        shared.use_external_energy(&mut fr, &mut r.external);
+        assert_eq!(fa.band_energy, fr.band_energy);
+        assert!(a.profile.iter().any(|&p| p > 0.));
+        assert_eq!(
+            fa.energy_recurrence_weight,
+            baseline.energy_recurrence_weight
+        );
+        site.align(4200);
+        assert!(!shared.aligned_history(&site.newborn(4200)));
     }
 
     #[test]

@@ -71,7 +71,9 @@ fn agents_publish_notes_and_render_audio() {
     );
     let mut renderer = ScheduleRenderer::new(tb);
     let rhythms = landscape.rhythm;
-    let frame = renderer.render(&phonation_batches, render_now, &rhythms);
+    let frame = renderer
+        .render(&phonation_batches, render_now, &rhythms)
+        .unwrap();
     assert!(frame.presentation.iter().any(|s| s.abs() > 1e-6));
 }
 

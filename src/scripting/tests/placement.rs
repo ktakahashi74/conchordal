@@ -248,3 +248,94 @@ fn rest_invalid_placement_and_live_writes_are_transactional() {
         assert_eq!(format!("{:?}", ctx.lock().unwrap().populations), before);
     }
 }
+
+#[test]
+fn internal_sites_follow_placement_counts_and_both_phonation_paths() {
+    use crate::core::{log2space::Log2Space, modulation::NeuralRhythms};
+    use crate::life::voice::{PhonationBatch, Voice, VoiceMetadata};
+    use crate::scenario::{FloraSpec, RainSpec, Site};
+    let mut ctx = ScriptContext::with_seed(21);
+    let pos = Position::new(3, 4);
+    let mut field = Placement::random(200., 800.);
+    field.site = Some(Site {
+        x: 3.,
+        y: -4.,
+        position: pos,
+    });
+    let mut placement = Placement::at(300.).with_count(2);
+    placement.site = field.site;
+    let spec = PopulationSpecHandle {
+        spec: PopulationSpec::preset(BodyMethod::Sine),
+    };
+    ctx.place_population_spec(spec.clone(), placement, pos)
+        .unwrap();
+    ctx.place_population_spec(spec, Placement::at(300.), pos)
+        .unwrap();
+    ctx.place_flora(
+        FloraSpecHandle {
+            spec: FloraSpec::default(),
+        },
+        field.clone(),
+        pos,
+    )
+    .unwrap();
+    ctx.place_rain(
+        RainSpecHandle {
+            spec: RainSpec::default(),
+        },
+        field,
+        pos,
+    )
+    .unwrap();
+    assert_eq!(ctx.scenario.sites.len(), 2);
+    let land = Landscape::new(Log2Space::new(110., 8000., 48));
+    let time = Timebase {
+        hop: 512,
+        fs: 48000.,
+    };
+    let mut batch = PhonationBatch::default();
+    let mut counts = Vec::new();
+    let mut other = Vec::new();
+    for a in ctx.scenario.events.iter().flat_map(|event| &event.actions) {
+        match a {
+            Action::Spawn { spec, ids, .. } => {
+                counts.push((ids.len(), spec.control.body.site_id));
+                for harmonic in [false, true] {
+                    let mut v = Voice::spawn_from_control(
+                        spec.control.clone(),
+                        spec.articulation.clone(),
+                        11,
+                        0,
+                        VoiceMetadata::default(),
+                        48000.,
+                        Some(&land),
+                        21,
+                    );
+                    if harmonic {
+                        v.tick_harmonic(&time, 0, &land, &[], &mut batch);
+                    } else {
+                        v.tick_phonation_into(
+                            &time,
+                            0,
+                            &NeuralRhythms::default(),
+                            None,
+                            0.,
+                            1.,
+                            1.,
+                            &mut batch,
+                        );
+                    }
+                    assert_eq!(
+                        batch.body_policy.unwrap().site_id,
+                        spec.control.body.site_id
+                    );
+                }
+            }
+            Action::PlaceFlora { spec, .. } => other.push(spec.site_id),
+            Action::PlaceRain { spec, .. } => other.push(spec.site_id),
+            _ => {}
+        }
+    }
+    assert_eq!(counts, [(2, 1), (1, 0)]);
+    assert_eq!(other, [1, 1]);
+}

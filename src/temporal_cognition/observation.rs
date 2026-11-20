@@ -1039,10 +1039,19 @@ mod tests {
                 assert_eq!(tap.tx.as_ref().unwrap().capacity(), Some(32));
                 // Stop publication; live sends must return even with a full queue.
                 let guard = output.lock().unwrap();
-                for frame in 0..256 {
+                tap.observe(0, &power, 0.25);
+                // Wait until the observer holds frame 0 and blocks on publication.
+                // A late first receive would otherwise free a slot mid-burst and
+                // accept a later frame, so loss would not all lie at the tail.
+                let deadline = Instant::now() + std::time::Duration::from_secs(5);
+                while !tap.tx.as_ref().unwrap().is_empty() {
+                    assert!(Instant::now() < deadline, "observer failed to start");
+                    std::thread::yield_now();
+                }
+                for frame in 1..256 {
                     tap.observe(frame, &power, 0.25);
                 }
-                assert!(tap.dropped_frames >= 256 - 32 - 1);
+                assert_eq!(tap.dropped_frames, 256 - 32 - 1);
                 assert!(tap.tx.as_ref().unwrap().len() <= 32);
                 let dropped = tap.dropped_frames;
                 drop(guard);

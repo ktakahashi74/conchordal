@@ -299,6 +299,12 @@ impl Community {
         self.populations.contains_key(&id)
     }
 
+    pub(crate) fn can_respawn(&self, id: u64) -> bool {
+        self.populations.get(&id).is_some_and(|p| {
+            !p.released && !matches!(p.respawn_policy, crate::scenario::RespawnPolicy::None)
+        })
+    }
+
     pub(crate) fn population_count(&self) -> usize {
         self.populations.len()
     }
@@ -601,6 +607,7 @@ impl Community {
         let gate_open_events = &mut self.gate_open_scratch;
         gate_open_events.clear();
         for voice in &mut self.voices {
+            let landscape = landscape.at_site(voice.effective_control.body.site_id);
             let social_coupling = voice.social_coupling;
             if used == out.len() {
                 out.push(PhonationBatch::default());
@@ -794,6 +801,7 @@ impl Community {
             control: control.clone(),
             articulation: spec.articulation.clone(),
         };
+        let landscape = landscape.at_site(spec.control.body.site_id);
         let mut spawned = cfg.spawn_with_landscape(
             id,
             self.current_frame,
@@ -802,6 +810,7 @@ impl Community {
             Some(landscape),
             self.seed,
         );
+        spawned.birth_tick = Some(self.time.frame_start_tick(self.current_frame));
         if let Some(observe) = self.auto_observe {
             let endurance_sec = match &spawned.articulation.core {
                 AnyArticulationCore::Entrain(core) => core.endurance_sec,
@@ -928,6 +937,7 @@ impl Community {
 
     fn update_loo_ownership(&mut self, landscape: &Landscape) {
         for voice in &mut self.voices {
+            let landscape = landscape.at_site(voice.effective_control.body.site_id);
             let observation = landscape
                 .loo
                 .iter()
@@ -964,6 +974,20 @@ impl Community {
             } else {
                 None
             };
+            if excluded
+                && landscape.site_end.is_some()
+                && Some(self.time.frame_start_tick(self.current_frame)) == voice.birth_tick
+                && observation.is_none()
+            {
+                input.exact_score = Some(landscape.consonance_field_score.as_slice().into());
+                input.support = landscape.support.clone();
+                if voice.effective_control.pitch.respond_to_onsets > 0. {
+                    input.onset_habituation_state_scan =
+                        Some(landscape.onset_habituation_state_scan.clone());
+                    input.onset_habituation_end = landscape.onset_habituation_end;
+                    input.onset_habituation_known = landscape.onset_habituation_known;
+                }
+            }
             input.support_single_density = density;
             input.support_template = if enabled && (excluded || temporal) {
                 voice.support_template.clone()
@@ -1031,11 +1055,19 @@ impl Community {
         let sequence_field = self
             .voices
             .iter()
-            .any(|v| v.sequence_control.is_some())
+            .any(|v| landscape.sites.is_empty() && v.sequence_control.is_some())
             .then(|| std::sync::Arc::new(landscape.clone()));
         for voice in &mut self.voices {
             if let Some(deferred) = &mut voice.sequence_control {
-                deferred.field = sequence_field.clone();
+                deferred.field = if landscape.sites.is_empty() {
+                    sequence_field.clone()
+                } else {
+                    landscape
+                        .sites
+                        .iter()
+                        .find(|(id, _)| *id == voice.effective_control.body.site_id)
+                        .map(|(_, field)| field.clone())
+                };
             }
         }
         let mut rhythms = landscape.rhythm;
@@ -1150,6 +1182,7 @@ impl Community {
                 &[]
             };
             if let Some(voice) = self.voices.get_mut(voice_idx) {
+                let landscape = landscape.at_site(voice.effective_control.body.site_id);
                 voice.decide_pitch_target_with_listener_pressure(
                     dt_step_sec,
                     rhythms,
@@ -1266,6 +1299,7 @@ impl Community {
             if let Some(voice) = self.voices.get_mut(entry.voice_idx)
                 && voice.is_alive()
             {
+                let landscape = landscape.at_site(voice.effective_control.body.site_id);
                 if let Some((source, params)) = self
                     .body_metabolism
                     .as_mut()
@@ -1328,6 +1362,7 @@ impl Community {
                 &[]
             };
             if let Some(voice) = self.voices.get_mut(voice_idx) {
+                let landscape = landscape.at_site(voice.effective_control.body.site_id);
                 voice.decide_pitch_target_with_listener_pressure(
                     dt_step_sec,
                     rhythms,

@@ -159,6 +159,10 @@ impl AnalysisStream {
         self.analysis.landscape.onset_habituation_known = false;
     }
 
+    pub(crate) fn resource_power(&self) -> Option<&[f32]> {
+        self.analysis.nsgt.resource_power()
+    }
+
     pub(crate) fn enable_resource_power(&mut self) {
         self.analysis.nsgt.enable_resource_power();
     }
@@ -230,6 +234,34 @@ impl AnalysisStream {
             observer.analysis.nsgt_enabled = true;
         }
         observer
+    }
+
+    pub(crate) fn site_observer(&self, f: &super::loo::SitePcm) -> Self {
+        let mut stream = self.voice_observer(f.onset);
+        if f.flora {
+            stream.enable_resource_power();
+            stream.analysis.nsgt_enabled = true;
+        }
+        if f.tonal {
+            stream.tonal_context = self.new_tonal_observer(true);
+        }
+        stream.analysis.landscape.pitch_set_weight = 0.;
+        stream.analysis.landscape.pitch_set = None;
+        stream
+    }
+
+    pub(crate) fn retain_site_components(&mut self, plan: &super::loo::SitePcm) {
+        if !plan.flora && self.analysis.nsgt_enabled {
+            self.analysis.nsgt_enabled = false;
+            self.analysis.nsgt.disable_resource_power();
+        }
+        if !plan.onset && self.onset_habituation.take().is_some() {
+            self.analysis.landscape.onset_habituation_state_scan = std::sync::Arc::from([]);
+            self.analysis.landscape.onset_habituation_known = false;
+        }
+        if !plan.tonal {
+            self.tonal_context = None;
+        }
     }
 
     pub(crate) fn resource_observer(&mut self) -> RtNsgtKernelLog2 {
@@ -427,6 +459,15 @@ mod tests {
         let mut stream = AnalysisStream::new(params, nsgt).with_nsgt_power(false);
         stream.enable_tonal_context(crate::core::tonal_context::Decoder::unqueried_for_test());
         stream.enable_pitch_set(1.);
+        let site = stream.site_observer(&super::super::loo::SitePcm {
+            id: 1,
+            voice: true,
+            flora: true,
+            onset: true,
+            tonal: true,
+            samples: vec![0.; 512],
+        });
+        assert!(site.pitch_set.is_none() && site.voice_observer(true).pitch_set.is_none());
         let pcm: Vec<_> = (0..51200)
             .map(|n| (0.1 * (std::f64::consts::TAU * 220. * n as f64 / 48000.).sin()) as f32)
             .collect();

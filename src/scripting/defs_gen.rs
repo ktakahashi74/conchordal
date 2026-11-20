@@ -707,6 +707,10 @@ disappear as their research questions settle.",
                     && doc.name == "tail_roughness_aversion"
                 {
                     out.push_str("作者規則。初期設定と実行中の更新に対応し、既定値は0。有限の[0,1]を指定する。範囲外・非有限は警告し、有限値は範囲内へ制限、正の無限大は1、負の無限大とNaNは0にする。leave_self_out(true)で実際に旧ToneをOff・新ToneをOnする音高候補だけ、自己除外Rと混合Rを1-wとwで混ぜる。Hは自己除外のまま、既存の場の係数とsigmoidを使う。0は従来の既定経路、1は採択したVR-1の場。Lock、保持、Glide、GateSnap、提案によるOnのない待機には効かない。leave_self_out(false)で正の重みは効かず、Populationごとに一度だけ警告する。共有の和声機会でも同じ行為判定を使う。未来のreleaseや候補の全身体の予測ではない。environment、Flora、routing、releaseは変えない。");
+                } else if language == ReferenceLanguage::Japanese && doc.name == "site" {
+                    out.push_str("有限の offline 描画で、配置にメートル単位の固定座標を与える。客席と共有の観測点は (0,0)。一つでも地点を使うと曲頭から全配置に距離が効き、無指定の配置は (0,12) になる。全地点を省略すると、客席は presentation では 12 m、both では従来の 23.5 m 相当の響きで聴く。直接音の振幅は 1 m を下限として距離で割る。both では個体の耳に届く直接音と反射音の比も変わる。詳しくは「部屋の響きを選ぶ」を参照。");
+                } else if language == ReferenceLanguage::Japanese && doc.name == "room" {
+                    out.push_str("曲全体の響きを選ぶ。off はモノラルの直接音、presentation は客席にステレオの反射音を加え、both は生態系が聴く音にも反射を加える。地点を一つも指定しない場合、客席から音源までの距離は presentation で 12 m、both で従来の 23.5 m 相当。有限の曲では最後の宣言が曲頭から効き、設定ファイルの [room].mode に優先する。反射音を使う場合は 48 kHz。endless では時刻を進める前に宣言する。both は有限の曲で使える。");
                 } else if language == ReferenceLanguage::Japanese && doc.name == "harmonic_rhythm" {
                     out.push_str("背景の変化をN拍ごとの共有機会にまとめる作者規則。Nは作曲者が置く非負整数で、0と省略は中立。最後の有効な指定を場面全体の初期前提とし、有限の曲ではwait()後の記述も途中変更にはならない。endlessでは最初に時刻を進めるwait()より前に宣言する。対象は全Floraと、出生時にOnce／WhileAlive、Free、Rearticulate、閾値0のVoice。準備が整わなければ機会を見送る。解放と支持喪失は優先し、競合する実行中の音高設定はwarningとともに拒否する。調・和音・進行の表や、小節頭への再整列は導入しない。Nは推定小節長ではない。");
                 } else {

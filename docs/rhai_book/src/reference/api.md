@@ -134,7 +134,7 @@ rest_on_habituation(weight)
 
 Applies to: `FloraSpec`.
 
-Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0). Zero creates no private span state. Positive weights use the shared audio-only attack history, averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.
+Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0). Zero creates no private span state. Positive weights use the full habitat attack history (at the placement in a spatial score), averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.
 
 **Evidence:** Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: probabilistic span exit and private recovery/return; neutral at weight 0 (§9.3.96, §9.3.101).
 
@@ -265,6 +265,18 @@ Harmonic-body preset with brightness 1 and motion 1 (mainly vibrato; jitter is n
 ### Placement
 
 Placements decide where voices enter the frequency field. Constructors return a `Placement`; modifiers refine it before it is passed to `place()`.
+
+#### `site`
+
+```rhai,ignore
+site(x, y)
+```
+
+Applies to: `Placement`.
+
+Give a placement fixed coordinates in metres in a finite offline score. The audience and shared habitat observer are at (0,0). Any placed site enables distance for the whole score; all other placements use (0,12). With no sites, the audience hears every source at 12 m in presentation and at the original 23.5 m balance in both. Direct amplitude is divided by distance with a one-metre minimum. In both mode distance changes the balance between direct sound and reflections at each ear. See Choosing a room for hearing, output level and restrictions.
+
+**Evidence:** Principle: free-field direct pressure falls with distance; direct and reflected sound add linearly.<br>Author rule: the one-metre minimum, uniform diffuse send, shared sensitivity and fixed positions are compositional choices.
 
 #### `at`
 
@@ -536,6 +548,16 @@ parallel(callbacks)
 Run an array of closures on parallel timelines from the current cursor. Each branch starts at the current cursor; the cursor advances to the latest branch end.
 
 **Evidence:** Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
+
+#### `room`
+
+```rhai,ignore
+room(mode)
+```
+
+Select the acoustic room for the whole piece. Use off for dry mono, presentation for stereo reflections at the audience, or both to include reflections in the habitat. Without sites, presentation uses a 12 m audience distance and both keeps the original 23.5 m balance. The last finite declaration overrides [room].mode from the beginning of the piece. Wet modes require 48 kHz. In endless scores declare room before time advances; both requires a finite score.
+
+**Evidence:** Principle: direct sound and reflections superpose linearly. The fixed responses approximate one measured acoustic setting.<br>Not a mechanism (composition): the composer chooses which buses hear the room.
 
 #### `output_gain`
 
@@ -1565,7 +1587,7 @@ respond_to_onsets(w)
 
 Applies to: `FloraSpec`.
 
-Speed the Flora's ecological time while new external onsets are heard inside its extent (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights read the shared attack history inside the extent, skipping bins within 1.5 ERB of the Flora's sounding lanes. A rise rho owes w*tau*rho extra ecological seconds (tau = satiation_sec/ln 10), spent at most w seconds per second, so unhabituated external onsets run the clock up to 1+w times faster; pace saturation still applies. Births stay on the Flora's own crossings and the field chooses where; no onset, pitch or random draw is added. Unknown or regridded observations only re-prime. Disabled habituation warns once. Invalid values warn and use zero. Initial-only; the observer starts at scene start, including before later Flora placements.
+Speed the Flora's ecological time while new external onsets are heard inside its extent (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Reads habitat attacks inside the extent (with sites: local external sound for self-exclusion, otherwise the full local mixture), skipping bins within 1.5 ERB of the Flora's sounding lanes. A rise rho owes w*tau*rho extra ecological seconds (tau = satiation_sec/ln 10), spent at most w seconds per second, so unhabituated external onsets run the clock up to 1+w times faster; pace saturation still applies. Births stay on the Flora's own crossings and the field chooses where; no onset, pitch or random draw is added. Unknown or regridded observations only re-prime. Disabled habituation warns once. Invalid values warn and use zero. Initial-only; the observer starts at scene start, including before later Flora placements.
 
 **Evidence:** Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: faster Flora ecological time after rises in heard attack history outside its own partials; neutral at weight 0 (§9.3.138).
 
@@ -1773,7 +1795,7 @@ respond_to_onsets(w)
 
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-Bring pitch proposals forward while new onsets are heard outside the Voice's own sound (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights copy the shared attack detector into the Voice's self-exclusion observer, so it hears everything except its own PCM. A rise rho inside the pitch range owes w*tau*rho proposal-clock seconds (tau = satiation_sec/ln 10), spent at most w seconds per second; one unhabituated onset lends about 0.45*w seconds with a 2 Hz basin. After each pitch change nothing is lent until one ordinary proposal threshold of real time passes. The field still decides whether and where to move; no onset or random draw is added. Requires free seek_consonance(), sustain(), rearticulate, rearticulate_above(0) and no follow_own_sequence()/melodic_continuity(); otherwise warns to 0. Without leave_self_out(true) it warns and has no effect.
+Bring pitch proposals forward while new onsets are heard outside the Voice's own sound (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights seed the Voice's external attack detector from the habitat history at its placement. It excludes the Voice's own PCM. A rise rho inside the pitch range owes w*tau*rho proposal-clock seconds (tau = satiation_sec/ln 10), spent at most w seconds per second; one unhabituated onset lends about 0.45*w seconds with a 2 Hz basin. After each pitch change nothing is lent until one ordinary proposal threshold of real time passes. The field still decides whether and where to move; no onset or random draw is added. Requires free seek_consonance(), sustain(), rearticulate, rearticulate_above(0) and no follow_own_sequence()/melodic_continuity(); otherwise warns to 0. Without leave_self_out(true) it warns and has no effect.
 
 **Evidence:** Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60).<br>Author rule: earlier pitch proposals after rises in the attack history heard without the Voice's own PCM; one ordinary proposal cycle is kept after each pitch change; neutral at weight 0 (§9.3.138).
 

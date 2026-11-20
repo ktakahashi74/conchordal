@@ -2,6 +2,12 @@ use conchordal::viewdata::WebSnapshotEncoder;
 use conchordal::{Limiter, StepEngine, StepStatus};
 use wasm_bindgen::prelude::*;
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console, js_name = info)]
+    fn log_room(message: &str);
+}
+
 /// The host owns scheduling; each call produces one interleaved output hop.
 #[wasm_bindgen]
 pub struct BrowserEngine {
@@ -17,6 +23,7 @@ impl BrowserEngine {
     pub fn new(script: &str, config: &str, seed: u32, sample_rate: u32) -> Result<Self, JsValue> {
         let engine = StepEngine::new(script, config, Some(u64::from(seed)), sample_rate)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        log_room(engine.room_diagnostic());
         let presentation = vec![0.0; engine.hop_len() * engine.output_channels()];
         let limiter = Limiter::new(engine.limiter_mode(), sample_rate, engine.output_channels())
             .with_input_gain(engine.output_gain());

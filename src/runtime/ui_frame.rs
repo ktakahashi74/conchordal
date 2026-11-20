@@ -113,7 +113,10 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
                 freq_hz,
                 target_freq: 2.0f32.powf(agent.target_pitch_log2()),
                 integration_window: agent.integration_window(),
-                consonance: input.current_landscape.evaluate_pitch_level(freq_hz),
+                consonance: input
+                    .current_landscape
+                    .at_site(agent.effective_control.body.site_id)
+                    .evaluate_pitch_level(freq_hz),
             }
         })
         .collect();

@@ -302,6 +302,29 @@ mod tests {
     }
 
     #[test]
+    fn site_full_history_drives_the_same_rest_for_both_self_perception_modes() {
+        let (mut local, mut excluded) = setup(4., false);
+        local.site_end = Some(0);
+        let (_, mut mixed) = setup(4., false);
+        excluded.spec.leave_self_out = true;
+        mixed.spec.leave_self_out = false;
+        let (_, mut disabled) = setup(0., false);
+        for hop in 0..64 {
+            let now = hop * 512;
+            for flora in [&mut mixed, &mut excluded, &mut disabled] {
+                render(flora, &local, now, true, true);
+            }
+            let a = mixed.span_gap.as_ref().unwrap();
+            let b = excluded.span_gap.as_ref().unwrap();
+            assert_eq!(
+                (a.heard(), a.exit_integral, a.phase),
+                (b.heard(), b.exit_integral, b.phase)
+            );
+            assert!(disabled.span_gap.is_none());
+        }
+    }
+
+    #[test]
     fn weighted_heard_uses_sounding_tonal_target_power_and_empty_is_zero() {
         let (mut l, mut f) = setup(1., true);
         let split = l.space.n_bins() / 2;

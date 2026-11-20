@@ -697,7 +697,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Initial,
         usage: &["rest_on_habituation(weight)"],
         summary: "Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0).",
-        details: "Zero creates no private span state. Positive weights use the shared audio-only attack history, averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.",
+        details: "Zero creates no private span state. Positive weights use the full habitat attack history (at the placement in a spatial score), averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.",
     },
     FnDoc {
         name: "respond_to_onsets",
@@ -708,7 +708,7 @@ pub const FN_DOCS: &[FnDoc] = &[
         patch: Patch::Initial,
         usage: &["respond_to_onsets(w)"],
         summary: "Speed the Flora's ecological time while new external onsets are heard inside its extent (finite nonnegative weight, default 0).",
-        details: "Zero creates no state and reads nothing. Positive weights read the shared attack history inside the extent, skipping bins within 1.5 ERB of the Flora's sounding lanes. A rise rho owes w*tau*rho extra ecological seconds (tau = satiation_sec/ln 10), spent at most w seconds per second, so unhabituated external onsets run the clock up to 1+w times faster; pace saturation still applies. Births stay on the Flora's own crossings and the field chooses where; no onset, pitch or random draw is added. Unknown or regridded observations only re-prime. Disabled habituation warns once. Invalid values warn and use zero. Initial-only; the observer starts at scene start, including before later Flora placements.",
+        details: "Zero creates no state and reads nothing. Reads habitat attacks inside the extent (with sites: local external sound for self-exclusion, otherwise the full local mixture), skipping bins within 1.5 ERB of the Flora's sounding lanes. A rise rho owes w*tau*rho extra ecological seconds (tau = satiation_sec/ln 10), spent at most w seconds per second, so unhabituated external onsets run the clock up to 1+w times faster; pace saturation still applies. Births stay on the Flora's own crossings and the field chooses where; no onset, pitch or random draw is added. Unknown or regridded observations only re-prime. Disabled habituation warns once. Invalid values warn and use zero. Initial-only; the observer starts at scene start, including before later Flora placements.",
     },
     // --- population specs ---
     FnDoc {
@@ -778,6 +778,17 @@ pub const FN_DOCS: &[FnDoc] = &[
         details: "",
     },
     // --- placement ---
+    FnDoc {
+        name: "site",
+        evidence: SITE,
+        owner: Owner::Placement,
+        category: "placement",
+        style: Style::Method,
+        patch: Patch::Na,
+        usage: &["site(x, y)"],
+        summary: "Give a placement fixed coordinates in metres in a finite offline score.",
+        details: "The audience and shared habitat observer are at (0,0). Any placed site enables distance for the whole score; all other placements use (0,12). With no sites, the audience hears every source at 12 m in presentation and at the original 23.5 m balance in both. Direct amplitude is divided by distance with a one-metre minimum. In both mode distance changes the balance between direct sound and reflections at each ear. See Choosing a room for hearing, output level and restrictions.",
+    },
     FnDoc {
         name: "at",
         evidence: PLACEMENT,
@@ -1105,6 +1116,17 @@ on the PopulationSpec first; the returned Population exposes only live patches a
 branch end.",
     },
     FnDoc {
+        name: "room",
+        evidence: ROOM,
+        owner: Owner::Global,
+        category: "timeline",
+        style: Style::Free,
+        patch: Patch::Na,
+        usage: &["room(mode)"],
+        summary: "Select the acoustic room for the whole piece.",
+        details: "Use off for dry mono, presentation for stereo reflections at the audience, or both to include reflections in the habitat. Without sites, presentation uses a 12 m audience distance and both keeps the original 23.5 m balance. The last finite declaration overrides [room].mode from the beginning of the piece. Wet modes require 48 kHz. In endless scores declare room before time advances; both requires a finite score.",
+    },
+    FnDoc {
         name: "output_gain",
         evidence: OPERATION,
         owner: Owner::Global,
@@ -1258,7 +1280,7 @@ branch end.",
         patch: Patch::Initial,
         usage: &["respond_to_onsets(w)"],
         summary: "Bring pitch proposals forward while new onsets are heard outside the Voice's own sound (finite nonnegative weight, default 0).",
-        details: "Zero creates no state and reads nothing. Positive weights copy the shared attack detector into the Voice's self-exclusion observer, so it hears everything except its own PCM. A rise rho inside the pitch range owes w*tau*rho proposal-clock seconds (tau = satiation_sec/ln 10), spent at most w seconds per second; one unhabituated onset lends about 0.45*w seconds with a 2 Hz basin. After each pitch change nothing is lent until one ordinary proposal threshold of real time passes. The field still decides whether and where to move; no onset or random draw is added. Requires free seek_consonance(), sustain(), rearticulate, rearticulate_above(0) and no follow_own_sequence()/melodic_continuity(); otherwise warns to 0. Without leave_self_out(true) it warns and has no effect.",
+        details: "Zero creates no state and reads nothing. Positive weights seed the Voice's external attack detector from the habitat history at its placement. It excludes the Voice's own PCM. A rise rho inside the pitch range owes w*tau*rho proposal-clock seconds (tau = satiation_sec/ln 10), spent at most w seconds per second; one unhabituated onset lends about 0.45*w seconds with a 2 Hz basin. After each pitch change nothing is lent until one ordinary proposal threshold of real time passes. The field still decides whether and where to move; no onset or random draw is added. Requires free seek_consonance(), sustain(), rearticulate, rearticulate_above(0) and no follow_own_sequence()/melodic_continuity(); otherwise warns to 0. Without leave_self_out(true) it warns and has no effect.",
     },
     FnDoc {
         name: "phrase_boundary",

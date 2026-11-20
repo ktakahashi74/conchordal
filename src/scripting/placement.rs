@@ -53,6 +53,7 @@ impl BusSet {
 
 #[derive(Clone, Debug)]
 pub struct Placement {
+    pub(super) site: Option<crate::scenario::Site>,
     pub(super) diagnostics: ScriptWarnings,
     pub(super) position: Position,
     pub(super) count: i64,
@@ -82,6 +83,7 @@ impl Placement {
         min_dist_erb: f32,
     ) -> Self {
         Self {
+            site: None,
             diagnostics: Arc::default(),
             position: Position::NONE,
             count: 1,
@@ -100,6 +102,7 @@ impl Placement {
 
     pub(super) fn at(freq_hz: f32) -> Self {
         Self {
+            site: None,
             diagnostics: Arc::default(),
             position: Position::NONE,
             count: 1,
@@ -139,6 +142,7 @@ impl Placement {
 
     pub(super) fn line(start_freq: f32, end_freq: f32) -> Self {
         Self {
+            site: None,
             diagnostics: Arc::default(),
             position: Position::NONE,
             count: 1,

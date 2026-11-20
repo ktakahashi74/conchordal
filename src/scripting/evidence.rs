@@ -41,6 +41,28 @@ pub const FORM: &[EvidenceDoc] = &[EvidenceDoc {
     ja: "該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。",
 }];
 
+pub const SITE: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Principle: free-field direct pressure falls with distance; direct and reflected sound add linearly.",
+        ja: "原理：自由音場の直接音圧は距離に反比例し、直接音と反射音は線形に重なる。",
+    },
+    EvidenceDoc {
+        en: "Author rule: the one-metre minimum, uniform diffuse send, shared sensitivity and fixed positions are compositional choices.",
+        ja: "作者規則：距離の下限1 m、一様な残響送り、共有点の感度、固定配置は作曲用の設定。",
+    },
+];
+
+pub const ROOM: &[EvidenceDoc] = &[
+    EvidenceDoc {
+        en: "Principle: direct sound and reflections superpose linearly. The fixed responses approximate one measured acoustic setting.",
+        ja: "原理：直接音と反射音の線形重ね合わせ。固定のインパルス応答は特定の測定条件を近似する。",
+    },
+    EvidenceDoc {
+        en: "Not a mechanism (composition): the composer chooses which buses hear the room.",
+        ja: "該当なし（作曲）：どのバスに部屋の響きを加えるかは作曲者が選ぶ。",
+    },
+];
+
 pub const ROUTING: &[EvidenceDoc] = &[EvidenceDoc {
     en: "Not a mechanism (routing): selects or combines buses; see leave_self_out for the independent self-perception rule.",
     ja: "該当なし（経路）：busの選択・結合。独立した自己知覚の規則はleave_self_outを参照。",

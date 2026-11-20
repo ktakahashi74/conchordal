@@ -115,6 +115,35 @@ The `set_` verbs schedule parameter changes at the current cursor:
 Use `wait()` to choose when those changes take effect. Placement, release and
 scope verbs continue to describe actions rather than parameter settings.
 
+## Choosing a room
+
+Use `room("presentation")` to add stereo reflections to the audience output while
+the habitat hears the dry bus. Without any sites the audience hears every source
+at 12 m in `presentation`. In `both` the original 23.5 m balance is used for a
+score without sites. With `room("both")`, the habitat also hears reflections
+and self-exclusion uses each source's reflected sound. Both wet modes require 48 kHz.
+`room("off")` selects dry mono. With no declaration, the score uses TOML
+`[room].mode`, which defaults to `"off"`.
+
+The last declaration in a finite score applies from the first sample, even if it
+follows a `wait()`. In an endless score declare the room before advancing time.
+Strict self-return in `both` requires a finite score to reserve source histories.
+
+### Placing sources and ears
+
+In a finite score for `conchordal-render`, attach `site(x, y)` to a placement. Coordinates are in metres. Here the audience hears the same direct level from the line at either end of a 12 m radius, while the moss hears the line much more strongly beside it.
+
+```rhai
+room("both");
+let moss = place(flora().respond_to_onsets(2), random(200, 1000).site(12, 0));
+let line = place(sine().sustain(), at(500).site(-12, 0)); // try (12, 0)
+wait(4);
+```
+
+One explicit placement enables distance from the first sample, including for earlier voices. Unspecified placements then share (0, 12). The audience and shared habitat observer are at (0, 0). Direct amplitude at an ear is divided by distance, with a minimum divisor of 1 m. The reflection send has a fixed gain of 1/23.5. In `both`, moving a source farther away thus increases the proportion of reflections an individual hears. In every mode, distance changes the relative levels of competing sources and whether a weak sound clears the analysis floor. With only two participants, the normalization in harmonicity and roughness largely cancels the level change for an ear hearing a single external source in `off` or `presentation`. Absolute resource consumption and overlap still depend on level. Positions stay fixed throughout a note. Placing every source at (0, 12) gives the same audience balance as omitting sites in `presentation`. Local observations can still change the performance. The model adds no travel delay or directional panning.
+
+Shared habituation, acoustic beat learning and pitch-set memory listen at the origin. A close source can dominate the common habituation and beat even when distant individuals hear little of it. The origin and the audience use a sensitivity of 12. Several close voices can saturate the IPEM input to tonal and pitch-set analysis, which clips to [−1, 1). The left-channel `max_p` warning measures the audience signal before final gain and limiting. Individual ears retain their one-metre source level. Spatial scores require a finite offline render and support zero weights for `follow_harmonic_relations` and `follow_harmonic_continuation`.
+
 ## Scene playback level
 
 `output_gain(db)` sets one playback gain for the whole scene. It accepts integer
@@ -129,7 +158,7 @@ play(|| {
 });
 ```
 
-The scene value adds to `[audio].output_gain_db` (default `+4.5` dB). The output
+The scene value adds to `[audio].output_gain_db` (default +4.0 dB for off, −5.0 dB for presentation or both with sites, and −10.5 dB for both without sites). The output
 amplitude multiplier is `10^((config dB + scene dB)/20)`. Both the instrument's
 speakers and the offline renderer's WAV apply it immediately before their output
 limiter, including when the limiter is disabled. A scene value of `0` preserves

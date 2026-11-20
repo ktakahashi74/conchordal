@@ -18,20 +18,6 @@ fn main() -> eframe::Result<()> {
         .try_init();
 
     let args = Args::parse();
-    let mut config = match AppConfig::load_or_default(args.config.as_deref()) {
-        Ok(cfg) => cfg,
-        Err(err) => {
-            eprintln!("{err:#}");
-            std::process::exit(1);
-        }
-    };
-    if let Some(val) = args.wait_user_exit {
-        config.playback.wait_user_exit = val;
-    }
-    if let Some(val) = args.wait_user_start {
-        config.playback.wait_user_start = val;
-    }
-
     let stop_flag = Arc::new(AtomicBool::new(false));
     let stop_flag_for_ctrlc = stop_flag.clone();
     let end_request = args.end_request.clone();
@@ -57,6 +43,20 @@ fn main() -> eframe::Result<()> {
             std::process::exit(1);
         }
         return Ok(());
+    }
+
+    let mut config = match AppConfig::load_or_default(args.config.as_deref()) {
+        Ok(cfg) => cfg,
+        Err(err) => {
+            eprintln!("{err:#}");
+            std::process::exit(1);
+        }
+    };
+    if let Some(val) = args.wait_user_exit {
+        config.playback.wait_user_exit = val;
+    }
+    if let Some(val) = args.wait_user_start {
+        config.playback.wait_user_start = val;
     }
 
     if args.nogui {

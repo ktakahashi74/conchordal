@@ -186,15 +186,16 @@ fn main() {
                             if h == 0 {
                                 all.push(other.clone());
                             }
-                            let a = waiting.render(&all, now, &rhythms).habitat;
-                            let b = sounding.render(&all, now, &rhythms).habitat;
+                            let a = waiting.render(&all, now, &rhythms).unwrap().habitat;
+                            let b = sounding.render(&all, now, &rhythms).unwrap().habitat;
                             assert_eq!(
                                 a, b,
                                 "both realized branches must have identical histories"
                             );
                             past_mix.extend_from_slice(a);
-                            past_own
-                                .extend_from_slice(known_own.render(&own, now, &rhythms).habitat);
+                            past_own.extend_from_slice(
+                                known_own.render(&own, now, &rhythms).unwrap().habitat,
+                            );
                             for _ in 0..hop {
                                 rhythms.advance_in_place(1.0 / fs as f32);
                             }
@@ -237,17 +238,19 @@ fn main() {
                             } else {
                                 Vec::new()
                             };
-                            let a = own_wait.render(&[], now, &rhythms);
+                            let a = own_wait.render(&[], now, &rhythms).unwrap();
                             predicted_wait.extend_from_slice(a.habitat);
                             own_presentation_wait.extend_from_slice(a.presentation);
                             predicted_sound.extend_from_slice(
-                                own_sound.render(&commanded, now, &rhythms).habitat,
+                                own_sound.render(&commanded, now, &rhythms).unwrap().habitat,
                             );
-                            actual_own_wait
-                                .extend_from_slice(known_own.render(&[], now, &rhythms).habitat);
+                            actual_own_wait.extend_from_slice(
+                                known_own.render(&[], now, &rhythms).unwrap().habitat,
+                            );
                             assert!(
                                 unknown
                                     .render(&[], now, &rhythms)
+                                    .unwrap()
                                     .habitat
                                     .iter()
                                     .all(|x| *x == 0.0)
@@ -258,12 +261,13 @@ fn main() {
                                 Vec::new()
                             };
                             actual_wait.extend_from_slice(
-                                waiting.render(&environment, now, &rhythms).habitat,
+                                waiting.render(&environment, now, &rhythms).unwrap().habitat,
                             );
                             let mut acted = commanded;
                             acted.extend(environment);
-                            actual_sound
-                                .extend_from_slice(sounding.render(&acted, now, &rhythms).habitat);
+                            actual_sound.extend_from_slice(
+                                sounding.render(&acted, now, &rhythms).unwrap().habitat,
+                            );
                             for _ in 0..hop {
                                 rhythms.advance_in_place(1.0 / fs as f32);
                             }

@@ -240,6 +240,7 @@ pub(crate) struct BodyMetabolism {
     pub pcm: Vec<SourcePcm>,
     sources: Vec<Evaluator>,
     shared: SynchronousAnalysis,
+    sites: Vec<(u32, SynchronousAnalysis)>,
     subtraction: Vec<f32>,
     time: Timebase,
     settings: BodyMetabolismConfig,
@@ -263,6 +264,7 @@ impl BodyMetabolism {
         Self {
             pcm: Vec::new(),
             sources: Vec::new(),
+            sites: Vec::new(),
             shared: SynchronousAnalysis::new(nsgt, params),
             subtraction: vec![0.; time.hop],
             time,
@@ -273,6 +275,14 @@ impl BodyMetabolism {
             valid: true,
             params: params.clone(),
         }
+    }
+
+    pub(crate) fn prepare_sites(&mut self, sites: &[crate::core::stream::loo::SitePcm]) {
+        self.sites = sites
+            .iter()
+            .filter(|s| s.voice)
+            .map(|s| (s.id, self.shared.clone()))
+            .collect();
     }
 
     pub(crate) fn with_renderer_phase3(mut self, renderer_phase3: bool) -> Self {
@@ -328,7 +338,17 @@ impl BodyMetabolism {
                         .latest_visit
                         .checked_add(1)
                         .expect("body visit number fits u64");
-                    let bins = self.shared.landscape.space.n_bins();
+                    let before = if self.sites.is_empty() {
+                        &self.shared
+                    } else {
+                        &self
+                            .sites
+                            .iter()
+                            .find(|(id, _)| *id == voice.effective_control.body.site_id)
+                            .expect("planned metabolism receiver")
+                            .1
+                    };
+                    let bins = before.landscape.space.n_bins();
                     self.sources.push(Evaluator {
                         id: voice.id(),
                         generation: voice.metadata.generation,
@@ -336,8 +356,8 @@ impl BodyMetabolism {
                         support_end_sample: now,
                         current_sample: now,
                         valid: self.valid,
-                        environment: self.shared.clone(),
-                        representative: self.shared.clone(),
+                        environment: before.clone(),
+                        representative: before.clone(),
                         pcm: vec![0.; self.time.hop],
                         density_scan: vec![0.; bins],
                         probe: None,
@@ -364,6 +384,7 @@ impl BodyMetabolism {
                         density_recipe_changes: 0,
                     });
                     self.pcm.push(SourcePcm {
+                        site_id: voice.effective_control.body.site_id,
                         kind: crate::core::stream::loo::SourceKind::Voice,
                         analyze_hr: true,
                         onset_history: false,
@@ -468,7 +489,18 @@ impl BodyMetabolism {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn observe(&mut self, now: Tick, mixed: &[f32], params: &LandscapeParams) {
+        self.observe_at_sites(now, mixed, None, params);
+    }
+
+    pub(crate) fn observe_at_sites(
+        &mut self,
+        now: Tick,
+        mixed: &[f32],
+        sites: Option<&crate::life::schedule_renderer::SiteBuses>,
+        params: &LandscapeParams,
+    ) {
         #[cfg(test)]
         let started = crate::clock::Instant::now();
         assert_eq!(mixed.len(), self.time.hop, "mixed PCM hop length");
@@ -483,14 +515,19 @@ impl BodyMetabolism {
         for (source, pcm) in self.sources.iter_mut().zip(&self.pcm) {
             assert_eq!((source.id, source.generation), (pcm.id, pcm.generation));
             assert!(source.birth_sample <= now, "source before birth");
-            for (out, (&mix, &own)) in self
-                .subtraction
-                .iter_mut()
-                .zip(mixed.iter().zip(&pcm.habitat))
-            {
-                *out = mix - own;
-            }
-            source.valid &= self.valid && self.subtraction.iter().all(|value| value.is_finite());
+            let external = if sites.is_some() {
+                pcm.habitat.as_slice()
+            } else {
+                for (out, (&mix, &own)) in self
+                    .subtraction
+                    .iter_mut()
+                    .zip(mixed.iter().zip(&pcm.habitat))
+                {
+                    *out = mix - own;
+                }
+                &self.subtraction
+            };
+            source.valid &= self.valid && external.iter().all(|value| value.is_finite());
             if !source.valid {
                 source.held = None;
             }
@@ -499,17 +536,26 @@ impl BodyMetabolism {
                     let gap =
                         i32::try_from((end - source.support_end_sample) / self.time.hop as Tick)
                             .expect("body environment hop clock fits i32");
-                    source
-                        .environment
-                        .process_body_gap(&self.subtraction, gap, params);
+                    source.environment.process_body_gap(external, gap, params);
                     source.support_end_sample = end;
                 } else {
-                    source.environment.skip(&self.subtraction);
+                    source.environment.skip(external);
                 }
             }
         }
         if self.valid {
-            self.shared.density(mixed, params);
+            if let Some(sites) = sites {
+                self.sites.retain_mut(|(id, history)| {
+                    if let Some(full) = sites.full.iter().find(|s| s.id == *id && s.voice) {
+                        history.density(&full.samples, params);
+                        true
+                    } else {
+                        false
+                    }
+                });
+            } else {
+                self.shared.density(mixed, params);
+            }
         }
         self.next_sample = end;
         #[cfg(test)]

@@ -134,7 +134,7 @@ rest_on_habituation(weight)
 
 適用対象：`FloraSpec`。
 
-Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0). Zero creates no private span state. Positive weights use the shared audio-only attack history, averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.
+Alternate Flora spans and gaps using heard attack habituation (finite nonnegative weight, default 0). Zero creates no private span state. Positive weights use the full habitat attack history (at the placement in a spatial score), averaged over sounding tonal frequencies by target power. Exit requests retire all tonal and residual lanes at a private beat crossing. Ecology continues during gaps; births wait until a return crossing after every tail ends. Actual lane births alone drive private recovery. Release and fade take priority. Invalid values warn and use zero. This is initial-only; the observer starts at scene start, including before later Flora placements.
 
 **根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：spanの確率的な退出と私的回復・復帰。重み0で中立（§9.3.96、§9.3.101）。
 
@@ -265,6 +265,18 @@ Harmonic-body preset with brightness 1 and motion 1 (mainly vibrato; jitter is n
 ### 配置
 
 Placementは、初代のVoiceが周波数空間へ入る場所を決める。生成関数で作り、`place()`へ渡す前に調整する。
+
+#### `site`
+
+```rhai,ignore
+site(x, y)
+```
+
+適用対象：`Placement`。
+
+有限の offline 描画で、配置にメートル単位の固定座標を与える。客席と共有の観測点は (0,0)。一つでも地点を使うと曲頭から全配置に距離が効き、無指定の配置は (0,12) になる。全地点を省略すると、客席は presentation では 12 m、both では従来の 23.5 m 相当の響きで聴く。直接音の振幅は 1 m を下限として距離で割る。both では個体の耳に届く直接音と反射音の比も変わる。詳しくは「部屋の響きを選ぶ」を参照。
+
+**根拠:** 原理：自由音場の直接音圧は距離に反比例し、直接音と反射音は線形に重なる。<br>作者規則：距離の下限1 m、一様な残響送り、共有点の感度、固定配置は作曲用の設定。
 
 #### `at`
 
@@ -536,6 +548,16 @@ parallel(callbacks)
 Run an array of closures on parallel timelines from the current cursor. Each branch starts at the current cursor; the cursor advances to the latest branch end.
 
 **根拠:** 該当なし（大きな形）：Scenarioの時間構成、配置、解放。入力の機構の札は各語を参照。
+
+#### `room`
+
+```rhai,ignore
+room(mode)
+```
+
+曲全体の響きを選ぶ。off はモノラルの直接音、presentation は客席にステレオの反射音を加え、both は生態系が聴く音にも反射を加える。地点を一つも指定しない場合、客席から音源までの距離は presentation で 12 m、both で従来の 23.5 m 相当。有限の曲では最後の宣言が曲頭から効き、設定ファイルの [room].mode に優先する。反射音を使う場合は 48 kHz。endless では時刻を進める前に宣言する。both は有限の曲で使える。
+
+**根拠:** 原理：直接音と反射音の線形重ね合わせ。固定のインパルス応答は特定の測定条件を近似する。<br>該当なし（作曲）：どのバスに部屋の響きを加えるかは作曲者が選ぶ。
 
 #### `output_gain`
 
@@ -1565,7 +1587,7 @@ respond_to_onsets(w)
 
 適用対象：`FloraSpec`。
 
-Speed the Flora's ecological time while new external onsets are heard inside its extent (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights read the shared attack history inside the extent, skipping bins within 1.5 ERB of the Flora's sounding lanes. A rise rho owes w*tau*rho extra ecological seconds (tau = satiation_sec/ln 10), spent at most w seconds per second, so unhabituated external onsets run the clock up to 1+w times faster; pace saturation still applies. Births stay on the Flora's own crossings and the field chooses where; no onset, pitch or random draw is added. Unknown or regridded observations only re-prime. Disabled habituation warns once. Invalid values warn and use zero. Initial-only; the observer starts at scene start, including before later Flora placements.
+Speed the Flora's ecological time while new external onsets are heard inside its extent (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Reads habitat attacks inside the extent (with sites: local external sound for self-exclusion, otherwise the full local mixture), skipping bins within 1.5 ERB of the Flora's sounding lanes. A rise rho owes w*tau*rho extra ecological seconds (tau = satiation_sec/ln 10), spent at most w seconds per second, so unhabituated external onsets run the clock up to 1+w times faster; pace saturation still applies. Births stay on the Flora's own crossings and the field chooses where; no onset, pitch or random draw is added. Unknown or regridded observations only re-prime. Disabled habituation warns once. Invalid values warn and use zero. Initial-only; the observer starts at scene start, including before later Flora placements.
 
 **根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：自分の部分音の外で聴こえた発音の履歴が上がった後に、Floraの生態の時間を速める。重み0で中立（§9.3.138）。
 
@@ -1773,7 +1795,7 @@ respond_to_onsets(w)
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Bring pitch proposals forward while new onsets are heard outside the Voice's own sound (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights copy the shared attack detector into the Voice's self-exclusion observer, so it hears everything except its own PCM. A rise rho inside the pitch range owes w*tau*rho proposal-clock seconds (tau = satiation_sec/ln 10), spent at most w seconds per second; one unhabituated onset lends about 0.45*w seconds with a 2 Hz basin. After each pitch change nothing is lent until one ordinary proposal threshold of real time passes. The field still decides whether and where to move; no onset or random draw is added. Requires free seek_consonance(), sustain(), rearticulate, rearticulate_above(0) and no follow_own_sequence()/melodic_continuity(); otherwise warns to 0. Without leave_self_out(true) it warns and has no effect.
+Bring pitch proposals forward while new onsets are heard outside the Voice's own sound (finite nonnegative weight, default 0). Zero creates no state and reads nothing. Positive weights seed the Voice's external attack detector from the habitat history at its placement. It excludes the Voice's own PCM. A rise rho inside the pitch range owes w*tau*rho proposal-clock seconds (tau = satiation_sec/ln 10), spent at most w seconds per second; one unhabituated onset lends about 0.45*w seconds with a 2 Hz basin. After each pitch change nothing is lent until one ordinary proposal threshold of real time passes. The field still decides whether and where to move; no onset or random draw is added. Requires free seek_consonance(), sustain(), rearticulate, rearticulate_above(0) and no follow_own_sequence()/melodic_continuity(); otherwise warns to 0. Without leave_self_out(true) it warns and has no effect.
 
 **根拠:** 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。<br>作者規則：自分のPCMを除いて聴こえた発音の履歴が上がった後に、音高の選び直しを早める。高さを変えた後の一周期は保つ。重み0で中立（§9.3.138）。
 

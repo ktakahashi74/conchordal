@@ -156,6 +156,10 @@ impl PitchObjectiveMode {
 /// Values here are perceptual (`perc_*`) unless stated otherwise.
 #[derive(Clone, Debug)]
 pub struct Landscape {
+    pub(crate) sites: Vec<(u32, std::sync::Arc<Landscape>)>,
+    /// Exclusive render sample of this local observation.
+    pub(crate) site_end: Option<u64>,
+    pub(crate) site_resource_power: Option<std::sync::Arc<[f32]>>,
     pub(crate) harmonic_recorder:
         Option<crate::temporal_cognition::harmonic_relations::runtime::Recorder>,
     pub(crate) harmonic_now_sample: u64,
@@ -263,6 +267,9 @@ impl Landscape {
         let n = space.n_bins();
         Self {
             space,
+            sites: Vec::new(),
+            site_end: None,
+            site_resource_power: None,
             harmonic_recorder: None,
             harmonic_now_sample: 0,
             harmonic_query_version: 0,
@@ -418,7 +425,22 @@ impl Landscape {
         (self.space.fmin.log2(), self.space.fmax.log2())
     }
 
+    pub(crate) fn at_site(&self, id: u32) -> &Self {
+        if self.sites.is_empty() {
+            return self;
+        }
+        self.sites
+            .iter()
+            .find(|(site, _)| *site == id)
+            .expect("prepared receiver for live reader")
+            .1
+            .as_ref()
+    }
+
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
+        for (_, local) in &mut self.sites {
+            std::sync::Arc::make_mut(local).recompute_consonance(params);
+        }
         self.support_ref_power = params.ref_power;
         self.support_loudness_exp = params.loudness_exp.max(0.01);
         for observation in &mut self.loo {

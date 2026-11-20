@@ -525,6 +525,10 @@ struct FloraLaneTimingReport {
 }
 
 impl Flora {
+    pub(crate) fn site_id(&self) -> u32 {
+        self.spec.site_id
+    }
+
     #[cfg(test)]
     pub(crate) fn rng_state_for_test(&self) -> u64 {
         self.rng
@@ -978,7 +982,12 @@ impl Flora {
             .flora_observations
             .iter()
             .find(|s| s.id == self.id && s.generation == 0)
-            .and_then(|s| s.power_scan.as_ref())
+            .and_then(|s| s.power_scan.as_deref())
+            .or_else(|| {
+                (self.rendered_samples == 0)
+                    .then_some(landscape.site_resource_power.as_deref())
+                    .flatten()
+            })
         else {
             return;
         };

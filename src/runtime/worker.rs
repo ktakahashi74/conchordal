@@ -58,11 +58,11 @@ pub(super) struct WorkerState {
         Option<crate::temporal_cognition::harmonic_relations::runtime::Runtime>,
     #[cfg(feature = "native")]
     pub(super) loo_recycle: (
-        Sender<Vec<crate::core::stream::loo::SourcePcm>>,
-        Receiver<Vec<crate::core::stream::loo::SourcePcm>>,
+        Sender<crate::core::stream::loo::CaptureStorage>,
+        Receiver<crate::core::stream::loo::CaptureStorage>,
     ),
     #[cfg(not(feature = "native"))]
-    pub(super) loo_storage: Option<Vec<crate::core::stream::loo::SourcePcm>>,
+    pub(super) loo_storage: Option<crate::core::stream::loo::CaptureStorage>,
     #[cfg(test)]
     pub(super) offline_body_probe: Option<OfflineBodyProbe>,
     pub(super) body_snapshot: Option<Box<crate::temporal_cognition::body::Snapshot>>,
@@ -109,7 +109,7 @@ pub(super) struct WorkerState {
     pub(super) t2_sample: Option<crate::life::report::TemporalMeterSample>,
     pub(super) temporal_expectation:
         Option<crate::core::temporal_expectation::AcousticTemporalExpectation>,
-    pub(super) participation_predictions: Vec<(u64, ParticipationPrediction)>,
+    pub(super) participation_predictions: Vec<(u64, u32, ParticipationPrediction)>,
     /// Traced decisions wait here so their encoding is charged to the report phase.
     pub(super) participation_decisions: Vec<(
         u64,
@@ -334,11 +334,12 @@ impl WorkerState {
             #[cfg(feature = "native")]
             loo_recycle: {
                 let (tx, rx) = bounded(1);
-                tx.send(Vec::new()).expect("initial LOO capture storage");
+                tx.send(Default::default())
+                    .expect("initial LOO capture storage");
                 (tx, rx)
             },
             #[cfg(not(feature = "native"))]
-            loo_storage: Some(Vec::new()),
+            loo_storage: Some(Default::default()),
             schedule_renderer: ScheduleRenderer::new(timebase)
                 .with_prototype(cfg.render_prototype)
                 .with_expression(expression),
@@ -459,7 +460,7 @@ pub(super) fn worker_loop(
                 && !state.finished
                 && !state.exit_during_recovery(&cfg)
             {
-                process_hop(&cfg, &mut channels, &mut state);
+                process_hop(&cfg, &mut channels, &mut state)?;
                 produced_any = true;
             }
         } else {
@@ -468,7 +469,7 @@ pub(super) fn worker_loop(
             let l1_begin = l1_probe
                 .as_mut()
                 .map(|p| (state.frame_idx, p.before(state.frame_idx)));
-            process_hop(&cfg, &mut channels, &mut state);
+            process_hop(&cfg, &mut channels, &mut state)?;
             #[cfg(test)]
             if let (Some(p), Some((frame, begin))) = (&mut l1_probe, l1_begin) {
                 let voices = state
@@ -651,7 +652,7 @@ pub(super) fn finish_run(
         let now_tick = state.timebase.frame_start_tick(state.frame_idx);
         send_runtime_ui_frame(state, channels, cfg, Arc::from([]), 0.0, [0.0; 2], now_tick);
     }
-    for (voice_id, prediction) in state.participation_predictions.drain(..) {
+    for (voice_id, _, prediction) in state.participation_predictions.drain(..) {
         let sample = participation_outcome(voice_id, cfg.fs as u32, prediction, None)
             .expect("end of input closes every pending observation");
         report_try(&mut state.reporter, "participation outcome", |writer| {
@@ -724,10 +725,18 @@ pub(super) fn process_hop(
     cfg: &WorkerConfig,
     channels: &mut WorkerChannels,
     state: &mut WorkerState,
-) {
+) -> Result<(), String> {
     let t_start = Instant::now();
     if state.profile.is_some() {
         begin_allocations();
+    }
+    let strict = state
+        .schedule_renderer
+        .room
+        .as_ref()
+        .is_some_and(|room| room.strict());
+    if strict && let Some(reporter) = &mut state.reporter {
+        reporter.begin_room_hop();
     }
     let frame_idx = state.frame_idx;
     #[cfg(feature = "native")]
@@ -816,7 +825,26 @@ pub(super) fn process_hop(
 
     let render_start = state.profile.as_ref().map(|_| Instant::now());
     let (presentation_chunk, habitat_chunk, max_abs, synthesis_elapsed) =
-        render_and_route_audio(state, channels, cfg, now_tick, phonation_count);
+        render_and_route_audio(state, channels, cfg, now_tick, phonation_count).map_err(|e| {
+            if state.profile.is_some() {
+                finish_allocations();
+            }
+            cfg.exiting.store(true, Ordering::SeqCst);
+            let prefix = format!(
+                "{e}; {frame_idx} complete hops published (end tick {now_tick}, exclusive)"
+            );
+            match &state.reporter {
+                Some(writer) => format!("{prefix}; partial report {}", writer.path),
+                None => prefix,
+            }
+        })?;
+    if strict {
+        report_try(
+            &mut state.reporter,
+            "room hop",
+            JsonlReporter::publish_room_hop,
+        );
+    }
     if let Some(relations) = &mut state.harmonic_relations {
         relations.collect(now_tick + cfg.hop as u64);
     }
@@ -837,15 +865,26 @@ pub(super) fn process_hop(
                     != now_tick.saturating_sub(cfg.hop as Tick) / second_ticks
             {
                 report_try(&mut state.reporter, "flora", |writer| {
-                    writer.write_flora(flora, now_sec, &state.current_landscape)
+                    writer.write_flora(
+                        flora,
+                        now_sec,
+                        state.current_landscape.at_site(flora.site_id()),
+                    )
                 });
             }
         }
     }
-    let mut loo_chunk = (!state.loo_populations.is_empty()
+    let mut loo_chunk = (state.schedule_renderer.sites.is_some()
+        || !state.loo_populations.is_empty()
         || state.pop.has_placed_flora
         || state.pop.has_placed_rain_observer)
         .then(|| crate::core::stream::loo::PcmPacket {
+            sites: state
+                .schedule_renderer
+                .sites
+                .as_mut()
+                .map(|s| std::mem::take(&mut s.full))
+                .unwrap_or_default(),
             sources: std::mem::take(&mut state.schedule_renderer.loo_pcm),
             #[cfg(feature = "native")]
             recycle: state.loo_recycle.0.clone(),
@@ -1094,4 +1133,5 @@ pub(super) fn process_hop(
                 .map(|count| count.load(Ordering::Relaxed)),
         });
     }
+    Ok(())
 }

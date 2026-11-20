@@ -67,10 +67,10 @@ fn continuous_config_combinations_preserve_group_dependencies() {
     use conchordal::config::AppConfig;
     let (dir, _guard) = directory("config");
     let template = dir.join("config.toml");
+    fs::write(dir.join("short.rhai"), "wait(0.01);").unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_conchordal"))
         .current_dir(&dir)
-        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/01_a_single_voice.rhai"))
-        .arg("--compile-only")
+        .args(["short.rhai", "--nogui", "--play=false"])
         .output()
         .unwrap();
     assert!(

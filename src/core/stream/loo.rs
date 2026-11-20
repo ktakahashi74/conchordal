@@ -15,6 +15,7 @@ pub(crate) enum SourceKind {
 
 pub(crate) struct SourcePcm {
     pub kind: SourceKind,
+    pub site_id: u32,
     pub analyze_hr: bool,
     /// The Voice observer also owns an attack detector (`respond_to_onsets`).
     pub onset_history: bool,
@@ -24,16 +25,31 @@ pub(crate) struct SourcePcm {
     pub habitat: Vec<f32>,
 }
 
+pub(crate) struct SitePcm {
+    pub id: u32,
+    pub flora: bool,
+    pub voice: bool,
+    pub onset: bool,
+    pub tonal: bool,
+    pub samples: Vec<f32>,
+}
+
+pub(crate) type CaptureStorage = (Vec<SourcePcm>, Vec<SitePcm>);
+
 pub(crate) struct PcmPacket {
+    pub sites: Vec<SitePcm>,
     pub sources: Vec<SourcePcm>,
     #[cfg(feature = "native")]
-    pub recycle: Sender<Vec<SourcePcm>>,
+    pub recycle: Sender<CaptureStorage>,
 }
 
 #[cfg(feature = "native")]
 impl Drop for PcmPacket {
     fn drop(&mut self) {
-        let _ = self.recycle.try_send(std::mem::take(&mut self.sources));
+        let _ = self.recycle.try_send((
+            std::mem::take(&mut self.sources),
+            std::mem::take(&mut self.sites),
+        ));
     }
 }
 
@@ -180,6 +196,7 @@ impl Observer {
         generation: u32,
         before_birth: &mut AnalysisStream,
         analyze_hr: bool,
+        onset_history: bool,
     ) -> Self {
         Self {
             id,
@@ -190,7 +207,7 @@ impl Observer {
             tonal_shared: false,
             pcm: vec![0.0; before_birth.hop_samples()],
             power: Some(before_birth.resource_observer()),
-            stream: analyze_hr.then(|| before_birth.voice_observer(false)),
+            stream: analyze_hr.then(|| before_birth.voice_observer(onset_history)),
         }
     }
 
@@ -230,11 +247,22 @@ impl Observer {
         })
     }
 
+    pub(crate) fn process_external(&mut self, full: &[f32], external: &[f32]) {
+        self.process_input(full, external, true);
+    }
+
     pub(crate) fn process(&mut self, mix: &[f32], own: &[f32]) {
         assert_eq!(mix.len(), self.pcm.len(), "LOO complete mix hop");
         assert_eq!(own.len(), self.pcm.len(), "LOO complete own hop");
         for ((out, &mix), &own) in self.pcm.iter_mut().zip(mix).zip(own) {
             *out = mix - own;
+        }
+        self.process_input(mix, own, false);
+    }
+
+    fn process_input(&mut self, mix: &[f32], own: &[f32], spatial: bool) {
+        if spatial {
+            self.pcm.copy_from_slice(own);
         }
         if let Some(tonal) = &mut self.tonal {
             tonal.process(if self.tonal_ownership == Some(true) {
@@ -262,6 +290,18 @@ impl Observer {
     #[cfg(test)]
     pub(crate) fn last(&self) -> &crate::core::landscape::Landscape {
         self.stream.as_ref().unwrap().last()
+    }
+
+    pub(crate) fn gap_to(&mut self, sample: u64) {
+        if let Some(tonal) = &mut self.tonal {
+            tonal.invalidate();
+        }
+        if let Some(power) = &mut self.power {
+            power.reset();
+        }
+        if let Some(stream) = &mut self.stream {
+            stream.gap_to(sample);
+        }
     }
 
     pub(crate) fn reset(&mut self) {
@@ -405,7 +445,7 @@ mod tests {
             mixed.process(&mix);
         }
         let mut voice = Observer::new(1, 0, &mixed, false);
-        let mut flora = Observer::flora(2, 0, &mut mixed, true);
+        let mut flora = Observer::flora(2, 0, &mut mixed, true, false);
         let input = std::env::var("F19B_INPUT").unwrap_or_else(|_| "repeated".into());
         let capture = std::env::var("F19B_PCM")
             .ok()
@@ -437,7 +477,7 @@ mod tests {
                 }
                 if !active {
                     voice = Observer::new(1, 0, &mixed, false);
-                    flora = Observer::flora(2, 0, &mut mixed, true);
+                    flora = Observer::flora(2, 0, &mut mixed, true, false);
                     active = true;
                 }
             } else if input != "repeated" {
@@ -548,7 +588,7 @@ mod tests {
     fn flora_pcm_hr_and_power_steady_state_allocate_nothing() {
         let (nsgt, params) = crate::runtime::body_metabolism_test_core();
         let mut mixed = AnalysisStream::new(params, nsgt);
-        let mut observer = Observer::flora(7, 0, &mut mixed, true);
+        let mut observer = Observer::flora(7, 0, &mut mixed, true, false);
         let mix: Vec<_> = (0..mixed.hop_samples())
             .map(|i| 0.03 * (i as f32 * 0.17).sin())
             .collect();
@@ -703,7 +743,7 @@ mod tests {
         }
         // Observers that did not request the detector are unchanged.
         let mut plain = Observer::new(7, 2, &template, false);
-        let mut flora = Observer::flora(8, 0, &mut template, true);
+        let mut flora = Observer::flora(8, 0, &mut template, true, false);
         for observer in [&mut plain, &mut flora] {
             observer.process(&pcm, &silence);
             assert!(observer.last().onset_habituation_state_scan.is_empty());

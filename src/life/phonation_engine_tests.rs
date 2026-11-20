@@ -1827,6 +1827,77 @@ fn active_notes_increments_on_note_on() {
 }
 
 #[test]
+fn retiring_metric_voice_drains_its_last_three_gate_off_at_the_slowest_beat() {
+    let mut engine = PhonationEngine::from_config(
+        &PhonationConfig {
+            clock: PhonationClockConfig::Coupling {
+                coupling: 1.,
+                base_rate_hz: 2.,
+                flow_depth: 0.,
+                microtiming: 0.,
+            },
+            onset: OnsetConfig::Always { strength: 1. },
+            duration: DurationConfig::FixedGate { length_gates: 3 },
+            ..Default::default()
+        },
+        21,
+    );
+    let mut rhythms = NeuralRhythms::default();
+    rhythms.delta.freq_hz = 1.8;
+    rhythms.delta.alpha = 1.;
+    let mut events = Vec::new();
+    let mut cmds = Vec::new();
+    let mut onsets = Vec::new();
+    let mut death = None;
+    for hop in 0..400 {
+        let now = hop * 512;
+        let alive = death.is_none();
+        let ctx = CoreTickCtx {
+            now_tick: now,
+            frame_end: now + 512,
+            fs: 48_000.,
+            rhythms,
+        };
+        engine.tick(
+            &ctx,
+            &CoreState {
+                is_alive: alive,
+                onset_allowed: alive,
+            },
+            None,
+            0.,
+            1.,
+            None,
+            &mut cmds,
+            &mut events,
+            &mut onsets,
+        );
+        if alive && events.len() >= 3 {
+            death = Some(now + 512);
+            assert!(engine.has_active_notes());
+        }
+        if let Some(at) = death
+            && now >= at + 164 * 512
+        {
+            assert!(!engine.has_active_notes());
+            break;
+        }
+    }
+    assert!(death.is_some());
+    assert_eq!(events.len(), 3);
+    for onset in events {
+        let off = cmds
+            .iter()
+            .find_map(|cmd| match cmd {
+                ToneCmd::Off { tone_id, off_tick } if *tone_id == onset.tone_id => Some(*off_tick),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(off - onset.onset_tick, 3 * 26_667);
+    }
+}
+
+#[test]
 fn pending_off_drains_without_candidates() {
     let ctx = CoreTickCtx {
         now_tick: 0,

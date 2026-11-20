@@ -7,9 +7,9 @@ use conchordal::{
 fn room_step_output_gain_includes_scene_gain() {
     let script = "output_gain(2.0); wait(0.1);";
     for (section, default_db) in [
-        ("", 4.5),
-        ("[room]\nmode='off'", 4.5),
-        ("[room]\nmode='presentation'", -10.5),
+        ("", 4.0),
+        ("[room]\nmode='off'", 4.0),
+        ("[room]\nmode='presentation'", -5.0),
         ("[room]\nmode='both'", -10.5),
     ] {
         for (audio, db) in [("", default_db), ("[audio]\noutput_gain_db=4.5", 4.5)] {
@@ -51,11 +51,70 @@ fn room_step_configuration_uses_the_host_rate() {
 }
 
 #[test]
+fn room_declaration_selects_layout_and_gain_before_host_rate_validation() {
+    for (mode, channels, db) in [
+        ("off", 1, 4.0),
+        ("presentation", 2, -5.0),
+        ("both", 2, -10.5),
+    ] {
+        let script = format!(r#"room("both"); wait(0.01); room("{mode}"); output_gain(2);"#);
+        for config in [
+            "",
+            "[room]\nmode='both'\nself_return='strict'",
+            "[room]\nmode='off'\nself_return='strict'",
+        ] {
+            let config = format!("{config}\n[audio]\nsample_rate=44100");
+            let engine = StepEngine::new(&script, &config, Some(3), 48000).unwrap();
+            assert_eq!(engine.output_channels(), channels);
+            assert_eq!(engine.output_gain(), 10f32.powf((db + 2.0) / 20.0));
+            let at_44100 = StepEngine::new(&script, &config, Some(3), 44100);
+            if mode == "off" {
+                assert_eq!(at_44100.unwrap().output_channels(), 1);
+            } else {
+                assert!(
+                    at_44100
+                        .err()
+                        .unwrap()
+                        .message
+                        .contains("runtime rate 44100")
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn invalid_room_and_restricted_site_report_the_call_position() {
+    for (call, reason) in [
+        (r#"room("hall")"#, "room expects"),
+        ("room(1)", "room"),
+        (
+            "place(sine(), at(220).site(-1, 0.5))",
+            "finite offline rendering",
+        ),
+        ("place(sine(), at(220).site(1.0/0.0, 0))", "finite"),
+    ] {
+        let source = format!("wait(0.01);\n{call}; wait(0.1);");
+        let err = StepEngine::new(&source, "", Some(1), 48000).err().unwrap();
+        assert_eq!(err.line, Some(2), "{err}");
+        assert!(
+            err.column.is_some() && err.message.contains(reason),
+            "{err}"
+        );
+    }
+}
+
+#[test]
 fn room_step_presentation_matches_direct_convolution() {
     let script = "wait(0.05); place(sine().amp(0.03).sustain().anchor(), at(220)); wait(0.5);";
     let mut dry = StepEngine::new(script, "", Some(17), 48000).unwrap();
     let mut wet = StepEngine::new(script, "[room]\nmode='presentation'", Some(17), 48000).unwrap();
-    let ir = [york_response(), york_right_response()];
+    let mut ir = [york_response(), york_right_response()];
+    for filter in &mut ir {
+        for tap in &mut filter[1..] {
+            *tap *= 12. / 23.5;
+        }
+    }
     let mut history = Vec::new();
     let mut x = vec![0.; dry.hop_len()];
     let mut y = vec![0.; 2 * x.len()];
@@ -148,7 +207,13 @@ fn wet_step_returns_the_last_supported_samples_with_finished() {
                                 Some(f64::from(x) * f64::from(*ir[j % 2].get(t - k)?))
                             })
                             .sum();
-                        assert!((f64::from(y) - expected).abs() < 1e-7);
+                        // Only reflected taps reach the last hop.
+                        let send = if mode == "presentation" {
+                            12. / 23.5
+                        } else {
+                            1.
+                        };
+                        assert!((f64::from(y) - send * expected).abs() < 1e-7);
                     }
                 }
                 assert!(block.iter().any(|&x| x != 0.));

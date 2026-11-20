@@ -46,7 +46,7 @@ fn render_one_frame(routing: Routing) -> (bool, bool) {
     let batches = pop.collect_phonation_batches(&mut world, &landscape, now);
 
     let mut renderer = ScheduleRenderer::new(tb);
-    let frame = renderer.render(&batches, now, &landscape.rhythm);
+    let frame = renderer.render(&batches, now, &landscape.rhythm).unwrap();
     let presentation_active = frame.presentation.iter().any(|s| s.abs() > 1e-6);
     let habitat_active = frame.habitat.iter().any(|s| s.abs() > 1e-6);
     (presentation_active, habitat_active)

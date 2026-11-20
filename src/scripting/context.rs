@@ -137,6 +137,8 @@ impl ScriptContext {
                 expression_cursor: None,
                 seed,
                 output_gain_db: 0.0,
+                room: None,
+                sites: Vec::new(),
                 output_gain_position: None,
                 temporal_mode: crate::scenario::TemporalMode::Off,
                 control_update_mode: ControlUpdateMode::SnapshotPhased,
@@ -165,12 +167,32 @@ impl ScriptContext {
         }
     }
 
+    fn register_site(
+        &mut self,
+        site: Option<crate::scenario::Site>,
+    ) -> Result<u32, Box<EvalAltResult>> {
+        if let Some(site) = &site
+            && self.scenario.end == ScenarioEnd::Open
+        {
+            return Err(EvalAltResult::ErrorRuntime(
+                "site requires a finite score".into(),
+                site.position,
+            )
+            .into());
+        }
+        Ok(crate::scenario::Site::register(
+            &mut self.scenario.sites,
+            site,
+        ))
+    }
+
     pub(super) fn place_flora(
         &mut self,
-        spec: FloraSpecHandle,
+        mut spec: FloraSpecHandle,
         placement: Placement,
         position: Position,
     ) -> Result<FloraHandle, Box<EvalAltResult>> {
+        spec.spec.site_id = self.register_site(placement.site)?;
         let error =
             |message: String| Box::new(EvalAltResult::ErrorRuntime(message.into(), position));
         let (target, sampling, min_freq, max_freq, min_dist_erb, tension) = match placement.strategy
@@ -277,10 +299,11 @@ impl ScriptContext {
 
     pub(super) fn place_rain(
         &mut self,
-        spec: RainSpecHandle,
+        mut spec: RainSpecHandle,
         placement: Placement,
         position: Position,
     ) -> Result<RainHandle, Box<EvalAltResult>> {
+        spec.spec.site_id = self.register_site(placement.site)?;
         let error =
             |message: String| Box::new(EvalAltResult::ErrorRuntime(message.into(), position));
         let Some(SpawnStrategy::Field {
@@ -1277,6 +1300,7 @@ impl ScriptContext {
         mut placement: Placement,
         position: Position,
     ) -> Result<PopulationHandle, Box<EvalAltResult>> {
+        population_spec.spec.control.body.site_id = self.register_site(placement.site)?;
         if let Some(freq_hz) = placement.freq_hz {
             if population_spec.spec.consonance_movement
                 && population_spec.spec.control.pitch.mode == PitchMode::Free

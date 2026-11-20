@@ -4,9 +4,35 @@ The room approximates one source under the tower and one receiver in the
 nave, 23.5 m apart. The 48 kHz FIR contains a unit impulse at sample zero and
 a synthetic reflected field. Call `york_response()` at preparation and pass the
 taps to `RoomKernel::new`. Habitat, self-returns and left presentation share this plan. Right presentation has its own FIR plan. For off, bypass the
-kernel and allocate zero slots. Count simultaneously live sources, retiring
-generations and buses when reserving slots. Reuse a slot only after its tail
-expires or when explicitly discarding its old generation.
+kernel and allocate zero slots. Strict W/W reserves three shared buses plus one stream per simultaneous
+(kind, ID, generation) read by self-sound, LOO or metabolism. The score scan
+bounds live placements through release and adds overlapping predecessors.
+For a regular synchronized fixed-gate clock with a bounded production beat,
+each onset has an absolute Off deadline. A population with retirement bound D
+hops needs at most D+1 cohorts of successors, capped by total possible births
+in a finite score. A population release stops births and flushes retiring
+notes. An old Tone can keep sounding on the shared buses after its generation
+loses its last reader. Unknown gated deadlines use the finite-score bound.
+The pool is prepared before opening WAV/JSONL. An unexpected shortage ends
+the run before publishing that hop, preserving earlier complete hops.
+
+The score can select the room with `room("off")`, `room("presentation")` or
+`room("both")`. Its last finite declaration applies to the whole performance.
+Otherwise `[room].mode` supplies the mode, with dry mono as the default.
+The two wet modes require a 48 kHz output and use stereo presentation.
+Without explicit sites, the audience in `presentation` hears every source at
+12 m, the distance of the default placement (0, 12). Each ear receives a
+unit direct tap plus its reflected response scaled by 12/23.5. This gives
+an impulse direct-to-reverberant ratio of +0.68 dB. The habitat stays dry.
+Without sites, `both` retains the measured-distance balance at 23.5 m
+(−5.16 dB). With explicit sites the direct level depends on distance from
+each source, and the audience reflection send remains 12/23.5.
+For the same emitted signals, placing all sources at (0, 12) gives the
+same audience balance as a score without sites in `presentation`. Explicit
+sites also activate local ecological observations, which can change what
+the sources play.
+Only `both` applies the response to the habitat and needs strict source histories.
+The startup diagnostic identifies the mode source and whether self-return is active.
 
 ## Measurement and attribution
 

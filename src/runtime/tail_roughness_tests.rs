@@ -20,15 +20,17 @@ fn render(directory: &Path, script: &str, mut config: AppConfig, native: bool) {
     config.validate().unwrap();
     let stop_flag = Arc::new(AtomicBool::new(false));
     let end_request = Arc::new(AtomicBool::new(false));
-    let (label, scenario, output_gain, score) = load_scenario(
+    let (label, scenario, score) = load_scenario(
         &script_path,
         Some(1128749181177961461),
-        &config,
         None,
         &stop_flag,
         &end_request,
     )
     .unwrap();
+    let output_gain = resolve_effective_room(&mut config, &scenario, &label)
+        .unwrap()
+        .output_gain;
     let mut trace = BufWriter::new(std::fs::File::create(directory.join("rng.jsonl")).unwrap());
     let probe: OfflineBodyProbe = Box::new(move |state, start, _, _| {
         for voice in &state.pop.voices {

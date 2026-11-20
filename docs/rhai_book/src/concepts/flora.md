@@ -213,8 +213,7 @@ onsets from outside itself. This initial-only weight defaults to 0; any finite
 nonnegative f32 value is accepted. Negative or nonfinite values, including f32
 overflow, warn and use 0. Zero creates no state and reads nothing.
 
-A positive weight reads the same shared habitat attack history as
-`rest_on_habituation`, which then runs from scene start. Inside the Flora's extent
+The attack history runs from scene start. With sites, a self-excluding Flora responds to external attacks at its placement. A Flora that includes itself reads the full local mix. Rest always reads the full mix. Without sites the two controls read the shared habitat history. Inside the Flora's extent
 it skips bins within 1.5 ERB of its own sounding lanes, retiring tails included, and
 reads how much the history rose since the previous observation. The history rises
 only when an onset reaches a band that is not yet habituated, so familiar attacks

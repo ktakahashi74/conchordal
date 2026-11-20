@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Add an acoustic room, off by default. `room("off" | "presentation" | "both")` in a
+  score, or `[room] mode` in the config, selects dry mono, stereo reflections heard
+  only at the audience, or reflections heard by the ecology as well (`both` needs a
+  finite score). The reflected field is synthesized from published York Minster
+  measurements (band T30, direct-to-reflected ratio, onset and length); no recording
+  is distributed. The right channel is a second random field matched to diffuse-field
+  binaural coherence. `site(x, y)` gives a placement fixed coordinates in metres in a
+  finite offline score; without sites, `presentation` places every source 12 m from
+  the audience. Wet modes require 48 kHz, and sites require a finite offline render
+  with `conchordal-render`. With the room off, ecology, listener and output before
+  gain are unchanged bit for bit.
+
+- Make the default output gain follow the room. Off is now +4.0 dB (was +4.5 dB,
+  recalibrated on the current samples), `presentation` and `both` with sites use
+  -5.0 dB, and `both` without sites uses -10.5 dB. An explicit
+  `[audio].output_gain_db` still wins, and the scene's `output_gain()` adds in dB.
+  Dry pieces play 0.5 dB quieter.
+
 - Change the default habituation drive to `channel_p`: the modeled listener now tires
   only where sound was actually heard. The former default, `root_projection`, also
   eroded silent places harmonically related to the sound, the reverse of the
@@ -47,7 +65,7 @@
   explicit `metric()` Voices, which skips or displaces onsets where the beat is
   already certain. Grouping above the beat is not implemented (ledger §9.3.141).
 
-- Add the live demo page (`/demo/`, `/ja/demo/` on conchordal.org). It performs the
+- Add the live demo page (`/demo/` on conchordal.org, in English). It performs the
   pieces in `samples/demo/` in the visitor's browser, shows the whole score being
   played, and keeps no recording. Publishing a release builds the demo from its tag
   and attaches it to the release; `web/src/data/demo-release.json` chooses the

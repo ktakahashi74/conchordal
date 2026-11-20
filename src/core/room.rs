@@ -160,6 +160,10 @@ struct RoomPlan {
 impl RoomKernel {
     /// Prepare once, only for an enabled room. Tap zero is added in the time domain.
     pub fn new(response: &[f32], hop: usize) -> Self {
+        Self::with_direct(response, hop, response[0])
+    }
+
+    pub(crate) fn with_direct(response: &[f32], hop: usize, direct: f32) -> Self {
         assert!(hop > 0 && !response.is_empty());
         let m = (2 * hop).next_power_of_two();
         let bins = m / 2 + 1;
@@ -182,7 +186,7 @@ impl RoomKernel {
             fft,
             hop,
             length: response.len(),
-            direct: response[0],
+            direct,
         }))
     }
 

@@ -1512,6 +1512,24 @@ impl ScriptHost {
             },
         );
 
+        let ctx_room = ctx.clone();
+        engine.register_fn(
+            "room",
+            move |call: NativeCallContext, mode: &str| -> Result<(), Box<EvalAltResult>> {
+                use crate::config::RoomMode::*;
+                let mut ctx = ctx_room.lock().expect("lock script context");
+                let pos = call.call_position();
+                ctx.check_header("room", pos)?;
+                ctx.scenario.room = Some(parse_enum(
+                    "room",
+                    mode,
+                    pos,
+                    &[("off", Off), ("presentation", Presentation), ("both", Both)],
+                )?);
+                Ok(())
+            },
+        );
+
         macro_rules! register_output_gain {
             ($number:ty) => {
                 let ctx_for_output_gain = ctx.clone();
@@ -1876,6 +1894,45 @@ impl ScriptHost {
             },
         );
 
+        {
+            let context = ctx.clone();
+            let set_site = move |call: NativeCallContext,
+                                 mut placement: Placement,
+                                 x: FLOAT,
+                                 y: FLOAT|
+                  -> Result<Placement, Box<EvalAltResult>> {
+                let position = call.call_position();
+                if context.lock().unwrap().scenario.end == ScenarioEnd::Open {
+                    return Err(EvalAltResult::ErrorRuntime(
+                        "site requires a finite score".into(),
+                        position,
+                    )
+                    .into());
+                }
+                let site = crate::scenario::Site { x, y, position };
+                site.check(&[])
+                    .map_err(|msg| Box::new(EvalAltResult::ErrorRuntime(msg.into(), position)))?;
+                placement.site = Some(site);
+                Ok(placement)
+            };
+            engine.register_fn("site", set_site.clone());
+            let f = set_site.clone();
+            engine.register_fn(
+                "site",
+                move |c: NativeCallContext, p: Placement, x: INT, y: FLOAT| f(c, p, x as FLOAT, y),
+            );
+            let f = set_site.clone();
+            engine.register_fn(
+                "site",
+                move |c: NativeCallContext, p: Placement, x: FLOAT, y: INT| f(c, p, x, y as FLOAT),
+            );
+            engine.register_fn(
+                "site",
+                move |c: NativeCallContext, p: Placement, x: INT, y: INT| {
+                    set_site(c, p, x as FLOAT, y as FLOAT)
+                },
+            );
+        }
         numeric_overloads!(engine, "at", |_call; freq| {Placement::at(freq)});
         numeric_overloads!(engine, "consonance", |_call; root| {Placement::consonance_root(root)});
         for (name, constructor) in [

@@ -70,7 +70,7 @@ fn spawn_emits_phonation_note_that_renders_audio() {
     let batches = pop.collect_phonation_batches(&mut world, &landscape, now);
 
     let mut renderer = ScheduleRenderer::new(tb);
-    let frame = renderer.render(&batches, now, &landscape.rhythm);
+    let frame = renderer.render(&batches, now, &landscape.rhythm).unwrap();
     // Phonation note should produce audio (Hold mode fires NoteOn on first tick)
     assert!(frame.presentation.iter().any(|s| s.abs() > 1e-6));
 }

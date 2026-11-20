@@ -121,17 +121,18 @@ fn heard_flora_pcm_oracle_two_sources_routing_mute_fade_and_gap() {
             ];
             let mut mixed = AnalysisStream::new(params.clone(), nsgt.clone());
             let mut observers = [
-                Observer::flora(7, 0, &mut mixed, true),
-                Observer::flora(8, 0, &mut mixed, true),
+                Observer::flora(7, 0, &mut mixed, true, false),
+                Observer::flora(8, 0, &mut mixed, true, false),
             ];
             let mut references = [
-                Observer::flora(7, 0, &mut mixed, true),
-                Observer::flora(8, 0, &mut mixed, true),
+                Observer::flora(7, 0, &mut mixed, true, false),
+                Observer::flora(8, 0, &mut mixed, true, false),
             ];
             let mut renderer = ScheduleRenderer::new(Timebase { fs, hop });
             renderer.loo_pcm = [7, 8]
                 .into_iter()
                 .map(|id| SourcePcm {
+                    site_id: 0,
                     kind: SourceKind::Flora,
                     analyze_hr: true,
                     onset_history: false,
@@ -180,6 +181,7 @@ fn heard_flora_pcm_oracle_two_sources_routing_mute_fade_and_gap() {
                         &mut [],
                         |_, _, _, _| {},
                     )
+                    .unwrap()
                     .habitat
                     .to_vec();
                 for (i, x) in external.iter_mut().enumerate() {
@@ -308,11 +310,20 @@ fn growth_and_seed_follow_recorded_pcm_reference() {
                 })
                 .collect();
             let mut observers: Vec<_> = (0..count)
-                .map(|i| Observer::flora(7 + i as u64, 0, &mut mixed, flora[i].needs_hr_observer()))
+                .map(|i| {
+                    Observer::flora(
+                        7 + i as u64,
+                        0,
+                        &mut mixed,
+                        flora[i].needs_hr_observer(),
+                        false,
+                    )
+                })
                 .collect();
             let mut renderer = ScheduleRenderer::new(Timebase { fs, hop });
             renderer.loo_pcm = (0..count)
                 .map(|i| SourcePcm {
+                    site_id: 0,
                     kind: SourceKind::Flora,
                     analyze_hr: flora[i].needs_hr_observer(),
                     onset_history: false,
@@ -367,6 +378,7 @@ fn growth_and_seed_follow_recorded_pcm_reference() {
                         &mut [],
                         |_, _, _, _| {},
                     )
+                    .unwrap()
                     .habitat
                     .to_vec();
                 for (i, x) in full.iter_mut().enumerate() {
@@ -437,7 +449,7 @@ fn growth_observation_revalues_holds_and_discards_old_geometry() {
     let (nsgt, mut params) = crate::runtime::body_metabolism_test_core();
     let mut mixed = AnalysisStream::new(params.clone(), nsgt);
     let hop = mixed.hop_samples();
-    let mut observer = Observer::flora(7, 0, &mut mixed, true);
+    let mut observer = Observer::flora(7, 0, &mut mixed, true, false);
     let pcm: Vec<_> = (0..hop).map(|i| 0.03 * (i as f32 * 0.17).sin()).collect();
     let zero = vec![0.0; hop];
     for _ in 0..40 {

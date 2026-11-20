@@ -20,6 +20,7 @@ impl Community {
                 seeding,
             } => {
                 self.has_placed_flora = true;
+                let landscape = landscape.at_site(spec.site_id);
                 let mut flora = Flora::new(
                     flora_id,
                     spec,
@@ -62,6 +63,7 @@ impl Community {
                 target,
             } => {
                 self.has_placed_rain = true;
+                let landscape = landscape.at_site(spec.site_id);
                 let mut rain = Rain::new(
                     rain_id,
                     spec,

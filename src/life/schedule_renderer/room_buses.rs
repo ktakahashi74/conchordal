@@ -7,6 +7,312 @@ use crate::core::timebase::Tick;
 
 type Owner = (SourceKind, u64, u32);
 
+const REFLECTION_GAIN: f32 = 1. / 23.5;
+const SHARED_SENSITIVITY: f32 = 12.;
+
+pub(super) struct SiteDry {
+    pub presentation: Vec<f32>,
+    pub habitat: Vec<f32>,
+    direct: f32,
+}
+
+/// Each occupied placement contributes one dry stem per destination.
+/// The reflection input is independent of source distance.
+pub(crate) struct SiteBuses {
+    pub(super) dry: Vec<SiteDry>,
+    receivers: Vec<ReceiverPlan>,
+    pub(crate) full: Vec<crate::core::stream::loo::SitePcm>,
+    wet_p: Vec<f32>,
+    wet_h: Vec<f32>,
+}
+
+struct ReceiverPlan {
+    gains: Vec<f32>,
+    last_birth: Option<Tick>,
+    populations: Vec<PlannedPopulation>,
+    last_onset: Option<Tick>,
+    last_tonal: Option<Tick>,
+    last_voice: Option<Tick>,
+    last_flora: Option<Tick>,
+    energy: Option<Box<crate::core::temporal_expectation::SiteEnergyHistory>>,
+}
+
+struct PlannedPopulation {
+    id: u64,
+    onset: bool,
+    tonal: bool,
+}
+
+impl SiteBuses {
+    pub(crate) fn prepare(sites: &[crate::scenario::Site], hop: usize) -> Option<Self> {
+        if sites.is_empty() {
+            return None;
+        }
+        Some(Self {
+            dry: sites
+                .iter()
+                .map(|s| SiteDry {
+                    presentation: vec![0.; hop],
+                    habitat: vec![0.; hop],
+                    direct: (1. / s.x.hypot(s.y).max(1.)) as f32,
+                })
+                .collect(),
+            receivers: sites
+                .iter()
+                .map(|p| ReceiverPlan {
+                    gains: sites
+                        .iter()
+                        .map(|s| (1. / (s.x - p.x).hypot(s.y - p.y).max(1.)) as f32)
+                        .collect(),
+                    last_birth: None,
+                    populations: Vec::new(),
+                    last_onset: None,
+                    last_tonal: None,
+                    last_voice: None,
+                    last_flora: None,
+                    energy: None,
+                })
+                .collect(),
+            full: Vec::new(),
+            wet_p: vec![0.; hop],
+            wet_h: vec![0.; hop],
+        })
+    }
+
+    pub(crate) fn plan(
+        &mut self,
+        scenario: &crate::scenario::Scenario,
+        time: crate::core::timebase::Timebase,
+    ) {
+        use crate::scenario::Action;
+        for event in &scenario.events {
+            let tick = time.sec_to_tick(event.time);
+            for action in &event.actions {
+                let plan = match action {
+                    Action::Spawn {
+                        population_id,
+                        spec,
+                        ..
+                    } => {
+                        let plan = &mut self.receivers[spec.control.body.site_id as usize];
+                        let onset = spec.control.pitch.respond_to_onsets > 0.
+                            || spec.control.phonation.rest_on_habituation > 0.;
+                        let tonal = spec.control.pitch.follow_tonal_context > 0.;
+                        plan.populations.push(PlannedPopulation {
+                            id: *population_id,
+                            onset,
+                            tonal,
+                        });
+                        plan.last_voice = Some(plan.last_voice.unwrap_or(0).max(tick));
+                        if tonal {
+                            plan.last_tonal = Some(plan.last_tonal.unwrap_or(0).max(tick));
+                        }
+                        if onset {
+                            plan.last_onset = Some(plan.last_onset.unwrap_or(0).max(tick));
+                        }
+                        plan
+                    }
+                    Action::PlaceFlora { spec, .. } => {
+                        let plan = &mut self.receivers[spec.site_id as usize];
+                        plan.last_flora = Some(plan.last_flora.unwrap_or(0).max(tick));
+                        if spec.respond_to_onsets > 0. || spec.rest_on_habituation > 0. {
+                            plan.last_onset = Some(plan.last_onset.unwrap_or(0).max(tick));
+                        }
+                        plan
+                    }
+                    Action::PlaceRain { spec, .. } => &mut self.receivers[spec.site_id as usize],
+                    _ => continue,
+                };
+                plan.last_birth = Some(plan.last_birth.unwrap_or(0).max(tick));
+            }
+        }
+        for plan in &mut self.receivers {
+            if plan.last_voice.is_some() && time.fs >= 50. {
+                plan.energy = Some(Box::new(
+                    crate::core::temporal_expectation::SiteEnergyHistory::new(time.fs as u32, 0),
+                ));
+            }
+        }
+        self.full = self
+            .receivers
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.last_birth.is_some())
+            .map(|(id, p)| crate::core::stream::loo::SitePcm {
+                id: id as u32,
+                flora: p.last_flora.is_some(),
+                voice: p.last_voice.is_some(),
+                onset: p.last_onset.is_some(),
+                tonal: p.last_tonal.is_some(),
+                samples: vec![0.; time.hop],
+            })
+            .collect();
+    }
+
+    pub(crate) fn retain_readers(
+        &mut self,
+        now: Tick,
+        pop: &crate::life::community::Community,
+        tracked: impl Fn(u32) -> bool,
+    ) {
+        self.full.retain_mut(|f| {
+            let plan = &mut self.receivers[f.id as usize];
+            f.voice = plan.last_voice.is_some_and(|t| now <= t)
+                || plan.populations.iter().any(|p| pop.can_respawn(p.id))
+                || pop
+                    .voices
+                    .iter()
+                    .any(|v| v.effective_control.body.site_id == f.id)
+                || tracked(f.id);
+            f.flora = plan.last_flora.is_some_and(|t| now <= t)
+                || pop.flora.iter().any(|v| v.site_id() == f.id);
+            if !f.voice {
+                plan.energy = None;
+            }
+            let voices = pop
+                .voices
+                .iter()
+                .filter(|v| v.effective_control.body.site_id == f.id);
+            f.tonal = plan.last_tonal.is_some_and(|t| now <= t)
+                || voices
+                    .clone()
+                    .any(|v| v.effective_control.pitch.follow_tonal_context > 0.)
+                || plan
+                    .populations
+                    .iter()
+                    .any(|p| p.tonal && pop.can_respawn(p.id));
+            f.onset = plan.last_onset.is_some_and(|t| now <= t)
+                || voices.clone().any(|v| {
+                    v.effective_control.pitch.respond_to_onsets > 0.
+                        || v.effective_control.phonation.rest_on_habituation > 0.
+                })
+                || pop
+                    .flora
+                    .iter()
+                    .any(|f2| f2.site_id() == f.id && f2.needs_onset_history())
+                || plan
+                    .populations
+                    .iter()
+                    .any(|p| p.onset && pop.can_respawn(p.id));
+            plan.last_birth.is_some_and(|t| now <= t)
+                || f.voice
+                || f.flora
+                || pop.rain.iter().any(|v| v.site_id() == f.id)
+        });
+    }
+
+    pub(super) fn birth_energy(
+        &self,
+        site: u32,
+    ) -> &crate::core::temporal_expectation::SiteEnergyHistory {
+        self.receivers[site as usize]
+            .energy
+            .as_deref()
+            .expect("planned Voice history")
+    }
+
+    pub(crate) fn align_energy(&mut self, now: Tick) {
+        for receiver in &mut self.receivers {
+            if let Some(energy) = &mut receiver.energy {
+                energy.align(now);
+            }
+        }
+    }
+
+    pub(super) fn advance_energy(&mut self, now: Tick) {
+        for full in &self.full {
+            if let Some(history) = &mut self.receivers[full.id as usize].energy {
+                history.process(now, &full.samples);
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn dry_habitat(&self, id: u32) -> &[f32] {
+        &self.dry[id as usize].habitat
+    }
+
+    pub(crate) fn local(&self, id: u32) -> &[f32] {
+        &self
+            .full
+            .iter()
+            .find(|f| f.id == id)
+            .expect("active receiver")
+            .samples
+    }
+
+    pub(super) fn clear(&mut self) {
+        for site in &mut self.dry {
+            site.presentation.fill(0.);
+            site.habitat.fill(0.);
+        }
+    }
+
+    pub(super) fn mix(
+        &mut self,
+        room: Option<&mut RoomBuses>,
+        p: &mut [f32],
+        h: &mut [f32],
+        scratch: &mut [f32],
+    ) {
+        p.fill(0.);
+        h.fill(0.);
+        self.wet_p.fill(0.);
+        self.wet_h.fill(0.);
+        for site in &self.dry {
+            for i in 0..p.len() {
+                p[i] += site.direct * site.presentation[i];
+                h[i] += site.direct * site.habitat[i];
+                self.wet_p[i] += site.presentation[i];
+                self.wet_h[i] += site.habitat[i];
+            }
+        }
+        for full in &mut self.full {
+            full.samples.fill(0.);
+            for (site, &gain) in self.dry.iter().zip(&self.receivers[full.id as usize].gains) {
+                for (out, dry) in full.samples.iter_mut().zip(&site.habitat) {
+                    *out += gain * dry;
+                }
+            }
+        }
+        if let Some(room) = room {
+            for x in &mut self.wet_p {
+                *x *= REFLECTION_GAIN;
+            }
+            room.presentation.process(&self.wet_p, scratch);
+            room.right.process(&self.wet_p, &mut room.right_pcm);
+            for (i, pair) in room
+                .interleaved
+                .as_chunks_mut::<2>()
+                .0
+                .iter_mut()
+                .enumerate()
+            {
+                pair[1] = SHARED_SENSITIVITY * (p[i] + room.right_pcm[i]);
+                p[i] += scratch[i];
+                pair[0] = SHARED_SENSITIVITY * p[i];
+            }
+            if let Some(stream) = &mut room.habitat {
+                for x in &mut self.wet_h {
+                    *x *= REFLECTION_GAIN;
+                }
+                stream.process(&self.wet_h, scratch);
+                for full in &mut self.full {
+                    for (out, &reflection) in full.samples.iter_mut().zip(scratch.iter()) {
+                        *out += reflection;
+                    }
+                }
+                for (x, &r) in h.iter_mut().zip(scratch.iter()) {
+                    *x += r;
+                }
+            }
+        }
+        for x in p.iter_mut().chain(h) {
+            *x *= SHARED_SENSITIVITY;
+        }
+    }
+}
+
 struct OwnStream {
     owner: Option<Owner>,
     stream: RoomStream,
@@ -23,6 +329,8 @@ pub(crate) struct RoomStreamCounts {
 }
 
 pub(super) struct Histories {
+    spatial: bool,
+    scratch: Vec<f32>,
     own: Vec<OwnStream>,
     active: usize,
     next: Option<Tick>,
@@ -34,11 +342,21 @@ impl RoomBuses {
         mode: RoomMode,
         hop: usize,
         owners: usize,
+        spatial: bool,
     ) -> Result<Option<Self>, String> {
         if mode == RoomMode::Off {
             return Ok(None);
         }
-        let kernel = RoomKernel::new(&york_response(), hop);
+        let plan = |mut response: Vec<f32>| {
+            // Without sites the direct tap already has unity gain at 12 m.
+            if mode == RoomMode::Presentation && !spatial {
+                for tap in &mut response[1..] {
+                    *tap *= SHARED_SENSITIVITY * REFLECTION_GAIN;
+                }
+            }
+            RoomKernel::with_direct(&response, hop, if spatial { 0. } else { response[0] })
+        };
+        let kernel = plan(york_response());
         let both = mode == RoomMode::Both;
         let own_count = if both { owners } else { 0 };
         let buses = 2 + usize::from(both);
@@ -59,7 +377,13 @@ impl RoomBuses {
             .and_then(|size| size.checked_add(stereo_buffers))
             .filter(|&n| n <= isize::MAX as usize)
             .ok_or(size_error)?;
-        let right_kernel = RoomKernel::new(&york_right_response(), hop);
+        tracing::debug!(
+            count,
+            bytes,
+            stream_bytes = kernel.stream_bytes(),
+            "room reservation"
+        );
+        let right_kernel = plan(york_right_response());
         // Linux may promise virtual memory and kill the process when pages are
         // touched. Diagnose a known physical shortfall before constructing slots.
         #[cfg(target_os = "linux")]
@@ -109,6 +433,12 @@ impl RoomBuses {
             presentation,
             habitat,
             histories: Histories {
+                spatial,
+                scratch: if spatial && both {
+                    vec![0.; hop]
+                } else {
+                    Vec::new()
+                },
                 own,
                 active: 0,
                 next: None,
@@ -143,6 +473,10 @@ impl RoomBuses {
             && self.habitat.as_ref().is_none_or(RoomStream::drained)
     }
 
+    pub(crate) fn strict(&self) -> bool {
+        self.habitat.is_some()
+    }
+
     pub(crate) fn counts(&self) -> RoomStreamCounts {
         self.histories.counts
     }
@@ -171,12 +505,13 @@ impl RoomBuses {
 }
 
 impl Histories {
-    pub(super) fn process(
+    pub(super) fn bind_readers(
         &mut self,
-        sounds: &mut [Option<Box<SelfSound>>],
-        loo: &mut [SourcePcm],
-        metabolism: &mut [SourcePcm],
-    ) {
+        now: Tick,
+        sounds: &[Option<Box<SelfSound>>],
+        loo: &[SourcePcm],
+        metabolism: &[SourcePcm],
+    ) -> Result<(), String> {
         let readers = sounds
             .iter()
             .flatten()
@@ -194,6 +529,34 @@ impl Histories {
                 self.own.swap(i, self.active);
             }
         }
+        for key in readers.clone() {
+            if self.own[..self.active].iter().any(|s| s.owner == Some(key)) {
+                continue;
+            }
+            let Some(slot) = self.own.get_mut(self.active) else {
+                let required = readers.collect::<std::collections::BTreeSet<_>>().len();
+                return Err(format!(
+                    "strict room exhausted at tick {now}: need {required} owner slots, reserved {}, first missing {key:?}",
+                    self.own.len()
+                ));
+            };
+            slot.owner = Some(key);
+            slot.processed = false;
+            slot.stream.reset();
+            self.active += 1;
+        }
+        self.counts.active = 3 + self.active;
+        self.counts.peak = self.counts.peak.max(self.counts.active);
+        Ok(())
+    }
+
+    pub(super) fn process(
+        &mut self,
+        now: Tick,
+        sounds: &mut [Option<Box<SelfSound>>],
+        loo: &mut [SourcePcm],
+        metabolism: &mut [SourcePcm],
+    ) -> Result<(), String> {
         for (key, pcm) in sounds
             .iter_mut()
             .flatten()
@@ -209,30 +572,30 @@ impl Histories {
                     .map(|s| ((s.kind, s.id, s.generation), &mut s.habitat)),
             )
         {
-            let index = self.own[..self.active]
-                .iter()
-                .position(|slot| slot.owner == Some(key))
-                .unwrap_or_else(|| {
-                    let index = self.active;
-                    let slot = self
-                        .own
-                        .get_mut(index)
-                        .expect("pre-scanned room source capacity");
-                    slot.owner = Some(key);
-                    slot.processed = false;
-                    slot.stream.reset();
-                    self.active += 1;
-                    index
-                });
-            let slot = &mut self.own[index];
+            let slot = self.own[..self.active]
+                .iter_mut()
+                .find(|s| s.owner == Some(key))
+                .ok_or_else(|| {
+                    format!("strict room reader {key:?} changed after reservation at tick {now}")
+                })?;
             if !slot.processed {
-                slot.stream.process(pcm, &mut slot.output);
+                if self.spatial {
+                    // Match the shared reflection input scaling before the FIR, including its tail.
+                    for (send, &dry) in self.scratch.iter_mut().zip(pcm.iter()) {
+                        *send = REFLECTION_GAIN * dry;
+                    }
+                    slot.stream.process(&self.scratch, &mut slot.output);
+                    for (wet, &dry) in slot.output.iter_mut().zip(pcm.iter()) {
+                        *wet += dry;
+                    }
+                } else {
+                    slot.stream.process(pcm, &mut slot.output);
+                }
                 slot.processed = true;
             }
             pcm.copy_from_slice(&slot.output);
         }
-        self.counts.active = 3 + self.active;
-        self.counts.peak = self.counts.peak.max(self.counts.active);
+        Ok(())
     }
 }
 
@@ -246,7 +609,7 @@ mod tests {
         let n = york_response().len();
         let aligned = n.next_multiple_of(HOP) - n;
         for mode in [RoomMode::Presentation, RoomMode::Both] {
-            let mut room = RoomBuses::prepare(mode, HOP, 0).unwrap().unwrap();
+            let mut room = RoomBuses::prepare(mode, HOP, 0, false).unwrap().unwrap();
             for last_bus_is_p in [true, false] {
                 for s in [aligned - 1, aligned, aligned + 1] {
                     let mut h = [0.; HOP];

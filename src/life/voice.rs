@@ -54,6 +54,7 @@ pub struct VoiceMetadata {
 
 #[derive(Debug)]
 pub struct Voice {
+    pub(crate) birth_tick: Option<Tick>,
     pub(crate) support_body: super::support_action::Body,
     pub(crate) support_renderer_phase3: bool,
     support_onset: Option<(BodySnapshot, crate::life::sound::Tone)>,
@@ -745,6 +746,7 @@ impl Voice {
         let mut voice = Voice {
             harmonic_member: false,
             support_body: Default::default(),
+            birth_tick: None,
             support_renderer_phase3: false,
             support_onset: None,
             support_held_opportunities: Vec::new(),
@@ -1288,7 +1290,11 @@ impl Voice {
                     }
                 })
                 .unwrap_or_else(|| {
-                    if excluded {
+                    if excluded
+                        && !landscape
+                            .site_end
+                            .is_some_and(|end| end <= self.birth_tick.unwrap_or(0))
+                    {
                         None
                     } else {
                         landscape.tonal_context.clone()
@@ -1833,6 +1839,7 @@ impl Voice {
             onset_allowed,
         };
         out.body_policy = Some(super::action_candidates::PolicySnapshot {
+            site_id: self.effective_control.body.site_id,
             at: now,
             is_alive: state.is_alive,
             gate_allows_onset: state.onset_allowed,

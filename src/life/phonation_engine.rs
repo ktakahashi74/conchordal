@@ -1,4 +1,4 @@
-const MAX_EXTRA_GATES: u64 = 4096;
+pub(crate) const MAX_EXTRA_GATES: u64 = 4096;
 
 use crate::life::arrival_cost::ArrivalContext;
 use rand::{RngExt, SeedableRng, rngs::SmallRng};

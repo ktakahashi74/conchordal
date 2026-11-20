@@ -322,6 +322,7 @@ fn rendered_loo_conformance() {
                         (frame * hop) as u64,
                         &NeuralRhythms::default(),
                     )
+                    .unwrap()
                     .habitat
                     .to_vec();
                 let mut landscape = other_stream.process(&pcm).clone();
@@ -364,6 +365,7 @@ fn rendered_loo_conformance() {
                             now,
                             &NeuralRhythms::default(),
                         )
+                        .unwrap()
                         .habitat
                         .to_vec();
                     let own_pcm = own_renderer
@@ -372,6 +374,7 @@ fn rendered_loo_conformance() {
                             now,
                             &NeuralRhythms::default(),
                         )
+                        .unwrap()
                         .habitat
                         .to_vec();
                     let removed: Vec<_> = full
@@ -1000,6 +1003,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
         let mut removed_stream = template.clone();
         let mut reference_stream = template.clone();
         let mut sources = [crate::life::schedule_renderer::SourcePcm {
+            site_id: 0,
             kind: crate::core::stream::loo::SourceKind::Voice,
             analyze_hr: true,
             onset_history: false,
@@ -1059,10 +1063,12 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                     &mut [],
                     |_, _, _, _| {},
                 )
+                .unwrap()
                 .habitat
                 .to_vec();
             let own = own_renderer
                 .render(commands, now, &NeuralRhythms::default())
+                .unwrap()
                 .habitat;
             assert_eq!(sources[0].habitat, own);
             solo_p.fill(0.);
@@ -1478,6 +1484,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                     pcm[i].copy_from_slice(
                         renderers[i]
                             .render(commands, now, &NeuralRhythms::default())
+                            .unwrap()
                             .habitat,
                     );
                 }

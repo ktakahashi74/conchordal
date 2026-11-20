@@ -221,19 +221,22 @@ dB and applies the combined gain immediately before the output limiter, includin
 when `limiter = "none"`. The ecology, modeled listener, JSONL bus records and UI
 meters receive the original bus levels.
 
-With the room off or omitted, the default is **+4.5 dB**. Its original calibration
-used 17 top-level samples at 0 dB with seeds 21, 22 and 23. The peak was
-0.5553374886512756 (`07_heartbeat.rhai`, seed 23), giving 4.933381674334326 dB
-before rounding.
+With the room off or omitted, the default is **+4.0 dB**. At 0 dB, 54 full dry
+renders of the 18 top-level samples with seeds 21, 22 and 23 gave a maximum
+limiter input peak of 0.6136277318000793 (`14_stone_and_wire.rhai`, seed 22),
+giving 4.066421943023734 dB before rounding.
 
-With `[room].mode = "presentation"` or `"both"`, the default is **-10.5 dB**.
-At 0 dB, the same three seeds and the current 18 top-level samples yielded 54
-presentation and 51 both renders. The three both runs of
-`12_emergence_and_resolution.rhai` exceeded available memory. The largest
-limiter input peak across both channels was 3.1674678325653076
-(`17_flora.rhai`, seed 22, `presentation`). Both calibrations use the greatest
-0.5 dB step at or below `20 * log10(0.98 / max_peak)`, where 0.98 is the default
-peak limiter ceiling. The room result before rounding was -10.189722747565469 dB.
+In `presentation`, a score without sites places every source 12 m from the
+audience. The default output gain is **-5.0 dB** for `presentation` and for
+`both` with sites. At 0 dB, 54 full presentation renders of the 18 top-level
+samples with seeds 21, 22 and 23 gave a maximum limiter input peak of
+1.679440975189209 across both channels (`17_flora.rhai`, seed 22).
+The calibrations take the greatest 0.5 dB step at or below
+`20 * log10(0.98 / max_peak)`, using the default peak limiter ceiling of 0.98.
+The 12 m result before rounding was -4.678773385040718 dB.
+
+In `both`, a score without sites retains the York measurement-distance balance
+at 23.5 m and its **-10.5 dB** default from the original wet calibration.
 Other scripts, seeds and gain settings can engage the limiter.
 
 The configured and combined gains must each yield a finite, positive `f32`

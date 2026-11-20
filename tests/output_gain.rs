@@ -27,11 +27,11 @@ wait(0.5);
     let cases = [
         ("config-zero", 0.0, None),
         ("config-six", 6.0, None),
-        ("default", 4.5, None),
-        ("scene-zero", 4.5, Some(0.0)),
-        ("scene-six", 4.5, Some(6.0)),
-        ("scene-minus-six", 4.5, Some(-6.0)),
-        ("scene-mixed", 2.0, Some(2.5)),
+        ("default", 4.0, None),
+        ("scene-zero", 4.0, Some(0.0)),
+        ("scene-six", 4.0, Some(6.0)),
+        ("scene-minus-six", 4.0, Some(-6.0)),
+        ("scene-mixed", 1.5, Some(2.5)),
     ];
     for (name, gain_db, scene_db) in cases {
         let declaration = scene_db
@@ -41,7 +41,7 @@ wait(0.5);
         let config = directory.join(format!("{name}.toml"));
         let wav = directory.join(format!("{name}.wav"));
         let report = directory.join(format!("{name}.jsonl"));
-        let audio_config = if gain_db == 4.5 {
+        let audio_config = if gain_db == 4.0 {
             String::new()
         } else {
             format!("[audio]\noutput_gain_db = {gain_db}\n")

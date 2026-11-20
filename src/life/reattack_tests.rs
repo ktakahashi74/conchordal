@@ -40,9 +40,11 @@ fn replacement_keeps_pre_off_pcm_and_overlaps_independent_release_with_fresh_att
                         generation: batch.source_generation,
                     };
                     let mut renderer = ScheduleRenderer::new(time).with_prototype(native);
-                    renderer.render(&initial.batches, initial.now, &initial.rhythms);
+                    renderer
+                        .render(&initial.batches, initial.now, &initial.rhythms)
+                        .unwrap();
                     for now in (time.hop as u64..replacement_hop).step_by(time.hop) {
-                        renderer.render(&[], now, &initial.rhythms);
+                        renderer.render(&[], now, &initial.rhythms).unwrap();
                     }
                     let mut continued = renderer.fork_source(batch.source_id);
                     let mut tail = renderer.fork_source(batch.source_id);
@@ -83,16 +85,24 @@ fn replacement_keeps_pre_off_pcm_and_overlaps_independent_release_with_fresh_att
                         };
                         let actual = renderer
                             .render(commands, now, &next.rhythms)
+                            .unwrap()
                             .habitat
                             .to_vec();
-                        let old = tail.render(&[], now, &next.rhythms).habitat.to_vec();
-                        let new = fresh.render(on_commands, now, &next.rhythms).habitat;
+                        let old = tail
+                            .render(&[], now, &next.rhythms)
+                            .unwrap()
+                            .habitat
+                            .to_vec();
+                        let new = fresh
+                            .render(on_commands, now, &next.rhythms)
+                            .unwrap()
+                            .habitat;
                         for ((actual, old), new) in actual.iter().zip(&old).zip(new) {
                             assert_eq!(actual.to_bits(), (old + new).to_bits());
                             tail_peak = tail_peak.max(old.abs());
                         }
                         if now == replacement_hop {
-                            let uncut = continued.render(&[], now, &next.rhythms).habitat;
+                            let uncut = continued.render(&[], now, &next.rhythms).unwrap().habitat;
                             for (actual, uncut) in actual[..offset as usize].iter().zip(uncut) {
                                 assert_eq!(
                                     actual.to_bits(),

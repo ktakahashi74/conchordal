@@ -64,9 +64,25 @@ pub(crate) fn run(
     }
 }
 
+struct SiteAnalysis {
+    id: u32,
+    stream: AnalysisStream,
+    owners: Vec<crate::core::stream::loo::Observer>,
+}
+
+impl SiteAnalysis {
+    fn gap_to(&mut self, sample: u64) {
+        self.stream.gap_to(sample);
+        for owner in &mut self.owners {
+            owner.gap_to(sample);
+        }
+    }
+}
+
 pub(crate) struct AnalysisState {
     stream: AnalysisStream,
     loo_streams: Vec<crate::core::stream::loo::Observer>,
+    sites: Vec<SiteAnalysis>,
     next_frame_id: u64,
     warmup_samples: usize,
     hop_samples: usize,
@@ -101,6 +117,7 @@ impl AnalysisState {
         Self {
             stream,
             loo_streams: Vec::new(),
+            sites: Vec::new(),
             next_frame_id: 0,
             warmup_samples: 0,
             hop_samples,
@@ -111,6 +128,12 @@ impl AnalysisState {
     }
 
     pub(crate) fn update(&mut self, update: LandscapeUpdate) {
+        for site in &mut self.sites {
+            site.stream.apply_update(update);
+            for owner in &mut site.owners {
+                owner.update(update);
+            }
+        }
         for observer in &mut self.loo_streams {
             observer.update(update);
         }
@@ -123,6 +146,9 @@ impl AnalysisState {
             self.stream.gap_to(frame_id * self.hop_samples as u64);
             for observer in &mut self.loo_streams {
                 observer.reset();
+            }
+            for site in &mut self.sites {
+                site.gap_to(frame_id * self.hop_samples as u64);
             }
             self.warmup_samples = self.stream.window_samples();
         }
@@ -167,6 +193,7 @@ impl AnalysisState {
         let Self {
             stream,
             loo_streams,
+            sites,
             warmup_samples,
             hop_samples,
             raw,
@@ -182,52 +209,45 @@ impl AnalysisState {
         );
         let t2 = raw.as_mut().and_then(|input| input.observe(frame_id, hop));
         if let Some(packet) = loo_pcm {
-            loo_streams.retain(|s| {
-                packet.sources.iter().any(|pcm| {
-                    pcm.kind == s.kind && pcm.id == s.id && pcm.generation == s.generation
-                })
-            });
-            for source in &packet.sources {
-                let birth = !loo_streams.iter().any(|s| {
-                    s.kind == source.kind && s.id == source.id && s.generation == source.generation
-                });
-                let index = loo_streams
+            sites.retain(|s| packet.sites.iter().any(|p| p.id == s.id));
+            for full in &packet.sites {
+                let idx = sites
                     .iter()
-                    .position(|s| {
-                        s.kind == source.kind
-                            && s.id == source.id
-                            && s.generation == source.generation
-                    })
+                    .position(|s| s.id == full.id)
                     .unwrap_or_else(|| {
-                        let observer = match source.kind {
-                            crate::core::stream::loo::SourceKind::Voice => {
-                                crate::core::stream::loo::Observer::new(
-                                    source.id,
-                                    source.generation,
-                                    stream,
-                                    source.onset_history,
-                                )
-                            }
-                            crate::core::stream::loo::SourceKind::Flora => {
-                                crate::core::stream::loo::Observer::flora(
-                                    source.id,
-                                    source.generation,
-                                    stream,
-                                    source.analyze_hr,
-                                )
-                            }
-                            crate::core::stream::loo::SourceKind::Rain => {
-                                crate::core::stream::loo::Observer::rain(source.id, stream)
-                            }
-                        };
-                        loo_streams.push(observer);
-                        loo_streams.len() - 1
+                        let local = stream.site_observer(full);
+                        sites.push(SiteAnalysis {
+                            id: full.id,
+                            stream: local,
+                            owners: Vec::new(),
+                        });
+                        sites.len() - 1
                     });
-                loo_streams[index].configure_tonal(stream, source.tonal_context, birth);
-                loo_streams[index].process(hop, &source.habitat);
+                let local = &mut sites[idx];
+                local.stream.retain_site_components(full);
+                Self::observe_owners(
+                    &mut local.stream,
+                    &mut local.owners,
+                    &full.samples,
+                    packet.sources.iter().filter(|s| s.site_id == full.id),
+                    true,
+                );
+                local.stream.process(&full.samples);
+            }
+            if packet.sites.is_empty() {
+                Self::observe_owners(stream, loo_streams, hop, packet.sources.iter(), false);
+            } else {
+                loo_streams.clear();
             }
         } else {
             loo_streams.clear();
+            if !sites.is_empty() {
+                let end = (frame_id + 1) * hop_samples as u64;
+                for site in sites {
+                    site.gap_to(end);
+                }
+                *warmup_samples = stream.window_samples() + hop_samples;
+            }
         }
         let frame = stream.process_from(hop, source);
         #[cfg(feature = "native")]
@@ -248,22 +268,88 @@ impl AnalysisState {
         *warmup_samples == 0
     }
 
+    fn observe_owners<'a>(
+        stream: &mut AnalysisStream,
+        loo_streams: &mut Vec<crate::core::stream::loo::Observer>,
+        hop: &[f32],
+        sources: impl Iterator<Item = &'a crate::core::stream::loo::SourcePcm> + Clone,
+        spatial: bool,
+    ) {
+        loo_streams.retain(|s| {
+            sources
+                .clone()
+                .any(|pcm| pcm.kind == s.kind && pcm.id == s.id && pcm.generation == s.generation)
+        });
+        for source in sources {
+            let birth = !loo_streams.iter().any(|s| {
+                s.kind == source.kind && s.id == source.id && s.generation == source.generation
+            });
+            let index = loo_streams
+                .iter()
+                .position(|s| {
+                    s.kind == source.kind && s.id == source.id && s.generation == source.generation
+                })
+                .unwrap_or_else(|| {
+                    let observer = match source.kind {
+                        crate::core::stream::loo::SourceKind::Voice => {
+                            crate::core::stream::loo::Observer::new(
+                                source.id,
+                                source.generation,
+                                stream,
+                                source.onset_history,
+                            )
+                        }
+                        crate::core::stream::loo::SourceKind::Flora => {
+                            crate::core::stream::loo::Observer::flora(
+                                source.id,
+                                source.generation,
+                                stream,
+                                source.analyze_hr,
+                                source.onset_history,
+                            )
+                        }
+                        crate::core::stream::loo::SourceKind::Rain => {
+                            crate::core::stream::loo::Observer::rain(source.id, stream)
+                        }
+                    };
+                    loo_streams.push(observer);
+                    loo_streams.len() - 1
+                });
+            loo_streams[index].configure_tonal(stream, source.tonal_context, birth);
+            if spatial {
+                loo_streams[index].process_external(hop, &source.habitat);
+            } else {
+                loo_streams[index].process(hop, &source.habitat);
+            }
+        }
+    }
+
     pub(crate) fn snapshot(&self) -> Landscape {
-        let Self {
-            stream,
-            loo_streams,
-            spectral_history,
-            ..
-        } = self;
+        let mut frame = Self::snapshot_field(&self.stream, &self.loo_streams);
+        frame.spectral_history = self.spectral_history.as_ref().and_then(|h| h.snapshot());
+        frame.sites = self
+            .sites
+            .iter()
+            .map(|local| {
+                let mut snapshot = Self::snapshot_field(&local.stream, &local.owners);
+                snapshot.site_resource_power = local.stream.resource_power().map(Arc::from);
+                snapshot.site_end = Some(self.next_frame_id * self.hop_samples as u64);
+                (local.id, Arc::new(snapshot))
+            })
+            .collect();
+        frame
+    }
+
+    fn snapshot_field(
+        stream: &AnalysisStream,
+        loo_streams: &[crate::core::stream::loo::Observer],
+    ) -> Landscape {
         let mut frame = stream.last().clone();
         frame.tonal_context = stream.tonal_snapshot();
         frame.tonal_observations = loo_streams
             .iter()
             .filter_map(|s| s.tonal_snapshot())
             .collect();
-        frame.spectral_history = spectral_history
-            .as_ref()
-            .and_then(|history| history.snapshot());
         frame.loo = loo_streams
             .iter()
             .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Voice)
@@ -895,7 +981,9 @@ mod tests {
     fn packet(id: u64, generation: u32, own: &[f32]) -> crate::core::stream::loo::PcmPacket {
         let (recycle, _) = crate::handoff::unbounded();
         crate::core::stream::loo::PcmPacket {
+            sites: Vec::new(),
             sources: vec![crate::core::stream::loo::SourcePcm {
+                site_id: 0,
                 kind: crate::core::stream::loo::SourceKind::Voice,
                 analyze_hr: true,
                 onset_history: false,
@@ -906,6 +994,50 @@ mod tests {
             }],
             recycle,
         }
+    }
+
+    #[test]
+    fn site_observations_recover_together_after_missing_pcm_and_clock_jumps() {
+        use crate::core::stream::loo::{SitePcm, SourceKind};
+        let (kernel, params) = crate::runtime::body_metabolism_test_core();
+        let mut stream = AnalysisStream::new(params, kernel);
+        stream.enable_onset_habituation(0.5);
+        let mut analysis = AnalysisState::new(stream, None, None);
+        let mut packet = packet(7, 0, &[0.; 512]);
+        packet.sources[0].kind = SourceKind::Voice;
+        packet.sources[0].onset_history = true;
+        packet.sources[0].site_id = 1;
+        packet.sites.push(SitePcm {
+            id: 1,
+            voice: true,
+            flora: false,
+            onset: true,
+            tonal: false,
+            samples: vec![0.; 512],
+        });
+        let mut restored = false;
+        for id in (0..94).filter(|n| *n != 45) {
+            assert_eq!(analysis.begin_hop(id), id == 46);
+            let input = (id != 5).then_some(&packet);
+            let ready = analysis.observe(id, &[0.; 512], input);
+            if id == 5 || id == 46 {
+                assert!(!ready);
+            }
+            if ready {
+                let snapshot = analysis.snapshot();
+                let f = snapshot.at_site(1);
+                assert_eq!(f.site_end, Some((id + 1) * 512));
+                assert_eq!(f.loo.len(), 1);
+                assert_eq!(f.loo[0].onset_habituation_end, f.onset_habituation_end);
+                restored |= id > 46;
+            }
+        }
+        assert!(restored);
+        packet.sites.clear();
+        packet.sources.clear();
+        analysis.begin_hop(94);
+        analysis.observe(94, &[0.; 512], Some(&packet));
+        assert!(analysis.sites.is_empty() && analysis.snapshot().sites.is_empty());
     }
 
     #[test]
@@ -923,6 +1055,7 @@ mod tests {
             let mix: Arc<[f32]> = vec![0.03; hop].into();
             let sources = vec![
                 SourcePcm {
+                    site_id: 0,
                     kind: SourceKind::Voice,
                     analyze_hr: true,
                     onset_history: false,
@@ -932,6 +1065,7 @@ mod tests {
                     habitat: mix.to_vec(),
                 },
                 SourcePcm {
+                    site_id: 0,
                     kind: SourceKind::Flora,
                     analyze_hr: true,
                     onset_history: false,
@@ -945,6 +1079,7 @@ mod tests {
                 frame,
                 mix,
                 Some(PcmPacket {
+                    sites: Vec::new(),
                     sources,
                     recycle: recycle.clone(),
                 }),

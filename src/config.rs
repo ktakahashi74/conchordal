@@ -296,6 +296,16 @@ pub enum RoomMode {
     Both,
 }
 
+impl RoomMode {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::Presentation => "presentation",
+            Self::Both => "both",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SelfReturn {
@@ -553,19 +563,21 @@ impl AppConfig {
         self.room.map(|room| room.mode).unwrap_or_default()
     }
 
-    fn resolved_output_gain_db(&self) -> f32 {
+    fn resolved_output_gain_db(&self, has_sites: bool) -> f32 {
         self.audio
             .output_gain_db
             .unwrap_or_else(|| match self.room_mode() {
-                // Original dry calibration: 17 studies x seeds 21..=23, peak 0.5553375.
-                RoomMode::Off => 4.5,
-                // 105 wet renders at 0 dB: peak 3.16746783, ceiling 0.98, round down to 0.5 dB.
-                RoomMode::Presentation | RoomMode::Both => -10.5,
+                // Dry calibration: 18 samples x seeds 21..=23, peak 0.6136277.
+                RoomMode::Off => 4.0,
+                // Legacy 23.5 m research mix.
+                RoomMode::Both if !has_sites => -10.5,
+                // The 12 m audience calibration is documented in the README.
+                RoomMode::Presentation | RoomMode::Both => -5.0,
             })
     }
 
-    pub(crate) fn output_gain(&self, scene_db: f32) -> f32 {
-        10.0f32.powf((self.resolved_output_gain_db() + scene_db) / 20.0)
+    pub(crate) fn output_gain(&self, scene_db: f32, has_sites: bool) -> f32 {
+        10.0f32.powf((self.resolved_output_gain_db(has_sites) + scene_db) / 20.0)
     }
 
     #[cfg(feature = "native")]
@@ -592,6 +604,11 @@ impl AppConfig {
                 "room.self_return requires an enabled room.mode"
             );
         }
+        self.validate_settings()
+    }
+
+    /// Validate the parsed settings before a score has selected the room.
+    fn validate_settings(&self) -> Result<()> {
         if let Some(p) = self.analysis.felt_beat {
             ensure!(
                 p.lambda + p.weak_lambda + p.lambda_0 > 0.0,
@@ -715,11 +732,13 @@ impl AppConfig {
             self.audio.latency_ms.is_finite() && self.audio.latency_ms > 0.0,
             "audio.latency_ms must be finite and positive"
         );
-        let output_gain = self.output_gain(0.0);
-        ensure!(
-            output_gain.is_finite() && output_gain > 0.0,
-            "audio.output_gain_db must be finite and yield a finite, positive f32 amplitude gain"
-        );
+        if let Some(db) = self.audio.output_gain_db {
+            let gain = 10.0f32.powf(db / 20.0);
+            ensure!(
+                gain.is_finite() && gain > 0.0,
+                "audio.output_gain_db must be finite and yield a finite, positive f32 amplitude gain"
+            );
+        }
         let buffer_frames =
             self.audio.sample_rate as f64 * self.audio.latency_ms as f64 / 1000.0 * 2.0;
         ensure!(
@@ -865,7 +884,7 @@ impl AppConfig {
     /// Parse, validate and round configuration supplied by a host. Empty input uses defaults.
     pub fn from_toml(source: &str) -> Result<Self> {
         let mut config: Self = toml::from_str(source).context("failed to parse configuration")?;
-        config.validate()?;
+        config.validate_settings()?;
         config.round_f32_inplace();
         Ok(config)
     }
@@ -878,15 +897,27 @@ impl AppConfig {
         Self::load_config(path.unwrap_or("config.toml"), path.is_none())
     }
 
+    /// Inspect an implicit file when present, without creating one during compile-only.
+    #[cfg(feature = "native")]
+    pub(crate) fn load_for_compile(path: Option<&str>) -> Result<Self> {
+        if path.is_none() && !Path::new("config.toml").try_exists()? {
+            return Ok(Self::default().rounded());
+        }
+        Self::load_config(path.unwrap_or("config.toml"), false)
+    }
+
     #[cfg(feature = "native")]
     fn load_config(path: &str, create_default: bool) -> Result<Self> {
         let path_obj = Path::new(path);
-        if path_obj.exists() {
+        if path_obj
+            .try_exists()
+            .with_context(|| format!("failed to inspect config file '{path}'"))?
+        {
             let contents = fs::read_to_string(path_obj)
                 .with_context(|| format!("failed to read config file '{path}'"))?;
             let mut cfg: Self = toml::from_str(&contents)
                 .with_context(|| format!("failed to parse config file '{path}'"))?;
-            cfg.validate()
+            cfg.validate_settings()
                 .with_context(|| format!("invalid config file '{path}'"))?;
             cfg.round_f32_inplace();
             return Ok(cfg);
@@ -897,7 +928,7 @@ impl AppConfig {
         // Only the implicit config.toml path may create a template.
         let default_cfg = Self::default().rounded();
         let mut template = default_cfg.clone();
-        template.audio.output_gain_db = Some(default_cfg.resolved_output_gain_db());
+        template.audio.output_gain_db = Some(default_cfg.resolved_output_gain_db(false));
         if let Ok(text) = toml::to_string_pretty(&template) {
             let mut commented = String::new();
             for line in text.lines() {
@@ -1313,7 +1344,7 @@ mod tests {
         assert_eq!(cfg.audio.latency_ms, AudioConfig::default_latency_ms());
         assert_eq!(cfg.audio.limiter, LimiterSetting::default());
         assert_eq!(cfg.audio.output_gain_db, None);
-        assert_eq!(cfg.resolved_output_gain_db(), 4.5);
+        assert_eq!(cfg.resolved_output_gain_db(false), 4.0);
         assert_eq!(cfg.analysis.nfft, AnalysisConfig::default_nfft());
         assert_eq!(
             cfg.psychoacoustics.loudness_exp,
@@ -1335,9 +1366,13 @@ mod tests {
                 let cfg = AppConfig::from_toml(&text).unwrap();
                 let restored = AppConfig::from_toml(&toml::to_string(&cfg).unwrap()).unwrap();
                 assert_eq!(restored.audio.output_gain_db, requested);
-                let default = if mode == "off" { 4.5 } else { -10.5 };
+                let default = match mode {
+                    "off" => 4.0,
+                    "presentation" => -5.0,
+                    _ => -10.5,
+                };
                 assert_eq!(
-                    restored.resolved_output_gain_db(),
+                    restored.resolved_output_gain_db(false),
                     requested.unwrap_or(default)
                 );
             }

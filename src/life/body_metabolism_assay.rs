@@ -223,15 +223,17 @@ fn b7_static_current_scores() {
         let frames = row["environment_frames"].as_u64().unwrap() as usize;
         for frame in 0..frames {
             let now = frame as Tick * runtime.time.hop as Tick;
-            let mixed = renderer.render_with_source_pcm(
-                if frame == 0 { &batches } else { &[] },
-                now,
-                &NeuralRhythms::default(),
-                &mut runtime.pcm,
-                &mut [],
-                &mut [],
-                |_, _, _, _| {},
-            );
+            let mixed = renderer
+                .render_with_source_pcm(
+                    if frame == 0 { &batches } else { &[] },
+                    now,
+                    &NeuralRhythms::default(),
+                    &mut runtime.pcm,
+                    &mut [],
+                    &mut [],
+                    |_, _, _, _| {},
+                )
+                .unwrap();
             runtime.observe(now, mixed.habitat, &params);
             for (i, gap) in gaps.iter().enumerate() {
                 let end = frame as i32 + 1;
@@ -327,6 +329,70 @@ fn newborn_unknown_hold_and_exact_density_invalidation() {
     source.epoch += 1;
     source.score(441_f32.log2(), &changed, &shared).unwrap();
     assert_eq!(source.density_builds, builds + 2);
+}
+
+#[test]
+fn site_metabolism_matches_a_local_mixture_without_the_owner() {
+    use crate::core::stream::loo::SitePcm;
+    use crate::life::schedule_renderer::SiteBuses;
+    let (nsgt, params) = crate::runtime::body_metabolism_test_core();
+    let mut actual = BodyMetabolism::new(nsgt.clone(), &params, settings(8));
+    let mut reference = BodyMetabolism::new(nsgt, &params, settings(8));
+    let mut buses = SiteBuses::prepare(&[crate::scenario::Site::DEFAULT], 512).unwrap();
+    buses.full.push(SitePcm {
+        id: 0,
+        voice: true,
+        flora: false,
+        onset: false,
+        tonal: false,
+        samples: vec![0.; 512],
+    });
+    actual.prepare_sites(&buses.full);
+    let voices = [voice(2, 7, BodyMethod::Sine)];
+    let shared = Landscape::new(actual.shared.landscape.space.clone());
+    let mut scores = 0;
+    for hop in 0..58 {
+        let now = hop * 512;
+        let active = if hop >= 33 { voices.as_slice() } else { &[] };
+        for r in [&mut actual, &mut reference] {
+            r.prepare(active, now, &params);
+        }
+        let mut full = [0.; 512];
+        let mut external = [0.; 512];
+        for (i, out) in full.iter_mut().enumerate() {
+            let phase = (now + i as u64) as f32 * std::f32::consts::TAU / 48000.;
+            external[i] = 0.015 * (phase * 375.).sin();
+            *out = external[i]
+                + if active.is_empty() {
+                    0.
+                } else {
+                    0.03 * (phase * 500.).sin()
+                };
+        }
+        if !active.is_empty() {
+            actual.pcm[0].habitat.copy_from_slice(&external);
+            reference.pcm[0].habitat.fill(0.);
+            let (a, r) = (&mut actual.sources[0], &mut reference.sources[0]);
+            assert_eq!(
+                a.environment.landscape.roughness01,
+                r.environment.landscape.roughness01
+            );
+            if let (Ok(a), Ok(r)) = (
+                a.score(440f32.log2(), &params, &shared),
+                r.score(440f32.log2(), &params, &shared),
+            ) {
+                assert_eq!(
+                    (a.score, a.level, a.in_band_mass),
+                    (r.score, r.level, r.in_band_mass)
+                );
+                scores += 1;
+            }
+        }
+        buses.full[0].samples.copy_from_slice(&full);
+        actual.observe_at_sites(now, &[0.; 512], Some(&buses), &params);
+        reference.observe(now, &external, &params);
+    }
+    assert!(scores > 0);
 }
 
 #[test]
@@ -563,15 +629,17 @@ fn prepared_body_slots_capture_skip_and_density_rebuild_without_allocating() {
                 )
             })
             .collect();
-        let frame = renderer.render_with_source_pcm(
-            &batches,
-            0,
-            &NeuralRhythms::default(),
-            &mut runtime.pcm,
-            &mut [],
-            &mut [],
-            |_, _, _, _| {},
-        );
+        let frame = renderer
+            .render_with_source_pcm(
+                &batches,
+                0,
+                &NeuralRhythms::default(),
+                &mut runtime.pcm,
+                &mut [],
+                &mut [],
+                |_, _, _, _| {},
+            )
+            .unwrap();
         runtime.observe(0, frame.habitat, &params);
         // Warm diagnostic TLS before measuring the production body path.
         let _ = take_costs();
@@ -594,15 +662,17 @@ fn prepared_body_slots_capture_skip_and_density_rebuild_without_allocating() {
                 source.prepare_body(&recipe);
                 let _ = source.score((440. + frame as f32).log2(), &params, &shared);
             }
-            let rendered = renderer.render_with_source_pcm(
-                &[],
-                now,
-                &NeuralRhythms::default(),
-                &mut runtime.pcm,
-                &mut [],
-                &mut [],
-                |_, _, _, _| {},
-            );
+            let rendered = renderer
+                .render_with_source_pcm(
+                    &[],
+                    now,
+                    &NeuralRhythms::default(),
+                    &mut runtime.pcm,
+                    &mut [],
+                    &mut [],
+                    |_, _, _, _| {},
+                )
+                .unwrap();
             runtime.observe(now, rendered.habitat, &params);
             let counts = crate::runtime_profile::finish_allocations().unwrap();
             assert_eq!(counts.count, 0, "prepared body hop {frame}");
@@ -654,7 +724,7 @@ fn strict_room_advances_own_sound_between_selected_metabolism_hops() {
     let mut runtime = BodyMetabolism::new(nsgt, &params, config);
     let voices = [voice(1, 0, BodyMethod::Sine), voice(2, 0, BodyMethod::Sine)];
     let mut renderer = ScheduleRenderer::new(runtime.time);
-    renderer.room = RoomBuses::prepare(RoomMode::Both, runtime.time.hop, 2).unwrap();
+    renderer.room = RoomBuses::prepare(RoomMode::Both, runtime.time.hop, 2, false).unwrap();
     let note = batch(1, &voices[0].representative_body_recipe(params.fs, 3000));
     let rhythms = crate::core::modulation::NeuralRhythms::default();
     let mut visits = [0; 2];
@@ -662,19 +732,21 @@ fn strict_room_advances_own_sound_between_selected_metabolism_hops() {
     for hop in 0..60 {
         let now = hop * runtime.time.hop as u64;
         runtime.prepare(&voices, now, &params);
-        let frame = renderer.render_with_source_pcm(
-            if hop == 0 {
-                std::slice::from_ref(&note)
-            } else {
-                &[]
-            },
-            now,
-            &rhythms,
-            &mut runtime.pcm,
-            &mut [],
-            &mut [],
-            |_, _, _, _| {},
-        );
+        let frame = renderer
+            .render_with_source_pcm(
+                if hop == 0 {
+                    std::slice::from_ref(&note)
+                } else {
+                    &[]
+                },
+                now,
+                &rhythms,
+                &mut runtime.pcm,
+                &mut [],
+                &mut [],
+                |_, _, _, _| {},
+            )
+            .unwrap();
         assert_eq!(
             frame.habitat,
             runtime.pcm.iter().find(|s| s.id == 1).unwrap().habitat

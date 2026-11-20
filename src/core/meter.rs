@@ -1064,6 +1064,11 @@ impl MeterNetwork {
     }
 
     #[cfg(test)]
+    pub(crate) fn onset_age(&self) -> Option<f32> {
+        self.onset_age
+    }
+
+    #[cfg(test)]
     pub fn state(&self) -> MeterState {
         self.last
     }

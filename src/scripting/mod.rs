@@ -131,11 +131,7 @@ impl ScriptError {
 
     pub fn from_eval(err: Box<EvalAltResult>, context: Option<&str>) -> Self {
         let pos = err.position();
-        let position = if pos == Position::NONE {
-            None
-        } else {
-            Some(pos)
-        };
+        let position = (pos != Position::NONE).then_some(pos);
         let mut err = ScriptError::new(err.to_string(), position);
         if let Some(ctx) = context {
             err = err.with_context(ctx);

@@ -6,6 +6,9 @@ use crate::core::timebase::Tick;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct PolicySnapshot {
+    /// Placement at batch creation, retained by sounding notes through release.
+    #[serde(default, skip_serializing_if = "crate::scenario::implicit_site")]
+    pub site_id: u32,
     pub at: Tick,
     pub is_alive: bool,
     pub gate_allows_onset: bool,

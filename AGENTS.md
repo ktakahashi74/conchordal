@@ -309,7 +309,11 @@ source-matched versus original computation rule or §9.3.56's five listener laye
     rests and release. SourcePcm.habitat and the self-sound external reader use
     the same wet contribution, while the body window keeps dry PCM. A Rain
     contributes only its drops to its own stream. Birth and reuse allocate no
-    room history. Packet recycling and analysis gaps do not advance or reset
+    room history. The strict reservation includes overlapping placements and
+    retiring generations through their last reader. A proved fixed-gate
+    deadline bounds the number of overlapping respawn cohorts. Unknown deadlines
+    use the full finite score. A shortage stops the worker or step engine
+    before the affected hop reaches PCM, reports, analysis or UI. Packet recycling and analysis gaps do not advance or reset
     the room. A clock jump resets every bus and invalidates own histories.
     D/W reserves P and R. W/W adds H and the reserved own streams. Hop timing
     counts these buses in reserved, active and peak. R is presentation-only.
@@ -695,14 +699,17 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   `.residual(true)` remains available.
 
 ## Config Keys
-- Optional research section `[room]` requires `mode`. Omission and `"off"` use dry
+- The score declaration `room("off" | "presentation" | "both")` overrides TOML `[room].mode`.
+  The last finite declaration applies from sample zero. In endless scores declare it before time advances.
+  The optional TOML section requires `mode`. Omission of both settings and `"off"` use dry
   mono output. At 48000 Hz, `"presentation"` and `"both"` produce stereo output
   with common direct sound and distinct reflected responses. `"both"` also
   applies the left room response to the mono habitat and self-return histories.
   The only enabled self-return setting is `self_return = "strict"` (implicit when
-  omitted). Explicit self-return with `"off"` is invalid. Use `"both"` for offline strict-source research.
-  Both stereo modes use a calibrated default output gain of -10.5 dB when
-  `[audio].output_gain_db` is omitted. Natural endings wait for dry releases
+  omitted). A score override makes explicit self-return inactive outside both. TOML alone with explicit self-return and `"off"` is invalid. Use `"both"` for offline strict-source research.
+  Without sites, the audience hears sources at 12 m in `presentation` and at the
+  original 23.5 m balance in `both`. The default wet output gain is -5.0 dB
+  for `presentation` and `both` with sites, and -10.5 dB for `both` without sites. Natural endings wait for dry releases
   and the finite tails of all wet output buses.
 - `[analysis.felt_beat]` enables a research-only joint circular-grid beat/no-beat
   observer on the habitat audio-only MeterNetwork. Omission owns no observer.
@@ -788,9 +795,9 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   rejected before analysis construction. The autonomous Voice pitch range remains
   approximately 29.989..8000 Hz, independently of the auditory grid. T2's separate
   bank and the PS-1/TC sample-rate conditions remain unchanged.
-- `[audio].output_gain_db` defaults to +4.5 dB for a dry room and -10.5 dB for
-  `presentation` and `both`, calibrated from bundled sample peaks and the 0.98
-  ceiling. An explicit value takes precedence. The scene gain adds in dB before
+- `[audio].output_gain_db` defaults to +4.0 dB for dry mono, -5.0 dB for `presentation`
+  or `both` with sites, and -10.5 dB for `both` without sites. The calibrations
+  use bundled sample peaks and the 0.98 ceiling. An explicit value takes precedence. The scene gain adds in dB before
   the cpal, WAV or browser limiter. Analysis, listener, report and UI inputs
   stay at their original levels.
 - `[psychoacoustics.consonance.field.kernel]`
@@ -816,8 +823,7 @@ Potential/representation is orthogonal to pred/perc. Real examples from the tree
   channels is the principle; the mappings and the unchanged dynamics are Author
   rules, with no published-model agreement claimed. This is not a Rhai composer
   control. Under the default `move_cost` a line still does not leave by adaptation
-  alone; that is the composer's `move_cost` choice. The demo piece `line-moss` pins
-  the former default in `samples/demo/root-projection.toml`.
+  alone; that is the composer's `move_cost` choice.
 - Defaults come from `HabituationParams::default()` in `src/core/habituation.rs`.
 - When `enabled = false` the `_eff` consonance views equal their base variants.
 

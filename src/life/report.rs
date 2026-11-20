@@ -16,10 +16,13 @@ use crate::scenario::{ScaffoldConfig, SceneMarker};
 
 #[derive(Debug)]
 pub struct JsonlReporter {
+    pub(crate) path: String,
     #[cfg(feature = "native")]
     writer: BufWriter<File>,
     #[cfg(not(feature = "native"))]
     writer: BufWriter<Vec<u8>>,
+    pending_hop: Vec<u8>,
+    staging_hop: bool,
     rhythm_onsets: Vec<OnsetSample>,
     rhythm_observations: Vec<RhythmObservation>,
     listener_beat_confidence: Vec<(f64, f32)>,
@@ -564,7 +567,10 @@ impl JsonlReporter {
     pub fn create(path: &str) -> Result<Self, String> {
         let file = File::create(path).map_err(|err| format!("create report {path}: {err}"))?;
         Ok(Self {
+            path: path.to_owned(),
             writer: BufWriter::new(file),
+            pending_hop: Vec::new(),
+            staging_hop: false,
             rhythm_onsets: Vec::new(),
             rhythm_observations: Vec::new(),
             listener_beat_confidence: Vec::new(),
@@ -1335,10 +1341,27 @@ impl JsonlReporter {
         self.write_record(&serde_json::json!({"type": "harmonic_voice", "voice_id": id, "generation": generation, "event": event}))
     }
 
-    fn write_record<T: Serialize>(&mut self, record: &T) -> Result<(), String> {
-        serde_json::to_writer(&mut self.writer, record)
-            .map_err(|err| format!("encode report record: {err}"))?;
+    pub(crate) fn begin_room_hop(&mut self) {
+        self.pending_hop.clear();
+        self.staging_hop = true;
+    }
+
+    pub(crate) fn publish_room_hop(&mut self) -> Result<(), String> {
+        self.staging_hop = false;
         self.writer
+            .write_all(&self.pending_hop)
+            .map_err(|e| format!("write room hop report: {e}"))
+    }
+
+    fn write_record<T: Serialize>(&mut self, record: &T) -> Result<(), String> {
+        let writer: &mut dyn Write = if self.staging_hop {
+            &mut self.pending_hop
+        } else {
+            &mut self.writer
+        };
+        serde_json::to_writer(&mut *writer, record)
+            .map_err(|err| format!("encode report record: {err}"))?;
+        writer
             .write_all(b"\n")
             .map_err(|err| format!("write report newline: {err}"))?;
         Ok(())
@@ -1654,6 +1677,7 @@ pub fn summarize_populations(
             .or_default();
         population.count += 1;
         population.sum_freq += freq_hz;
+        let landscape = landscape.at_site(agent.effective_control.body.site_id);
         population.sum_score += landscape.evaluate_pitch_score(freq_hz);
         population.sum_level += landscape.evaluate_pitch_level(freq_hz);
         if let Some(bin) = landscape.space.index_of_freq(freq_hz) {

@@ -1,5 +1,9 @@
 //! Temporary shadow replay. It never advances the live proposal RNG.
-use super::*;
+#[cfg(all(test, feature = "native"))]
+use super::PitchHillClimbPitchCore;
+use super::{AnyPitchCore, PitchCore};
+use crate::core::landscape::Landscape;
+use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use rand::rngs::SmallRng;
 use std::cell::RefCell;
 use std::collections::BTreeMap;

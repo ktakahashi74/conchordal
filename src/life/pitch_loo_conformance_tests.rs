@@ -1,15 +1,22 @@
 //! B-1 PCM self-removal reference, ported to the current runtime and three LOO methods.
 //! PCM consumer checks replace the obsolete T-31 score snapshots.
-use super::*;
+use super::scoring::{
+    ReferenceLooMode, approx_loo_score_scan, exact_loo_consonance_score_scan,
+    legacy_sample_consonance_score_with_loo, loo_score_scan, recompute_loo_score_scan,
+    sample_consonance_score_with_loo, sample_ownership_score,
+};
+use super::{LooInput, PitchCore, PitchHillClimbPitchCore, RearticulationView, TargetProposal};
 use crate::config::AppConfig;
 use crate::core::consonance_kernel::ConsonanceRepresentationParams;
 use crate::core::landscape::Landscape;
+use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::ModePattern;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::roughness_kernel::erb_grid;
 use crate::core::stream::analysis::AnalysisStream;
 use crate::core::stream::synchronous::SynchronousAnalysis;
 use crate::core::timebase::Timebase;
+use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use crate::life::body_fitness;
 use crate::life::onset_footprint::{Identity, Recipe};
 use crate::life::voice::ArticulationSignal;
@@ -18,7 +25,7 @@ use crate::life::phonation_engine::{OnsetKick, ToneCmd};
 use crate::life::schedule_renderer::ScheduleRenderer;
 use crate::life::sound::{BodyKind, BodySnapshot, RenderModulatorSpec, ToneAdsr};
 use crate::life::voice::{PhonationBatch, ToneSpec, VoiceMetadata};
-use crate::scenario::control::{BodyMethod, VoiceControl};
+use crate::scenario::control::{BodyMethod, PitchCoreKind, VoiceControl};
 use crate::scenario::{ArticulationCoreConfig, VoiceSpec};
 use rand::{SeedableRng, rngs::SmallRng};
 use serde_json::json;

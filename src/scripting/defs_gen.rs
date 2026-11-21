@@ -223,7 +223,7 @@ fn population(sigs: Vec<Sig>) -> Populations {
 fn doc_index() -> Result<BTreeMap<(&'static str, Owner), &'static FnDoc>, Vec<String>> {
     let mut index = BTreeMap::new();
     let mut errors = Vec::new();
-    for doc in docs::FN_DOCS {
+    for doc in docs::fn_docs() {
         if index.insert((doc.name, doc.owner), doc).is_some() {
             errors.push(format!(
                 "duplicate doc entry: {} ({:?})",
@@ -237,8 +237,7 @@ fn doc_index() -> Result<BTreeMap<(&'static str, Owner), &'static FnDoc>, Vec<St
             ));
         }
     }
-    for (name, parts) in docs::FN_DOCS
-        .iter()
+    for (name, parts) in docs::fn_docs()
         .map(|doc| (doc.name, doc.evidence))
         .chain(docs::TYPE_DOCS.iter().map(|doc| (doc.name, doc.evidence)))
         .chain(docs::CONST_DOCS.iter().map(|doc| (doc.name, doc.evidence)))
@@ -357,7 +356,7 @@ pub fn check() -> Result<(), String> {
         ));
     }
 
-    let doc_names: BTreeSet<&str> = docs::FN_DOCS.iter().map(|d| d.name).collect();
+    let doc_names: BTreeSet<&str> = docs::fn_docs().map(|d| d.name).collect();
     let mut tiered = BTreeSet::new();
     for (name, tier) in docs::tier_lists() {
         if !doc_names.contains(name) {
@@ -612,7 +611,7 @@ disappear as their research questions settle.",
 
     for (tier, part_title, part_intro) in parts {
         let _ = write!(out, "\n## {part_title}\n\n{part_intro}\n");
-        if !docs::FN_DOCS.iter().any(|d| docs::tier_of(d.name) == *tier) {
+        if !docs::fn_docs().any(|d| docs::tier_of(d.name) == *tier) {
             out.push_str(match language {
                 ReferenceLanguage::English => "\nEmpty right now.\n",
                 ReferenceLanguage::Japanese => "\n現在は空です。\n",
@@ -620,8 +619,7 @@ disappear as their research questions settle.",
             continue;
         }
         for category in docs::CATEGORY_DOCS {
-            let entries: Vec<&docs::FnDoc> = docs::FN_DOCS
-                .iter()
+            let entries: Vec<&docs::FnDoc> = docs::fn_docs()
                 .filter(|d| d.category == category.id && docs::tier_of(d.name) == *tier)
                 .collect();
             if entries.is_empty() {
@@ -974,7 +972,7 @@ mod tests {
                 declarations += 1;
             }
         }
-        assert!(declarations > docs::FN_DOCS.len());
+        assert!(declarations > docs::fn_docs().count());
         for (reference, heading, principle, pending, author) in [
             (
                 render_reference_md(),
@@ -1042,16 +1040,12 @@ mod tests {
         for doc in docs::TYPE_DOCS {
             assert!(definitions.contains(doc.summary), "{}", doc.name);
         }
-        assert!(
-            docs::FN_DOCS
-                .iter()
-                .all(|doc| doc.details.split_whitespace().count() <= 120)
-        );
+        assert!(docs::fn_docs().all(|doc| doc.details.split_whitespace().count() <= 120));
     }
 
     #[test]
     fn top_level_samples_only_call_core_or_experimental_api() {
-        let names: BTreeSet<_> = docs::FN_DOCS.iter().map(|doc| doc.name).collect();
+        let names: BTreeSet<_> = docs::fn_docs().map(|doc| doc.name).collect();
         for entry in std::fs::read_dir("samples").unwrap() {
             let path = entry.unwrap().path();
             if path.extension().and_then(|extension| extension.to_str()) != Some("rhai") {

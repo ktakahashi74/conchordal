@@ -1,5 +1,14 @@
-use super::*;
+use super::scoring::{
+    ReferenceLooMode, approx_loo_score_scan, exact_loo_consonance_score_scan,
+    legacy_sample_consonance_score_with_loo, loo_score_scan, prepare_loo_scratch,
+    recompute_loo_score_scan, redistribute_loo_density, sample_consonance_score_with_loo,
+};
+use super::{LooInput, PitchCore, PitchHillClimbPitchCore, RearticulationView};
+use crate::core::landscape::Landscape;
+use crate::core::log2space::Log2Space;
+use crate::life::adaptation::{AdaptationContext, FeaturesNow};
 use rand::{SeedableRng, rngs::SmallRng};
+use std::sync::Arc;
 
 fn fixture() -> Landscape {
     let mut l = Landscape::new(Log2Space::new(110.0, 880.0, 96));

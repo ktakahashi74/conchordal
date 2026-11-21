@@ -278,7 +278,7 @@ fn acquire_windows(addendum6: bool) {
                     continue;
                 };
                 let actual = evaluate(&front.density_scan, &space, &params, &mut scratch, peak);
-                if let Some(history) = &front.bank.spread {
+                if let Some(history) = &front.spread {
                     max_sigma =
                         max_sigma.max(history.sigma_hz.iter().copied().fold(0.0_f64, f64::max));
                 }
@@ -296,9 +296,10 @@ fn acquire_windows(addendum6: bool) {
                 let errors = field_errors(&actual, truth);
                 let context_check = if addendum6
                     && observe.contains(&frame)
-                    && front.erb_context.is_some()
+                    && front.reassignment.erb_context.is_some()
                 {
                     let total = front
+                        .reassignment
                         .deposit_power
                         .iter()
                         .map(|&p| f64::from(p))
@@ -317,7 +318,7 @@ fn acquire_windows(addendum6: bool) {
                             .bank
                             .frequency
                             .iter()
-                            .zip(&front.deposit_power)
+                            .zip(&front.reassignment.deposit_power)
                             .map(|(&y, &p)| {
                                 f64::from(p)
                                     * (1.0
@@ -328,7 +329,7 @@ fn acquire_windows(addendum6: bool) {
                             })
                             .sum::<f64>();
                         // max(P_cb,d) is applied after the context sum in both paths.
-                        let own = front.deposit_power[c];
+                        let own = front.reassignment.deposit_power[c];
                         error = error.max((f64::from(computed) - exact.max(f64::from(own))).abs());
                     }
                     json!({"error_over_total_power":if total>0.0{error/total}else{0.0}})

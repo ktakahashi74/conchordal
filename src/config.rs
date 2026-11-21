@@ -258,9 +258,6 @@ pub struct PsychoAcousticsConfig {
     pub consonance: ConsonanceConfig,
     #[serde(default)]
     pub habituation: HabituationConfig,
-    /// NSGT power for UI/taps only; H/R use the causal auditory front end.
-    #[serde(default = "PsychoAcousticsConfig::default_use_incoherent_power")]
-    pub use_incoherent_power: bool,
 }
 
 impl PsychoAcousticsConfig {
@@ -269,9 +266,6 @@ impl PsychoAcousticsConfig {
     }
     fn default_roughness_k() -> f32 {
         0.428571
-    }
-    fn default_use_incoherent_power() -> bool {
-        false
     }
 }
 
@@ -282,7 +276,6 @@ impl Default for PsychoAcousticsConfig {
             roughness_k: Self::default_roughness_k(),
             consonance: ConsonanceConfig::default(),
             habituation: HabituationConfig::default(),
-            use_incoherent_power: Self::default_use_incoherent_power(),
         }
     }
 }
@@ -325,9 +318,6 @@ pub struct RoomConfig {
 pub struct AppConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub room: Option<RoomConfig>,
-    /// Evaluate supported birth placements and respawn choices with the legacy body model.
-    #[serde(default)]
-    pub birth_surrogate: bool,
     /// Body-weighted energy metabolism; omission leaves the point path unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub body_metabolism: Option<BodyMetabolismConfig>,
@@ -1149,7 +1139,6 @@ mod tests {
 
     #[test]
     fn load_or_default_writes_defaults_cleanly() {
-        assert!(!AppConfig::default().birth_surrogate);
         let path = unique_path("defaults.toml");
         let path_str = path.to_string_lossy().to_string();
         // Ensure clean slate
@@ -1169,7 +1158,6 @@ mod tests {
         assert_eq!(cfg.psychoacoustics.consonance.field.level.beta, 2.0);
         assert_eq!(cfg.psychoacoustics.consonance.field.level.theta, 0.0);
         assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 1.0);
-        assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert_eq!(cfg.dcc.coupling_strength, 0.0);
         assert_eq!(cfg.dcc.max_temperature_bonus, 0.10);
 
@@ -1190,10 +1178,8 @@ mod tests {
             contents.contains("# beta = 2.0"),
             "should write commented consonance.field.level.beta"
         );
-        assert!(
-            contents.contains("# use_incoherent_power = false"),
-            "should write commented use_incoherent_power"
-        );
+        assert!(!contents.contains("use_incoherent_power"));
+        assert!(!contents.contains("birth_surrogate"));
         assert!(
             contents.contains("# coupling_strength = 0.0"),
             "should write commented dcc.coupling_strength"
@@ -1213,7 +1199,6 @@ mod tests {
         let path_str = path.to_string_lossy().to_string();
         let custom = AppConfig {
             room: None,
-            birth_surrogate: false,
             body_metabolism: None,
             render_prototype: false,
             temporal_meter_t2: false,
@@ -1258,7 +1243,6 @@ mod tests {
                     },
                 },
                 habituation: HabituationConfig::default(),
-                use_incoherent_power: false,
             },
             playback: PlaybackConfig {
                 wait_user_exit: false,
@@ -1289,7 +1273,6 @@ mod tests {
         assert_eq!(cfg.psychoacoustics.consonance.field.level.beta, 3.25);
         assert_eq!(cfg.psychoacoustics.consonance.field.level.theta, -0.15);
         assert_eq!(cfg.psychoacoustics.consonance.density.roughness_gain, 0.5);
-        assert!(!cfg.psychoacoustics.use_incoherent_power);
         assert_eq!(cfg.dcc.coupling_strength, 0.25);
         assert_eq!(cfg.dcc.max_temperature_bonus, 0.12);
         assert!(!cfg.playback.wait_user_exit);
@@ -1551,6 +1534,15 @@ mod tests {
                 .unwrap_err()
                 .to_string();
             assert!(error.contains(key), "{error}");
+        }
+    }
+
+    #[test]
+    fn removed_incoherent_power_key_is_rejected() {
+        for value in [true, false] {
+            let source = format!("[psychoacoustics]\nuse_incoherent_power = {value}\n");
+            let error = AppConfig::from_toml(&source).unwrap_err();
+            assert!(format!("{error:#}").contains("use_incoherent_power"));
         }
     }
 

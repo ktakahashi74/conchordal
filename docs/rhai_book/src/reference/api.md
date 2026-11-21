@@ -728,7 +728,7 @@ rest(periods)
 
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-Release each finite participation note, then leave a rest after all its tails finish. Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. `while_alive()` clears finite intent. Released tails keep their pitch.
+Release each finite participation note, then leave a rest after all its tails finish. Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. Released tails keep their pitch.
 
 **Evidence:** Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 
@@ -1841,18 +1841,6 @@ Pulse at an explicit rate in Hz.
 
 **Evidence:** Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 
-#### `while_alive`
-
-```rhai,ignore
-while_alive()
-```
-
-Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
-
-Hold/sustain until release. Resets timing to one continuous note and clears finite duration, rest-sustain and explicit sustained-participation intent. Unlike `sustain()`, combining it with a timing preset does not retain a sounding Tone between that preset's opportunities. The last timing choice wins.
-
-**Evidence:** Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-
 #### `adaptive_duration`
 
 ```rhai,ignore
@@ -1861,7 +1849,7 @@ adaptive_duration()
 
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
-Duration follows field support. With rest(), retain this finite duration independently of sustain() and entrained()/steady()/flow(), in any builder order. duration_range(), duration_curve() and shorten_on_drop() tune the retained rule.
+Duration follows field support. With rest(), retain this finite duration independently of sustain() and entrained()/steady()/flow(), in any builder order.
 
 **Evidence:** Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 
@@ -1886,42 +1874,6 @@ social(coupling)
 Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
 
 Social coupling for participation or `pulse()`, in 0-1.
-
-**Evidence:** Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-
-#### `duration_range`
-
-```rhai,ignore
-duration_range(min_cycles, max_cycles)
-```
-
-Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
-
-Adaptive duration range in rhythm cycles. Also tunes the finite adaptive duration retained for rest(). For entrained()/steady()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().
-
-**Evidence:** Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-
-#### `duration_curve`
-
-```rhai,ignore
-duration_curve(k, x0)
-```
-
-Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
-
-Adaptive duration curve parameters.
-
-**Evidence:** Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-
-#### `shorten_on_drop`
-
-```rhai,ignore
-shorten_on_drop(gain)
-```
-
-Applies to: `PopulationSpec` only. Initial-only: configure the `PopulationSpec` before `place()`.
-
-Shorten adaptive duration when field support drops.
 
 **Evidence:** Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 
@@ -1963,30 +1915,6 @@ Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`. Gain
 
 ### Pitch Movement
 
-#### `landscape_weight`
-
-```rhai,ignore
-landscape_weight(value)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Nonnegative dimensionless landscape-objective weight, default 1.
-
-**Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-
-#### `neighbor_step_cents`
-
-```rhai,ignore
-neighbor_step_cents(value)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Step size for neighbor exploration in cents.
-
-**Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-
 #### `move_cost`
 
 ```rhai,ignore
@@ -1996,78 +1924,6 @@ move_cost(coeff)
 Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
 
 Nonnegative dimensionless movement-cost coefficient, default 0.5.
-
-**Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-
-#### `move_cost_exp`
-
-```rhai,ignore
-move_cost_exp(exp)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Exponent for the move cost.
-
-**Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-
-#### `tessitura_gravity`
-
-```rhai,ignore
-tessitura_gravity(value)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Nonnegative dimensionless attraction toward the tessitura center; omission uses the pitch core default.
-
-**Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-
-#### `window_cents`
-
-```rhai,ignore
-window_cents(width)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Peak-sampler search window width in cents.
-
-**Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-
-#### `top_k`
-
-```rhai,ignore
-top_k(count)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Number of top candidates kept by the peak sampler.
-
-**Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-
-#### `sigma_cents`
-
-```rhai,ignore
-sigma_cents(spread)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Gaussian spread of the peak sampler in cents.
-
-**Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-
-#### `random_candidates`
-
-```rhai,ignore
-random_candidates(count)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Number of random candidates considered.
 
 **Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
 
@@ -2095,20 +1951,6 @@ Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running v
 Ratio-based movement candidates; 0 disables.
 
 **Evidence:** Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-
-### Neighbor Awareness
-
-#### `crowding_target`
-
-```rhai,ignore
-crowding_target(same_visible, other_visible)
-```
-
-Applies to: `PopulationSpec` and `Population`. Live-patchable: updates running voices in a `Population`.
-
-Which voices are visible to crowding: own population, other populations (booleans).
-
-**Evidence:** Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57).
 
 ### Lifecycle & Viability
 
@@ -2250,7 +2092,6 @@ These are AppConfig leaf keys, not additional Rhai functions. Research settings 
 
 | Key | Evidence |
 |-----|----------|
-| `birth_surrogate` | Author rule: research model, comparison, normalization or control; not a composer control over internal learning (§9.3.55–57). |
 | `body_metabolism.enabled` | Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57). |
 | `body_metabolism.updates_per_hop` | Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57). |
 | `body_metabolism.observation_frames` | Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57). |
@@ -2278,7 +2119,6 @@ These are AppConfig leaf keys, not additional Rhai functions. Research settings 
 | `psychoacoustics.habituation.satiation_sec` | Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60). |
 | `psychoacoustics.habituation.recovery_sec` | Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60). |
 | `psychoacoustics.habituation.ref_drive` | Principle: habituation as an input function (§9.3.60).<br>Author rule: current habituation erosion law and engineering time/drive constants (§9.3.60). |
-| `psychoacoustics.use_incoherent_power` | Not a mechanism (operation): output, reproducibility or research execution settings (§9.3.56). |
 | `dcc.coupling_strength` | Author rule: coupling weight; Voice social coupling and listener DCC feedback are distinct paths (§9.3.57). |
 | `dcc.max_temperature_bonus` | Author rule: coupling weight; Voice social coupling and listener DCC feedback are distinct paths (§9.3.57). |
 | `playback.wait_user_exit` | Not a mechanism (operation): output, reproducibility or research execution settings (§9.3.56). |

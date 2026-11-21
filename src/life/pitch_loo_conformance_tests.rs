@@ -270,7 +270,7 @@ fn rendered_loo_conformance() {
     crate::life::modal::register_modal();
     let mut config = AppConfig::default();
     config.psychoacoustics.habituation.enabled = false;
-    let (params, kernel, hop) = crate::runtime::birth_surrogate_assay_core(&config, FS as u32);
+    let (params, kernel, hop) = crate::runtime::analysis_runtime_test_core(&config, FS as u32);
     let template = AnalysisStream::new(params.clone(), kernel.clone());
     let space = template.last().space.clone();
     let (_, du) = erb_grid(&space);
@@ -940,7 +940,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
 
     let mut config = AppConfig::default();
     config.psychoacoustics.habituation.enabled = false;
-    let (params, kernel, hop) = crate::runtime::birth_surrogate_assay_core(&config, FS as u32);
+    let (params, kernel, hop) = crate::runtime::analysis_runtime_test_core(&config, FS as u32);
     let template = AnalysisStream::new(params.clone(), kernel.clone());
     let timebase = Timebase { fs: FS, hop };
     let mut failed_cases = Vec::new();
@@ -1431,7 +1431,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
 fn rearticulation_mixed_roughness_matches_independent_pcm() {
     let mut config = AppConfig::default();
     config.psychoacoustics.habituation.enabled = false;
-    let (params, kernel, hop) = crate::runtime::birth_surrogate_assay_core(&config, FS as u32);
+    let (params, kernel, hop) = crate::runtime::analysis_runtime_test_core(&config, FS as u32);
     let template = AnalysisStream::new(params.clone(), kernel);
     let tb = Timebase { fs: FS, hop };
     let mut rows = Vec::new();

@@ -2808,13 +2808,6 @@ impl AnyPitchCore {
         }
     }
 
-    pub(crate) fn move_cost_exp_for_test(&self) -> u8 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.move_cost_exp,
-            AnyPitchCore::PitchPeakSampler(_) => DEFAULT_MOVE_COST_EXP,
-        }
-    }
-
     pub(crate) fn proposal_interval_sec_for_test(&self) -> Option<f32> {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.proposal_interval_sec,
@@ -2864,52 +2857,10 @@ impl AnyPitchCore {
         }
     }
 
-    pub(crate) fn neighbor_step_cents_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.neighbor_step_log2 * 1200.0,
-            AnyPitchCore::PitchPeakSampler(core) => core.neighbor_step_log2 * 1200.0,
-        }
-    }
-
-    pub(crate) fn tessitura_gravity_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.tessitura_gravity,
-            AnyPitchCore::PitchPeakSampler(core) => core.tessitura_gravity,
-        }
-    }
-
-    pub(crate) fn window_cents_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(_) => DEFAULT_LOCAL_WINDOW_CENTS,
-            AnyPitchCore::PitchPeakSampler(core) => core.window_cents,
-        }
-    }
-
-    pub(crate) fn top_k_for_test(&self) -> usize {
-        match self {
-            AnyPitchCore::PitchHillClimb(_) => DEFAULT_LOCAL_TOP_K,
-            AnyPitchCore::PitchPeakSampler(core) => core.top_k,
-        }
-    }
-
     pub(crate) fn temperature_for_test(&self) -> f32 {
         match self {
             AnyPitchCore::PitchHillClimb(core) => core.temperature,
             AnyPitchCore::PitchPeakSampler(core) => core.temperature,
-        }
-    }
-
-    pub(crate) fn sigma_cents_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(_) => DEFAULT_RANDOM_SIGMA_CENTS,
-            AnyPitchCore::PitchPeakSampler(core) => core.sigma_cents,
-        }
-    }
-
-    pub(crate) fn random_candidates_for_test(&self) -> usize {
-        match self {
-            AnyPitchCore::PitchHillClimb(_) => DEFAULT_RANDOM_CANDIDATES,
-            AnyPitchCore::PitchPeakSampler(core) => core.random_candidates,
         }
     }
 }

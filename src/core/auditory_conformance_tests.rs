@@ -4,7 +4,7 @@ use super::*;
 #[test]
 fn aud_m1_v3_onsets() {
     let (params, kernel, hop) =
-        crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+        crate::runtime::analysis_runtime_test_core(&crate::config::AppConfig::default(), 48000);
     let space = kernel.space().clone();
     let peak = compute_roughness_reference(&params, &space).peak;
     let mut scratch =
@@ -62,14 +62,14 @@ fn aud_m1_v3_onsets() {
             let mass = fronts[0]
                 .density_scan
                 .iter()
-                .zip(&template.du)
+                .zip(&template.reassignment.du)
                 .map(|(d, w)| d * w)
                 .sum::<f32>();
             let l1 = fronts[0]
                 .density_scan
                 .iter()
                 .zip(&fronts[1].density_scan)
-                .zip(&template.du)
+                .zip(&template.reassignment.du)
                 .map(|((a, b), w)| (a - b).abs() * w)
                 .sum::<f32>()
                 / mass.max(1e-12);
@@ -92,7 +92,7 @@ fn aud_m1_v3_onsets() {
 #[test]
 fn aud_m1_v4_state() {
     let (params, kernel, hop) =
-        crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+        crate::runtime::analysis_runtime_test_core(&crate::config::AppConfig::default(), 48000);
     let space = kernel.space().clone();
     let peak = compute_roughness_reference(&params, &space).peak;
     let mut scratch =
@@ -195,14 +195,14 @@ fn aud_m1_v4_state() {
         let mass = reference
             .subjective_intensity
             .iter()
-            .zip(&template.du)
+            .zip(&template.reassignment.du)
             .map(|(d, w)| d * w)
             .sum::<f32>();
         let l1 = actual
             .subjective_intensity
             .iter()
             .zip(&reference.subjective_intensity)
-            .zip(&template.du)
+            .zip(&template.reassignment.du)
             .map(|((a, b), w)| (a - b).abs() * w)
             .sum::<f32>()
             / mass.max(1e-12);

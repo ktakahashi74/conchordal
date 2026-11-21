@@ -33,7 +33,7 @@ const habitat_bus: Bus;
 const presentation_bus: Bus;
 
 /// [tuning] Duration follows field support.
-/// With rest(), retain this finite duration independently of sustain() and entrained()/steady()/flow(), in any builder order. duration_range(), duration_curve() and shorten_on_drop() tune the retained rule.
+/// With rest(), retain this finite duration independently of sustain() and entrained()/steady()/flow(), in any builder order.
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 fn adaptive_duration(population_spec: PopulationSpec) -> PopulationSpec;
 
@@ -330,13 +330,6 @@ fn count(placement: Placement, n: i64) -> Placement;
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
 fn count(pattern: ModePattern, n: i64) -> ModePattern;
 
-/// [tuning] Which voices are visible to crowding: own population, other populations (booleans).
-/// Evidence: Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57).
-fn crowding_target(population: Population, same_visible: bool, other_visible: bool) -> Population;
-/// [tuning] Which voices are visible to crowding: own population, other populations (booleans).
-/// Evidence: Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57).
-fn crowding_target(population_spec: PopulationSpec, same_visible: bool, other_visible: bool) -> PopulationSpec;
-
 /// Custom frequency ratios from an array.
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
 fn custom_modes(ratios: [?]) -> ModePattern;
@@ -381,36 +374,6 @@ fn dissonance_penalty(population_spec: PopulationSpec, value: f64) -> Population
 /// The zero-fit endurance remains fixed; the penalty changes how much longer a well-fit voice survives.
 /// Evidence: Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57).
 fn dissonance_penalty(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
-
-/// [tuning] Adaptive duration curve parameters.
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn duration_curve(population_spec: PopulationSpec, k: f64, x0: f64) -> PopulationSpec;
-/// [tuning] Adaptive duration curve parameters.
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn duration_curve(population_spec: PopulationSpec, k: f64, x0: i64) -> PopulationSpec;
-/// [tuning] Adaptive duration curve parameters.
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn duration_curve(population_spec: PopulationSpec, k: i64, x0: f64) -> PopulationSpec;
-/// [tuning] Adaptive duration curve parameters.
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn duration_curve(population_spec: PopulationSpec, k: i64, x0: i64) -> PopulationSpec;
-
-/// [tuning] Adaptive duration range in rhythm cycles.
-/// Also tunes the finite adaptive duration retained for rest(). For entrained()/steady()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn duration_range(population_spec: PopulationSpec, min_cycles: f64, max_cycles: f64) -> PopulationSpec;
-/// [tuning] Adaptive duration range in rhythm cycles.
-/// Also tunes the finite adaptive duration retained for rest(). For entrained()/steady()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn duration_range(population_spec: PopulationSpec, min_cycles: f64, max_cycles: i64) -> PopulationSpec;
-/// [tuning] Adaptive duration range in rhythm cycles.
-/// Also tunes the finite adaptive duration retained for rest(). For entrained()/steady()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn duration_range(population_spec: PopulationSpec, min_cycles: i64, max_cycles: f64) -> PopulationSpec;
-/// [tuning] Adaptive duration range in rhythm cycles.
-/// Also tunes the finite adaptive duration retained for rest(). For entrained()/steady()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn duration_range(population_spec: PopulationSpec, min_cycles: i64, max_cycles: i64) -> PopulationSpec;
 
 /// Slow pitch proposals while the current environment level is high.
 /// Initial-only author rule for free seek_consonance(), default 0. Finite nonnegative f32 weights have no upper clamp; negative, non-finite or unsupported values warn and become 0. Proposal phase advances at max{0,1+w*(1-2L)}; L is the habituated environment level at the current pitch, using pitch self-exclusion when available. For w>1 it stops at L>=(1+1/w)/2; maximum speed is 1+w at L=0. Replacements inherit weight and reset phase. Gap preserves the clock. Adaptation and movement costs retain their time units. Proposals never force onsets or change sound duration. See the Rhythm chapter for interpolation, conversion and why habituation does not guarantee departure.
@@ -732,19 +695,6 @@ fn landscape_density_modes() -> ModePattern;
 /// Evidence: Author rule: selecting body modes from landscape density or peaks; valuation remains authored.
 fn landscape_peaks_modes() -> ModePattern;
 
-/// [tuning] Nonnegative dimensionless landscape-objective weight, default 1.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn landscape_weight(population: Population, value: f64) -> Population;
-/// [tuning] Nonnegative dimensionless landscape-objective weight, default 1.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn landscape_weight(population: Population, value: i64) -> Population;
-/// [tuning] Nonnegative dimensionless landscape-objective weight, default 1.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn landscape_weight(population_spec: PopulationSpec, value: f64) -> PopulationSpec;
-/// [tuning] Nonnegative dimensionless landscape-objective weight, default 1.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn landscape_weight(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
-
 /// [experimental] Let Rain read a habitat field without its own impacts; its objects stay in that field.
 /// Default false: Rain reads the mixed field, including its impacts. When true, the actual habitat PCM of this Rain's impacts is removed before the auditory front end, and impact positions under consonance, dissonance and edge, object drift and ring read the remaining field with the shared habituation applied. gap still reads mixed occupancy. Before the first render the mixed field is read; a missing observation keeps the previous distribution. Presentation-only Rain warns and has no effect. Set before placement.
 /// Evidence: Principle: auditory H/R functions as input; this does not certify every kernel equation or constant (§9.3.56, §9.3.104).
@@ -862,19 +812,6 @@ fn move_cost(population_spec: PopulationSpec, coeff: f64) -> PopulationSpec;
 /// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
 fn move_cost(population_spec: PopulationSpec, coeff: i64) -> PopulationSpec;
 
-/// [tuning] Exponent for the move cost.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn move_cost_exp(population: Population, exp: f64) -> Population;
-/// [tuning] Exponent for the move cost.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn move_cost_exp(population: Population, exp: i64) -> Population;
-/// [tuning] Exponent for the move cost.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn move_cost_exp(population_spec: PopulationSpec, exp: f64) -> PopulationSpec;
-/// [tuning] Exponent for the move cost.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn move_cost_exp(population_spec: PopulationSpec, exp: i64) -> PopulationSpec;
-
 /// [research] `"legacy"`/`"integration_window"` or `"proposal"`/`"proposal_interval"`.
 /// Canonical names: `legacy` (default, integration-window scaling) and `proposal_interval`. Research control; changes the time scale used for movement cost.
 /// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
@@ -883,19 +820,6 @@ fn move_cost_time_scale(population: Population, name: String) -> Population;
 /// Canonical names: `legacy` (default, integration-window scaling) and `proposal_interval`. Research control; changes the time scale used for movement cost.
 /// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
 fn move_cost_time_scale(population_spec: PopulationSpec, name: String) -> PopulationSpec;
-
-/// [tuning] Step size for neighbor exploration in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn neighbor_step_cents(population: Population, value: f64) -> Population;
-/// [tuning] Step size for neighbor exploration in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn neighbor_step_cents(population: Population, value: i64) -> Population;
-/// [tuning] Step size for neighbor exploration in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn neighbor_step_cents(population_spec: PopulationSpec, value: f64) -> PopulationSpec;
-/// [tuning] Step size for neighbor exploration in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn neighbor_step_cents(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
 
 /// Harmonic-body preset with brightness 1 and motion 1 (mainly vibrato; jitter is not perceptible in the measured configuration).
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
@@ -1120,13 +1044,6 @@ fn random(min_hz: i64, max_hz: f64) -> Placement;
 /// Evidence: Not a mechanism (placement): initial position, extent or population count (§9.3.56).
 fn random(min_hz: i64, max_hz: i64) -> Placement;
 
-/// [tuning] Number of random candidates considered.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn random_candidates(population: Population, count: i64) -> Population;
-/// [tuning] Number of random candidates considered.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn random_candidates(population_spec: PopulationSpec, count: i64) -> PopulationSpec;
-
 /// Multiplier range relative to the root; only valid on `consonance(root)`.
 /// Evidence: Not a mechanism (placement): initial position, extent or population count (§9.3.56).
 fn range(placement: Placement, min_mul: f64, max_mul: f64) -> Placement;
@@ -1310,15 +1227,15 @@ fn respond_to_onsets(flora_spec: FloraSpec, w: f64) -> FloraSpec;
 fn respond_to_onsets(flora_spec: FloraSpec, w: i64) -> FloraSpec;
 
 /// Release each finite participation note, then leave a rest after all its tails finish.
-/// Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. `while_alive()` clears finite intent. Released tails keep their pitch.
+/// Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. Released tails keep their pitch.
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 fn rest(population_spec: PopulationSpec) -> PopulationSpec;
 /// Release each finite participation note, then leave a rest after all its tails finish.
-/// Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. `while_alive()` clears finite intent. Released tails keep their pitch.
+/// Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. Released tails keep their pitch.
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 fn rest(population_spec: PopulationSpec, periods: f64) -> PopulationSpec;
 /// Release each finite participation note, then leave a rest after all its tails finish.
-/// Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. `while_alive()` clears finite intent. Released tails keep their pitch.
+/// Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. Released tails keep their pitch.
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
 fn rest(population_spec: PopulationSpec, periods: i64) -> PopulationSpec;
 
@@ -1544,26 +1461,6 @@ fn set_support_focus_preference(weight: f64);
 /// Evidence: Author rule: support focus, template conflict and related novelty of candidate density addition. No symbolic harmony; movement requires actual PCM self-exclusion.
 fn set_support_focus_preference(weight: i64);
 
-/// [tuning] Shorten adaptive duration when field support drops.
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn shorten_on_drop(population_spec: PopulationSpec, gain: f64) -> PopulationSpec;
-/// [tuning] Shorten adaptive duration when field support drops.
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn shorten_on_drop(population_spec: PopulationSpec, gain: i64) -> PopulationSpec;
-
-/// [tuning] Gaussian spread of the peak sampler in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn sigma_cents(population: Population, spread: f64) -> Population;
-/// [tuning] Gaussian spread of the peak sampler in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn sigma_cents(population: Population, spread: i64) -> Population;
-/// [tuning] Gaussian spread of the peak sampler in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn sigma_cents(population_spec: PopulationSpec, spread: f64) -> PopulationSpec;
-/// [tuning] Gaussian spread of the peak sampler in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn sigma_cents(population_spec: PopulationSpec, spread: i64) -> PopulationSpec;
-
 /// PopulationSpec whose founder voices use a pure sine body.
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
 fn sine() -> PopulationSpec;
@@ -1778,19 +1675,6 @@ fn tension(placement: Placement, degree: f64) -> Placement;
 /// Evidence: Author rule: extrema, density, spacing or tension-based selection (§9.3.56).
 fn tension(placement: Placement, degree: i64) -> Placement;
 
-/// [tuning] Nonnegative dimensionless attraction toward the tessitura center; omission uses the pitch core default.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn tessitura_gravity(population: Population, value: f64) -> Population;
-/// [tuning] Nonnegative dimensionless attraction toward the tessitura center; omission uses the pitch core default.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn tessitura_gravity(population: Population, value: i64) -> Population;
-/// [tuning] Nonnegative dimensionless attraction toward the tessitura center; omission uses the pitch core default.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn tessitura_gravity(population_spec: PopulationSpec, value: f64) -> PopulationSpec;
-/// [tuning] Nonnegative dimensionless attraction toward the tessitura center; omission uses the pitch core default.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn tessitura_gravity(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
-
 /// Extend a living Tone with probability p at an opportunity without pending pitch.
 /// Initial-only probability in [0,1] for free-pitch explicit sustained metric/entrained/steady/flow with gate_snap or rearticulate. At a selected opportunity without pending pitch, extend the living Tone with probability p; otherwise attack. Pending targets and initial/post-rest onsets still attack. Default 1 for sustained metric, 0 for sustained participation. Finite Off, tails, rest and release take priority. Unsupported explicit settings warn and are ignored. This thins opportunities; it does not select phrases or move their timing.
 /// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
@@ -1805,13 +1689,6 @@ fn tie(population_spec: PopulationSpec, p: i64) -> PopulationSpec;
 /// Evidence: Not a mechanism (initial body): Flora body, amplitude or fade choices; see flora and pace.
 /// Evidence: Author rule: underlying spectral growth, consumption and retirement ecology; not an auditory cognition model.
 fn tone(flora_spec: FloraSpec, name: String) -> FloraSpec;
-
-/// [tuning] Number of top candidates kept by the peak sampler.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn top_k(population: Population, count: i64) -> Population;
-/// [tuning] Number of top candidates kept by the peak sampler.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn top_k(population_spec: PopulationSpec, count: i64) -> PopulationSpec;
 
 /// Number of unison copies (1-9, default 1); `spread` sets how far and how strongly they layer.
 /// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
@@ -1832,11 +1709,6 @@ fn wait(seconds: f64);
 /// Evidence: Not a mechanism (macro form): scenario timing, placement or release; input mechanisms retain their own labels.
 fn wait(seconds: i64);
 
-/// [tuning] Hold/sustain until release.
-/// Resets timing to one continuous note and clears finite duration, rest-sustain and explicit sustained-participation intent. Unlike `sustain()`, combining it with a timing preset does not retain a sounding Tone between that preset's opportunities. The last timing choice wins.
-/// Evidence: Author rule: phonation, participation, duration or articulation policy (§9.3.57); existing base defaults remain active.
-fn while_alive(population_spec: PopulationSpec) -> PopulationSpec;
-
 /// [experimental] Set the half range in [0, 5] octaves by which each impact mode strays from impact_modes.
 /// Each impact draws a fresh offset for every mode. At the default 0.05 (60 cents) every impact is recognisably the same material. Wider ranges scatter the modes until impacts lose their material and become crackles; 0 repeats the pattern exactly. Live patches apply to the next impacts.
 /// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
@@ -1853,19 +1725,6 @@ fn width(rain_spec: RainSpec, octaves: f64) -> RainSpec;
 /// Each impact draws a fresh offset for every mode. At the default 0.05 (60 cents) every impact is recognisably the same material. Wider ranges scatter the modes until impacts lose their material and become crackles; 0 repeats the pattern exactly. Live patches apply to the next impacts.
 /// Evidence: Not a mechanism (initial body): Rain amplitude, fade, impact material or object body; see rain.
 fn width(rain_spec: RainSpec, octaves: i64) -> RainSpec;
-
-/// [tuning] Peak-sampler search window width in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn window_cents(population: Population, width: f64) -> Population;
-/// [tuning] Peak-sampler search window width in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn window_cents(population: Population, width: i64) -> Population;
-/// [tuning] Peak-sampler search window width in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn window_cents(population_spec: PopulationSpec, width: f64) -> PopulationSpec;
-/// [tuning] Peak-sampler search window width in cents.
-/// Evidence: Author rule: pitch movement, proposal selection or search cost (§9.3.57, §9.3.98–99); existing base defaults remain active.
-fn window_cents(population_spec: PopulationSpec, width: i64) -> PopulationSpec;
 
 // Skipped (reserved keyword or non-identifier function name):
 // - |(_: Bus, _: Bus) -> BusSet

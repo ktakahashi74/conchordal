@@ -288,10 +288,9 @@ remain unchanged; entrained/steady/flow participation keeps omitted tie at zero.
 
 For sustained participation, `rest()` adds a finite end to every sounded note
 and an intentional pause after its sound has finished. Supply the note length
-with `cycles(n)` or `adaptive_duration()` and its modifiers. This length, explicit
+with `cycles(n)` or `adaptive_duration()`. This length, explicit
 `sustain()`, `entrained()`, `steady()` or `flow()`, and `rest()` are retained independently of
-builder order. No finite length is supplied implicitly. Explicit `while_alive()`
-clears the finite length; placement then fails unless another finite length follows.
+builder order. Placement requires an explicit finite length.
 
 The scheduled Off starts the normal release, leaving tails intact. The rest begins
 only after the renderer confirms that every Tone of that Voice's source ID and
@@ -302,9 +301,9 @@ keeps waiting, as does unfinished sound, without a fallback or timeout. Negative
 and nonfinite arguments become zero; finite nonnegative values have no upper limit.
 
 `intrinsic_rate(hz)` changes this bodily period and the finite note-length grid
-together. The same `cycles` or `duration_range` and `rest(periods)` therefore produce
-different note lengths and rests in seconds at different bodily rates, independently
-of entrained cadence adaptation.
+together. At different bodily rates, the same note-length and `rest(periods)`
+settings produce different lengths in seconds, independently of entrained cadence
+adaptation.
 
 At the end of the rest, the existing participation decision can sound, wait or skip;
 the end itself does not force an attack. GateSnap retains the latest adopted target
@@ -317,13 +316,13 @@ take precedence. Replacements inherit controls, with fresh performance state.
 
 ```rhai
 let notes = harmonic().sustain().entrained()
-    .adaptive_duration().duration_range(0.2, 0.2).rest(2);
+    .adaptive_duration().rest(2);
 let voices = place(notes, at(330.0));
 wait(3.0);
 release(voices);
 ```
 
-Here 0.2 cycles and two periods are example inputs, not recommended values.
+The example waits two bodily periods after each tail ends.
 `rest` is initial-only, like the note-length controls. It is valid only with explicit
 sustain plus entrained/steady/flow and a finite note length; Glide, GateSnap and
 Rearticulate are all available. Incompatible

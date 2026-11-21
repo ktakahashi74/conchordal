@@ -13,7 +13,6 @@ fn n3_offline_body_equivalence() {
     let enabled = std::env::var("N3_ENABLED").unwrap() == "1";
     let mut config = AppConfig {
         render_prototype: std::env::var("N3_NATIVE").as_deref() == Ok("1"),
-        birth_surrogate: std::env::var("N3_BIRTH").map_or(enabled, |value| value == "1"),
         body_metabolism: Some(crate::config::BodyMetabolismConfig {
             enabled: std::env::var("N3_METABOLISM").map_or(enabled, |value| value == "1"),
             updates_per_hop: 2,
@@ -149,14 +148,9 @@ struct FlagSnapshot {
     pcm: [Vec<u32>; 2],
 }
 
-fn render_birth_metabolism_flags(
-    birth: bool,
-    metabolism: Option<bool>,
-    prototype: bool,
-) -> Vec<FlagSnapshot> {
+fn render_metabolism_flags(metabolism: Option<bool>, prototype: bool) -> Vec<FlagSnapshot> {
     let path = "tests/scripts/body_birth_metabolism_flags.rhai";
     let mut config = AppConfig {
-        birth_surrogate: birth,
         body_metabolism: metabolism.map(|enabled| crate::config::BodyMetabolismConfig {
             enabled,
             updates_per_hop: 2,
@@ -256,64 +250,62 @@ fn render_birth_metabolism_flags(
         .unwrap()
 }
 
-fn check_birth_metabolism_flags(prototype: bool) {
+fn check_metabolism_flags(prototype: bool) {
     let mut runs = Vec::new();
-    for birth in [false, true] {
-        for metabolism in [false, true] {
-            let enabled = metabolism.then_some(true);
-            let first = render_birth_metabolism_flags(birth, enabled, prototype);
-            let second = render_birth_metabolism_flags(birth, enabled, prototype);
-            assert!(
-                first == second,
-                "non-deterministic flags: birth={birth}, metabolism={metabolism}"
-            );
-            assert!(!first.is_empty());
+    for metabolism in [false, true] {
+        let enabled = metabolism.then_some(true);
+        let first = render_metabolism_flags(enabled, prototype);
+        let second = render_metabolism_flags(enabled, prototype);
+        assert!(
+            first == second,
+            "non-deterministic metabolism={metabolism}, render_prototype={prototype}"
+        );
+        assert!(!first.is_empty());
+        assert!(
+            first.iter().any(|row| row
+                .voices
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|voice| voice["id"].as_u64().unwrap() > 7)),
+            "missing respawn"
+        );
+        if metabolism {
             assert!(
                 first.iter().any(|row| row
-                    .voices
+                    .slots
                     .as_array()
                     .unwrap()
                     .iter()
-                    .any(|voice| voice["id"].as_u64().unwrap() > 7)),
-                "missing respawn"
+                    .any(|slot| slot["last"].is_null() && slot["id"].as_u64().unwrap() >= 2)),
+                "missing pending newborn"
             );
-            if metabolism {
-                assert!(
-                    first.iter().any(|row| row
-                        .slots
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|slot| slot["last"].is_null() && slot["id"].as_u64().unwrap() >= 2)),
-                    "missing pending newborn"
-                );
-                assert!(
-                    first.iter().any(|row| row
-                        .slots
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .any(|slot| !slot["held"].is_null())),
-                    "missing body fitness"
-                );
-            } else {
-                assert!(
-                    first
-                        .iter()
-                        .all(|row| row.slots.as_array().unwrap().is_empty())
-                );
-                let disabled = render_birth_metabolism_flags(birth, Some(false), prototype);
-                assert!(
-                    first == disabled,
-                    "explicitly disabled metabolism changed birth={birth}"
-                );
-            }
-            println!(
-                "body flags birth={birth} metabolism={metabolism}: {} deterministic hops",
-                first.len()
+            assert!(
+                first.iter().any(|row| row
+                    .slots
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|slot| !slot["held"].is_null())),
+                "missing body fitness"
             );
-            runs.push(first);
+        } else {
+            assert!(
+                first
+                    .iter()
+                    .all(|row| row.slots.as_array().unwrap().is_empty())
+            );
+            let disabled = render_metabolism_flags(Some(false), prototype);
+            assert!(
+                first == disabled,
+                "explicitly disabled metabolism changed the run"
+            );
         }
+        println!(
+            "body flags render_prototype={prototype} metabolism={metabolism}: {} deterministic hops",
+            first.len()
+        );
+        runs.push(first);
     }
     let first_field_birth = |run: &Vec<FlagSnapshot>| {
         let row = run
@@ -338,14 +330,9 @@ fn check_birth_metabolism_flags(prototype: bool) {
         )
     };
     assert_eq!(
-        first_field_birth(&runs[2]),
-        first_field_birth(&runs[3]),
+        first_field_birth(&runs[0]),
+        first_field_birth(&runs[1]),
         "newborn energy or Field birth changed before its first body evaluation"
-    );
-    assert_ne!(
-        first_field_birth(&runs[0]).1,
-        first_field_birth(&runs[2]).1,
-        "fixture did not exercise the body-aware Field placement"
     );
     assert!(
         runs[0]
@@ -358,12 +345,12 @@ fn check_birth_metabolism_flags(prototype: bool) {
 
 #[test]
 fn body_birth_and_metabolism_flags_are_deterministic_and_keep_unknown_births() {
-    check_birth_metabolism_flags(false);
+    check_metabolism_flags(false);
 }
 
 #[test]
 fn phase3_body_flags_are_deterministic_and_keep_unknown_births() {
-    check_birth_metabolism_flags(true);
+    check_metabolism_flags(true);
 }
 
 #[test]

@@ -107,7 +107,7 @@ where
 }
 
 #[cfg(test)]
-pub(crate) fn birth_surrogate_assay_core(
+pub(crate) fn analysis_runtime_test_core(
     config: &AppConfig,
     runtime_sample_rate: u32,
 ) -> (LandscapeParams, RtNsgtKernelLog2, usize) {

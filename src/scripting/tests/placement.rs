@@ -219,7 +219,6 @@ fn rearticulate_final_placement_validates_both_builder_orders() {
 fn rest_invalid_placement_and_live_writes_are_transactional() {
     for chain in [
         "sustain().entrained().rest()",
-        "sustain().entrained().adaptive_duration().while_alive().rest()",
         "adaptive_duration().sustain().rest()",
     ] {
         let ctx = Arc::new(Mutex::new(ScriptContext::with_seed(21)));
@@ -243,7 +242,7 @@ fn rest_invalid_placement_and_live_writes_are_transactional() {
         )
         .unwrap();
     let before = format!("{:?}", ctx.lock().unwrap().populations);
-    for call in ["p.rest();", "p.cycles(2);", "p.duration_range(0.2,0.3);"] {
+    for call in ["p.rest();", "p.cycles(2);"] {
         assert!(engine.eval_with_scope::<Dynamic>(&mut scope, call).is_err());
         assert_eq!(format!("{:?}", ctx.lock().unwrap().populations), before);
     }

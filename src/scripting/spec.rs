@@ -21,12 +21,9 @@ pub(super) struct PopulationSpec {
     pub(super) respawn_capacity: Option<usize>,
     pub(super) respawn_min_c_level: Option<f32>,
     pub(super) respawn_background_death_rate_per_sec: f32,
-    pub(super) crowding_target_same: bool,
-    pub(super) crowding_target_other: bool,
     pub(super) brain: BrainKind,
     pub(super) phonation_spec: PhonationSpec,
     pub(super) phonation_gate: PhonationGate,
-    pub(super) field_duration_spec: FieldDurationSpec,
     pub(super) finite_duration: Option<DurationSpec>,
     pub(super) rest_periods: Option<f32>,
     pub(super) rest_sustain: bool,
@@ -98,12 +95,9 @@ impl PopulationSpec {
             respawn_capacity: None,
             respawn_min_c_level: None,
             respawn_background_death_rate_per_sec: 0.0,
-            crowding_target_same: true,
-            crowding_target_other: false,
             brain: BrainKind::Entrain,
             phonation_spec: PhonationSpec::default(),
             phonation_gate: PhonationGate::default(),
-            field_duration_spec: FieldDurationSpec::default(),
             finite_duration: None,
             rest_periods: None,
             rest_sustain: false,
@@ -179,15 +173,6 @@ impl PopulationSpec {
         match &mut self.phonation_spec.timing {
             PhonationTiming::Coupled(spec) => spec,
             _ => unreachable!("just ensured Coupled"),
-        }
-    }
-
-    pub(super) fn apply_field_duration_spec(&mut self) {
-        if let Some(DurationSpec::Field(field)) = &mut self.finite_duration {
-            *field = self.field_duration_spec.clone();
-        }
-        if let DurationSpec::Field(field) = &mut self.phonation_spec.duration {
-            *field = self.field_duration_spec.clone();
         }
     }
 
@@ -330,18 +315,6 @@ impl PopulationSpec {
         self.control.pitch.set_freq_lock_clamped(freq);
     }
 
-    pub(super) fn set_landscape_weight(&mut self, value: f32) {
-        self.control.pitch.set_landscape_weight_clamped(value);
-    }
-
-    pub(super) fn set_neighbor_step_cents(&mut self, value: f32) {
-        self.control.pitch.set_neighbor_step_cents_clamped(value);
-    }
-
-    pub(super) fn set_tessitura_gravity(&mut self, value: f32) {
-        self.control.pitch.set_tessitura_gravity_clamped(value);
-    }
-
     pub(super) fn set_continuous_drive(&mut self, value: f32) {
         self.control.set_continuous_drive_clamped(value);
     }
@@ -361,27 +334,12 @@ impl PopulationSpec {
         self.control.body.routing = routing;
     }
 
-    pub(super) fn set_crowding_target(
-        &mut self,
-        same_population_visible: bool,
-        other_population_visible: bool,
-    ) {
-        self.crowding_target_same = same_population_visible;
-        self.crowding_target_other = other_population_visible;
-    }
-
     pub(super) fn set_leave_self_out(&mut self, enabled: bool) {
         self.control.pitch.set_leave_self_out(enabled);
     }
 
     pub(super) fn set_move_cost_coeff(&mut self, value: f32) {
         self.control.pitch.set_move_cost_coeff_clamped(value);
-    }
-
-    pub(super) fn set_move_cost_exp(&mut self, value: f32) {
-        self.control
-            .pitch
-            .set_move_cost_exp_clamped(value.round() as i64);
     }
 
     pub(super) fn set_phrase_boundary(&mut self, value: FLOAT) {
@@ -461,24 +419,8 @@ impl PopulationSpec {
         self.control.pitch.set_use_ratio_candidates(count > 0);
     }
 
-    pub(super) fn set_window_cents(&mut self, value: f32) {
-        self.control.pitch.set_window_cents_clamped(value);
-    }
-
-    pub(super) fn set_top_k(&mut self, value: INT) {
-        self.control.pitch.set_top_k_clamped(value);
-    }
-
     pub(super) fn set_temperature(&mut self, value: f32) {
         self.control.pitch.set_temperature_clamped(value);
-    }
-
-    pub(super) fn set_sigma_cents(&mut self, value: f32) {
-        self.control.pitch.set_sigma_cents_clamped(value);
-    }
-
-    pub(super) fn set_random_candidates(&mut self, value: INT) {
-        self.control.pitch.set_random_candidates_clamped(value);
     }
 
     pub(super) fn set_move_cost_time_scale(
@@ -848,15 +790,6 @@ impl PopulationSpec {
         self.ensure_gated_duration(1);
     }
 
-    pub(super) fn set_duration_while_alive(&mut self) {
-        self.explicit_metric = false;
-        self.finite_duration = None;
-        self.rest_sustain = false;
-        self.explicit_sustain = false;
-        self.clear_rhythm_preset_controls();
-        self.phonation_spec = PhonationSpec::default();
-    }
-
     /// Withhold the voice's first onset until perceived consonance reaches the
     /// low bound of its consonance-viability window (`consonance_viability()`,
     /// or 0.0 -- always viable -- if that window was never set), then latch
@@ -873,10 +806,11 @@ impl PopulationSpec {
     }
 
     pub(super) fn set_adaptive_duration(&mut self) {
-        self.finite_duration = Some(DurationSpec::Field(self.field_duration_spec.clone()));
+        let duration = DurationSpec::Field(FieldDurationSpec::default());
+        self.finite_duration = Some(duration.clone());
         self.explicit_sustain = false;
         self.phonation_spec.sustain_participation = false;
-        self.phonation_spec.duration = DurationSpec::Field(self.field_duration_spec.clone());
+        self.phonation_spec.duration = duration;
     }
 
     pub(super) fn set_rest_on_habituation(&mut self, value: f32) {
@@ -915,23 +849,6 @@ impl PopulationSpec {
             PhonationTiming::Pulse { social, .. } => *social = coupling,
             PhonationTiming::Once => {}
         }
-    }
-
-    pub(super) fn set_duration_range(&mut self, min: f32, max: f32) {
-        self.field_duration_spec.hold_min_theta = sanitize01(min);
-        self.field_duration_spec.hold_max_theta = sanitize01(max);
-        self.apply_field_duration_spec();
-    }
-
-    pub(super) fn set_duration_curve(&mut self, k: f32, x0: f32) {
-        self.field_duration_spec.curve_k = k;
-        self.field_duration_spec.curve_x0 = x0;
-        self.apply_field_duration_spec();
-    }
-
-    pub(super) fn set_shorten_on_drop(&mut self, gain: f32) {
-        self.field_duration_spec.drop_gain = gain.max(0.0);
-        self.apply_field_duration_spec();
     }
 
     pub(super) fn set_endurance(&mut self, sec: f32) {

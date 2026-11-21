@@ -108,10 +108,6 @@ fn assert_config_eq(actual: &AppConfig, expected: &AppConfig) {
         "psychoacoustics.habituation.ref_drive",
     );
     assert_eq!(
-        actual.psychoacoustics.use_incoherent_power,
-        expected.psychoacoustics.use_incoherent_power
-    );
-    assert_eq!(
         actual.playback.wait_user_exit,
         expected.playback.wait_user_exit
     );
@@ -145,7 +141,6 @@ fn config_load_custom_values() {
     let path_str = path.to_string_lossy().to_string();
     let custom = AppConfig {
         room: None,
-        birth_surrogate: false,
         body_metabolism: None,
         render_prototype: false,
         temporal_meter_t2: false,
@@ -196,7 +191,6 @@ fn config_load_custom_values() {
                 recovery_sec: 7.0,
                 ref_drive: 0.3,
             },
-            use_incoherent_power: false,
         },
         playback: PlaybackConfig {
             wait_user_exit: false,

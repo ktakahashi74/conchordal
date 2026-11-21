@@ -180,8 +180,7 @@ duration mode determine the final behavior. `cycles(n)` counts the intrinsic
 bodily period for entrained/steady/flow and the effective beat period for metric timing;
 flow retains its threefold hold multiplier. Modifiers are remembered and
 applied when their matching preset is selected, so `entrainment(0.8).metric()`
-and `metric().entrainment(0.8)` are equivalent. The same applies to
-`duration_range(...).adaptive_duration()` and the reverse order.
+and `metric().entrainment(0.8)` are equivalent.
 
 ## Setting the body's intrinsic rate
 
@@ -197,7 +196,7 @@ participation preset has the same meaning. It cannot be changed during performan
 Replacements read the Population template, with fresh initial due and performance
 state rather than a parent's adapted period, plan or articulation policy.
 
-The same bodily period sets finite note lengths (`cycles`, `duration_range`),
+The same bodily period sets finite note lengths (`cycles(n)`, `adaptive_duration()`),
 `rest(periods)` and the representative hold used for overlap prediction. Changing
 the rate therefore changes note lengths and rests in seconds together. Flow keeps
 its threefold hold multiplier; ADSR release remains in seconds. Explicit sustained
@@ -301,8 +300,7 @@ requests, pending pitch and the selected glide without changing the Tone or the
 controller's target. Builder order does not change this form; replacements inherit
 controls, not pending pitch, selected glide or last-onset memory.
 
-The implicit WhileAlive default and `while_alive()` alone do not select this form.
-`sustain()` alone, `entrained()` alone and `flow()` alone keep their own timing and duration rules. With `pulse()` or `repeat()`, `sustain()` still uses the
+Use explicit `sustain()` together with a participation preset to select this form. With `pulse()` or `repeat()`, `sustain()` still uses the
 last-write-wins rule. Explicit `sustain()` plus `metric()` selects sustained
 synchronization as described below. Without `rest()`, a later finite duration via
 `cycles()` or `adaptive_duration()` replaces the sustained form. With `rest()`,
@@ -431,9 +429,8 @@ and intermediate values use a separate individual stream at execution only.
 
 ## Explicit when/duration (Tier 2)
 
-Below the presets sit explicit controls: `once()`, `pulse(rate_hz)`,
-`while_alive()`, `cycles(n)`, and `adaptive_duration()` (with
-`duration_range`, `duration_curve`, and `shorten_on_drop` for tuning).
+Set timing explicitly with `once()` or `pulse(rate_hz)`. For finite note
+lengths, use `cycles(n)` or `adaptive_duration()`.
 
 ## Timing as survival
 

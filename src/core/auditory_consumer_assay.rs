@@ -11,7 +11,7 @@ fn acquire_current_v2_consumers() {
     let manifest: Value =
         serde_json::from_slice(&std::fs::read(input.join("manifest.json")).unwrap()).unwrap();
     let (params, kernel, hop) =
-        crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+        crate::runtime::analysis_runtime_test_core(&crate::config::AppConfig::default(), 48000);
     let space = kernel.space().clone();
     let (_, du) = erb_grid(&space);
     let peak = compute_roughness_reference(&params, &space).peak;

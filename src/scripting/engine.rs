@@ -541,12 +541,6 @@ impl ScriptHost {
             &[
                 ("amp", PopulationSpec::set_amp),
                 ("freq", PopulationSpec::set_freq),
-                ("landscape_weight", PopulationSpec::set_landscape_weight),
-                (
-                    "neighbor_step_cents",
-                    PopulationSpec::set_neighbor_step_cents,
-                ),
-                ("tessitura_gravity", PopulationSpec::set_tessitura_gravity),
                 ("sustain_drive", PopulationSpec::set_continuous_drive),
             ],
         );
@@ -591,24 +585,6 @@ impl ScriptHost {
         );
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
-            "crowding_target",
-            move |call_ctx: NativeCallContext,
-                  mut population_spec: PopulationSpecHandle,
-                  same_population_visible: bool,
-                  other_population_visible: bool| {
-                population_spec.spec.record_call(
-                    "crowding_target",
-                    call_ctx.call_position(),
-                    &diagnostics,
-                );
-                population_spec
-                    .spec
-                    .set_crowding_target(same_population_visible, other_population_visible);
-                population_spec
-            },
-        );
-        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
-        engine.register_fn(
             "leave_self_out",
             move |call_ctx: NativeCallContext,
                   mut population_spec: PopulationSpecHandle,
@@ -627,7 +603,6 @@ impl ScriptHost {
             ctx.clone(),
             &[
                 ("move_cost", PopulationSpec::set_move_cost_coeff),
-                ("move_cost_exp", PopulationSpec::set_move_cost_exp),
                 (
                     "proposal_interval",
                     PopulationSpec::set_proposal_interval_sec,
@@ -703,11 +678,7 @@ impl ScriptHost {
         register_population_spec_numeric_methods(
             &mut engine,
             ctx.clone(),
-            &[
-                ("window_cents", PopulationSpec::set_window_cents),
-                ("temperature", PopulationSpec::set_temperature),
-                ("sigma_cents", PopulationSpec::set_sigma_cents),
-            ],
+            &[("temperature", PopulationSpec::set_temperature)],
         );
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
@@ -966,19 +937,6 @@ impl ScriptHost {
         );
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
-            "while_alive",
-            move |call_ctx: NativeCallContext, mut population_spec: PopulationSpecHandle| {
-                population_spec.spec.record_call(
-                    "while_alive",
-                    call_ctx.call_position(),
-                    &diagnostics,
-                );
-                population_spec.spec.set_duration_while_alive();
-                population_spec
-            },
-        );
-        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
-        engine.register_fn(
             "phonate_when_viable",
             move |call_ctx: NativeCallContext, mut population_spec: PopulationSpecHandle| {
                 population_spec.spec.record_call(
@@ -1168,15 +1126,6 @@ impl ScriptHost {
             &[
                 ("pulse_lock", PopulationSpec::set_pulse_lock),
                 ("social", PopulationSpec::set_social),
-                ("shorten_on_drop", PopulationSpec::set_shorten_on_drop),
-            ],
-        );
-        register_population_spec_pair_numeric_methods(
-            &mut engine,
-            ctx.clone(),
-            &[
-                ("duration_range", PopulationSpec::set_duration_range),
-                ("duration_curve", PopulationSpec::set_duration_curve),
             ],
         );
         register_population_spec_numeric_methods(
@@ -1995,21 +1944,6 @@ impl ScriptHost {
                 ("amp", PopulationSpec::set_amp, patch_amp),
                 ("freq", PopulationSpec::set_freq, patch_freq),
                 (
-                    "landscape_weight",
-                    PopulationSpec::set_landscape_weight,
-                    patch_landscape_weight,
-                ),
-                (
-                    "neighbor_step_cents",
-                    PopulationSpec::set_neighbor_step_cents,
-                    patch_neighbor_step_cents,
-                ),
-                (
-                    "tessitura_gravity",
-                    PopulationSpec::set_tessitura_gravity,
-                    patch_tessitura_gravity,
-                ),
-                (
                     "sustain_drive",
                     PopulationSpec::set_continuous_drive,
                     patch_continuous_drive,
@@ -2017,53 +1951,6 @@ impl ScriptHost {
             ],
         );
         register_population_crowding_overloads(&mut engine, ctx.clone(), "avoid_neighbors");
-        let ctx_for_population_crowding_target = ctx.clone();
-        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
-        engine.register_fn(
-            "crowding_target",
-            move |call_ctx: NativeCallContext,
-                  handle: PopulationHandle,
-                  same_population_visible: bool,
-                  other_population_visible: bool|
-                  -> Result<PopulationHandle, Box<EvalAltResult>> {
-                let mut ctx = ctx_for_population_crowding_target
-                    .lock()
-                    .expect("lock script context");
-                let Some(population) = ctx.populations.get_mut(&handle.id) else {
-                    diagnostics
-                        .lock()
-                        .expect("lock script warnings")
-                        .push(ScriptWarning {
-                            kind: "crowding_target_absent",
-                            count: 1,
-                            message: format!(
-                                "crowding_target ignored for {} population {}",
-                                ctx.population_absence(handle.id),
-                                handle.id
-                            ),
-                            position: call_ctx.call_position(),
-                        });
-                    return Ok(handle);
-                };
-                match population.status {
-                    PopulationStatus::Live => {
-                        population.crowding_target_same = same_population_visible;
-                        population.crowding_target_other = other_population_visible;
-                        population
-                            .spec
-                            .set_crowding_target(same_population_visible, other_population_visible);
-                        population.pending_crowding_target =
-                            Some((same_population_visible, other_population_visible));
-                    }
-                    _ => ctx.warn_population_inactive(
-                        handle.id,
-                        "crowding_target",
-                        call_ctx.call_position(),
-                    ),
-                }
-                Ok(handle)
-            },
-        );
         let ctx_for_population_leave_self_out = ctx.clone();
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
@@ -2121,11 +2008,6 @@ impl ScriptHost {
                     "move_cost",
                     PopulationSpec::set_move_cost_coeff,
                     patch_move_cost_coeff,
-                ),
-                (
-                    "move_cost_exp",
-                    PopulationSpec::set_move_cost_exp,
-                    patch_move_cost_exp,
                 ),
                 (
                     "proposal_interval",
@@ -2309,23 +2191,11 @@ impl ScriptHost {
         register_population_numeric_methods(
             &mut engine,
             ctx.clone(),
-            &[
-                (
-                    "window_cents",
-                    PopulationSpec::set_window_cents,
-                    patch_window_cents,
-                ),
-                (
-                    "temperature",
-                    PopulationSpec::set_temperature,
-                    patch_temperature,
-                ),
-                (
-                    "sigma_cents",
-                    PopulationSpec::set_sigma_cents,
-                    patch_sigma_cents,
-                ),
-            ],
+            &[(
+                "temperature",
+                PopulationSpec::set_temperature,
+                patch_temperature,
+            )],
         );
         let ctx_for_population_move_cost_time_scale = ctx.clone();
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
@@ -2438,49 +2308,35 @@ impl ScriptHost {
                 patch_pitch_glide_tau,
             )],
         );
-        for (name, spec_setter, patch_setter) in [
-            (
-                "unison",
-                PopulationSpec::set_unison as fn(&mut PopulationSpec, INT),
-                patch_timbre_unison as fn(&mut ControlUpdate, INT),
-            ),
-            ("top_k", PopulationSpec::set_top_k, patch_top_k),
-            (
-                "random_candidates",
-                PopulationSpec::set_random_candidates,
-                patch_random_candidates,
-            ),
-        ] {
-            let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
-            engine.register_fn(
-                name,
-                move |call: NativeCallContext, mut spec: PopulationSpecHandle, value: INT| {
-                    spec.spec
-                        .record_call(name, call.call_position(), &diagnostics);
-                    spec_setter(&mut spec.spec, value);
-                    spec
-                },
-            );
-            let ctx_for_count = ctx.clone();
-            engine.register_fn(
-                name,
-                move |call: NativeCallContext, handle: PopulationHandle, value: INT| {
-                    let mut ctx = ctx_for_count.lock().expect("lock script context");
-                    let diagnostics = ctx.warnings.clone();
-                    match ctx.populations.get_mut(&handle.id) {
-                        Some(population) if population.status == PopulationStatus::Live => {
-                            population
-                                .spec
-                                .record_call(name, call.call_position(), &diagnostics);
-                            spec_setter(&mut population.spec, value);
-                            patch_setter(&mut population.pending_patch, value);
-                        }
-                        _ => ctx.warn_population_inactive(handle.id, name, call.call_position()),
+        let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+        engine.register_fn(
+            "unison",
+            move |call: NativeCallContext, mut spec: PopulationSpecHandle, value: INT| {
+                spec.spec
+                    .record_call("unison", call.call_position(), &diagnostics);
+                spec.spec.set_unison(value);
+                spec
+            },
+        );
+        let ctx_for_unison = ctx.clone();
+        engine.register_fn(
+            "unison",
+            move |call: NativeCallContext, handle: PopulationHandle, value: INT| {
+                let mut ctx = ctx_for_unison.lock().expect("lock script context");
+                let diagnostics = ctx.warnings.clone();
+                match ctx.populations.get_mut(&handle.id) {
+                    Some(population) if population.status == PopulationStatus::Live => {
+                        population
+                            .spec
+                            .record_call("unison", call.call_position(), &diagnostics);
+                        population.spec.set_unison(value);
+                        population.pending_patch.timbre_unison = Some(value);
                     }
-                    handle
-                },
-            );
-        }
+                    _ => ctx.warn_population_inactive(handle.id, "unison", call.call_position()),
+                }
+                handle
+            },
+        );
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
             "respawn_capacity",
@@ -3161,18 +3017,6 @@ fn patch_freq(update: &mut ControlUpdate, value: f32) {
     update.freq = Some(value);
 }
 
-fn patch_landscape_weight(update: &mut ControlUpdate, value: f32) {
-    update.landscape_weight = Some(value);
-}
-
-fn patch_neighbor_step_cents(update: &mut ControlUpdate, value: f32) {
-    update.neighbor_step_cents = Some(value);
-}
-
-fn patch_tessitura_gravity(update: &mut ControlUpdate, value: f32) {
-    update.tessitura_gravity = Some(value);
-}
-
 fn patch_continuous_drive(update: &mut ControlUpdate, value: f32) {
     update.continuous_drive = Some(value);
 }
@@ -3181,32 +3025,12 @@ fn patch_move_cost_coeff(update: &mut ControlUpdate, value: f32) {
     update.move_cost_coeff = Some(value);
 }
 
-fn patch_move_cost_exp(update: &mut ControlUpdate, value: f32) {
-    update.move_cost_exp = Some(value.round() as i64);
-}
-
 fn patch_proposal_interval(update: &mut ControlUpdate, value: f32) {
     update.proposal_interval_sec = Some(value);
 }
 
-fn patch_window_cents(update: &mut ControlUpdate, value: f32) {
-    update.window_cents = Some(value);
-}
-
-fn patch_top_k(update: &mut ControlUpdate, value: INT) {
-    update.top_k = Some(value);
-}
-
 fn patch_temperature(update: &mut ControlUpdate, value: f32) {
     update.temperature = Some(value);
-}
-
-fn patch_sigma_cents(update: &mut ControlUpdate, value: f32) {
-    update.sigma_cents = Some(value);
-}
-
-fn patch_random_candidates(update: &mut ControlUpdate, value: INT) {
-    update.random_candidates = Some(value);
 }
 
 fn patch_tail_roughness_aversion(update: &mut ControlUpdate, value: f32) {
@@ -3227,8 +3051,4 @@ fn patch_timbre_brightness(update: &mut ControlUpdate, value: f32) {
 
 fn patch_timbre_spread(update: &mut ControlUpdate, value: f32) {
     update.timbre_spread = Some(value);
-}
-
-fn patch_timbre_unison(update: &mut ControlUpdate, value: INT) {
-    update.timbre_unison = Some(value);
 }

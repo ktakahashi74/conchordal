@@ -90,7 +90,6 @@ pub struct Community {
         std::cell::RefCell<Option<crate::temporal_cognition::harmonic_relations::consumer::Use>>,
     harmonic_spawn_weights: std::cell::RefCell<Vec<f64>>,
     harmonic_spawn_candidates: std::cell::RefCell<Vec<usize>>,
-    birth_surrogate: std::cell::RefCell<Option<super::sound::birth_surrogate::BirthSurrogate>>,
     pub voices: Vec<Voice>,
     pub(crate) flora: Vec<super::flora::Flora>,
     pub(crate) has_placed_flora: bool,
@@ -252,7 +251,6 @@ impl Community {
             harmonic_ticks: Vec::new(),
             expression: None,
             body_metabolism: None,
-            birth_surrogate: std::cell::RefCell::new(None),
             support_scratch: std::cell::RefCell::new(Default::default()),
             harmonic_spawn: std::cell::RefCell::new(None),
             harmonic_spawn_weights: std::cell::RefCell::new(Vec::new()),
@@ -331,20 +329,6 @@ impl Community {
         *self.support_scratch.get_mut() = std::array::from_fn(|_| vec![0.; bins]);
         self.harmonic_spawn_weights.get_mut().resize(bins, 0.);
         self.harmonic_spawn_candidates.get_mut().reserve(bins);
-    }
-
-    pub(crate) fn enable_birth_surrogate(
-        &mut self,
-        loudness_exp: f32,
-        ref_power: f32,
-        repr: crate::core::consonance_kernel::ConsonanceRepresentationParams,
-        renderer_phase3: bool,
-    ) {
-        *self.birth_surrogate.get_mut() = Some(
-            super::sound::birth_surrogate::BirthSurrogate::new(self.time, loudness_exp, ref_power)
-                .with_renderer_phase3(renderer_phase3),
-        );
-        self.birth_surrogate.get_mut().as_mut().unwrap().level_repr = repr;
     }
 
     pub fn set_control_update_mode(&mut self, mode: ControlUpdateMode) {

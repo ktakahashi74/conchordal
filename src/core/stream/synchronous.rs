@@ -1,7 +1,11 @@
 //! Borrowed synchronous analysis, with the same numerical law as AnalysisStream.
 
 use super::potentials::PotentialScratch;
-use crate::core::auditory_frontend::{AuditoryFrontEnd, SpectralFrameView};
+#[cfg(not(test))]
+use crate::core::auditory_frontend::AuditoryFrontEnd;
+#[cfg(test)]
+use crate::core::auditory_frontend::ShadowFrontEnd as AuditoryFrontEnd;
+use crate::core::auditory_frontend::SpectralFrameView;
 use crate::core::landscape::{Landscape, LandscapeParams};
 #[cfg(test)]
 use crate::core::landscape_spectral::SpectralFrontEnd;
@@ -291,12 +295,25 @@ mod tests {
     #[test]
     fn auditory_frontend_preserves_nsgt_and_selected_history() {
         let (params, kernel, hop) =
-            crate::runtime::birth_surrogate_assay_core(&crate::config::AppConfig::default(), 48000);
+            crate::runtime::analysis_runtime_test_core(&crate::config::AppConfig::default(), 48000);
         let mut baseline = SynchronousAnalysis::legacy_new(kernel.clone(), &params);
         let mut selected = crate::core::auditory_shadow::with_selected_test_frontend(|| {
             SynchronousAnalysis::new(kernel.clone(), &params)
         });
-        let mut direct = selected.frontend.clone();
+        let mut direct = crate::core::auditory_frontend::AuditoryFrontEnd::selected(
+            kernel.space().clone(),
+            params.fs,
+            hop,
+            kernel.nfft(),
+        );
+        let assert_density_bits = |actual: &[f32], expected: &[f32]| {
+            assert!(
+                actual
+                    .iter()
+                    .map(|density| density.to_bits())
+                    .eq(expected.iter().map(|density| density.to_bits()))
+            );
+        };
         for frame in 0..16 {
             let pcm: Vec<_> = (0..hop)
                 .map(|i| {
@@ -308,7 +325,10 @@ mod tests {
             baseline.process(&pcm, &params);
             selected.process(&pcm, &params);
             direct.process(&pcm, &params);
-            assert_eq!(selected.landscape.subjective_intensity, direct.density_scan);
+            assert_density_bits(
+                &selected.landscape.subjective_intensity,
+                &direct.density_scan,
+            );
             assert_eq!(selected.landscape.nsgt_power, baseline.landscape.nsgt_power);
         }
         assert_ne!(
@@ -323,6 +343,22 @@ mod tests {
             selected.landscape.subjective_intensity,
             copy.landscape.subjective_intensity
         );
+
+        selected.reset_density();
+        direct.reset();
+        let pcm: Vec<_> = (0..hop).map(|i| 0.1 * (i as f32 * 0.13).sin()).collect();
+        for frame in 0..kernel.nfft().div_ceil(hop) + 4 {
+            if frame % 4 != 3 {
+                selected.skip(&pcm);
+                direct.skip(&pcm);
+                continue;
+            }
+            assert_eq!(
+                selected.frontend.process_body_gap(&pcm, 4, &params),
+                direct.process_body_gap(&pcm, 4, &params)
+            );
+            assert_density_bits(&selected.frontend.density_scan, &direct.density_scan);
+        }
     }
 
     #[test]

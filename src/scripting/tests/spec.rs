@@ -718,46 +718,20 @@ fn population_spec_pitch_core_sets_spawn_core_kind() {
 fn test_create_accepts_preconfigured_population_spec() {
     let (scenario, _warnings) = run_script(
         r#"
-            create(sine().landscape_weight(0.25), 1);
+            create(sine().amp(0.25), 1);
             flush();
         "#,
     );
-    let weight = scenario
+    let amp = scenario
         .events
         .iter()
         .flat_map(|event| &event.actions)
         .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.control.pitch.landscape_weight),
+            Action::Spawn { spec, .. } => Some(spec.control.body.amp),
             _ => None,
         })
         .expect("spawn action");
-    assert!((weight - 0.25).abs() <= 1e-6);
-}
-
-#[test]
-fn population_spec_landscape_weight_reaches_spawned_individual() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(sine().landscape_weight(0.3), 1);
-            flush();
-        "#,
-    );
-    let mut pop = Community::new(Timebase {
-        fs: 48_000.0,
-        hop: 64,
-    });
-    let landscape = Landscape::default();
-    for action in scenario
-        .events
-        .iter()
-        .flat_map(|event| event.actions.iter())
-    {
-        if let Action::Spawn { .. } = action {
-            pop.apply_action(action.clone(), &landscape);
-        }
-    }
-    let voice = pop.voices.first().expect("spawned");
-    assert!((voice.effective_control.pitch.landscape_weight - 0.3).abs() <= 1e-6);
+    assert!((amp - 0.25).abs() <= 1e-6);
 }
 
 #[test]
@@ -784,63 +758,6 @@ fn population_spec_temperature_reaches_spawned_core() {
     }
     let voice = pop.voices.first().expect("spawned");
     assert!((voice.pitch_core_for_test().temperature_for_test() - 0.3).abs() <= 1e-6);
-}
-
-#[test]
-fn population_landscape_weight_emits_live_update() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let g = create(sine(), 1);
-            flush();
-            let g = g.landscape_weight(0.4);
-            flush();
-        "#,
-    );
-    let mut saw_update = false;
-    for action in scenario
-        .events
-        .iter()
-        .flat_map(|event| event.actions.iter())
-    {
-        if let Action::UpdatePopulation { patch, .. } = action
-            && patch.landscape_weight == Some(0.4)
-        {
-            saw_update = true;
-            break;
-        }
-    }
-    assert!(saw_update, "expected landscape_weight live update");
-}
-
-#[test]
-fn population_landscape_weight_live_update_reaches_individual() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let g = create(sine(), 1);
-            flush();
-            let g = g.landscape_weight(0.6);
-            flush();
-        "#,
-    );
-    let mut pop = Community::new(Timebase {
-        fs: 48_000.0,
-        hop: 64,
-    });
-    let landscape = Landscape::default();
-    for action in scenario
-        .events
-        .iter()
-        .flat_map(|event| event.actions.iter())
-    {
-        match action {
-            Action::Spawn { .. } | Action::UpdatePopulation { .. } => {
-                pop.apply_action(action.clone(), &landscape);
-            }
-            _ => {}
-        }
-    }
-    let voice = pop.voices.first().expect("spawned");
-    assert!((voice.effective_control.pitch.landscape_weight - 0.6).abs() <= 1e-6);
 }
 
 #[test]
@@ -1103,44 +1020,20 @@ fn population_crowding_mixed_numeric_overloads_work() {
 }
 
 #[test]
-fn population_crowding_target_emits_actions_for_founders_and_live_updates() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            let g = create(sine().crowding_target(true, false), 1);
-            flush();
-            let g = g.crowding_target(true, true);
-            flush();
-        "#,
-    );
-    let mut saw_spawn_target = false;
-    let mut saw_live_target = false;
-    for action in scenario
-        .events
-        .iter()
-        .flat_map(|event| event.actions.iter())
-    {
-        if let Action::SetPopulationCrowdingTarget {
-            same_population_visible,
-            other_population_visible,
-            ..
-        } = action
-        {
-            if *same_population_visible && !*other_population_visible {
-                saw_spawn_target = true;
-            }
-            if *same_population_visible && *other_population_visible {
-                saw_live_target = true;
-            }
-        }
-    }
-    assert!(
-        saw_spawn_target,
-        "expected founder crowding_target to be emitted"
-    );
-    assert!(
-        saw_live_target,
-        "expected live crowding_target update to be emitted"
-    );
+fn population_emits_default_crowding_target_after_spawn() {
+    let (scenario, _) = run_script("create(sine(), 1); flush();");
+    let placement = scenario.events.first().expect("placement event");
+    assert!(matches!(
+        placement.actions.as_slice(),
+        [
+            Action::Spawn { population_id: founder, .. },
+            Action::SetPopulationCrowdingTarget {
+                population_id: target,
+                same_population_visible: true,
+                other_population_visible: false,
+            },
+        ] if founder == target
+    ));
 }
 
 #[test]
@@ -1260,17 +1153,12 @@ fn population_move_cost_live_update_reaches_individual() {
 }
 
 #[test]
-fn population_hill_climb_knobs_and_loo_live_update_reach_individual() {
+fn population_hill_climb_loo_live_update_reaches_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             let g = create(sine(), 1);
             flush();
-            let g = g
-                .neighbor_step_cents(25)
-                .tessitura_gravity(0.12)
-                .move_cost_exp(2)
-                .leave_self_out(true)
-                .leave_self_out(true);
+            g.leave_self_out(true);
             flush();
         "#,
     );
@@ -1293,27 +1181,16 @@ fn population_hill_climb_knobs_and_loo_live_update_reach_individual() {
     }
     let voice = pop.voices.first().expect("spawned");
     let core = voice.pitch_core_for_test();
-    assert!((core.neighbor_step_cents_for_test() - 25.0).abs() <= 1e-6);
-    assert!((core.tessitura_gravity_for_test() - 0.12).abs() <= 1e-6);
-    assert_eq!(core.move_cost_exp_for_test(), 2);
-    assert!(core.leave_self_out_for_test());
     assert!(core.leave_self_out_for_test());
     assert!(voice.effective_control.pitch.leave_self_out);
 }
 
 #[test]
-fn population_spec_peak_sampler_knobs_reach_spawned_core() {
+fn population_spec_peak_sampler_and_temperature_reach_spawned_individual() {
     let (scenario, _warnings) = run_script(
         r#"
             create(
-                sine()                    .pitch_core("peak_sampler")
-                    .neighbor_step_cents(30)
-                    .tessitura_gravity(0.14)
-                    .window_cents(320)
-                    .top_k(7)
-                    .temperature(0.0)
-                    .sigma_cents(18)
-                    .random_candidates(5),
+                sine().pitch_core("peak_sampler").temperature(0.0),
                 1
             );
             flush();
@@ -1334,14 +1211,12 @@ fn population_spec_peak_sampler_knobs_reach_spawned_core() {
         }
     }
     let voice = pop.voices.first().expect("spawned");
+    assert_eq!(
+        voice.effective_control.pitch.core_kind,
+        PitchCoreKind::PeakSampler
+    );
     let core = voice.pitch_core_for_test();
-    assert!((core.neighbor_step_cents_for_test() - 30.0).abs() <= 1e-6);
-    assert!((core.tessitura_gravity_for_test() - 0.14).abs() <= 1e-6);
-    assert!((core.window_cents_for_test() - 320.0).abs() <= 1e-6);
-    assert_eq!(core.top_k_for_test(), 7);
     assert!((core.temperature_for_test() - 0.0).abs() <= 1e-6);
-    assert!((core.sigma_cents_for_test() - 18.0).abs() <= 1e-6);
-    assert_eq!(core.random_candidates_for_test(), 5);
 }
 
 #[test]
@@ -1466,25 +1341,6 @@ fn set_pitch_objective_emits_landscape_update() {
             PitchObjectiveMode::Consonance
         ]
     );
-}
-
-#[test]
-fn population_spec_landscape_weight_sets_spawn_control() {
-    let (scenario, _warnings) = run_script(
-        r#"
-            create(sine().landscape_weight(0.4), 1);
-        "#,
-    );
-    let weight = scenario
-        .events
-        .iter()
-        .flat_map(|event| &event.actions)
-        .find_map(|action| match action {
-            Action::Spawn { spec, .. } => Some(spec.control.pitch.landscape_weight),
-            _ => None,
-        })
-        .expect("spawn action");
-    assert!((weight - 0.4).abs() <= 1e-6);
 }
 
 #[test]
@@ -2173,10 +2029,10 @@ fn entrained_sets_defaults_and_accepts_prior_social_tuning() {
 }
 
 #[test]
-fn while_alive_and_beat_modes_are_last_write_wins() {
+fn default_hold_and_metric_timing_keep_their_durations() {
     let hold = first_spawn_spec_for_script(
         r#"
-            create(sine().metric().while_alive(), 1);
+            create(sine(), 1);
             flush();
         "#,
     );
@@ -2201,7 +2057,7 @@ fn while_alive_and_beat_modes_are_last_write_wins() {
 
     let beat = first_spawn_spec_for_script(
         r#"
-            create(sine().while_alive().metric(), 1);
+            create(sine().metric(), 1);
             flush();
         "#,
     );
@@ -2364,8 +2220,6 @@ fn synchronized_fixed_pitch_matches_sustained_participation_and_implicit_couplin
     for chain in [
         "entrainment(0.5).sustain()",
         "rhythm_role(\"beat\").sustain()",
-        "metric().while_alive()",
-        "while_alive().metric()",
         "sustain().metric().cycles(1)",
     ] {
         let spec = first_spawn_spec_for_script(&format!("create(sine().{chain},1);"));
@@ -2815,7 +2669,6 @@ fn synchronized_tie_default_resolves_omission_and_explicit_values_in_final_specs
         "sustain().steady().pitch_apply_mode(\"rearticulate\")",
         "sustain().steady().pitch_apply_mode(\"glide\")",
         "sustain().metric().cycles(1)",
-        "metric().while_alive()",
         "entrainment(0.5).sustain()",
         "sustain().entrainment(0.5).cycles(1).rest().pitch_apply_mode(\"gate_snap\")",
     ] {
@@ -3087,7 +2940,7 @@ fn explicit_pitch_and_viability_choices_override_preset_defaults_in_either_order
 
 #[test]
 fn counts_accept_integers_only_and_removed_verbs_are_unregistered() {
-    for method in ["unison", "top_k", "random_candidates", "respawn_capacity"] {
+    for method in ["unison", "respawn_capacity"] {
         run_script(&format!("place(harmonic().{method}(2), at(220));"));
         assert!(
             run_script_err(&format!("harmonic().{method}(2.0);"))
@@ -3871,7 +3724,6 @@ fn nan_unit_interval_controls_do_not_reach_the_engine() {
                 .brightness(nan)
                 .entrainment(nan)
                 .social(nan)
-                .duration_range(nan, nan)
                 .adsr(0.01, 0.1, nan, 0.2)
                 .respawn_random()
                 .respawn_min_consonance(nan),

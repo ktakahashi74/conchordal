@@ -431,7 +431,7 @@ mod tests {
     fn flora_voice_observer_cost() {
         use crate::clock::Instant;
         use std::hint::black_box;
-        let (params, kernel, hop) = crate::runtime::birth_surrogate_assay_core(
+        let (params, kernel, hop) = crate::runtime::analysis_runtime_test_core(
             &crate::config::AppConfig::default(),
             48_000,
         );

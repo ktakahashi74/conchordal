@@ -131,10 +131,8 @@ remains open.
   sustain composes a living Tone with their opportunities. See [Rhythm](rhythm.md).
 - `cycles(n)` expresses duration in rhythmic cycles.
 
-The lower-level `once()`, `pulse(rate_hz)`, `while_alive()`, and adaptive
-duration controls are available when the presets do not express the intended
-gesture. Start with the presets; use explicit timing only when the piece needs
-it.
+Start with the presets. For more control, set onset timing with `once()` or
+`pulse(rate_hz)`, or set note length with `adaptive_duration()`.
 
 ## Release is not death
 

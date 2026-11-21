@@ -783,48 +783,12 @@ fn metric_and_pulse_tuning_are_order_independent() {
 }
 
 #[test]
-fn adaptive_duration_tuning_is_order_independent() {
-    for (label, script) in [
-        (
-            "duration then tuning",
-            r#"
-                create(
-                    sine()
-                        .once()
-                        .adaptive_duration()
-                        .duration_range(0.2, 0.8)
-                        .duration_curve(3.0, 0.4)
-                        .shorten_on_drop(0.6),
-                    1
-                );
-                flush();
-            "#,
-        ),
-        (
-            "tuning then duration",
-            r#"
-                create(
-                    sine()
-                        .duration_range(0.2, 0.8)
-                        .duration_curve(3.0, 0.4)
-                        .shorten_on_drop(0.6)
-                        .adaptive_duration(),
-                    1
-                );
-                flush();
-            "#,
-        ),
-    ] {
-        let spawn = first_spawn_spec_for_script(script);
-        let DurationSpec::Field(field) = spawn.control.phonation.spec.duration else {
-            panic!("{label}: expected adaptive field duration");
-        };
-        assert!((field.hold_min_theta - 0.2).abs() <= 1e-6, "{label}");
-        assert!((field.hold_max_theta - 0.8).abs() <= 1e-6, "{label}");
-        assert!((field.curve_k - 3.0).abs() <= 1e-6, "{label}");
-        assert!((field.curve_x0 - 0.4).abs() <= 1e-6, "{label}");
-        assert!((field.drop_gain - 0.6).abs() <= 1e-6, "{label}");
-    }
+fn adaptive_duration_uses_the_default_field_rule() {
+    let spawn = first_spawn_spec_for_script("create(sine().adaptive_duration(), 1);");
+    assert_eq!(
+        spawn.control.phonation.spec.duration,
+        DurationSpec::Field(FieldDurationSpec::default())
+    );
 }
 
 #[test]
@@ -952,15 +916,6 @@ fn sustained_participation_explicit_builders_are_order_independent() {
             spec.control.pitch.pitch_apply_mode,
             PitchApplyMode::GateSnap
         );
-    }
-    for chain in [
-        "while_alive().entrained()",
-        "while_alive().flow()",
-        "entrained().while_alive()",
-        "flow().while_alive()",
-    ] {
-        let spec = first_spawn_spec_for_script(&format!("create(sine().{chain}, 1);"));
-        assert!(!spec.control.phonation.spec.is_sustained_participation());
     }
     for preset in ["pulse(2.0)", "repeat()"] {
         for (chain, hold) in [
@@ -1182,16 +1137,17 @@ fn rest_builder_order_preserves_duration_and_participation() {
                             continue;
                         }
                         let chain = [words[a], words[b], words[c], words[d]].join(".");
-                        let spec = first_spawn_spec_for_script(&format!(
-                            "create(harmonic().{chain}.duration_range(0.2,0.2),1);"
-                        ));
+                        let spec =
+                            first_spawn_spec_for_script(&format!("create(harmonic().{chain},1);"));
                         assert!(
                             spec.control.phonation.spec.is_sustained_participation(),
                             "{chain}"
                         );
                         assert_eq!(spec.control.phonation.rest_periods, Some(1.));
                         assert!(
-                            matches!(spec.control.phonation.finite_duration,Some(DurationSpec::Field(f)) if f.hold_min_theta==0.2 && f.hold_max_theta==0.2)
+                            spec.control.phonation.finite_duration
+                                == Some(DurationSpec::Field(FieldDurationSpec::default())),
+                            "{chain}"
                         );
                         assert_eq!(spec.control.pitch.pitch_apply_mode, PitchApplyMode::Glide);
                     }

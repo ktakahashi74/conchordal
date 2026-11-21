@@ -241,60 +241,47 @@ wait(0.15);
 release(c); release(terrain);
 wait(0.1);
 "#).unwrap();
-    let mut legacy_births = Vec::new();
-    let mut prototype_control = None;
+    let mut terrain_births = None;
     for prototype in [false, true] {
-        for surrogate in [false, true] {
-            let config = dir.join("config.toml");
-            fs::write(&config, format!(
-                "birth_surrogate = {surrogate}\n{}[analysis]\nnfft = 2048\nhop_size = 512\n[psychoacoustics.habituation]\nenabled = false\n[dcc]\ncoupling_strength = 0.0\n",
-                if prototype { "render_prototype = true\n" } else { "" }
-            )).unwrap();
-            let wav = dir.join("render.wav");
-            let report = dir.join("report.jsonl");
-            let output = Command::new(env!("CARGO_BIN_EXE_conchordal-render"))
-                .arg(&script)
-                .arg("--config")
-                .arg(&config)
-                .arg("--seed")
-                .arg("73")
-                .arg("-o")
-                .arg(&wav)
-                .arg("--report")
-                .arg(&report)
-                .env("RUST_LOG", "warn")
-                .output()
-                .unwrap();
-            assert!(
-                output.status.success(),
-                "{}",
-                String::from_utf8_lossy(&output.stderr)
+        let config = dir.join("config.toml");
+        fs::write(&config, format!(
+            "render_prototype = {prototype}\n[analysis]\nnfft = 2048\nhop_size = 512\n[psychoacoustics.habituation]\nenabled = false\n[dcc]\ncoupling_strength = 0.0\n"
+        )).unwrap();
+        let wav = dir.join("render.wav");
+        let report = dir.join("report.jsonl");
+        let output = Command::new(env!("CARGO_BIN_EXE_conchordal-render"))
+            .arg(&script)
+            .arg("--config")
+            .arg(&config)
+            .arg("--seed")
+            .arg("73")
+            .arg("-o")
+            .arg(&wav)
+            .arg("--report")
+            .arg(&report)
+            .env("RUST_LOG", "warn")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let births: Vec<serde_json::Value> = fs::read_to_string(&report)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .filter(|row| row["type"] == "spawn")
+            .collect();
+        assert_eq!(births.len(), 4);
+        if let Some(control) = &terrain_births {
+            assert_eq!(
+                &births, control,
+                "Modal Field placement changed with the renderer"
             );
-            let births: Vec<serde_json::Value> = fs::read_to_string(&report)
-                .unwrap()
-                .lines()
-                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
-                .filter(|row| row["type"] == "spawn")
-                .collect();
-            assert_eq!(births.len(), 4);
-            if prototype {
-                let result = (births, fs::read(&wav).unwrap());
-                if let Some(control) = &prototype_control {
-                    assert_eq!(
-                        &result, control,
-                        "native Modal must retain terrain-only placement"
-                    );
-                } else {
-                    prototype_control = Some(result);
-                }
-            } else {
-                legacy_births.push(births);
-            }
+        } else {
+            terrain_births = Some(births);
         }
     }
-    assert_ne!(
-        legacy_births[0], legacy_births[1],
-        "the fixture must exercise supported legacy Field birth"
-    );
     fs::remove_dir_all(dir).unwrap();
 }

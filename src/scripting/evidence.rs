@@ -393,10 +393,6 @@ pub const PHRASE_BOUNDARY: &[EvidenceDoc] = &[
 /// AppConfig leaf keys, including research-only optional records.
 pub const CONFIG_DOCS: &[ConfigDoc] = &[
     ConfigDoc {
-        name: "birth_surrogate",
-        evidence: RESEARCH,
-    },
-    ConfigDoc {
         name: "body_metabolism.enabled",
         evidence: ECOLOGY,
     },
@@ -503,10 +499,6 @@ pub const CONFIG_DOCS: &[ConfigDoc] = &[
     ConfigDoc {
         name: "psychoacoustics.habituation.ref_drive",
         evidence: HABITUATION,
-    },
-    ConfigDoc {
-        name: "psychoacoustics.use_incoherent_power",
-        evidence: OPERATION,
     },
     ConfigDoc {
         name: "dcc.coupling_strength",

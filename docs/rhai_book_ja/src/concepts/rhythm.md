@@ -160,7 +160,6 @@ wait(12.0);
 
 下で説明する明示の持続と参加の併用を除き、同じ軸では最後の指定が優先されます。調整値は記憶され、対応するプリセットを選んだ時に適用されるため、
 `entrainment(0.8).metric()`と`metric().entrainment(0.8)`は同等です。
-`duration_range(...).adaptive_duration()`と逆順も同様です。
 
 ## 身体の固有の速さを置く
 
@@ -176,7 +175,7 @@ wait(12.0);
 読み、新しい初期dueと演奏状態から始めます。親が適応した参加周期、発音予定、発音の
 方針は継ぎません。
 
-同じ固有周期を、有限音長の`cycles`と`duration_range`、`rest(periods)`、重なり予測の
+同じ固有周期を、有限音長の`cycles(n)`と`adaptive_duration()`、`rest(periods)`、重なり予測の
 代表的な保持長にも使います。速さを変えると、音の長さと間の秒数も一緒に変わります。
 flowの音長には3倍係数が残り、ADSRのreleaseは秒指定のままです。有限音長を
 指定しない持続音を、固有周期ごとに自動で切る働きはありません。
@@ -274,8 +273,7 @@ release(p);
 依存しません。再生成したVoiceは設定を継ぎ、親の保留、滑りの選択、最後の発音音高は
 継ぎません。
 
-既定のWhileAliveと、`while_alive()`だけでは、この形を選びません。`sustain()`だけ、
-`entrained()`だけ、`flow()`だけの挙動は変えません。`pulse()`、`repeat()`と
+この発音方式を選ぶには、`sustain()`と参加のプリセットを組み合わせます。`pulse()`、`repeat()`と
 `sustain()`の併用は、従来どおり後の指定が優先されます。明示の`sustain()`と`metric()`は、
 下の持続＋同期を選びます。`rest()`がない場合は、後に
 `cycles()`や`adaptive_duration()`で有限の音長を指定すると、持続する形を置き換えます。
@@ -387,9 +385,8 @@ modeがGlideになっている間は休止し、対象に戻れば再び働き�
 
 ## 明示的なwhen/duration（Tier 2）
 
-presetの下には`once()`、`pulse(rate_hz)`、`while_alive()`、`cycles(n)`、
-`adaptive_duration()`があり、`duration_range`、`duration_curve`、`shorten_on_drop`で
-調整できます。
+発音の時機を直接指定するには`once()`か`pulse(rate_hz)`、有限の音長を指定するには
+`cycles(n)`か`adaptive_duration()`を使います。
 
 ## リズムを生存へ結びつける
 

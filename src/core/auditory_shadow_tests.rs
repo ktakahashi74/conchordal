@@ -19,16 +19,16 @@ pub(super) fn prototype_core(
     usize,
 ) {
     use crate::core::harmonicity_kernel::HarmonicityKernel;
-    use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config, PowerMode};
+    use crate::core::nsgt_kernel::{NsgtKernelLog2, NsgtLog2Config};
     use crate::core::nsgt_rt::RtNsgtKernelLog2;
 
     let mut config = crate::config::AppConfig::default();
     config.psychoacoustics.habituation.enabled = habituation;
-    let (mut params, _, hop) = crate::runtime::birth_surrogate_assay_core(&config, 48000);
+    let (mut params, _, hop) = crate::runtime::analysis_runtime_test_core(&config, 48000);
     let space = Log2Space::new(55.0, 8000.0, 96);
     // H caches grid coordinates; R geometry and references are built by each caller.
     params.harmonicity_kernel = HarmonicityKernel::new(&space, params.harmonicity_kernel.params);
-    let kernel = NsgtKernelLog2::new(
+    let kernel = NsgtKernelLog2::new_coherent(
         NsgtLog2Config {
             fs: params.fs,
             overlap: 1.0 - hop as f32 / config.analysis.nfft as f32,
@@ -37,11 +37,6 @@ pub(super) fn prototype_core(
         },
         space,
         None,
-        if config.psychoacoustics.use_incoherent_power {
-            PowerMode::Incoherent
-        } else {
-            PowerMode::Coherent
-        },
     );
     (params, RtNsgtKernelLog2::new(kernel), hop)
 }
@@ -324,12 +319,12 @@ fn onset_and_roundoff_floor_use_existing_pcm_gate() {
                 let l1 =
                     a.0.iter()
                         .zip(&b.0)
-                        .zip(&template.du)
+                        .zip(&template.reassignment.du)
                         .map(|((x, y), u)| (x - y).abs() * u)
                         .sum::<f32>();
                 let mass =
                     a.0.iter()
-                        .zip(&template.du)
+                        .zip(&template.reassignment.du)
                         .map(|(x, u)| x * u)
                         .sum::<f32>();
                 let errors = field_errors(&a.1, &b.1);
@@ -715,13 +710,13 @@ fn complex_onset_uses_existing_pcm_gate() {
         for (a, b) in traces[0].iter().zip(&traces[1]) {
             let mass =
                 a.0.iter()
-                    .zip(&template.du)
+                    .zip(&template.reassignment.du)
                     .map(|(x, u)| x * u)
                     .sum::<f32>();
             let l1 =
                 a.0.iter()
                     .zip(&b.0)
-                    .zip(&template.du)
+                    .zip(&template.reassignment.du)
                     .map(|((x, y), u)| (x - y).abs() * u)
                     .sum::<f32>()
                     / mass.max(1e-12);
@@ -747,7 +742,7 @@ fn endpoint_fade_preserves_deposited_mass() {
     let (params, kernel, hop) = prototype_core(true);
     let mut front =
         ShadowFrontEnd::new(kernel.space().clone(), params.fs, 1.0, false, kernel.nfft());
-    let last = (front.space.n_bins() - 1) as f32;
+    let last = (front.reassignment.space.n_bins() - 1) as f32;
     for (position, expected, endpoint) in [
         (-2.0, 0.0, 0),
         (-0.5, 0.5, 0),
@@ -756,7 +751,9 @@ fn endpoint_fade_preserves_deposited_mass() {
         (last + 0.5, 0.5, last as usize),
         (last + 2.0, 0.0, last as usize),
     ] {
-        let f = (front.space.centers_log2[0] + position * front.space.step()).exp2();
+        let f = (front.reassignment.space.centers_log2[0]
+            + position * front.reassignment.space.step())
+        .exp2();
         let unit = Complex32::from_polar(1.0, TAU * f / params.fs);
         front.bank.frequency.fill(f);
         for c in 0..front.bank.centers.len() {
@@ -769,7 +766,7 @@ fn endpoint_fade_preserves_deposited_mass() {
         let deposited: f32 = front
             .density_scan
             .iter()
-            .zip(&front.du)
+            .zip(&front.reassignment.du)
             .map(|(x, u)| x * u)
             .sum();
         let bound = 16.0 * front.bank.centers.len() as f32 * f32::EPSILON;
@@ -805,7 +802,7 @@ mod a8_conformance;
 #[test]
 fn selected_frontend_hop_and_body_skip_allocate_nothing() {
     let (kernel, params) = crate::runtime::body_metabolism_test_core();
-    let mut every = AuditoryFrontEnd::selected(
+    let mut every = ShadowFrontEnd::selected(
         kernel.space().clone(),
         params.fs,
         kernel.hop(),

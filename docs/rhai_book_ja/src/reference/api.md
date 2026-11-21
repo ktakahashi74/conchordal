@@ -728,7 +728,7 @@ rest(periods)
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Release each finite participation note, then leave a rest after all its tails finish. Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. `while_alive()` clears finite intent. Released tails keep their pitch.
+Release each finite participation note, then leave a rest after all its tails finish. Requires explicit `sustain()` with metric/entrained/steady/flow and an explicit finite duration (`cycles()` or `adaptive_duration()`), in either builder order. After release, wait until all tails finish, then wait the requested number of intrinsic body periods. Default 1 period; finite nonnegative values have no upper cap, invalid values become zero. Without a known period it keeps waiting. The next legal opportunity may sound; expiry never forces an onset. Released tails keep their pitch.
 
 **根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
@@ -1841,18 +1841,6 @@ Pulse at an explicit rate in Hz.
 
 **根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
-#### `while_alive`
-
-```rhai,ignore
-while_alive()
-```
-
-適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
-
-Hold/sustain until release. Resets timing to one continuous note and clears finite duration, rest-sustain and explicit sustained-participation intent. Unlike `sustain()`, combining it with a timing preset does not retain a sounding Tone between that preset's opportunities. The last timing choice wins.
-
-**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
-
 #### `adaptive_duration`
 
 ```rhai,ignore
@@ -1861,7 +1849,7 @@ adaptive_duration()
 
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
-Duration follows field support. With rest(), retain this finite duration independently of sustain() and entrained()/steady()/flow(), in any builder order. duration_range(), duration_curve() and shorten_on_drop() tune the retained rule.
+Duration follows field support. With rest(), retain this finite duration independently of sustain() and entrained()/steady()/flow(), in any builder order.
 
 **根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
@@ -1886,42 +1874,6 @@ social(coupling)
 適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
 
 Social coupling for participation or `pulse()`, in 0-1.
-
-**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
-
-#### `duration_range`
-
-```rhai,ignore
-duration_range(min_cycles, max_cycles)
-```
-
-適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
-
-Adaptive duration range in rhythm cycles. Also tunes the finite adaptive duration retained for rest(). For entrained()/steady()/flow(), cycles use the bodily period set by intrinsic_rate(hz), independently of cadence adaptation; changing the bodily rate changes this duration in seconds. Initial-only, like cycles() and rest().
-
-**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
-
-#### `duration_curve`
-
-```rhai,ignore
-duration_curve(k, x0)
-```
-
-適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
-
-Adaptive duration curve parameters.
-
-**根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
-
-#### `shorten_on_drop`
-
-```rhai,ignore
-shorten_on_drop(gain)
-```
-
-適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
-
-Shorten adaptive duration when field support drops.
 
 **根拠:** 作者規則：発声、参加、持続、再発音の方策（§9.3.57）。既存の基本動作の既定値は維持。
 
@@ -1963,30 +1915,6 @@ Energy reward for timing fit; metric is `"attack_phase_match"` or `"none"`. Gain
 
 ### Pitch Movement
 
-#### `landscape_weight`
-
-```rhai,ignore
-landscape_weight(value)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Nonnegative dimensionless landscape-objective weight, default 1.
-
-**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
-
-#### `neighbor_step_cents`
-
-```rhai,ignore
-neighbor_step_cents(value)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Step size for neighbor exploration in cents.
-
-**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
-
 #### `move_cost`
 
 ```rhai,ignore
@@ -1996,78 +1924,6 @@ move_cost(coeff)
 適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
 
 Nonnegative dimensionless movement-cost coefficient, default 0.5.
-
-**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
-
-#### `move_cost_exp`
-
-```rhai,ignore
-move_cost_exp(exp)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Exponent for the move cost.
-
-**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
-
-#### `tessitura_gravity`
-
-```rhai,ignore
-tessitura_gravity(value)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Nonnegative dimensionless attraction toward the tessitura center; omission uses the pitch core default.
-
-**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
-
-#### `window_cents`
-
-```rhai,ignore
-window_cents(width)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Peak-sampler search window width in cents.
-
-**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
-
-#### `top_k`
-
-```rhai,ignore
-top_k(count)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Number of top candidates kept by the peak sampler.
-
-**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
-
-#### `sigma_cents`
-
-```rhai,ignore
-sigma_cents(spread)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Gaussian spread of the peak sampler in cents.
-
-**根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
-
-#### `random_candidates`
-
-```rhai,ignore
-random_candidates(count)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Number of random candidates considered.
 
 **根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
 
@@ -2095,20 +1951,6 @@ ratio_candidates(count)
 Ratio-based movement candidates; 0 disables.
 
 **根拠:** 作者規則：音高移動、提案選択、探索費用（§9.3.57、§9.3.98–99）。既存の基本動作の既定値は維持。
-
-### 近傍の知覚
-
-#### `crowding_target`
-
-```rhai,ignore
-crowding_target(same_visible, other_visible)
-```
-
-適用対象：`PopulationSpec`と`Population`。 実行中に更新可能：`Population`内で鳴っているVoiceを更新する。
-
-Which voices are visible to crowding: own population, other populations (booleans).
-
-**根拠:** 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。
 
 ### LifecycleとViability
 
@@ -2250,7 +2092,6 @@ Per-voice scrambled scaffold pulse. Scene-wide initial condition; the last decla
 
 | キー | 根拠 |
 |-----|----------|
-| `birth_surrogate` | 作者規則：研究用のモデル、比較、正規化、対照。内部学習を作曲者が操作する語ではない（§9.3.55–57）。 |
 | `body_metabolism.enabled` | 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。 |
 | `body_metabolism.updates_per_hop` | 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。 |
 | `body_metabolism.observation_frames` | 作者規則：代謝、生存可能性、近傍個体との相互作用、生存過程・再生成。感覚入力を使っても、生態則が聴覚モデルになるわけではない（§9.3.57）。 |
@@ -2278,7 +2119,6 @@ Per-voice scrambled scaffold pulse. Scene-wide initial condition; the last decla
 | `psychoacoustics.habituation.satiation_sec` | 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。 |
 | `psychoacoustics.habituation.recovery_sec` | 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。 |
 | `psychoacoustics.habituation.ref_drive` | 原理：入力となる馴化の機能（§9.3.60）。<br>作者規則：現行の馴化の浸食式と時間・駆動の工学値（§9.3.60）。 |
-| `psychoacoustics.use_incoherent_power` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |
 | `dcc.coupling_strength` | 作者規則：結合の重み。Voice間の結合と聴き手のDCC帰還は別経路（§9.3.57）。 |
 | `dcc.max_temperature_bonus` | 作者規則：結合の重み。Voice間の結合と聴き手のDCC帰還は別経路（§9.3.57）。 |
 | `playback.wait_user_exit` | 該当なし（運転）：出力、再現性、研究用の実行設定（§9.3.56）。 |

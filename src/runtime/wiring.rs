@@ -64,11 +64,6 @@ pub(super) fn build_analysis_runtime_core(
     let nfft = config.analysis.nfft;
     let hop = config.analysis.hop_size;
     let overlap = 1.0 - (hop as f32 / nfft as f32);
-    let power_mode = if config.psychoacoustics.use_incoherent_power {
-        PowerMode::Incoherent
-    } else {
-        PowerMode::Coherent
-    };
     let nsgt_kernel = NsgtKernelLog2::new(
         NsgtLog2Config {
             fs,
@@ -78,7 +73,7 @@ pub(super) fn build_analysis_runtime_core(
         },
         space,
         None,
-        power_mode,
+        PowerMode::Coherent,
     );
     let nsgt = RtNsgtKernelLog2::with_config(nsgt_kernel.clone(), RtConfig::default());
     let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
@@ -689,14 +684,6 @@ pub(super) fn prepare_runtime(
                 settings,
             )
             .with_renderer_phase3(config.render_prototype),
-        );
-    }
-    if config.birth_surrogate {
-        pop.enable_birth_surrogate(
-            core.lparams.loudness_exp,
-            core.lparams.ref_power,
-            core.lparams.consonance_representation,
-            config.render_prototype,
         );
     }
     let scenario_max_id = scenario

@@ -16,14 +16,11 @@ pub(super) struct PopulationState {
     pub(super) respawn_policy: RespawnPolicy,
     pub(super) loo_at_placement: bool,
     tail_roughness_warned: bool,
-    pub(super) crowding_target_same: bool,
-    pub(super) crowding_target_other: bool,
     pub(super) status: PopulationStatus,
     pub(super) spawned: bool,
     harmonic_supported: bool,
     depth: usize,
     pub(super) pending_patch: ControlUpdate,
-    pub(super) pending_crowding_target: Option<(bool, bool)>,
     pub(super) pending_release: bool,
 }
 
@@ -676,20 +673,6 @@ impl ScriptContext {
                 if depth.is_some_and(|d| p.depth != d) {
                     continue;
                 }
-                if let Some((same_population_visible, other_population_visible)) =
-                    p.pending_crowding_target.take()
-                {
-                    append(Action::SetPopulationCrowdingTarget {
-                        population_id: id,
-                        same_population_visible,
-                        other_population_visible,
-                    })?;
-                }
-            }
-            for (&id, p) in &mut self.populations {
-                if depth.is_some_and(|d| p.depth != d) {
-                    continue;
-                }
                 if (depth.is_some() || p.pending_release) && p.spawned {
                     append(Action::ReleasePopulation {
                         population_id: id,
@@ -1228,14 +1211,11 @@ impl ScriptContext {
             respawn_policy: population_spec.spec.respawn_policy,
             loo_at_placement: population_spec.spec.control.pitch.leave_self_out,
             tail_roughness_warned,
-            crowding_target_same: population_spec.spec.crowding_target_same,
-            crowding_target_other: population_spec.spec.crowding_target_other,
             spec: population_spec.spec,
             status: PopulationStatus::Live,
             spawned: true,
             depth: self.scopes.len(),
             pending_patch: ControlUpdate::default(),
-            pending_crowding_target: None,
             pending_release: false,
         };
         self.populations.insert(id, population);
@@ -1273,8 +1253,8 @@ impl ScriptContext {
             });
             actions.push(Action::SetPopulationCrowdingTarget {
                 population_id: id,
-                same_population_visible: population.crowding_target_same,
-                other_population_visible: population.crowding_target_other,
+                same_population_visible: true,
+                other_population_visible: false,
             });
             if !matches!(population.respawn_policy, RespawnPolicy::None) {
                 actions.push(Action::SetRespawnPolicy {

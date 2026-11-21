@@ -449,48 +449,6 @@ impl Community {
             bin_freq(idx)
         };
 
-        let mut body_workspace = self.birth_surrogate.borrow_mut();
-        let body_cache = if let (Some(work), Some(control)) = (body_workspace.as_mut(), control) {
-            match strategy {
-                SpawnStrategy::Field {
-                    target,
-                    sampling: FieldSampling::Peak,
-                    ..
-                } => work.candidates(
-                    control,
-                    landscape,
-                    self.current_frame,
-                    (min_freq, max_freq),
-                    |i| {
-                        if target_score.is_some() {
-                            landscape.consonance_field_score_eff[i]
-                        } else {
-                            field_peak_score(*target, landscape, i)
-                        }
-                    },
-                ),
-                SpawnStrategy::Field { target, .. } => {
-                    let gap_ref = if *target == FieldTarget::Gap {
-                        (idx_min..=idx_max)
-                            .map(|i| landscape.subjective_intensity[i])
-                            .fold(0.0f32, f32::max)
-                    } else {
-                        0.0
-                    };
-                    work.candidates(
-                        control,
-                        landscape,
-                        self.current_frame,
-                        (min_freq, max_freq),
-                        |i| field_density_mass(*target, landscape, i, gap_ref),
-                    )
-                }
-                SpawnStrategy::Linear { .. } => None,
-            }
-        } else {
-            None
-        };
-
         let pick_idx = match strategy {
             // Deterministic extremum of the target (higher score = better).
             SpawnStrategy::Field {
@@ -500,28 +458,16 @@ impl Community {
             } => {
                 let mut best_free = None;
                 let mut best_any = (idx_min, f32::MIN);
-                let native_score = |i: usize| {
-                    match target_score {
-                        Some(t) => {
-                            let s = if let Some(slot) = body_cache {
-                                body_workspace.as_ref().unwrap().candidate_mass(slot, i)
-                            } else {
-                                landscape
-                                    .consonance_field_score_eff
-                                    .get(i)
-                                    .copied()
-                                    .unwrap_or(f32::MIN)
-                            };
-                            -(s - t).abs() // nearest to the tension target = best
-                        }
-                        None => {
-                            if let Some(slot) = body_cache {
-                                body_workspace.as_ref().unwrap().candidate_mass(slot, i)
-                            } else {
-                                field_peak_score(*target, landscape, i)
-                            }
-                        }
+                let native_score = |i: usize| match target_score {
+                    Some(t) => {
+                        let s = landscape
+                            .consonance_field_score_eff
+                            .get(i)
+                            .copied()
+                            .unwrap_or(f32::MIN);
+                        -(s - t).abs() // nearest to the tension target = best
                     }
+                    None => field_peak_score(*target, landscape, i),
                 };
                 for i in idx_min..=idx_max {
                     let score = native_score(i);
@@ -574,12 +520,7 @@ impl Community {
                 } else {
                     0.0
                 };
-                let mut weights = if body_cache.is_some() {
-                    std::mem::take(&mut body_workspace.as_mut().unwrap().selection_weights)
-                } else {
-                    Vec::with_capacity(range_len)
-                };
-                weights.clear();
+                let mut weights = Vec::with_capacity(range_len);
                 let mut has_unoccupied = false;
                 let mut sum = 0.0f32;
                 for i in idx_min..=idx_max {
@@ -595,20 +536,10 @@ impl Community {
                                 .get(i)
                                 .copied()
                                 .unwrap_or(f32::MIN);
-                            let base = if let Some(slot) = body_cache {
-                                body_workspace.as_ref().unwrap().candidate_mass(slot, i)
-                            } else {
-                                field_density_mass(*target, landscape, i, gap_ref)
-                            };
-                            base * unit_gaussian(s - t, tension_sigma)
+                            field_density_mass(*target, landscape, i, gap_ref)
+                                * unit_gaussian(s - t, tension_sigma)
                         }
-                        None => {
-                            if let Some(slot) = body_cache {
-                                body_workspace.as_ref().unwrap().candidate_mass(slot, i)
-                            } else {
-                                field_density_mass(*target, landscape, i, gap_ref)
-                            }
-                        }
+                        None => field_density_mass(*target, landscape, i, gap_ref),
                     };
                     let w = if occupied { 0.0 } else { raw.max(0.0) };
                     let w = if w.is_finite() { w } else { 0.0 };
@@ -632,21 +563,8 @@ impl Community {
                         *out = f64::from(*weight);
                     }
                     let mut shadow = rng.clone();
-                    let baseline = if body_cache.is_some() {
-                        let total = weights.iter().map(|(w, _)| *w).sum::<f32>();
-                        let draw = shadow.random_range(0.0..total);
-                        let mut cumulative = 0.;
-                        weights
-                            .iter()
-                            .position(|(w, _)| {
-                                cumulative += *w;
-                                draw < cumulative
-                            })
-                            .unwrap_or(range_len - 1)
-                    } else {
-                        WeightedIndex::new(weights.iter().map(|(w, _)| *w))
-                            .map_or_else(|_| 0, |d| d.sample(&mut shadow))
-                    };
+                    let baseline = WeightedIndex::new(weights.iter().map(|(w, _)| *w))
+                        .map_or_else(|_| 0, |d| d.sample(&mut shadow));
                     self.harmonic_spawn.borrow().as_ref().unwrap().mix(
                         &mut conditioned,
                         baseline,
@@ -656,26 +574,11 @@ impl Community {
                         *weight = *value as f32;
                     }
                 }
-                if body_cache.is_some() {
-                    let total = weights.iter().map(|(w, _)| *w).sum::<f32>();
-                    let draw = rng.random_range(0.0..total);
-                    let mut cumulative = 0.0;
-                    let offset = weights
-                        .iter()
-                        .position(|(w, _)| {
-                            cumulative += *w;
-                            draw < cumulative
-                        })
-                        .unwrap_or(range_len - 1);
-                    body_workspace.as_mut().unwrap().selection_weights = weights;
-                    idx_min + offset
+                let ws: Vec<f32> = weights.iter().map(|(w, _)| *w).collect();
+                if let Ok(dist) = WeightedIndex::new(&ws) {
+                    idx_min + dist.sample(rng)
                 } else {
-                    let ws: Vec<f32> = weights.iter().map(|(w, _)| *w).collect();
-                    if let Ok(dist) = WeightedIndex::new(&ws) {
-                        idx_min + dist.sample(rng)
-                    } else {
-                        idx_min + rng.random_range(0..range_len)
-                    }
+                    idx_min + rng.random_range(0..range_len)
                 }
             }
             SpawnStrategy::Linear { .. } => idx_min,
@@ -738,32 +641,8 @@ impl Community {
             FieldTarget::Dissonance => -landscape.consonance_field_score_eff[i],
             _ => field_peak_score(*target, landscape, i),
         };
-        let mut body_workspace = self.birth_surrogate.borrow_mut();
-        let body_cache = if let (Some(work), Some(control)) = (body_workspace.as_mut(), control) {
-            work.candidates(
-                control,
-                landscape,
-                self.current_frame,
-                (lo_hz, hi_hz),
-                |i| {
-                    if *sampling == FieldSampling::Peak {
-                        choice_base(i)
-                    } else {
-                        field_density_mass(*target, landscape, i, gap_ref)
-                    }
-                },
-            )
-        } else {
-            None
-        };
         for i in lo..=hi {
-            let body_base =
-                body_cache.map(|slot| body_workspace.as_ref().unwrap().candidate_mass(slot, i));
-            let base = if *sampling == FieldSampling::Peak {
-                body_base.unwrap_or_else(|| choice_base(i))
-            } else {
-                choice_base(i)
-            };
+            let base = choice_base(i);
             let value = weights.value(template.as_ref().map_or_else(
                 || snapshot.candidate(&[(i, density)]),
                 |t| snapshot.template_features(i, t),
@@ -771,11 +650,7 @@ impl Community {
             scores[i] = (f64::from(base) + value).clamp(-f64::MAX, f64::MAX);
             minimum = minimum.min(scores[i]);
             maximum = maximum.max(scores[i]);
-            let base_mass = if *sampling == FieldSampling::Density {
-                body_base.unwrap_or_else(|| field_density_mass(*target, landscape, i, gap_ref))
-            } else {
-                field_density_mass(*target, landscape, i, gap_ref)
-            };
+            let base_mass = field_density_mass(*target, landscape, i, gap_ref);
             masses[i] = if base_mass > 0. {
                 (f64::from(base_mass).ln()
                     + (f64::from(landscape.consonance_representation.beta) * value)
@@ -1230,199 +1105,6 @@ mod tests {
                     assert!(pop.harmonic_spawn.borrow().is_none());
                 }
             }
-        }
-    }
-
-    #[test]
-    fn birth_surrogate_keeps_occupancy_spacing_and_zero_mass_fallback_in_range() {
-        use crate::scenario::control::VoiceControl;
-        let space = Log2Space::new(100.0, 800.0, 24);
-        let mut landscape = Landscape::new(space.clone());
-        let lo = 200.0;
-        let hi = 400.0;
-        let occupied_hz = space.freq_of_index(space.nearest_index(220.0));
-        let mut pop = test_pop();
-        pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
-        let control = VoiceControl::default();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(73);
-        let strategy = SpawnStrategy::Field {
-            target: FieldTarget::Consonance,
-            sampling: FieldSampling::Density,
-            min_freq: lo,
-            max_freq: hi,
-            min_dist_erb: 0.5,
-            tension: 0.0,
-        };
-        for mass in [0.0, 1.0] {
-            landscape.consonance_density_mass_eff.fill(mass);
-            for _ in 0..64 {
-                let f = pop.decide_frequency(
-                    &strategy,
-                    &landscape,
-                    &mut rng,
-                    &[occupied_hz],
-                    Some(&control),
-                );
-                assert!((lo..=hi).contains(&f));
-                assert!(!pop.is_range_occupied_with(f, 0.5, &[occupied_hz]));
-            }
-        }
-        let reserved: Vec<f32> = (space.nearest_index(lo)..=space.nearest_index(hi))
-            .map(|i| space.freq_of_index(i))
-            .collect();
-        landscape.consonance_density_mass_eff.fill(0.0);
-        for _ in 0..64 {
-            let f =
-                pop.decide_frequency(&strategy, &landscape, &mut rng, &reserved, Some(&control));
-            assert!((lo..=hi).contains(&f));
-        }
-    }
-
-    #[test]
-    fn excluded_body_uses_exact_legacy_selection_and_rng() {
-        use crate::scenario::control::{BodyMethod, VoiceControl};
-        let mut landscape = Landscape::new(Log2Space::new(100.0, 800.0, 24));
-        for i in 0..landscape.space.n_bins() {
-            landscape.consonance_density_mass_eff[i] = (i % 11) as f32 / 11.0;
-            landscape.consonance_field_level_eff[i] = (i % 7) as f32 / 7.0;
-        }
-        let legacy = test_pop();
-        let mut enabled = test_pop();
-        enabled.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
-        let mut control = VoiceControl::default();
-        control.body.method = BodyMethod::Harmonic;
-        control.body.timbre.motion = 0.9;
-        let mut old_rng = rand::rngs::SmallRng::seed_from_u64(4);
-        let mut new_rng = rand::rngs::SmallRng::seed_from_u64(4);
-        for sampling in [FieldSampling::Density, FieldSampling::Peak] {
-            let strategy = SpawnStrategy::Field {
-                target: FieldTarget::Consonance,
-                sampling,
-                min_freq: 200.0,
-                max_freq: 600.0,
-                min_dist_erb: 0.3,
-                tension: 0.0,
-            };
-            for _ in 0..32 {
-                let old = legacy.decide_frequency(
-                    &strategy,
-                    &landscape,
-                    &mut old_rng,
-                    &[220.0],
-                    Some(&control),
-                );
-                let new = enabled.decide_frequency(
-                    &strategy,
-                    &landscape,
-                    &mut new_rng,
-                    &[220.0],
-                    Some(&control),
-                );
-                assert_eq!(old.to_bits(), new.to_bits());
-                assert_eq!(old_rng.next_u64(), new_rng.next_u64());
-            }
-        }
-    }
-
-    #[test]
-    fn harmonic_birth_reads_upper_partials_instead_of_only_the_fundamental() {
-        use crate::core::mode_pattern::ModePattern;
-        use crate::scenario::control::{BodyMethod, VoiceControl};
-        let mut landscape = Landscape::new(Log2Space::new(100.0, 1600.0, 24));
-        let upper = landscape.space.nearest_index(440.0);
-        landscape.consonance_density_mass_eff[upper] = 1.0;
-        let mut control = VoiceControl::default();
-        control.body.method = BodyMethod::Harmonic;
-        control.body.timbre.spread = 0.0;
-        control.body.timbre.unison = 1;
-        control.body.modes = Some(ModePattern::custom_modes(vec![1.0, 2.0]));
-        let strategy = SpawnStrategy::Field {
-            target: FieldTarget::Consonance,
-            sampling: FieldSampling::Density,
-            min_freq: 200.0,
-            max_freq: 240.0,
-            min_dist_erb: 0.0,
-            tension: 0.0,
-        };
-        for renderer_phase3 in [false, true] {
-            let mut pop = test_pop();
-            pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), renderer_phase3);
-            let mut rng = rand::rngs::SmallRng::seed_from_u64(9);
-            for _ in 0..32 {
-                let f = pop.decide_frequency(&strategy, &landscape, &mut rng, &[], Some(&control));
-                assert_eq!(
-                    landscape.space.nearest_index(f),
-                    landscape.space.nearest_index(220.0)
-                );
-            }
-        }
-    }
-
-    #[test]
-    #[ignore = "release-only diagnostic cost; never a real-time acceptance gate"]
-    // Preserve the runtime profile guard so debug builds still compile this ignored assay.
-    #[allow(clippy::assertions_on_constants)]
-    fn birth_surrogate_release_cost() {
-        use crate::clock::Instant;
-        use crate::scenario::control::BodyMethod;
-        assert!(!cfg!(debug_assertions), "release profile required");
-        let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
-        landscape.consonance_density_mass_eff.fill(0.5);
-        for (name, count, distinct) in [
-            ("one", 1, false),
-            ("ten_same", 10, false),
-            ("ten_distinct", 10, true),
-        ] {
-            let mut samples = Vec::new();
-            for _ in 0..5 {
-                let mut pop = super::super::Community::new(crate::core::timebase::Timebase {
-                    fs: 48000.0,
-                    hop: 512,
-                });
-                pop.enable_birth_surrogate(0.23, 1e-4, Default::default(), false);
-                let mut spec = super::super::tests::spawn_spec_with_freq(440.0);
-                spec.control.body.method = BodyMethod::Harmonic;
-                spec.control.body.timbre.spread = 0.0;
-                spec.control.body.timbre.unison = 1;
-                let strategy = SpawnStrategy::Field {
-                    target: FieldTarget::Consonance,
-                    sampling: FieldSampling::Density,
-                    min_freq: 55.0,
-                    max_freq: 8000.0,
-                    min_dist_erb: 0.0,
-                    tension: 0.0,
-                };
-                let mut actions = Vec::new();
-                if distinct {
-                    for i in 0..count {
-                        let mut child = spec.clone();
-                        child.control.body.timbre.brightness = i as f32 / count as f32;
-                        actions.push((vec![i as u64 + 1], child));
-                    }
-                } else {
-                    actions.push(((1..=count as u64).collect(), spec));
-                }
-                let start = Instant::now();
-                for (ids, spec) in actions {
-                    pop.apply_action(
-                        crate::scenario::Action::Spawn {
-                            population_id: 1,
-                            ids: ids.into(),
-                            spec,
-                            strategy: Some(strategy.clone()),
-                        },
-                        &landscape,
-                    );
-                }
-                samples.push(start.elapsed().as_secs_f64() * 1000.0);
-                assert_eq!(pop.voices.len(), count);
-            }
-            println!(
-                "{}",
-                serde_json::json!({"schema":"b4-birth-cost", "case":name,
-                "births":count, "milliseconds":samples,
-                "scope":"legacy harmonic actual spawn path; scratch allocated before timer; diagnostic only"})
-            );
         }
     }
 

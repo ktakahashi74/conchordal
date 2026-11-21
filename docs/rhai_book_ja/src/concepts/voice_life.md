@@ -124,9 +124,8 @@ Phonationは、onsetがいつ起きるか、そのonsetがどれだけ開いた�
   発音の機会で打ち直すほか、明示の持続と併せてToneを保てます。[リズム](rhythm.md)を参照してください。
 - `cycles(n)`はdurationをrhythmic cycle数で表します。
 
-presetで意図を表せない場合は、低水準の`once()`、`pulse(rate_hz)`、`while_alive()`、
-adaptive duration controlを使えます。まずpresetから始め、作品が必要とするときだけ
-明示的timingを使ってください。
+まずプリセットから始めます。発音の時機を直接指定したいときは`once()`か
+`pulse(rate_hz)`、音長を場の状態に応じて決めたいときは`adaptive_duration()`を使います。
 
 ## Releaseはdeathではない
 

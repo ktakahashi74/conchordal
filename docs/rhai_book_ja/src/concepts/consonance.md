@@ -261,10 +261,9 @@ gate_snap／rearticulateの参加では、`tie(p)`で保留がないToneを打�
 
 持続音と参加の機会を併せ持つVoiceに`rest()`を指定すると、発音ごとに有限の音長で
 音を離し、鳴り終わってから能動的な間を置きます。音長は`cycles(n)`、または
-`adaptive_duration()`とその調整語で指定します。音長、明示の`sustain()`、
+`adaptive_duration()`で指定します。音長、明示の`sustain()`、
 `entrained()`・`steady()`・`flow()`、`rest()`は、書く順によらず独立に保持します。
-有限の音長を暗黙に補う処理はありません。明示の`while_alive()`は有限の指定を消し、
-その後に有限の音長を指定し直さなければ配置時にerrorになります。
+配置には有限の音長を明示する必要があります。
 
 予定したOffで通常のreleaseを始め、余韻は切りません。rendererが同じsource IDと
 generationに属する全Toneの終了を確認してから、間を数えます。`rest()`は確認時の
@@ -273,8 +272,8 @@ generationに属する全Toneの終了を確認してから、間を数えます
 鳴り終わっていない場合も、代わりの値や期限を置かず待ちます。負値と有限でない値は
 0にし、有限の非負値に上限は置きません。
 
-音長と間には同じ身体の固有周期を使います。`intrinsic_rate(hz)`で速さを変えると、同じ
-`cycles`や`duration_range`、`rest(periods)`でも秒単位の音長と間が一緒に変わります。
+音長と間には同じ身体の固有周期を使います。`intrinsic_rate(hz)`で速さを変えると、音長と
+`rest(periods)`の指定が同じでも、秒単位の音長と間が一緒に変わります。
 entrainedが音響の反復に合わせて更新する参加周期とは独立です。
 
 間が終わると、既存の参加の判断で鳴らす・待つ・見送るを選べます。間の終わりだけで
@@ -288,13 +287,13 @@ release、死亡、removeが優先します。再生成したVoiceは設定を�
 
 ```rhai
 let notes = harmonic().sustain().entrained()
-    .adaptive_duration().duration_range(0.2, 0.2).rest(2);
+    .adaptive_duration().rest(2);
 let voices = place(notes, at(330.0));
 wait(3.0);
 release(voices);
 ```
 
-ここでの0.2周期と間の2周期は使い方の例で、推奨値ではありません。`rest`は音長の
+この例は余韻が終わってから、身体の固有周期二つ分の間を置きます。`rest`は音長の
 語と同じく配置前の指定です。明示の持続＋entrained／steady／flowと有限の音長が必要で、
 Glide、GateSnap、Rearticulateを選べます。対象外の配置は状態を書き換える前に拒否します。
 `rest`がなければ既存の規則を保ちます。この形では全ての音が有限長で終わり、Voiceが

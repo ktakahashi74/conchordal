@@ -1,4 +1,5 @@
 pub mod any_backend;
+pub mod attack_noise;
 pub(crate) mod bank_forecast;
 pub mod control;
 pub(crate) mod control_forecast;
@@ -7,6 +8,7 @@ pub mod events;
 pub mod modal_engine;
 pub(crate) mod mode_utils;
 pub mod oscillator_bank;
+pub mod pitch_motion;
 pub mod render_modulator;
 pub(crate) mod sine_forecast;
 pub(crate) mod spectral;

@@ -42,6 +42,7 @@ fn snapshot(
 ) -> BodySnapshot {
     BodySnapshot {
         kind,
+        attack_noise: 0.,
         amp_scale: 1.0,
         brightness,
         inharmonic: 0.0,

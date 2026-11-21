@@ -12833,3 +12833,5 @@ Records are in `.orchestration/units/` TDEMO-1 to TDEMO-3 and FB-1 to FB-16.
 - Dry output recalibration (2026-11-20): from DR-25's 54 renders (maximum peak 0.6136, `14_stone_and_wire` seed 22, +4.07 dB before rounding) the off default moved from +4.5 dB to +4.0 dB. Each unit since DR-25 checked the off path of scores without sites against the earlier build (DR-32 to DR-34, DR-36).
 
 **Still not reopened.** Voice melody generation (§9.3.127) and grouping above the beat (§9.3.141).
+
+**Harmonic body, Phase 2 (2026-11-21).** Adopted the generation-wide pitch-motion repair and `attack_noise(db)`. After effective Off, sustained harmonics cease and a previously struck burst finishes on its source generation (draft A2). The author did not hear the fixed resonance bands in the blind comparison. Those bands, the proposed motion setter and the inheritance assay remain on `work/body-phase2-20261121` at `bbeb9bf9`. In the finite inheritance panel, the spectral and temporal routes were deferred and the hitchhiking route was closed. All 896 birth-candidate evaluations used the fundamental-only fallback.

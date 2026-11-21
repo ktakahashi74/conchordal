@@ -14,12 +14,26 @@ use crate::scenario::{
 use rand::{Rng, RngExt, SeedableRng, rngs::SmallRng};
 use std::f32::consts::{PI, TAU};
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct ArticulationSignal {
     pub amplitude: f32,
+    /// Gain at excitation, before the note envelope.
+    pub strike_gain: f32,
     pub is_active: bool,
     pub relaxation: f32,
     pub tension: f32,
+}
+
+impl Default for ArticulationSignal {
+    fn default() -> Self {
+        Self {
+            amplitude: 0.,
+            strike_gain: 1.,
+            is_active: false,
+            relaxation: 0.,
+            tension: 0.,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -625,6 +639,7 @@ impl ArticulationCore for KuramotoCore {
         let is_active = self.env_level * vitality > 1e-6 && self.state != ArticulationState::Idle;
         ArticulationSignal {
             amplitude: self.env_level * vitality,
+            strike_gain: vitality,
             is_active,
             relaxation,
             tension,
@@ -663,6 +678,7 @@ impl ArticulationCore for SequencedCore {
         self.env_level = if active { 1.0 } else { 0.0 };
         ArticulationSignal {
             amplitude: self.env_level,
+            strike_gain: f32::from(active),
             is_active: active,
             relaxation: rhythms.theta.alpha,
             tension: 0.0,
@@ -696,6 +712,7 @@ impl ArticulationCore for DroneCore {
         let amplitude = (0.3 + 0.7 * lfo) * relax_boost;
         ArticulationSignal {
             amplitude: amplitude.clamp(0.0, 1.0),
+            strike_gain: amplitude.clamp(0.0, 1.0),
             is_active: true,
             relaxation: rhythms.theta.alpha,
             tension: rhythms.theta.beta * 0.25,

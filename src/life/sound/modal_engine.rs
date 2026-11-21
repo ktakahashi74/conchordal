@@ -247,6 +247,7 @@ impl ModalEngine {
             self.bank.active_len()
         };
         Some(BankForecast {
+            burst: None,
             first_sample,
             response: Response::Resonator {
                 impulse,

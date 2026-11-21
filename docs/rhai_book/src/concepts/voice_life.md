@@ -73,7 +73,7 @@ prevents one musical decision from being mistaken for another.
 
 | Question | Main controls | Meaning |
 |---|---|---|
-| What sounds? | `sine`, `harmonic`, `modal`, `brightness`, `modes` | The founder Voice body and spectrum. |
+| What sounds? | `sine`, `harmonic`, `modal`, `brightness`, `modes`, `attack_noise` | The founder Voice body and spectrum. |
 | What kind of life? | `brain(name)`: `entrain`, `seq`, `drone` | Whether articulation participates in ecology, follows an authored life, or persists as terrain. |
 | When does it sound? | `sustain`, `repeat`, `metric`, `entrained`, `steady`, `flow` | Phonation and onset timing. |
 | Where does pitch go? | Placement, `anchor`, `seek_consonance`, `temperature` | Founder entry position and later movement. |
@@ -81,6 +81,12 @@ prevents one musical decision from being mistaken for another.
 
 Calls on different rows compose. Calls on the same axis are generally
 last-write-wins; the API Reference identifies the exact builder behavior.
+
+At placement, `harmonic().attack_noise(-18)` gives each strike, including
+restrikes, a short noise burst. At unit strike strength its initial RMS is
+18 dB below the note amplitude. The burst starts immediately even with a slow
+attack envelope, and falls by about 8.7 dB in 15 ms. Omit the method or set it
+to −80 dB for silence.
 
 ## Articulation life: `brain`
 

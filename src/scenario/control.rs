@@ -175,6 +175,8 @@ impl Default for Routing {
 
 #[derive(Debug, Clone)]
 pub struct TimbreControl {
+    /// Initial burst RMS relative to a unit strike, before the note envelope.
+    pub attack_noise: f32,
     pub brightness: f32,
     pub inharmonic: f32,
     pub motion: f32,
@@ -186,6 +188,7 @@ impl Default for TimbreControl {
     fn default() -> Self {
         Self {
             brightness: 0.6,
+            attack_noise: 0.,
             inharmonic: 0.0,
             motion: 0.0,
             spread: DEFAULT_TIMBRE_SPREAD,

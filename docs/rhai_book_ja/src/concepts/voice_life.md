@@ -68,7 +68,7 @@ PopulationSpecは、複数の独立した問いに答えます。分けて考え
 
 | 問い | 主なcontrol | 意味 |
 |---|---|---|
-| 何が鳴るか | `sine`, `harmonic`, `modal`, `brightness`, `modes` | 初代のVoiceの発音体と周波数成分。 |
+| 何が鳴るか | `sine`, `harmonic`, `modal`, `brightness`, `modes`, `attack_noise` | 初代のVoiceの発音体と周波数成分。 |
 | どんな生を送るか | `brain(name)`: `entrain`, `seq`, `drone` | articulationが生態系に参加するか、書かれた生を進むか、Landscapeのanchorとして持続するか。 |
 | いつ鳴るか | `sustain`, `repeat`, `metric`, `entrained`, `steady`, `flow` | phonationとonset timing。 |
 | 音高はどこへ行くか | Placement、`anchor`, `seek_consonance`, `temperature` | 初代のVoiceが入る位置と、その後の移動。 |
@@ -76,6 +76,8 @@ PopulationSpecは、複数の独立した問いに答えます。分けて考え
 
 別の行に属するcallは合成できます。同じ軸では通常、最後の指定が優先されます。正確な
 構築時に各メソッドがどう働くかはAPIリファレンスに記載されています。
+
+配置時に `harmonic().attack_noise(-18)` と書くと、打ち直しを含む各打撃に短い雑音が加わります。強さ 1 の打撃で、初期 RMS は発音振幅より 18 dB 下です。発音包絡の立ち上がりを遅くしても雑音は打撃の瞬間から鳴り、15 ms で約 8.7 dB 減衰します。省略時または −80 dB では無音です。
 
 ## Articulation life：`brain`
 

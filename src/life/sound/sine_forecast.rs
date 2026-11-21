@@ -84,7 +84,7 @@ mod tests {
                         envelope,
                         control: Some(tone.prediction_control(512, &rhythms)),
                         sine: tone.prediction_sine(512),
-                        bank: tone.prediction_bank(512),
+                        bank: tone.prediction_bank(512, &rhythms),
                         scheduled_release: None,
                     };
                     assert!(frozen.control.unwrap().amplitude_smoothing.is_some());

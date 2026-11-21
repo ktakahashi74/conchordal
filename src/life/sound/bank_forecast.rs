@@ -11,7 +11,7 @@ pub(crate) const LANES: usize = 16;
 pub struct Lane {
     /// State before the first forecast sample is rendered.
     pub state: [f32; 2],
-    /// Oscillator: cosine and sine of the phase step. Resonator: `r` and `e`.
+    /// Static oscillator: cosine and sine. Moving oscillator: base Hz and lane ratio. Resonator: `r` and `e`.
     pub step: [f32; 2],
     pub gain: f32,
     /// Oscillator: gain held until the next refresh. Resonator: input coupling magnitude.
@@ -24,6 +24,8 @@ pub struct Lane {
 pub enum Response {
     /// Envelopes are the values rendered at `first_sample`.
     Oscillator {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        motion: Option<(super::pitch_motion::MotionClock, f32, f32)>,
         drive_env: f32,
         drive_decay: f32,
         spectral_env: f32,
@@ -41,6 +43,8 @@ pub enum Response {
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub struct BankForecast {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub burst: Option<super::attack_noise::Burst>,
     pub first_sample: u64,
     pub response: Response,
     pub len: usize,
@@ -52,6 +56,10 @@ impl BankForecast {
     #[cfg(test)]
     pub(crate) fn for_new_onset(mut self, first_sample: u64, mut seed: u64) -> Self {
         self.first_sample = first_sample;
+        if let Some(burst) = &mut self.burst {
+            burst.seed = seed;
+            burst.onset = first_sample;
+        }
         match &mut self.response {
             Response::Oscillator { refresh_at, .. } => {
                 *refresh_at = first_sample;
@@ -96,6 +104,7 @@ impl BankForecast {
     pub(crate) fn lane_at(&self, lane: usize, tick: u64) -> Option<[f64; 4]> {
         // A span that contains the onset is referenced before it; gains stay at the onset.
         let steps = (i128::from(tick) - i128::from(self.first_sample)) as f64 + 1.;
+        let phase_tick = tick;
         let tick = tick.max(self.first_sample);
         let lane = self.lanes[..self.len].get(lane)?;
         let [x, y] = lane.state.map(f64::from);
@@ -108,9 +117,13 @@ impl BankForecast {
                 spectral_floor,
                 refresh_at,
                 refresh_period,
+                motion,
             } => {
                 let [c, s] = lane.step.map(f64::from);
-                let omega = s.atan2(c);
+                let omega = match motion {
+                    Some((_, fs, _)) => std::f64::consts::TAU * c * s / f64::from(fs),
+                    None => s.atan2(c),
+                };
                 let mask = if tick < refresh_at {
                     f64::from(lane.held)
                 } else {
@@ -126,7 +139,19 @@ impl BankForecast {
                     * f64::from(drive_decay).powf((tick - self.first_sample) as f64);
                 // Oscillator radius is maintained by the renderer, unlike modal decay.
                 let gain = mask * (1. + 0.25 * drive);
-                let (sin, cos) = (omega * steps).sin_cos();
+                let (phase, omega) = if let Some((clock, fs, amount)) = motion {
+                    let depth = amount * 0.02;
+                    let offset_samples =
+                        clock.integral(phase_tick.saturating_add(1), fs, depth, amount)
+                            - clock.integral(self.first_sample, fs, depth, amount);
+                    (
+                        omega * (steps + offset_samples),
+                        omega * (1. + f64::from(clock.offset(phase_tick, fs, 5., depth, amount))),
+                    )
+                } else {
+                    (omega * steps, omega)
+                };
+                let (sin, cos) = phase.sin_cos();
                 [
                     (x * cos - y * sin) * gain,
                     (x * sin + y * cos) * gain,
@@ -177,6 +202,16 @@ mod tests {
     use crate::life::tone_energy::ToneEnergy;
 
     fn tone(kind: BodyKind, onset: u64, frequency: f32, seed: u64) -> Tone {
+        tone_with_motion(kind, onset, frequency, seed, 0.)
+    }
+
+    fn tone_with_motion(
+        kind: BodyKind,
+        onset: u64,
+        frequency: f32,
+        seed: u64,
+        motion: f32,
+    ) -> Tone {
         let mut tone = Tone::from_parts(
             Timebase {
                 fs: 48000.,
@@ -188,12 +223,13 @@ mod tests {
             0.2,
             Some(BodySnapshot {
                 kind,
+                attack_noise: 0.,
                 amp_scale: 1.,
                 brightness: 0.6,
                 inharmonic: 0.,
                 spread: 0.,
                 unison: 1,
-                motion: 0.,
+                motion,
                 ratios: matches!(kind, BodyKind::Modal)
                     .then(|| (1..=16).map(|k| k as f32).collect::<Vec<_>>().into()),
             }),
@@ -212,6 +248,267 @@ mod tests {
         tone
     }
 
+    #[test]
+    fn moving_attack_and_ringing_forecast_match_pcm() {
+        let rhythms = NeuralRhythms::default();
+        for pitch in [180., 400., 1100.] {
+            let mut tone = Tone::from_parts(
+                Timebase {
+                    fs: 48000.,
+                    hop: 64,
+                },
+                0,
+                48000,
+                pitch,
+                0.4,
+                Some(BodySnapshot {
+                    kind: BodyKind::Harmonic,
+                    amp_scale: 1.,
+                    brightness: 0.5,
+                    inharmonic: 0.,
+                    spread: 0.3,
+                    unison: 3,
+                    motion: 0.5,
+                    attack_noise: 1.,
+                    ratios: Some(std::sync::Arc::from([1., 2., 3., 4.])),
+                }),
+                None,
+                Some(ToneAdsr {
+                    attack_sec: 0.02,
+                    decay_sec: 0.5,
+                    sustain_level: 0.8,
+                    release_sec: 0.002,
+                }),
+            )
+            .unwrap();
+            tone.seed_modal_phases(212);
+            tone.arm_onset_trigger(0.85);
+            #[cfg(feature = "research")]
+            let mut phase3 = {
+                let mut phase3 = tone.clone();
+                phase3.enable_phase3();
+                phase3
+            };
+            let energy_error = window_error(tone.clone(), 0, 768, &rhythms);
+            eprintln!("DR42 onset energy {pitch} Hz relative error {energy_error}");
+            assert!(energy_error < 0.001);
+            let mut saved = model(&tone, 0, &rhythms);
+            let mut max_error = 0_f64;
+            for tick in 0..13500 {
+                if tick == 900 {
+                    tone.note_off(tick);
+                    #[cfg(feature = "research")]
+                    phase3.note_off(tick);
+                    let tail_error = window_error(tone.clone(), tick, 768, &rhythms);
+                    eprintln!("DR42 release energy {pitch} Hz relative error {tail_error}");
+                    assert!(tail_error < 0.001);
+                }
+                if [805, 900, 1200].contains(&tick) {
+                    saved = model(&tone, tick, &rhythms);
+                }
+                let pcm = tone.render_tick(tick, 48000., 1. / 48000., &rhythms);
+                let forecast = sample(saved, tick);
+                max_error = max_error.max((forecast - f64::from(pcm)).abs());
+                #[cfg(feature = "research")]
+                {
+                    let native = phase3.render_tick(tick, 48000., 1. / 48000., &rhythms);
+                    max_error = max_error.max((forecast - f64::from(native)).abs());
+                    if tick == 1200 {
+                        assert!(phase3.residual_bound(tick).is_none());
+                    }
+                    if tick == 12960 {
+                        assert_eq!(phase3.residual_bound(tick), Some(0.));
+                        assert_eq!(native, 0.);
+                    }
+                }
+                if tick == 1200 {
+                    assert!(!tone.is_done(tick));
+                }
+                if tick == 12960 {
+                    assert!(tone.is_done(tick));
+                    assert_eq!(tone.end_tick(), tick);
+                    assert_eq!(pcm, 0.);
+                }
+            }
+            eprintln!("DR42 waveform {pitch} Hz max error {max_error}");
+            assert!(max_error < 1e-4);
+        }
+    }
+
+    #[test]
+    fn seeded_attack_noise_has_the_requested_level_and_decay_on_restrike() {
+        let mut rhythms = NeuralRhythms::default();
+        rhythms.theta.beta = 0.;
+        let render = |seed, level: Option<f32>, native: bool, attack_sec| {
+            let mut tone = Tone::from_parts(
+                Timebase {
+                    fs: 48000.,
+                    hop: 256,
+                },
+                0,
+                12000,
+                340.,
+                0.4,
+                Some(BodySnapshot {
+                    kind: BodyKind::Harmonic,
+                    amp_scale: 1.,
+                    brightness: 0.6,
+                    inharmonic: 0.,
+                    spread: 0.,
+                    unison: 1,
+                    motion: 0.,
+                    ratios: None,
+                    attack_noise: level.unwrap_or_default(),
+                }),
+                None,
+                Some(ToneAdsr {
+                    attack_sec,
+                    decay_sec: if attack_sec == 0. { 0. } else { 0.5 },
+                    sustain_level: if attack_sec == 0. { 1. } else { 0.8 },
+                    release_sec: 2.,
+                }),
+            )
+            .unwrap();
+            tone.seed_modal_phases(seed);
+            #[cfg(feature = "research")]
+            if native {
+                tone.enable_phase3();
+            }
+            #[cfg(not(feature = "research"))]
+            assert!(!native);
+            (0..8192)
+                .map(|tick| {
+                    if tick == 0 || tick == 4096 {
+                        tone.trigger_impulse(if tick == 0 { 1. } else { 0.5 });
+                    }
+                    tone.render_tick(tick, 48000., 1. / 48000., &rhythms)
+                })
+                .collect::<Vec<_>>()
+        };
+        let level = 0.25;
+        for attack_sec in [0., 0.02] {
+            for native in [
+                false,
+                #[cfg(feature = "research")]
+                true,
+            ] {
+                let bits = |level| {
+                    render(18, level, native, attack_sec)
+                        .into_iter()
+                        .map(f32::to_bits)
+                };
+                assert!(bits(Some(level)).eq(bits(Some(level))));
+                assert!(bits(Some(0.)).eq(bits(None)));
+                let mut energy = [[0f64; 12]; 2];
+                for seed in 0..48 {
+                    let wet = render(seed, Some(level), native, attack_sec);
+                    let dry = render(seed, None, native, attack_sec);
+                    for (hit, bins) in energy.iter_mut().enumerate() {
+                        for (i, e) in bins.iter_mut().enumerate() {
+                            for n in hit * 4096 + i * 240..hit * 4096 + (i + 1) * 240 {
+                                *e += f64::from(wet[n] - dry[n]).powi(2);
+                            }
+                        }
+                    }
+                }
+                for (hit, bins) in energy.iter().enumerate() {
+                    let log_rms = bins.map(|e| 0.5 * (e / (48. * 240.)).ln());
+                    let mean = log_rms.iter().sum::<f64>() / 12.;
+                    let slope = log_rms
+                        .iter()
+                        .enumerate()
+                        .map(|(i, y)| (i as f64 - 5.5) * (y - mean))
+                        .sum::<f64>()
+                        / 143.;
+                    let tau = -5. / slope;
+                    // Exact mean squared exponential over one 5 ms bin.
+                    let q = (2. * slope / 240.).exp();
+                    let bin_factor = ((1. - q.powi(240)) / (240. * (1. - q))).sqrt();
+                    let initial = (mean - 5.5 * slope).exp() / bin_factor;
+                    let expected = if hit == 0 { 0.1 } else { 0.05 };
+                    eprintln!(
+                        "DR42 burst attack_s={attack_sec} native={native} hit={hit} tau_ms={tau} initial_rms={initial}"
+                    );
+                    assert!((tau - 15.).abs() < 0.5 && (initial / expected - 1.).abs() < 0.04);
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "profile-alloc")]
+    #[test]
+
+    fn unmodulated_harmonic_render_has_no_steady_allocations() {
+        let rhythms = NeuralRhythms::default();
+        let mut tones: Vec<_> = (0..8)
+            .map(|i| {
+                let mut tone = Tone::from_parts(
+                    Timebase {
+                        fs: 48000.,
+                        hop: 256,
+                    },
+                    0,
+                    1000000,
+                    180. + i as f32 * 19.,
+                    0.2,
+                    Some(BodySnapshot {
+                        kind: BodyKind::Harmonic,
+                        amp_scale: 1.,
+                        brightness: 0.6,
+                        inharmonic: 0.,
+                        spread: 0.25,
+                        unison: 3,
+                        motion: 0.,
+                        ratios: None,
+                        attack_noise: 0.,
+                    }),
+                    None,
+                    Some(ToneAdsr {
+                        attack_sec: 0.,
+                        decay_sec: 0.,
+                        sustain_level: 1.,
+                        release_sec: 0.1,
+                    }),
+                )
+                .unwrap();
+                tone.seed_modal_phases(i);
+                tone
+            })
+            .collect();
+        let mut hop = |h: u64| {
+            let mut mix = [0.; 256];
+            for (i, tone) in tones.iter_mut().enumerate() {
+                if h % 64 == 0 {
+                    tone.trigger_impulse(1.);
+                    tone.schedule_update(
+                        h * 256,
+                        crate::life::phonation_engine::ToneUpdate {
+                            target_freq_hz: Some(
+                                180. + i as f32 * 19. + ((h / 64) % 2) as f32 * 20.,
+                            ),
+                            ..Default::default()
+                        },
+                    );
+                    tone.apply_updates_if_due(h * 256);
+                }
+                for (j, y) in mix.iter_mut().enumerate() {
+                    *y += tone.render_tick(h * 256 + j as u64, 48000., 1. / 48000., &rhythms);
+                }
+            }
+            std::hint::black_box(mix);
+        };
+        for h in 0..128 {
+            hop(h);
+        }
+        crate::runtime_profile::begin_allocations();
+        for h in 128..2176 {
+            hop(h);
+        }
+        let alloc = crate::runtime_profile::finish_allocations().unwrap();
+        eprintln!("steady harmonic allocations={alloc:?}");
+        assert_eq!((alloc.count, alloc.bytes), (0, 0));
+    }
+
     fn model(tone: &Tone, now: u64, rhythms: &NeuralRhythms) -> ToneEnergy {
         let (_, amplitude, envelope) = tone.prediction_parameters(None);
         ToneEnergy {
@@ -219,7 +516,7 @@ mod tests {
             envelope,
             control: Some(tone.prediction_control(now, rhythms)),
             sine: tone.prediction_sine(now),
-            bank: tone.prediction_bank(now),
+            bank: tone.prediction_bank(now, rhythms),
             scheduled_release: None,
         }
     }
@@ -227,19 +524,32 @@ mod tests {
     fn sample(model: ToneEnergy, tick: u64) -> f64 {
         let bank = model.bank.unwrap();
         let amplitude = (2. * model.at(tick, None).unwrap()).sqrt();
-        (0..bank.len)
+        let carrier: f64 = (0..bank.len)
             .map(|lane| bank.lane_at(lane, tick).unwrap()[1] * amplitude)
-            .sum()
+            .sum();
+        carrier
+            + bank
+                .burst
+                .filter(|b| (b.onset..b.end()).contains(&tick))
+                .map_or(0., |b| {
+                    (0..super::super::attack_noise::NOISE_LANES)
+                        .map(|i| b.point(i, tick)[1])
+                        .sum()
+                })
     }
 
     #[test]
     fn bank_forecast_tracks_the_rendered_harmonic_and_modal_waveforms() {
         let rhythms = NeuralRhythms::default();
-        for kind in [BodyKind::Harmonic, BodyKind::Modal] {
+        for (kind, motion) in [
+            (BodyKind::Harmonic, 0.),
+            (BodyKind::Modal, 0.),
+            (BodyKind::Harmonic, 0.9),
+        ] {
             let (mut maximum, mut peak) = (0_f64, 0_f64);
             for prefix in [0, 37, 300, 8192] {
                 for frequency in [181., 523., 2900.] {
-                    let mut tone = tone(kind, 37, frequency, 7731);
+                    let mut tone = tone_with_motion(kind, 37, frequency, 7731, motion);
                     for tick in 0..prefix {
                         tone.kick_planned_if_due(tick);
                         tone.render_tick(tick, 48000., 1. / 48000., &rhythms);
@@ -351,6 +661,7 @@ mod tests {
                 0.2,
                 Some(BodySnapshot {
                     kind,
+                    attack_noise: 0.,
                     amp_scale: 1.,
                     brightness: 0.6,
                     inharmonic: 0.,
@@ -394,6 +705,7 @@ mod tests {
             0.2,
             Some(BodySnapshot {
                 kind,
+                attack_noise: 0.,
                 amp_scale: 1.,
                 brightness: 0.6,
                 inharmonic: 0.,
@@ -501,9 +813,9 @@ mod tests {
                 tone.kick_planned_if_due(tick);
                 tone.render_tick(tick, 48000., 1. / 48000., &rhythms);
             }
-            assert!(tone.prediction_bank(512).is_some());
+            assert!(tone.prediction_bank(512, &rhythms).is_some());
             tone.trigger_impulse(0.5);
-            assert!(tone.prediction_bank(512).is_none());
+            assert!(tone.prediction_bank(512, &rhythms).is_none());
         }
     }
 
@@ -512,7 +824,7 @@ mod tests {
         let rhythms = NeuralRhythms::default();
         let mut driven = tone(BodyKind::Modal, 37, 293., 11);
         driven.set_continuous_drive(0.02);
-        assert!(driven.prediction_bank(0).is_none());
+        assert!(driven.prediction_bank(0, &rhythms).is_none());
         let mut moving = tone(BodyKind::Harmonic, 37, 293., 11);
         moving.schedule_update(
             100,
@@ -523,7 +835,7 @@ mod tests {
                 continuous_drive: None,
             },
         );
-        assert!(moving.prediction_bank(0).is_none());
+        assert!(moving.prediction_bank(0, &rhythms).is_none());
         assert!(
             model(&tone(BodyKind::Sine, 37, 293., 11), 0, &rhythms)
                 .bank

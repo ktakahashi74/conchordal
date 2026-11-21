@@ -259,7 +259,7 @@ impl ScheduleRenderer {
                     control: Some(routed.tone.prediction_control(now, rhythms)),
                     scheduled_release: None,
                     sine: routed.tone.prediction_sine(now),
-                    bank: routed.tone.prediction_bank(now),
+                    bank: routed.tone.prediction_bank(now, rhythms),
                 },
             };
         }
@@ -1379,6 +1379,17 @@ impl ScheduleRenderer {
     fn apply_phonation_batches(&mut self, phonation_batches: &[PhonationBatch], now: Tick) {
         let default_hold_ticks = max_phonation_hold_ticks(self.time);
         for batch in phonation_batches {
+            if let Some(amount) = batch.motion_update {
+                for (key, rt) in &mut self.tones {
+                    if key.source_id == batch.source_id && key.generation == batch.source_generation
+                    {
+                        rt.tone.update_motion(batch.motion_clock, amount);
+                        if let Some(shape) = &mut rt.support_shape {
+                            shape.motion = amount;
+                        }
+                    }
+                }
+            }
             for cmd in &batch.cmds {
                 match *cmd {
                     ToneCmd::On { tone_id, kick } => {
@@ -1440,6 +1451,21 @@ impl ScheduleRenderer {
                             ));
                             #[cfg(test)]
                             tone.set_render_cost_oracle(self.sample_major_oracle);
+                            if spec.body.kind == crate::life::sound::BodyKind::Harmonic
+                                && spec.body.motion > 0.
+                            {
+                                // Standalone batches without a Voice use the score's clock.
+                                tone.set_motion_clock(batch.motion_clock.unwrap_or_else(|| {
+                                    crate::life::sound::pitch_motion::MotionClock {
+                                        birth: 0,
+                                        seed: modal_phase_seed(
+                                            batch.source_id,
+                                            u64::from(batch.source_generation),
+                                            0,
+                                        ),
+                                    }
+                                }));
+                            }
                             tone.set_smoothing_tau_sec(spec.smoothing_tau_sec);
                             tone.note_on(spec.onset);
                             tone.schedule_planned_kick(kick);
@@ -2656,8 +2682,132 @@ mod tests {
         );
     }
 
+    #[test]
+    fn restrike_and_release_follow_the_generation_clock_through_rebirth() {
+        use crate::life::voice::VoiceMetadata;
+        use crate::scenario::{
+            VoiceSpec,
+            control::{BodyMethod, VoiceControl},
+        };
+        let time = Timebase {
+            fs: 48000.,
+            hop: 64,
+        };
+        let rhythms = NeuralRhythms::default();
+        let mut control = VoiceControl::default();
+        control.body.method = BodyMethod::Harmonic;
+        control.body.timbre.motion = 0.8;
+        let spec = VoiceSpec {
+            control,
+            articulation: Default::default(),
+        };
+        let new_voice = |generation, birth| {
+            let mut voice = spec.spawn(
+                2,
+                0,
+                VoiceMetadata {
+                    generation,
+                    ..Default::default()
+                },
+                time.fs,
+                71,
+            );
+            voice.birth_tick = Some(birth);
+            voice
+        };
+        let make_batch = |voice: &mut crate::life::voice::Voice, onset, tone_id| {
+            let mut batch = voice.tick_phonation(&time, onset, &rhythms, None, 0., 1., 1.);
+            let mut note = outcome_batch(BodyKind::Harmonic).tones.remove(0);
+            note.body = voice.body_snapshot();
+            note.body.ratios = Some(vec![1.].into());
+            note.tone_id = tone_id;
+            note.onset = onset;
+            note.hold_ticks = Some(8192);
+            batch.tones = vec![note];
+            batch.cmds = vec![ToneCmd::On {
+                tone_id,
+                kick: OnsetKick { strength: 1. },
+            }];
+            batch
+        };
+        let mut parent = new_voice(7, 13);
+        let first = make_batch(&mut parent, 35, 1);
+        let clock = first.motion_clock.unwrap();
+        let mut renderer = ScheduleRenderer::new(time);
+        renderer.apply_phonation_batches(&[first], 35);
+        let mut next = make_batch(&mut parent, 941, 2);
+        assert_eq!(next.motion_clock, Some(clock));
+        next.cmds.push(ToneCmd::Off {
+            tone_id: 1,
+            off_tick: 941,
+        });
+        let reborn = make_batch(&mut new_voice(8, 941), 941, 1);
+        let young = reborn.motion_clock.unwrap();
+        assert_ne!(clock.seed, young.seed);
+        assert_eq!(young.birth, 941);
+        for tick in 35..941 {
+            let tone = &mut renderer.tones.values_mut().next().unwrap().tone;
+            tone.kick_planned_if_due(tick);
+            tone.render_tick(tick, time.fs, 1. / time.fs, &rhythms);
+        }
+        renderer.apply_phonation_batches(&[next, reborn], 941);
+        assert_eq!(renderer.tones.len(), 3);
+        for tick in 941..966 {
+            for (key, rt) in &mut renderer.tones {
+                let clock = if key.generation == 7 { clock } else { young };
+                rt.tone.kick_planned_if_due(tick);
+                let before = rt.tone.prediction_bank(tick, &rhythms).unwrap().lanes[0].state;
+                rt.tone.render_tick(tick, time.fs, 1. / time.fs, &rhythms);
+                let after = rt.tone.prediction_bank(tick + 1, &rhythms).unwrap().lanes[0].state;
+                let angle = (before[0] * after[1] - before[1] * after[0])
+                    .atan2(before[0] * after[0] + before[1] * after[1]);
+                let hz = angle * time.fs / std::f32::consts::TAU;
+                assert!(
+                    (hz - 337. * (1. + clock.offset(tick, time.fs, 5., 0.016, 0.8))).abs() < 0.01,
+                    "{key:?} tick={tick} Hz={hz}"
+                );
+            }
+        }
+        // A live amount change also reaches the releasing tone, and leaves the
+        // overlapping younger generation on its own trajectory.
+        for (tick, amount) in [(966, 0.), (967, 0.2)] {
+            parent
+                .apply_update(&crate::scenario::control::ControlUpdate {
+                    timbre_motion: Some(amount),
+                    ..Default::default()
+                })
+                .unwrap();
+            let mut patch = parent.tick_phonation(&time, tick, &rhythms, None, 0., 1., 1.);
+            assert_eq!(patch.motion_update, Some(amount));
+            patch.cmds.clear();
+            let before: Vec<_> = renderer
+                .tones
+                .values()
+                .map(|rt| rt.tone.prediction_bank(tick, &rhythms).unwrap().lanes[0].state)
+                .collect();
+            renderer.apply_phonation_batches(&[patch], tick);
+            for ((key, rt), [x, y]) in renderer.tones.iter_mut().zip(before) {
+                rt.tone.render_tick(tick, time.fs, 1. / time.fs, &rhythms);
+                let [xx, yy] = rt.tone.prediction_bank(tick + 1, &rhythms).unwrap().lanes[0].state;
+                let hz = (x * yy - y * xx).atan2(x * xx + y * yy) * time.fs / std::f32::consts::TAU;
+                let (clock, amount) = if key.generation == 7 {
+                    (clock, amount)
+                } else {
+                    (young, 0.8)
+                };
+                assert!(
+                    (hz - 337. * (1. + clock.offset(tick, time.fs, 5., 0.02 * amount, amount)))
+                        .abs()
+                        < 0.01
+                );
+            }
+        }
+    }
+
     pub(super) fn outcome_batch(kind: BodyKind) -> PhonationBatch {
         PhonationBatch {
+            motion_clock: None,
+            motion_update: None,
             body_policy: None,
             source_id: 2,
             source_generation: 7,
@@ -2677,6 +2827,7 @@ mod tests {
                 smoothing_tau_sec: 0.,
                 body: BodySnapshot {
                     kind,
+                    attack_noise: 0.,
                     amp_scale: 1.,
                     brightness: 0.4,
                     inharmonic: 0.,
@@ -2923,6 +3074,8 @@ mod tests {
         for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
             for onset in [0, 64] {
                 let actor = PhonationBatch {
+                    motion_clock: None,
+                    motion_update: None,
                     body_policy: None,
                     source_id: 2,
                     source_generation: 0,
@@ -2957,6 +3110,7 @@ mod tests {
                         smoothing_tau_sec: 0.01,
                         body: BodySnapshot {
                             kind,
+                            attack_noise: 0.,
                             amp_scale: 1.0,
                             brightness: 0.4,
                             inharmonic: 0.0,
@@ -3048,6 +3202,8 @@ mod tests {
         let rhythms = NeuralRhythms::default();
         let tone_id = 1;
         let batch = PhonationBatch {
+            motion_clock: None,
+            motion_update: None,
             body_policy: None,
             source_id: 2,
             source_generation: 0,
@@ -3079,6 +3235,7 @@ mod tests {
                 smoothing_tau_sec: 0.0,
                 body: BodySnapshot {
                     kind: BodyKind::Sine,
+                    attack_noise: 0.,
                     amp_scale: 1.0,
                     brightness: 0.0,
                     inharmonic: 0.0,
@@ -3207,6 +3364,8 @@ mod tests {
             let mut observer = AcousticTemporalExpectation::new(48_000).unwrap();
             let mut control = ScheduleRenderer::new(tb);
             let batch = PhonationBatch {
+                motion_clock: None,
+                motion_update: None,
                 body_policy: None,
                 source_id: 2,
                 source_generation: 0,
@@ -3229,6 +3388,7 @@ mod tests {
                     smoothing_tau_sec: 0.0,
                     body: BodySnapshot {
                         kind: BodyKind::Sine,
+                        attack_noise: 0.,
                         amp_scale: 1.0,
                         brightness: 0.0,
                         inharmonic: 0.0,
@@ -3284,6 +3444,8 @@ mod tests {
         let rhythms = NeuralRhythms::default();
         let tone_id = 1;
         let batch = PhonationBatch {
+            motion_clock: None,
+            motion_update: None,
             body_policy: None,
             source_id: 2,
             source_generation: 0,
@@ -3325,6 +3487,7 @@ mod tests {
                 smoothing_tau_sec: 0.0,
                 body: BodySnapshot {
                     kind: BodyKind::Sine,
+                    attack_noise: 0.,
                     amp_scale: 1.0,
                     brightness: 0.0,
                     inharmonic: 0.0,
@@ -3356,6 +3519,8 @@ mod tests {
         let rhythms = NeuralRhythms::default();
         let tone_id = 1;
         let batch = PhonationBatch {
+            motion_clock: None,
+            motion_update: None,
             body_policy: None,
             source_id: 1,
             source_generation: 0,
@@ -3375,6 +3540,7 @@ mod tests {
                 smoothing_tau_sec: 0.0,
                 body: BodySnapshot {
                     kind: BodyKind::Sine,
+                    attack_noise: 0.,
                     amp_scale: 1.0,
                     brightness: 0.0,
                     inharmonic: 0.0,

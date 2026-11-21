@@ -6,9 +6,10 @@ use crate::life::sound::mode_utils::{
     active_cluster_unison, cluster_detune_mul, cluster_spread_cents_from_public, cluster_weights,
     public_spread_from_cluster_spread_cents, sanitize_cluster_unison,
 };
+use crate::life::sound::pitch_motion::MotionClock;
 use crate::life::sound::spectral::{
-    add_log2_energy, brightness_from_spectral_slope, harmonic_gain, harmonic_ratio,
-    spectral_slope_from_brightness,
+    add_log2_energy, add_vibrato_energy, brightness_from_spectral_slope, harmonic_gain,
+    harmonic_ratio, spectral_slope_from_brightness,
 };
 use crate::life::sound::{BodyKind, BodySnapshot};
 use crate::scenario::control::DEFAULT_TIMBRE_UNISON;
@@ -18,7 +19,6 @@ use rand::{Rng, RngExt, rngs::SmallRng};
 #[cfg(any(test, feature = "research"))]
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::f32::consts::PI;
 use std::sync::{Arc, Mutex, OnceLock};
 use tracing::warn;
 
@@ -39,6 +39,10 @@ impl BodySnapshot {
             self.motion,
         ] {
             hasher.update(value.to_bits().to_le_bytes());
+        }
+        if self.attack_noise > 0. {
+            hasher.update(b"attack_noise");
+            hasher.update(self.attack_noise.to_le_bytes());
         }
         hasher.update((self.unison as u64).to_le_bytes());
         match self.ratios.as_deref() {
@@ -170,6 +174,7 @@ impl SoundBody for SineBody {
     fn snapshot(&self) -> BodySnapshot {
         BodySnapshot {
             kind: BodyKind::Sine,
+            attack_noise: 0.,
             amp_scale: 1.0,
             brightness: 0.0,
             inharmonic: 0.0,
@@ -183,6 +188,8 @@ impl SoundBody for SineBody {
 
 #[derive(Debug, Clone)]
 pub struct HarmonicBody {
+    pub(crate) motion_clock: MotionClock,
+    pub(crate) attack_noise: f32,
     pub base_freq_hz: f32,
     pub amp: f32,
     pub partials: usize,
@@ -281,21 +288,7 @@ impl SoundBody for HarmonicBody {
                     cluster_detune_mul(self.cluster_spread_cents, cluster_unison, unison_idx);
                 let freq = self.base_freq_hz * ratio * detune;
                 let amplitude = amp_scale * part_amp * weights[unison_idx];
-                let deviation_hz = self.base_freq_hz * self.genotype.vibrato_depth;
-                if deviation_hz <= 0.0 {
-                    add_log2_energy(amps, space, freq, amplitude);
-                    continue;
-                }
-                // Tone adds the same FM offset to every lane. Uniform phase gives
-                // the arcsine frequency law; integrate its power over each bin.
-                // This cycle average does not recover a finite window's FM phase.
-                let half_step = space.step() * 0.5;
-                for (amp, &center) in amps.iter_mut().zip(&space.centers_log2) {
-                    let lo = (((center - half_step).exp2() - freq) / deviation_hz).clamp(-1.0, 1.0);
-                    let hi = (((center + half_step).exp2() - freq) / deviation_hz).clamp(-1.0, 1.0);
-                    let mass = (hi.asin() - lo.asin()) / PI;
-                    *amp += amplitude * mass.max(0.0).sqrt();
-                }
+                add_vibrato_energy(amps, space, freq, amplitude, self.genotype.vibrato_depth);
             }
         }
     }
@@ -319,6 +312,7 @@ impl SoundBody for HarmonicBody {
     fn snapshot(&self) -> BodySnapshot {
         BodySnapshot {
             kind: BodyKind::Harmonic,
+            attack_noise: self.attack_noise,
             amp_scale: 1.0,
             brightness: brightness_from_spectral_slope(self.genotype.spectral_slope),
             inharmonic: self.genotype.stiffness.clamp(0.0, 1.0),
@@ -367,8 +361,13 @@ impl AnySoundBody {
                 for _ in 0..(partials * DEFAULT_TIMBRE_UNISON) {
                     let _ = rng.random_range(0.0f32..std::f32::consts::TAU);
                 }
-                let _ = rng.next_u64();
+                let motion_clock = MotionClock {
+                    seed: rng.next_u64(),
+                    birth: 0,
+                };
                 AnySoundBody::Harmonic(HarmonicBody {
+                    motion_clock,
+                    attack_noise: 0.,
                     base_freq_hz: freq_hz,
                     amp,
                     partials,
@@ -680,9 +679,14 @@ impl SoundBodyFactory for HarmonicBodyFactory {
         for _ in 0..(partials * active_cluster_unison) {
             let _ = rng.random_range(0.0f32..std::f32::consts::TAU);
         }
-        let _ = rng.next_u64();
+        let motion_clock = MotionClock {
+            seed: rng.next_u64(),
+            birth: 0,
+        };
 
         AnySoundBody::Harmonic(HarmonicBody {
+            motion_clock,
+            attack_noise: timbre.attack_noise,
             base_freq_hz: input.base_freq_hz.max(1.0),
             amp: input.control.body.amp,
             partials,
@@ -712,6 +716,8 @@ mod tests {
     #[test]
     fn harmonic_snapshot_preserves_custom_ratios() {
         let mut body = HarmonicBody {
+            motion_clock: Default::default(),
+            attack_noise: 0.,
             base_freq_hz: 220.0,
             amp: 0.2,
             partials: 3,
@@ -735,6 +741,8 @@ mod tests {
     #[test]
     fn harmonic_body_limits_partials_by_nominal_pitch() {
         let body = HarmonicBody {
+            motion_clock: Default::default(),
+            attack_noise: 0.,
             base_freq_hz: 4_000.0,
             amp: 0.2,
             partials: DEFAULT_MODE_COUNT,

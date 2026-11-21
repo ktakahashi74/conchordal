@@ -1796,6 +1796,38 @@ fn unknown_rhythm_role_value_fails_fast_on_population_spec() {
 }
 
 #[test]
+fn attack_noise_sets_initial_harmonic_strike_level() {
+    let (scenario, warnings) = run_script(
+        r#"
+        create(harmonic().attack_noise(-20), 1);
+        create(harmonic().attack_noise(3), 1);
+        create(harmonic().attack_noise(-80), 1);
+        create(harmonic().attack_noise(0.0 / 0.0), 1);
+        create(sine().attack_noise(0), 1);
+        create(harmonic(), 1);
+        flush();
+    "#,
+    );
+    let levels: Vec<_> = scenario
+        .events
+        .iter()
+        .flat_map(|e| &e.actions)
+        .filter_map(|action| match action {
+            Action::Spawn { spec, .. } => Some(spec.control.body.timbre.attack_noise),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(levels, [0.1, 1., 0., 0., 0., 0.]);
+    assert!(
+        warnings
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|w| w.message.contains("applies to harmonic"))
+    );
+}
+
+#[test]
 fn spread_and_unison_methods_update_timbre() {
     let (scenario, _warnings) = run_script(
         r#"

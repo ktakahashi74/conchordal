@@ -107,16 +107,25 @@ impl Body<'_> {
                             let crate::life::sound::bank_forecast::Response::Oscillator {
                                 refresh_at,
                                 refresh_period,
+                                motion,
                                 ..
                             } = tone.bank?.response
                             else {
                                 return None;
                             };
-                            if cursor < refresh_at {
+                            let gain_edge = if cursor < refresh_at {
                                 Some(refresh_at)
                             } else {
                                 let period = refresh_period.max(1);
                                 cursor.checked_add(period - (cursor - refresh_at) % period)
+                            };
+                            if let Some((clock, ..)) = motion {
+                                let period = crate::life::sound::pitch_motion::PERIOD;
+                                let age = cursor.saturating_sub(clock.birth);
+                                let motion_edge = cursor.saturating_add(period - age % period);
+                                Some(gain_edge.unwrap_or(b).min(motion_edge))
+                            } else {
+                                gain_edge
                             }
                         })
                         .min()

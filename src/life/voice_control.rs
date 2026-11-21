@@ -439,7 +439,9 @@ impl Voice {
             let step = dt_sec / self.release.sec.max(1e-6);
             self.release.gain = (self.release.gain - step).max(0.0);
         }
-        signal.amplitude *= self.compute_output_gain();
+        let gain = self.compute_output_gain();
+        signal.amplitude *= gain;
+        signal.strike_gain *= gain;
         signal.is_active = signal.is_active && signal.amplitude > 0.0;
         self.last_signal = signal;
         signal

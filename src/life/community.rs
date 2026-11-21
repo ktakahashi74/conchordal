@@ -1768,6 +1768,7 @@ mod tests {
             smoothing_tau_sec: 0.0,
             body: BodySnapshot {
                 kind: BodyKind::Sine,
+                attack_noise: 0.,
                 amp_scale: 1.0,
                 brightness: 0.0,
                 inharmonic: 0.0,
@@ -2158,6 +2159,8 @@ mod tests {
         );
 
         let mut batches = vec![PhonationBatch {
+            motion_clock: None,
+            motion_update: None,
             body_policy: None,
             source_id: 99,
             source_generation: 0,

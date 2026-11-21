@@ -269,6 +269,22 @@ impl Tone {
         })
     }
 
+    pub(crate) fn update_motion(
+        &mut self,
+        clock: Option<super::pitch_motion::MotionClock>,
+        amount: f32,
+    ) {
+        if let AnyBackend::Oscillator(bank) = &mut self.backend {
+            bank.update_motion(clock, amount);
+        }
+    }
+
+    pub(crate) fn set_motion_clock(&mut self, clock: super::pitch_motion::MotionClock) {
+        if let AnyBackend::Oscillator(bank) = &mut self.backend {
+            bank.set_motion_clock(clock);
+        }
+    }
+
     pub fn seed_modal_phases(&mut self, seed: u64) {
         self.backend.seed_modal_phases(seed);
         #[cfg(feature = "research")]
@@ -341,7 +357,7 @@ impl Tone {
         if !self.started {
             return Some(0.0);
         }
-        if !state.closed {
+        if !state.closed || now < self.sound_end_tick() {
             return None;
         }
         Some(match &self.backend {
@@ -549,11 +565,28 @@ impl Tone {
     }
 
     pub fn render_tick(&mut self, tick: Tick, _fs: f32, dt: f32, rhythms: &NeuralRhythms) -> f32 {
+        if let AnyBackend::Oscillator(bank) = &mut self.backend {
+            bank.at_tick(tick);
+        }
         let sample = self.render_unscaled_tick(tick, dt, rhythms);
         if self.phrase_gain == 1. {
             sample
         } else {
             sample * self.phrase_gain
+        }
+    }
+
+    fn articulation_signal(&mut self, rhythms: &NeuralRhythms, dt: f32) -> ArticulationSignal {
+        if let Some(modulator) = &mut self.render_modulator {
+            return modulator.process(rhythms, dt);
+        }
+        let gain = 1.0 + 0.05 * rhythms.theta.beta.clamp(0.0, 1.0);
+        ArticulationSignal {
+            amplitude: gain,
+            strike_gain: gain,
+            is_active: true,
+            relaxation: rhythms.theta.alpha,
+            tension: rhythms.theta.beta,
         }
     }
 
@@ -575,20 +608,7 @@ impl Tone {
         self.advance_smoothing();
         let gain = self.gain_at(tick);
 
-        let mut signal = if let Some(render_modulator) = self.render_modulator.as_mut() {
-            render_modulator.process(rhythms, dt)
-        } else {
-            ArticulationSignal {
-                amplitude: 1.0,
-                is_active: true,
-                relaxation: rhythms.theta.alpha,
-                tension: rhythms.theta.beta,
-            }
-        };
-        if self.render_modulator.is_none() {
-            let tension = signal.tension.clamp(0.0, 1.0);
-            signal.amplitude *= 1.0 + 0.05 * tension;
-        }
+        let mut signal = self.articulation_signal(rhythms, dt);
         signal.amplitude *= gain;
         signal.is_active = signal.is_active && signal.amplitude > 0.0;
 
@@ -627,8 +647,23 @@ impl Tone {
         let mut out = [0.0f32; 1];
         self.backend
             .render_block(std::slice::from_ref(&drive), ctrl, &mut out);
+        let noise = if let AnyBackend::Oscillator(bank) = &mut self.backend {
+            let strike = if (self.envelope.onset..self.envelope.release_end).contains(&tick) {
+                impulse
+            } else {
+                0.
+            };
+            bank.attack_sample(
+                self.current_pitch_hz,
+                tick,
+                strike,
+                self.current_amp * signal.strike_gain,
+            )
+        } else {
+            0.
+        };
         if !signal.is_active {
-            return 0.0;
+            return noise;
         }
         #[cfg(test)]
         if let AnyBackend::Oscillator(bank) = &self.backend {
@@ -644,6 +679,9 @@ impl Tone {
         if self.backend.is_sine() {
             sample *= 1.0 + self.sine_impulse_boost;
             self.sine_impulse_boost *= impulse_boost_decay(self.sample_dt);
+        }
+        if noise != 0. {
+            sample += noise;
         }
         sample
     }
@@ -661,8 +699,8 @@ impl Tone {
             self.pending_trigger = None;
             self.planned_kick_pending = None;
             self.pending_impulse_energy = 0.0;
-            if matches!(self.backend, AnyBackend::Oscillator(_)) {
-                return 0.0;
+            if let AnyBackend::Oscillator(bank) = &mut self.backend {
+                return bank.attack_sample(self.current_pitch_hz, tick, 0., 0.);
             }
         } else {
             if let Some(trigger) = self.pending_trigger
@@ -681,18 +719,12 @@ impl Tone {
         }
         let impulse = std::mem::take(&mut self.pending_impulse_energy);
         let mut z = 0.0;
+        let mut strike_gain = 0.;
         let mut spectral_drive = 0.0;
         let mut active = false;
         if open {
-            let signal = self.render_modulator.as_mut().map_or_else(
-                || ArticulationSignal {
-                    amplitude: 1.0 + 0.05 * rhythms.theta.beta.clamp(0.0, 1.0),
-                    is_active: true,
-                    relaxation: rhythms.theta.alpha,
-                    tension: rhythms.theta.beta,
-                },
-                |m| m.process(rhythms, dt),
-            );
+            let signal = self.articulation_signal(rhythms, dt);
+            strike_gain = signal.strike_gain;
             // Preserve the legacy harmonic burst independently of amplitude kick.
             spectral_drive =
                 impulse + self.continuous_drive * (signal.amplitude * self.envelope.gain_at(tick));
@@ -724,7 +756,15 @@ impl Tone {
                     self.radiated_amplitude = excitation;
                 }
                 let spectral_drive = if bank.is_sine() { 0.0 } else { spectral_drive };
-                excitation * bank.phase3_carrier(self.current_pitch_hz, a, spectral_drive, open)
+                let carrier =
+                    excitation * bank.phase3_carrier(self.current_pitch_hz, spectral_drive, open);
+                let noise =
+                    bank.attack_sample(self.current_pitch_hz, tick, impulse, a * strike_gain);
+                if noise == 0. {
+                    carrier
+                } else {
+                    carrier + noise
+                }
             }
             AnyBackend::Resonator(engine) => {
                 let mut drive = 0.0;
@@ -864,7 +904,11 @@ impl Tone {
 
     /// Carrier lanes of the harmonic and modal backends under the same static-tone
     /// conditions as `prediction_sine`. Continuous drive is not forecast.
-    pub(crate) fn prediction_bank(&self, now: Tick) -> Option<super::bank_forecast::BankForecast> {
+    pub(crate) fn prediction_bank(
+        &self,
+        now: Tick,
+        rhythms: &NeuralRhythms,
+    ) -> Option<super::bank_forecast::BankForecast> {
         if !self.supports_self_model() {
             return None;
         }
@@ -904,7 +948,25 @@ impl Tone {
         }
         .max(1.);
         match &self.backend {
-            AnyBackend::Oscillator(bank) => bank.bank_forecast(pitch, first_sample, impulse),
+            AnyBackend::Oscillator(bank) => {
+                let mut forecast = bank.bank_forecast(pitch, first_sample, impulse)?;
+                if let Some(burst) = &mut forecast.burst {
+                    if impulse.is_some() {
+                        // Forecast the same excitation gain that the renderer latches at a strike.
+                        let control = self.prediction_control(now, rhythms);
+                        let amp = control
+                            .amplitude_at(first_sample, self.current_amp * self.phrase_gain)?;
+                        let gain = match control.model {
+                            super::control_forecast::AmplitudeModel::EntrainPulse { .. } => 1.,
+                            _ => control.gain_at(first_sample)?,
+                        };
+                        burst.rms *= (amp * gain) as f32;
+                    } else {
+                        burst.rms *= self.phrase_gain;
+                    }
+                }
+                Some(forecast)
+            }
             AnyBackend::Resonator(engine) => engine.bank_forecast(pitch, first_sample, impulse),
         }
     }
@@ -981,9 +1043,16 @@ impl Tone {
         )
     }
 
-    #[cfg(feature = "research")]
-    pub(crate) fn excitation_end_tick(&self) -> Tick {
-        self.envelope.release_end
+    pub(crate) fn sound_end_tick(&self) -> Tick {
+        let release = self.envelope.release_end;
+        let AnyBackend::Oscillator(bank) = &self.backend else {
+            return release;
+        };
+        let pending = self.pending_trigger.filter(|t| t.at_tick < release);
+        let release = release.max(bank.last_burst_end());
+        let burst = pending
+            .and_then(|trigger| bank.burst(self.current_pitch_hz, trigger.at_tick, trigger.energy));
+        burst.map_or(release, |b| release.max(b.end()))
     }
 
     pub fn end_tick(&self) -> Tick {
@@ -991,7 +1060,7 @@ impl Tone {
         if self.excited.is_some() {
             return Tick::MAX;
         }
-        self.envelope.release_end
+        self.sound_end_tick()
     }
 
     pub fn onset(&self) -> Tick {
@@ -1003,7 +1072,7 @@ impl Tone {
         if let Some(state) = &self.excited {
             return state.retired;
         }
-        now >= self.envelope.release_end
+        now >= self.end_tick()
     }
 
     fn apply_update(&mut self, update: &ToneUpdate) {
@@ -1150,6 +1219,7 @@ fn sec_to_tick_at_least_one(time: Timebase, sec: f32) -> Tick {
 fn default_body_snapshot() -> BodySnapshot {
     BodySnapshot {
         kind: BodyKind::Sine,
+        attack_noise: 0.,
         amp_scale: 1.0,
         brightness: 0.0,
         inharmonic: 0.0,
@@ -1330,7 +1400,7 @@ mod tests {
                     envelope,
                     control: Some(soft.prediction_control(tick, &rhythms)),
                     sine: soft.prediction_sine(tick),
-                    bank: soft.prediction_bank(tick),
+                    bank: soft.prediction_bank(tick, &rhythms),
                     scheduled_release: None,
                 });
                 assert!(forecast.as_ref().unwrap().sine.is_some());
@@ -1366,7 +1436,7 @@ mod tests {
         });
         assert!(!pending.supports_self_model());
         assert!(pending.prediction_sine(0).is_none());
-        assert!(pending.prediction_bank(0).is_none());
+        assert!(pending.prediction_bank(0, &rhythms).is_none());
     }
 
     use super::*;
@@ -1817,7 +1887,10 @@ mod tests {
                 );
                 assert!(!tone.supports_self_model());
                 assert!(tone.prediction_sine(close).is_none());
-                assert!(tone.prediction_bank(close).is_none());
+                assert!(
+                    tone.prediction_bank(close, &NeuralRhythms::default())
+                        .is_none()
+                );
             }
         }
     }
@@ -1977,6 +2050,7 @@ mod tests {
         };
         let harmonic = BodySnapshot {
             kind: BodyKind::Harmonic,
+            attack_noise: 0.,
             amp_scale: 1.0,
             brightness: 0.6,
             inharmonic: 0.0,
@@ -2012,6 +2086,7 @@ mod tests {
         };
         let harmonic = BodySnapshot {
             kind: BodyKind::Harmonic,
+            attack_noise: 0.,
             amp_scale: 1.0,
             brightness: 0.6,
             inharmonic: 0.0,
@@ -2225,7 +2300,7 @@ mod tests {
                             envelope,
                             control: Some(tone.prediction_control(256, &rhythms)),
                             sine: tone.prediction_sine(256),
-                            bank: tone.prediction_bank(256),
+                            bank: tone.prediction_bank(256, &rhythms),
                             scheduled_release: releases[0],
                         };
                         assert!(frozen.sine.is_some());

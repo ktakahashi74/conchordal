@@ -38,6 +38,8 @@ fn note(
     amp: f32,
 ) -> PhonationBatch {
     PhonationBatch {
+        motion_clock: None,
+        motion_update: None,
         body_policy: None,
         source_id,
         source_generation: 0,
@@ -76,6 +78,7 @@ fn note(
             smoothing_tau_sec: 0.03,
             body: BodySnapshot {
                 kind,
+                attack_noise: 0.,
                 amp_scale: 1.0,
                 brightness: 0.4,
                 inharmonic: 0.0,

@@ -619,6 +619,18 @@ Spectral brightness in 0.0-1.0 (harmonic/modal bodies).
 
 **根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
 
+#### `attack_noise`
+
+```rhai,ignore
+attack_noise(db)
+```
+
+適用対象：`PopulationSpec`のみ。 初期設定専用：`place()`より前に`PopulationSpec`へ設定する。
+
+Add a short band-limited noise burst on every harmonic attack. Initial RMS in dB relative to the note amplitude at unit impulse, up to 0 dB. Omitted or −80 dB is silent. The burst starts at the strike and decays independently of the note envelope with a 15 ms time constant.
+
+**根拠:** 該当なし（初期の身体）：合成特性と初期条件。選んだ身体と行為の語を参照（§9.3.56）。
+
 #### `spread`
 
 ```rhai,ignore

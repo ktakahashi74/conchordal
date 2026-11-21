@@ -532,6 +532,22 @@ impl PopulationSpec {
         self.warn_timbre_noop_if_needed("brightness");
     }
 
+    pub(super) fn set_attack_noise(&mut self, db: f32) {
+        if self.control.body.method != BodyMethod::Harmonic {
+            self.warn("attack_noise() applies to harmonic bodies".into());
+            return;
+        }
+        if !(-80. ..=0.).contains(&db) {
+            self.warn("attack_noise() clamps to -80..0 dB; -80 dB and NaN switch it off".into());
+        }
+        let gain = if db.is_nan() || db <= -80. {
+            0.
+        } else {
+            10f32.powf(db.min(0.) / 20.)
+        };
+        self.control.body.timbre.attack_noise = gain;
+    }
+
     pub(super) fn set_spread(&mut self, spread: f32) {
         self.control.set_timbre_spread_clamped(spread);
         self.warn_timbre_noop_if_needed("spread");

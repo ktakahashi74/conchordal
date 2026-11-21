@@ -1164,6 +1164,7 @@ impl ScriptHost {
             ctx.clone(),
             &[
                 ("brightness", PopulationSpec::set_brightness),
+                ("attack_noise", PopulationSpec::set_attack_noise),
                 ("spread", PopulationSpec::set_spread),
             ],
         );

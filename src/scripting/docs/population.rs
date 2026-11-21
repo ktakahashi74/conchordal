@@ -40,6 +40,17 @@ pub(super) const CONTROLS: &[FnDoc] = &[
         details: "",
     },
     FnDoc {
+        name: "attack_noise",
+        evidence: BODY,
+        owner: Owner::Population,
+        category: "body",
+        style: Style::Method,
+        patch: Patch::Initial,
+        usage: &["attack_noise(db)"],
+        summary: "Add a short band-limited noise burst on every harmonic attack.",
+        details: "Initial RMS in dB relative to the note amplitude at unit impulse, up to 0 dB. Omitted or −80 dB is silent. The burst starts at the strike and decays independently of the note envelope with a 15 ms time constant.",
+    },
+    FnDoc {
         name: "spread",
         evidence: BODY,
         owner: Owner::Population,

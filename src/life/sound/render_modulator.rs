@@ -244,6 +244,7 @@ impl EntrainPulseModulator {
         );
         ArticulationSignal {
             amplitude: self.env_level,
+            strike_gain: 1.,
             is_active: self.state != ArticulationState::Idle && self.env_level > 1e-6,
             relaxation: rhythms.theta.alpha * self.alpha_gain,
             tension: rhythms.theta.beta * self.beta_gain,
@@ -257,6 +258,7 @@ impl SeqGateModulator {
         let is_active = self.timer < self.duration_sec;
         ArticulationSignal {
             amplitude: if is_active { 1.0 } else { 0.0 },
+            strike_gain: f32::from(is_active),
             is_active,
             relaxation: rhythms.theta.alpha,
             tension: 0.0,
@@ -273,6 +275,7 @@ impl DroneSwayModulator {
         let amplitude = ((0.3 + 0.7 * lfo) * relax_boost).clamp(0.0, 1.0);
         ArticulationSignal {
             amplitude,
+            strike_gain: amplitude,
             is_active: true,
             relaxation: rhythms.theta.alpha,
             tension: rhythms.theta.beta * 0.25,

@@ -16,6 +16,7 @@ pub(crate) mod support_action;
 pub(crate) mod sway;
 pub(crate) mod tone_energy;
 pub mod voice;
+#[cfg(test)]
 pub(crate) use voice::articulation_core;
 pub(crate) mod adaptation;
 pub mod community;

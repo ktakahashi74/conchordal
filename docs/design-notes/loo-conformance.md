@@ -69,7 +69,7 @@ single-bin removal (historically `exact`), and the T-31 spectral-ownership
 candidate. These labels identify the compared implementations, not accepted
 contracts.
 
-The test covers 15 families and 84 scenes. It keeps B-1's seven fixed
+The test covers 16 families and 90 scenes. Six scenes combine motion 0.9 with a 0 dB attack burst. It keeps B-1's seven fixed
 candidates, actual Tone-derived body weights, greedy decision, paired Metropolis
 seeds, and native candidate generation. Both fixed and generated candidates use
 the production selection function. The T-31 projection calls
@@ -116,9 +116,9 @@ numerical gates. These are results for the saved source, not acceptance of a
 motion repair.
 
 `T33_MOTION_ONLY=1` selects the six motion scenes for a bounded repair check;
-`T33_TIES_ONLY=1` selects the 28 solo scenes to check native tie coverage.
-The subset selectors cannot be combined. The full acquisition still contains 84
-scenes and 252 method witnesses. Acceptance now requires the **same T-31 method**
+`T33_TIES_ONLY=1` selects the 30 solo scenes to check native tie coverage.
+The subset selectors cannot be combined. The current acquisition contains 90
+scenes and 270 method witnesses. Acceptance now requires the **same T-31 method**
 to pass every family; selecting a different method per family is forbidden.
 The test emits the entire requested matrix before asserting acceptance and runs
 in the ordinary test suite. A failed acceptance assertion must not be changed
@@ -131,8 +131,9 @@ spectral-ownership method. Its 28 tied scenes passed the flatness requirement;
 the other 56 scenes retained all paired fixed and native decisions. The fixture's
 motion value remains `0.9`, as in B-1; this is not a sweep of every motion setting.
 
-The default Tone oscillator applies an additive common frequency offset to every
-partial: `delta_hz = f0 * 0.02 * motion * sin(phi)`, with `phi` advancing at 5 Hz.
+The harmonic Tone oscillator applies one fractional pitch change to all lanes.
+For a lane at `f`, the periodic deviation is `f * 0.02 * motion * sin(phi)`,
+with `phi` advancing at 5 Hz. This includes the lane’s unison detune.
 For phase averaged over a cycle, the frequency offset has the arcsine distribution.
 For a partial at `f`, deviation `d` and bin edges `lo, hi`, its power fraction is
 `(asin(clamp((hi-f)/d,-1,1)) - asin(clamp((lo-f)/d,-1,1))) / pi`.

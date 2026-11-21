@@ -141,7 +141,7 @@ differ: `Sine` has no drive and fakes an attack by lifting output gain
 drive (`DriveMode`, `src/life/sound/any_backend.rs`).
 
 Per-note allocation is not by itself a bug. Each `ToneCmd::On` creates a new
-`Tone` keyed by `(source_id, tone_id)` (`src/life/schedule_renderer.rs`). For a
+`Tone` keyed by `(source_id, tone_id, generation)` (`src/life/schedule_renderer.rs`). For a
 linear modal body with fixed coefficients, overlapping tails superpose exactly
 as re-exciting one body would, as the ledger's resonator check confirms. The
 question is how far this allocation can represent one continuing source:
@@ -149,9 +149,8 @@ question is how far this allocation can represent one continuing source:
 - the ADSR release cuts tails with a gain curve;
 - after a change of pitch or coefficients, the old tail rings on as another
   `Tone` at the old pitch, so one individual can sound two pitches;
-- fluctuation is seeded per `Tone` (`modal_phase_seed(source_id, onset,
-  tone_id)`), so a Voice's micro-fluctuation restarts at every note instead of
-  continuing.
+- carrier phases are seeded at each onset. The generation's pitch fluctuation
+  continues across these onsets and their overlapping releases.
 
 `ToneCmd::On / Off / Update` must state what they start, stop or change:
 excitation, internal state and audibility are three different things.
@@ -159,8 +158,17 @@ These are questions about the current implementation, not an adopted monophony
 requirement. The revised Task 2 proposal retunes only open excitation handles;
 ordinary new phonations create new Tones while closed tails keep their last
 coefficients. That deliberately permits old/new pitch overlap across phonations.
-Its Off coefficient policy, lowering rules and capacity envelope still require
-author decisions A1–A3; no renderer change follows from the proposal alone.
+A1 fixes the open-handle retuning rule. At effective Off the sustained
+harmonics stop. A struck attack burst continues on the original generation
+through its bounded endpoint (A2, amended 2026-11-21). A3 capacity must
+include the remaining rendering work and lifetime of these retired Tones.
+
+On a Harmonic body, `attack_noise(db)` sets initial RMS relative to the note
+amplitude at unit strike. Eight seeded, stratified components span the audible
+partial range. A restrike restarts the burst. The amplitude decays with a 15 ms
+time constant independently of the note envelope and reaches its cutoff at
+270 ms. The sounding bank projects each component at its current amplitude.
+Waveform and window-energy forecasts use its realized phase and decay.
 
 ### An observability map replaces the two timbre domains
 
@@ -203,22 +211,14 @@ The map as of this revision:
   harmonic set is not thereby one individual. These cues become ecological only
   with listener-side attribution.
 - **Micro-fluctuation (`motion`)**: not detected as such; R/H see at most a
-  smeared spectrum. Modulation makes a harmonic set more prominent and
-  voice-like (Chowning's sung-vowel synthesis; McAdams 1989), but whether
-  frequency-modulation coherence is itself a grouping cue, rather than acting
-  through harmonicity, is disputed (Carlyon 1991). The implementation applies
-  it in common across a body's partials and independently across bodies, with
-  default 0.0. `motion` is almost pure vibrato: a 5 Hz sinusoid of relative
-  depth 0.02·`motion` (24.5 cents RMS at 1.0), while its pink-noise jitter is
-  0.03–0.1 cents RMS at 1.0, below any audible level (measured from the
-  implementation). Two questions are kept apart (decision D5 of the plan).
-  Whether irregular fluctuation should be present while a body is driven, and
-  at what level, is decided by blind audition at equal RMS against periodic
-  FM. Where fluctuation lives (excitation input or body state), who owns its
-  random state, and what the tail keeps are contract decisions for this body
-  family; in many driven sources irregularity comes from the excitation
-  mechanism while a freely ringing linear resonator keeps its frequencies, but
-  that does not settle the choice for self-sustaining bodies.
+  smeared spectrum. McAdams (1989) found that modulation made a target
+  vowel more prominent. Carlyon (1991) showed that changes in harmonicity can
+  account for detection of modulation asynchrony. Harmonic bodies here vary
+  pitch by one fraction across all partials and detuned copies. A generation's
+  age indexes a 5 Hz sinusoid and synthesis-only octave noise, including during
+  rests and overlapping releases. Rebirth starts a new trajectory. The depth
+  is 0.02 times the internal `timbre.motion` amount (about ±3.5 cents at 0.1).
+  The default amount is zero and `noise()` uses one.
 - **Texture statistics and formants**: not detected. In voices, and in
   instruments with a separate resonating body such as bowed strings, a
   resonance stays fixed in frequency while the source moves; the current
@@ -268,8 +268,9 @@ with no self-model still works, slowly, on the render-derived path.
 - The body module contract itself: the meaning of the inputs (excitation strength
   and time, continuous drive, stop, target pitch) and the output (an audio block),
   lifetime, resource bounds, determinism.
-- The composer's founder vocabulary (`modes`, `brightness`, `spread`, `unison`,
-  `motion`): shared by all bodies; each body maps it onto its own parameters.
+- The founder vocabulary includes `modes`, `brightness`, `spread` and `unison`.
+  Harmonic founders also accept `attack_noise(db)`; the `noise()` preset sets
+  the internal pitch-motion amount.
 
 **Body module.**
 - Rendering: excitation to internal state to radiation, free response, the
@@ -296,15 +297,21 @@ with no self-model still works, slowly, on the render-derived path.
 - Reference frequency of unpitched bodies (noise textures and the like): open,
   decided when such a body is first tried.
 
+For Harmonic pitch motion, a generation supplies its birth sample and synthesis
+seed to each Tone. They identify the LFO phase and noise state at every sample.
+The renderer holds each offset for eight samples and rotates each lane at its
+own modulated frequency. The carrier forecast integrates those same held
+offsets. The spectral self-report uses the cycle-averaged vibrato deviation
+of each lane, including its unison detune.
+
 **Current coupling (2026-09-29).** The existing `SoundBody` trait and factory
-registry cover only the Voice-side description; its per-sample `articulate_wave`
-has no production caller. Sound is made through `BodySnapshot` (a closed record:
+registry describe the Voice-side body. Scheduled audio is rendered through `BodySnapshot` (a closed record:
 kind, fixed vocabulary, ratios), `Tone` and `AnyBackend` (a closed enum); the
 modal body enters through the registry but renders through the resonator variant.
 Ecology code reads body internals directly: kind branches in
 `action_candidates/footprint.rs` and `action_candidates/energy.rs`, lanes and
 ratios in `temporal_cognition/body.rs`, bank/sine/control forecasts in
-`self_prediction`, `project_spectral_body` in `voice.rs` and `modal.rs`. Adding a
+`self_prediction`, `project_spectral_body` in `voice_render.rs` and `modal.rs`. Adding a
 synthesis method today touches about ten files outside the body. The
 [implementation plan](../superpowers/plans/2026-09-29-timbre-synthesis.md)
 (Task 2, Phase 3) removes this coupling.
@@ -396,9 +403,8 @@ model and as a test of the model, not as a finding about human preference.
 
 ## Non-goals
 
-- No new composer-facing timbre parameters. The vocabulary (`modes`,
-  `brightness`, `spread`, `unison`, `motion`) is enough to begin with; that does
-  not make it a complete map of auditory timbre.
+- The adopted Phase 2 founder control is `attack_noise(db)`. Further timbre
+  controls remain deferred.
 - No presentation-only machinery (transient designers, noise layers,
   spatialization) ahead of an analysis path that detects it.
 - No per-Voice timbre micromanagement from scenarios; heredity and state

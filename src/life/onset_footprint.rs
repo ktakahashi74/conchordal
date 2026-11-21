@@ -299,15 +299,15 @@ pub(crate) fn compute(request: &Request) -> Record {
     tone.arm_onset_trigger(KICK_STRENGTH);
 
     let mut energies = [0.; 16];
+    let end = tone.sound_end_tick();
+    record.d_samples = end.min(cap);
+    record.truncated = end > cap;
     #[cfg(feature = "research")]
     let legacy = !recipe.renderer_phase3;
     #[cfg(not(feature = "research"))]
     let legacy = true;
     #[cfg(feature = "research")]
     if !legacy {
-        // Oscillators have no free tail: excitation closure is the support end.
-        record.d_samples = tone.excitation_end_tick().min(cap);
-        record.truncated = tone.excitation_end_tick() > cap;
         record.state = State::Unsupported("window");
         if record.d_samples < 16 {
             return finish(record);
@@ -332,10 +332,8 @@ pub(crate) fn compute(request: &Request) -> Record {
             control: Some(tone.prediction_control(0, &NeuralRhythms::default())),
             scheduled_release: None,
             sine: tone.prediction_sine(0),
-            bank: tone.prediction_bank(0),
+            bank: tone.prediction_bank(0, &NeuralRhythms::default()),
         };
-        record.d_samples = envelope.release_end.min(cap);
-        record.truncated = envelope.release_end > cap;
 
         record.state = State::Unsupported("window");
         let Some(window) = project_window(
@@ -613,6 +611,7 @@ mod tests {
             renderer_phase3: false,
             body: BodySnapshot {
                 kind,
+                attack_noise: 0.,
                 amp_scale: 1.,
                 brightness: 0.6,
                 inharmonic: 0.,
@@ -850,38 +849,42 @@ mod tests {
     }
 
     #[test]
-    fn a_silent_recipe_and_a_moving_body_are_unsupported() {
+    fn silent_and_over_capacity_recipes_are_unsupported() {
         let mut silent = recipe(BodyKind::Sine, 24000);
         silent.body.amp_scale = 0.;
         assert_eq!(compute(&request(silent)).state, State::Unsupported("tone"));
         let mut moving = recipe(BodyKind::Harmonic, 24000);
         moving.body.motion = 0.5;
+        moving.body.unison = 3;
+        moving.body.spread = 0.2;
+        moving.body.ratios = Some((1..=16).map(|i| i as f32).collect::<Vec<_>>().into());
         let record = compute(&request(moving));
         assert_eq!(record.state, State::Unsupported("coherent"));
         assert_eq!(record.power, [0.; 16]);
     }
 
     #[test]
-    fn the_sine_footprint_matches_the_rendered_bin_energies() {
+    fn footprints_match_the_rendered_sine_and_moving_harmonic_bin_energies() {
         for (native, kind) in [
             (false, BodyKind::Sine),
+            (false, BodyKind::Harmonic),
             #[cfg(feature = "research")]
             (true, BodyKind::Sine),
             #[cfg(feature = "research")]
             (true, BodyKind::Harmonic),
         ] {
-            let recipe = recipe(kind, (0.25 * FS) as Tick);
+            let mut recipe = recipe(kind, (0.25 * FS) as Tick);
+            if kind == BodyKind::Harmonic {
+                recipe.body.motion = 0.5;
+            }
             #[cfg(feature = "research")]
-            let recipe = {
-                let mut recipe = recipe;
+            {
                 recipe.renderer_phase3 = native;
                 if native && kind == BodyKind::Harmonic {
-                    recipe.body.motion = 0.5;
                     recipe.body.unison = 3;
                     recipe.body.spread = 0.2;
                 }
-                recipe
-            };
+            }
             let record = compute(&request(recipe.clone()));
             assert_eq!(record.state, State::Body);
             let mut tone = Tone::from_parts(

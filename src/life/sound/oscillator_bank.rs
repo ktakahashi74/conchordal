@@ -1,12 +1,12 @@
+use super::pitch_motion::{MotionClock, PERIOD};
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
-use crate::life::articulation_core::PinkNoise;
 use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::mode_utils::{
     active_cluster_unison, cluster_detune_mul, cluster_spread_cents_from_public, cluster_weights,
 };
 use crate::life::sound::spectral::{
-    add_log2_energy, harmonic_gain, harmonic_ratio, spectral_slope_from_brightness,
+    add_vibrato_energy, harmonic_gain, harmonic_ratio, spectral_slope_from_brightness,
 };
 use crate::life::sound::{BodyKind, BodySnapshot};
 use crate::life::voice::ArticulationSignal;
@@ -17,7 +17,6 @@ use std::f32::consts::TAU;
 use std::sync::Arc;
 
 const PITCH_REFRESH_PERIOD_SAMPLES: usize = 64;
-const MOTION_REFRESH_PERIOD_SAMPLES: usize = 8;
 
 // Slow spectral-energy envelope for state->timbre coupling (TimbreGenotype.damping).
 // Instant attack tracks the drive; slow release lets a ringing note darken toward
@@ -35,6 +34,13 @@ enum OscillatorProfile {
 }
 
 #[derive(Debug, Clone)]
+struct AttackState {
+    amount: f32,
+    noise: super::attack_noise::NoiseRender,
+    seed: u64,
+}
+
+#[derive(Debug, Clone)]
 pub struct OscillatorBank {
     #[cfg(test)]
     render_cost_oracle: bool,
@@ -42,6 +48,7 @@ pub struct OscillatorBank {
     profile: OscillatorProfile,
     freq_mul: Vec<f32>,
     base_gain: Vec<f32>,
+    attack: Option<Box<AttackState>>,
     damp_exp: Vec<f32>,
     x: Vec<f32>,
     y: Vec<f32>,
@@ -54,8 +61,10 @@ pub struct OscillatorBank {
     last_modes_len: usize,
     last_built_pitch_hz: f32,
     pending_phase_seed: Option<u64>,
-    lfo_phase_rad: f32,
-    jitter_gen: PinkNoise,
+    clock: MotionClock,
+    motion_tick: u64,
+    motion_block: Option<u64>,
+    moving: bool,
     drive_env: f32,
     drive_decay: f32,
     spectral_env: f32,
@@ -63,10 +72,6 @@ pub struct OscillatorBank {
     spectral_damping_active: bool,
     pitch_counter: usize,
     norm_counter: usize,
-    motion_counter: usize,
-    current_motion_s: f32,
-    current_motion_c: f32,
-    current_motion_enabled: bool,
     #[cfg(test)]
     rebuild_count: usize,
     #[cfg(test)]
@@ -85,16 +90,17 @@ impl OscillatorBank {
         self.last_modes_len = 0;
         self.last_built_pitch_hz = 0.0;
         self.pending_phase_seed = None;
-        self.lfo_phase_rad = 0.0;
-        self.jitter_gen = PinkNoise::new(0xA5A5_5A5A_DEAD_BEEF, 0.001);
+        if let Some(r) = self.attack.as_mut() {
+            r.seed = 0;
+            r.noise = Default::default();
+        }
+        self.clock = MotionClock::default();
+        self.motion_tick = 0;
+        self.motion_block = None;
         self.drive_env = 0.0;
         self.spectral_env = 0.0;
         self.pitch_counter = 0;
         self.norm_counter = 0;
-        self.motion_counter = 0;
-        self.current_motion_s = 0.0;
-        self.current_motion_c = 1.0;
-        self.current_motion_enabled = false;
         #[cfg(test)]
         {
             self.rebuild_count = 0;
@@ -187,6 +193,15 @@ impl OscillatorBank {
             fs,
             profile,
             freq_mul: freq_mul_padded,
+            attack: (snapshot.kind == BodyKind::Harmonic && snapshot.attack_noise > 0.).then(
+                || {
+                    Box::new(AttackState {
+                        amount: snapshot.attack_noise,
+                        noise: Default::default(),
+                        seed: 0,
+                    })
+                },
+            ),
             base_gain: base_gain_padded,
             damp_exp: damp_exp_padded,
             x: padded_unit_x(lane_len_simd),
@@ -200,8 +215,10 @@ impl OscillatorBank {
             last_modes_len: 0,
             last_built_pitch_hz: 0.0,
             pending_phase_seed: None,
-            lfo_phase_rad: 0.0,
-            jitter_gen: PinkNoise::new(0xA5A5_5A5A_DEAD_BEEF, 0.001),
+            clock: MotionClock::default(),
+            motion_tick: 0,
+            motion_block: None,
+            moving: snapshot.kind == BodyKind::Harmonic && snapshot.motion > 0.,
             drive_env: 0.0,
             drive_decay: (-1.0 / (0.08 * fs)).exp(),
             spectral_env: 0.0,
@@ -209,10 +226,6 @@ impl OscillatorBank {
             spectral_damping_active,
             pitch_counter: 0,
             norm_counter: 0,
-            motion_counter: 0,
-            current_motion_s: 0.0,
-            current_motion_c: 1.0,
-            current_motion_enabled: false,
             #[cfg(test)]
             rebuild_count: 0,
             #[cfg(test)]
@@ -257,13 +270,7 @@ impl OscillatorBank {
     /// Keep native excitation separate while sharing the legacy f32 carrier kernel.
     /// The Tone stops oscillator radiation at effective Off before reaching this path.
     #[cfg(feature = "research")]
-    pub(crate) fn phase3_carrier(
-        &mut self,
-        pitch: f32,
-        amp: f32,
-        spectral_drive: f32,
-        open: bool,
-    ) -> f32 {
+    pub(crate) fn phase3_carrier(&mut self, pitch: f32, spectral_drive: f32, open: bool) -> f32 {
         if open {
             self.advance_spectral_env(spectral_drive);
             if self.pitch_counter == 0 || self.needs_pitch_state_refresh(pitch) {
@@ -272,17 +279,12 @@ impl OscillatorBank {
                     self.apply_spectral_damping();
                 }
             }
-            if self.motion_counter == 0 {
-                self.refresh_motion_state(amp, pitch);
+            if self.moving {
+                self.refresh_motion_state(pitch);
             }
             self.pitch_counter = (self.pitch_counter + 1) % PITCH_REFRESH_PERIOD_SAMPLES;
-            self.motion_counter = (self.motion_counter + 1) % MOTION_REFRESH_PERIOD_SAMPLES;
         }
-        self.process_sample(
-            self.current_motion_enabled,
-            self.current_motion_s,
-            self.current_motion_c,
-        )
+        self.process_sample()
     }
 
     pub(crate) fn sine_state(&self, pitch_hz: f32) -> Option<([f32; 2], [f32; 2])> {
@@ -312,7 +314,7 @@ impl OscillatorBank {
     }
 
     /// Read-only lanes of a static-pitch harmonic bank. `impulse` is the onset drive of a
-    /// tone that has not rendered yet. Vibrato and jitter are not forecast.
+    /// tone that has not rendered yet.
     pub(crate) fn bank_forecast(
         &self,
         pitch_hz: f32,
@@ -323,7 +325,7 @@ impl OscillatorBank {
         let OscillatorProfile::Harmonic { genotype } = &self.profile else {
             return None;
         };
-        if genotype.vibrato_depth != 0. || genotype.jitter != 0. || !pitch_hz.is_finite() {
+        if !pitch_hz.is_finite() {
             return None;
         }
         let pitch = pitch_hz.max(1.);
@@ -344,7 +346,11 @@ impl OscillatorBank {
                     state: seed
                         .as_mut()
                         .map_or([self.x[idx], self.y[idx]], seeded_phase_state),
-                    step: [dphi.cos(), dphi.sin()],
+                    step: if self.moving {
+                        [pitch, self.freq_mul[idx]]
+                    } else {
+                        [dphi.cos(), dphi.sin()]
+                    },
                     gain: self.base_gain[idx],
                     held: 0.,
                     damping: self.damp_exp[idx],
@@ -362,7 +368,11 @@ impl OscillatorBank {
             for idx in 0..self.active_lane_len {
                 *lanes.get_mut(idx)? = Lane {
                     state: [self.x[idx], self.y[idx]],
-                    step: [self.rot_c[idx], self.rot_s[idx]],
+                    step: if self.moving {
+                        [pitch, self.freq_mul[idx]]
+                    } else {
+                        [self.rot_c[idx], self.rot_s[idx]]
+                    },
                     gain: self.base_gain[idx],
                     held: self.gain_mask[idx],
                     damping: self.damp_exp[idx],
@@ -374,7 +384,14 @@ impl OscillatorBank {
         let damped = self.spectral_damping_active;
         Some(BankForecast {
             first_sample,
+            burst: match impulse {
+                Some(v) => self.burst(pitch, first_sample, v),
+                None => self.sounding_burst(),
+            },
             response: Response::Oscillator {
+                motion: self
+                    .moving
+                    .then_some((self.clock, self.fs, genotype.jitter)),
                 drive_env: impulse.map_or(self.drive_env * self.drive_decay, |v| v.clamp(0., 4.)),
                 drive_decay: self.drive_decay,
                 spectral_env: if !damped {
@@ -396,8 +413,11 @@ impl OscillatorBank {
     }
 
     pub fn seed_phases(&mut self, seed: u64) {
+        if let Some(r) = self.attack.as_mut() {
+            r.seed = seed;
+        }
         self.pending_phase_seed = Some(seed);
-        self.jitter_gen = PinkNoise::new(seed ^ 0xA5A5_5A5A_DEAD_BEEF, 0.001);
+        self.clock.seed = seed ^ 0xA5A5_5A5A_DEAD_BEEF;
     }
 
     pub fn last_modes_len(&self) -> usize {
@@ -437,6 +457,60 @@ impl OscillatorBank {
         }
     }
 
+    fn active_ratios(&self, pitch: f32) -> &[f32] {
+        let ratios = &self.freq_mul[..self.lane_len_real];
+        let end = ratios.partition_point(|&r| pitch * r <= self.fs * 0.49);
+        &ratios[..end]
+    }
+
+    pub(super) fn burst(
+        &self,
+        pitch: f32,
+        tick: u64,
+        impulse: f32,
+    ) -> Option<super::attack_noise::Burst> {
+        let r = self.attack.as_ref()?;
+        let ratios = self.active_ratios(pitch);
+        Some(super::attack_noise::Burst {
+            onset: tick,
+            seed: r.seed,
+            fs: self.fs,
+            low: pitch * ratios.first()?,
+            high: pitch * ratios.last()?,
+            rms: r.amount * impulse,
+        })
+    }
+
+    pub(super) fn last_burst_end(&self) -> u64 {
+        self.attack.as_ref().map_or(0, |r| r.noise.end_tick)
+    }
+
+    fn sounding_burst(&self) -> Option<super::attack_noise::Burst> {
+        self.attack.as_ref()?.noise.burst
+    }
+
+    pub(crate) fn attack_sample(
+        &mut self,
+        pitch: f32,
+        tick: u64,
+        impulse: f32,
+        strike_gain: f32,
+    ) -> f32 {
+        if self.attack.is_none() {
+            return 0.;
+        }
+        let burst = if impulse > 0. {
+            self.burst(pitch, tick, impulse * strike_gain)
+        } else {
+            None
+        };
+        let noise = &mut self.attack.as_mut().unwrap().noise;
+        if let Some(burst) = burst {
+            noise.start(burst);
+        }
+        noise.sample()
+    }
+
     fn refresh_pitch_state(&mut self, nominal_pitch_hz: f32) {
         #[cfg(test)]
         if self.render_cost_oracle {
@@ -464,6 +538,7 @@ impl OscillatorBank {
             return;
         }
 
+        self.motion_block = None;
         let max_freq_hz = (self.fs * 0.49).max(1.0);
 
         self.active_lane_len = 0;
@@ -516,6 +591,9 @@ impl OscillatorBank {
             return;
         }
 
+        if nominal_pitch_hz.to_bits() != self.last_built_pitch_hz.to_bits() {
+            self.motion_block = None;
+        }
         let max_freq_hz = (self.fs * 0.49).max(1.0);
 
         self.active_lane_len = 0;
@@ -529,9 +607,12 @@ impl OscillatorBank {
                 break;
             }
 
-            let dphi = TAU * freq_hz / self.fs;
-            self.rot_c[idx] = dphi.cos();
-            self.rot_s[idx] = dphi.sin();
+            // The motion refresh owns these rotations even between pitch refreshes.
+            if !self.moving {
+                let dphi = TAU * freq_hz / self.fs;
+                self.rot_c[idx] = dphi.cos();
+                self.rot_s[idx] = dphi.sin();
+            }
             self.gain_mask[idx] = self.base_gain[idx];
             self.last_modes_len += 1;
             self.active_lane_len = idx + 1;
@@ -553,21 +634,57 @@ impl OscillatorBank {
         self.last_built_pitch_hz = nominal_pitch_hz;
     }
 
-    fn refresh_motion_state(&mut self, amp: f32, nominal_pitch_hz: f32) {
+    pub(crate) fn set_motion_clock(&mut self, clock: MotionClock) {
+        self.clock = clock;
+        self.motion_block = None;
+    }
+
+    pub(crate) fn update_motion(&mut self, clock: Option<MotionClock>, amount: f32) {
+        let OscillatorProfile::Harmonic { genotype } = &mut self.profile else {
+            return;
+        };
+        genotype.jitter = amount;
+        genotype.vibrato_depth = amount * 0.02;
+        self.moving = amount > 0.;
+        if let Some(clock) = clock {
+            self.set_motion_clock(clock);
+        }
+        // Restore nominal rotations immediately when motion returns to zero.
+        self.last_built_pitch_hz = f32::NAN;
+    }
+
+    pub(crate) fn at_tick(&mut self, tick: u64) {
+        self.motion_tick = tick;
+    }
+
+    fn refresh_motion_state(&mut self, pitch: f32) {
+        let tick = self.motion_tick;
+        self.motion_tick = tick.saturating_add(1);
+        let block = tick.saturating_sub(self.clock.birth) / PERIOD;
+        if self.motion_block == Some(block) {
+            return;
+        }
+        self.motion_block = Some(block);
         #[cfg(test)]
         {
-            self.motion_refresh_count = self.motion_refresh_count.saturating_add(1);
+            self.motion_refresh_count += 1;
         }
-
-        let motion_angle = self.motion_phase_offset_rad(amp, nominal_pitch_hz);
-        self.current_motion_enabled = motion_angle.abs() > 1.0e-9;
-        if self.current_motion_enabled {
-            let (motion_s, motion_c) = motion_angle.sin_cos();
-            self.current_motion_s = motion_s;
-            self.current_motion_c = motion_c;
-        } else {
-            self.current_motion_s = 0.0;
-            self.current_motion_c = 1.0;
+        let OscillatorProfile::Harmonic { genotype } = &self.profile else {
+            return;
+        };
+        let offset = self.clock.offset(
+            tick,
+            self.fs,
+            genotype.vibrato_rate,
+            genotype.vibrato_depth,
+            genotype.jitter,
+        );
+        let base_angle = std::f64::consts::TAU * f64::from(pitch) / f64::from(self.fs)
+            * (1. + f64::from(offset));
+        for idx in 0..self.active_lane_len {
+            let (sin, cos) = (base_angle * f64::from(self.freq_mul[idx])).sin_cos();
+            self.rot_s[idx] = sin as f32;
+            self.rot_c[idx] = cos as f32;
         }
     }
 
@@ -576,26 +693,6 @@ impl OscillatorBank {
             return nominal_pitch_hz.to_bits() != self.last_built_pitch_hz.to_bits();
         }
         (nominal_pitch_hz - self.last_built_pitch_hz).abs() > 1.0e-6
-    }
-
-    fn motion_phase_offset_rad(&mut self, amp: f32, nominal_pitch_hz: f32) -> f32 {
-        match &self.profile {
-            OscillatorProfile::Sine => 0.0,
-            OscillatorProfile::Harmonic { genotype } => {
-                if nominal_pitch_hz <= 0.0 || !nominal_pitch_hz.is_finite() {
-                    return 0.0;
-                }
-                let dphi =
-                    TAU * genotype.vibrato_rate.max(0.0) * MOTION_REFRESH_PERIOD_SAMPLES as f32
-                        / self.fs;
-                self.lfo_phase_rad = (self.lfo_phase_rad + dphi).rem_euclid(TAU);
-                let vibrato = genotype.vibrato_depth * self.lfo_phase_rad.sin();
-                let jitter_scale = amp.max(0.0) + 0.1;
-                let jitter = self.jitter_gen.sample() * genotype.jitter * jitter_scale;
-                let freq_offset_hz = nominal_pitch_hz * (vibrato + jitter);
-                TAU * freq_offset_hz / self.fs
-            }
-        }
     }
 
     pub(super) fn excitation_gain(&mut self, drive: f32) -> f32 {
@@ -663,21 +760,13 @@ impl OscillatorBank {
 
     /// Per-lane reference for the rotation kernel.
     #[cfg(test)]
-    fn process_sample_basic(&mut self, use_motion: bool, motion_s: f32, motion_c: f32) -> f32 {
+    fn process_sample_basic(&mut self) -> f32 {
         let mut out = 0.0;
         for idx in 0..self.active_lane_len {
             let (x0, y0) = (self.x[idx], self.y[idx]);
             let (c, s) = (self.rot_c[idx], self.rot_s[idx]);
-            let base_x = c * x0 - s * y0;
-            let base_y = s * x0 + c * y0;
-            let (x1, y1) = if use_motion {
-                (
-                    motion_c * base_x - motion_s * base_y,
-                    motion_s * base_x + motion_c * base_y,
-                )
-            } else {
-                (base_x, base_y)
-            };
+            let x1 = c * x0 - s * y0;
+            let y1 = s * x0 + c * y0;
             self.x[idx] = x1;
             self.y[idx] = y1;
             out += self.gain_mask[idx] * y1;
@@ -688,22 +777,15 @@ impl OscillatorBank {
     /// Rotates every active lane once. Per-sample calls use the compile-time baseline
     /// level (SSE2, NEON), which needs no runtime dispatch. Without `mul_add`, every
     /// level matches `process_sample_basic` bit for bit.
-    fn process_sample(&mut self, use_motion: bool, motion_s: f32, motion_c: f32) -> f32 {
+    fn process_sample(&mut self) -> f32 {
         self.advance_norm_correction();
         dispatch!(Level::baseline(), simd => {
-            self.process_sample_lanes(simd, use_motion, motion_s, motion_c)
+            self.process_sample_lanes(simd)
         })
     }
 
     #[inline(always)]
-    fn process_sample_lanes<S: Simd>(
-        &mut self,
-        simd: S,
-        use_motion: bool,
-        motion_s: f32,
-        motion_c: f32,
-    ) -> f32 {
-        let (ms, mc) = (f32x8::splat(simd, motion_s), f32x8::splat(simd, motion_c));
+    fn process_sample_lanes<S: Simd>(&mut self, simd: S) -> f32 {
         let mut out = 0.0;
         let mut idx = 0;
         while idx + 8 <= self.active_lane_len {
@@ -715,13 +797,8 @@ impl OscillatorBank {
                 load(&self.rot_c),
                 load(&self.rot_s),
             );
-            let base_x = c * x0 - s * y0;
-            let base_y = s * x0 + c * y0;
-            let (x1, y1) = if use_motion {
-                (mc * base_x - ms * base_y, ms * base_x + mc * base_y)
-            } else {
-                (base_x, base_y)
-            };
+            let x1 = c * x0 - s * y0;
+            let y1 = s * x0 + c * y0;
             x1.store_slice(&mut self.x[lanes.clone()]);
             y1.store_slice(&mut self.y[lanes.clone()]);
             for (gain, y1) in self.gain_mask[lanes].iter().zip(y1.to_array()) {
@@ -732,16 +809,8 @@ impl OscillatorBank {
         for idx in idx..self.active_lane_len {
             let (x0, y0) = (self.x[idx], self.y[idx]);
             let (c, s) = (self.rot_c[idx], self.rot_s[idx]);
-            let base_x = c * x0 - s * y0;
-            let base_y = s * x0 + c * y0;
-            let (x1, y1) = if use_motion {
-                (
-                    motion_c * base_x - motion_s * base_y,
-                    motion_s * base_x + motion_c * base_y,
-                )
-            } else {
-                (base_x, base_y)
-            };
+            let x1 = c * x0 - s * y0;
+            let y1 = s * x0 + c * y0;
             self.x[idx] = x1;
             self.y[idx] = y1;
             out += self.gain_mask[idx] * y1;
@@ -768,8 +837,8 @@ impl OscillatorBank {
             if refreshed {
                 self.refresh_pitch_state(nominal_pitch_hz);
             }
-            if self.motion_counter == 0 {
-                self.refresh_motion_state(amp.max(0.0), nominal_pitch_hz);
+            if self.moving {
+                self.refresh_motion_state(nominal_pitch_hz);
             }
             if self.spectral_damping_active {
                 self.advance_spectral_env(drive_sample);
@@ -780,18 +849,13 @@ impl OscillatorBank {
                 }
             }
 
-            let sample = self.process_sample(
-                self.current_motion_enabled,
-                self.current_motion_s,
-                self.current_motion_c,
-            );
+            let sample = self.process_sample();
             if amp.is_finite() {
                 let drive_gain = self.excitation_gain(drive_sample);
                 *y += amp.max(0.0) * drive_gain * sample;
             }
 
             self.pitch_counter = (self.pitch_counter + 1) % PITCH_REFRESH_PERIOD_SAMPLES;
-            self.motion_counter = (self.motion_counter + 1) % MOTION_REFRESH_PERIOD_SAMPLES;
         }
 
         #[cfg(debug_assertions)]
@@ -805,6 +869,9 @@ impl OscillatorBank {
         signal: &ArticulationSignal,
     ) {
         debug_assert_eq!(amps.len(), space.n_bins());
+        if let Some(r) = &self.attack {
+            r.noise.project(amps, space);
+        }
         if !signal.is_active || signal.amplitude <= 0.0 {
             return;
         }
@@ -825,7 +892,11 @@ impl OscillatorBank {
             if !freq_hz.is_finite() || freq_hz <= 0.0 || freq_hz > max_freq_hz {
                 continue;
             }
-            add_log2_energy(amps, space, freq_hz, amp_scale * self.gain_mask[idx]);
+            let depth = match &self.profile {
+                OscillatorProfile::Harmonic { genotype } => genotype.vibrato_depth,
+                OscillatorProfile::Sine => 0.,
+            };
+            add_vibrato_energy(amps, space, freq_hz, amp_scale * self.gain_mask[idx], depth);
         }
     }
 
@@ -855,8 +926,8 @@ impl OscillatorBank {
             if refreshed {
                 self.refresh_pitch_state(nominal_pitch_hz);
             }
-            if self.motion_counter == 0 {
-                self.refresh_motion_state(amp.max(0.0), nominal_pitch_hz);
+            if self.moving {
+                self.refresh_motion_state(nominal_pitch_hz);
             }
             if self.spectral_damping_active {
                 self.advance_spectral_env(drive_sample);
@@ -866,18 +937,10 @@ impl OscillatorBank {
             }
 
             let sample = if use_optimized {
-                self.process_sample(
-                    self.current_motion_enabled,
-                    self.current_motion_s,
-                    self.current_motion_c,
-                )
+                self.process_sample()
             } else {
                 self.advance_norm_correction();
-                self.process_sample_basic(
-                    self.current_motion_enabled,
-                    self.current_motion_s,
-                    self.current_motion_c,
-                )
+                self.process_sample_basic()
             };
 
             if amp.is_finite() {
@@ -886,7 +949,6 @@ impl OscillatorBank {
             }
 
             self.pitch_counter = (self.pitch_counter + 1) % PITCH_REFRESH_PERIOD_SAMPLES;
-            self.motion_counter = (self.motion_counter + 1) % MOTION_REFRESH_PERIOD_SAMPLES;
         }
     }
 }
@@ -952,7 +1014,7 @@ fn round_up_to_8(len: usize) -> usize {
     (len + 7) & !7
 }
 
-fn splitmix64_next(state: &mut u64) -> u64 {
+pub(super) fn splitmix64_next(state: &mut u64) -> u64 {
     *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
     let mut z = *state;
     z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -975,6 +1037,7 @@ mod tests {
     fn harmonic_snapshot(motion: f32) -> BodySnapshot {
         BodySnapshot {
             kind: BodyKind::Harmonic,
+            attack_noise: 0.,
             amp_scale: 1.0,
             brightness: 0.6,
             inharmonic: 0.0,
@@ -982,6 +1045,50 @@ mod tests {
             unison: 1,
             motion,
             ratios: None,
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "research")]
+    fn sounding_bank_projects_the_decaying_attack_at_its_rendered_age() {
+        let mut snap = harmonic_snapshot(0.9);
+        snap.ratios = Some(Arc::from([1., 2., 3., 4.]));
+        let mut dry = OscillatorBank::from_snapshot(48000., &snap).unwrap();
+        snap.attack_noise = 0.5;
+        let mut wet = OscillatorBank::from_snapshot(48000., &snap).unwrap();
+        dry.seed_phases(123);
+        wet.seed_phases(123);
+        let space = Log2Space::new(100., 6000., 96);
+        for tick in 0..2000 {
+            let signal = ArticulationSignal {
+                amplitude: (tick as f32 / 960.).min(1.),
+                is_active: tick < 700,
+                ..Default::default()
+            };
+            let impulse = if tick == 0 || tick == 1280 { 1. } else { 0. };
+            for bank in [&mut dry, &mut wet] {
+                bank.at_tick(tick);
+                bank.phase3_carrier(320., impulse, true);
+                bank.attack_sample(320., tick, impulse, 1.);
+            }
+            if [0, 720, 1280, 1999].contains(&tick) {
+                let mut expected = vec![0.; space.n_bins()];
+                let mut reported = expected.clone();
+                dry.project_spectral(&mut expected, &space, &signal);
+                wet.project_spectral(&mut reported, &space, &signal);
+                let f = wet.bank_forecast(320., tick + 1, None).unwrap();
+                for i in 0..super::super::attack_noise::NOISE_LANES {
+                    let [x, y, w, _] = f.burst.unwrap().point(i, tick);
+                    let hz = (w * 48000. / std::f64::consts::TAU) as f32;
+                    expected[space.nearest_index(hz)] += x.hypot(y) as f32;
+                }
+                assert!(
+                    expected
+                        .iter()
+                        .zip(reported)
+                        .all(|(a, b)| (a - b).abs() < 1e-6)
+                );
+            }
         }
     }
 
@@ -997,7 +1104,7 @@ mod tests {
             bank.seed_phases(42);
             let mut maximum = 0.0_f64;
             for tick in 0..10_000_000 {
-                let sample = bank.phase3_carrier(220., 0.3, 0., tick < 5_000_000);
+                let sample = bank.phase3_carrier(220., 0., tick < 5_000_000);
                 assert!(sample.is_finite());
                 if tick % 4093 == 0 {
                     for lane in 0..bank.active_lane_len {
@@ -1020,22 +1127,22 @@ mod tests {
     fn norm_correction_preserves_phase_seed_and_culled_lanes() {
         let mut bank = OscillatorBank::from_snapshot(48_000., &harmonic_snapshot(0.)).unwrap();
         bank.seed_phases(73);
-        bank.phase3_carrier(220., 1., 0., true);
+        bank.phase3_carrier(220., 0., true);
         let mut seed = 73;
         let [x, y] = seeded_phase_state(&mut seed);
         let [c, s] = [bank.rot_c[0], bank.rot_s[0]];
         let expected = [c * x - s * y, s * x + c * y];
         assert!((bank.x[0] * expected[1] - bank.y[0] * expected[0]).abs() < 1e-6);
-        bank.phase3_carrier(20_000., 1., 0., true);
+        bank.phase3_carrier(20_000., 0., true);
         let frozen = [bank.x[1], bank.y[1]];
         for _ in 0..129 {
-            bank.phase3_carrier(20_000., 1., 0., true);
+            bank.phase3_carrier(20_000., 0., true);
         }
         assert_eq!([bank.x[1], bank.y[1]], frozen);
         // Short repeated activations cannot evade the render-clock correction.
         for _ in 0..10_000 {
-            bank.phase3_carrier(220., 1., 0., true);
-            bank.phase3_carrier(20_000., 1., 0., true);
+            bank.phase3_carrier(220., 0., true);
+            bank.phase3_carrier(20_000., 0., true);
         }
         for lane in 0..bank.lane_len_real {
             assert!((bank.x[lane].hypot(bank.y[lane]) - 1.).abs() < 1e-5);
@@ -1054,7 +1161,7 @@ mod tests {
         use super::super::sine_forecast::SineForecast;
         let mut bank = OscillatorBank::from_snapshot(48_000., &harmonic_snapshot(0.)).unwrap();
         for _ in 0..8192 {
-            bank.phase3_carrier(220., 1., 0., true);
+            bank.phase3_carrier(220., 0., true);
         }
         let forecast = bank.bank_forecast(220., 8192, None).unwrap();
         let sine = SineForecast {
@@ -1083,10 +1190,10 @@ mod tests {
     fn oscillator_norm_correction_has_no_steady_state_allocations() {
         let mut bank = OscillatorBank::from_snapshot(48_000., &harmonic_snapshot(0.4)).unwrap();
         bank.seed_phases(42);
-        bank.phase3_carrier(220., 0.3, 0., true);
+        bank.phase3_carrier(220., 0., true);
         crate::runtime_profile::begin_allocations();
         for tick in 0..48_000 {
-            std::hint::black_box(bank.phase3_carrier(220., 0.3, 0., tick < 24_000));
+            std::hint::black_box(bank.phase3_carrier(220., 0., tick < 24_000));
         }
         let counts = crate::runtime_profile::finish_allocations().unwrap();
         assert_eq!(counts.count, 0);
@@ -1098,13 +1205,12 @@ mod tests {
     #[ignore = "manual normalization cost measurement; no timing acceptance threshold"]
     #[cfg(feature = "research")]
     fn oscillator_norm_correction_cost_probe() {
-        for motion in [false, true] {
+        for motion in [0., 0.1] {
             for lanes in [1, 9, 48] {
-                let mut snapshot = harmonic_snapshot(0.);
+                let mut snapshot = harmonic_snapshot(motion);
                 snapshot.ratios = Some(Arc::from(vec![1.; lanes]));
                 let mut initial = OscillatorBank::from_snapshot(48_000., &snapshot).unwrap();
-                initial.phase3_carrier(220., 0.3, 0., true);
-                let (s, c) = 0.001_f32.sin_cos();
+                initial.phase3_carrier(220., 0., true);
                 for corrected in [false, true, true, false] {
                     let mut bank = initial.clone();
                     let began = crate::clock::Instant::now();
@@ -1113,7 +1219,7 @@ mod tests {
                             bank.advance_norm_correction();
                         }
                         let sample = dispatch!(Level::baseline(), simd => {
-                            bank.process_sample_lanes(simd, motion, s, c)
+                            bank.process_sample_lanes(simd)
                         });
                         std::hint::black_box(sample);
                     }
@@ -1143,7 +1249,7 @@ mod tests {
                         let pitch = if tick < 12_037 { 220.0 } else { 330.0 };
                         let drive = if tick == 0 || tick == 8_013 { 1.0 } else { 0.0 };
                         let gain = native.excitation_gain(drive);
-                        let actual = gain * native.phase3_carrier(pitch, 1.0, drive, true);
+                        let actual = gain * native.phase3_carrier(pitch, drive, true);
                         let mut expected = [0.0];
                         legacy.render_block(
                             &[drive],
@@ -1173,7 +1279,7 @@ mod tests {
                             assert_eq!(a.to_bits(), b.to_bits());
                         }
                         assert_eq!(native.pitch_counter, legacy.pitch_counter);
-                        assert_eq!(native.motion_counter, legacy.motion_counter);
+                        assert_eq!(native.motion_tick, legacy.motion_tick);
                     }
                 }
             }
@@ -1343,6 +1449,66 @@ mod tests {
     }
 
     #[test]
+    fn both_renderers_preserve_lane_ratios_on_the_generation_clock() {
+        let fs = 48000.;
+        let clock = MotionClock {
+            birth: 199,
+            seed: 4129,
+        };
+        for unison in [1, 3] {
+            let mut snapshot = harmonic_snapshot(0.9);
+            snapshot.unison = unison;
+            snapshot.spread = 0.35;
+            snapshot.ratios = Some(Arc::from([1., 2., 3., 4.]));
+            let mut legacy = OscillatorBank::from_snapshot(fs, &snapshot).unwrap();
+            legacy.set_motion_clock(clock);
+            #[cfg(feature = "research")]
+            let mut bank = legacy.clone();
+            for tick in clock.birth..clock.birth + 2500 {
+                let states: Vec<_> = legacy
+                    .x
+                    .iter()
+                    .copied()
+                    .zip(legacy.y.iter().copied())
+                    .collect();
+                #[cfg(feature = "research")]
+                {
+                    bank.at_tick(tick);
+                    bank.phase3_carrier(200., 0., true);
+                }
+                legacy.at_tick(tick);
+                legacy.render_block(
+                    &[0.],
+                    ToneControlBlock {
+                        pitch_hz: super::super::ControlRamp {
+                            start: 200.,
+                            step: 0.,
+                        },
+                        amp: super::super::ControlRamp {
+                            start: 1.,
+                            step: 0.,
+                        },
+                    },
+                    &mut [0.],
+                );
+                let base = 200. * (1. + clock.offset(tick, fs, 5., 0.018, 0.9));
+                for i in 0..legacy.active_lane_len {
+                    let (x, y) = states[i];
+                    let after = (legacy.x[i], legacy.y[i]);
+                    let delta = (after.1 * x - after.0 * y).atan2(after.0 * x + after.1 * y);
+                    let hz = delta * fs / TAU;
+                    assert!(
+                        (hz - base * legacy.freq_mul[i]).abs() < 0.01,
+                        "unison={unison} tick={tick} lane={i} hz={hz}"
+                    );
+                    #[cfg(feature = "research")]
+                    assert_eq!(after, (bank.x[i], bank.y[i]));
+                }
+            }
+        }
+    }
+
+    #[test]
     fn motion_lfo_phase_matches_refresh_cadence() {
         let mut backend =
             OscillatorBank::from_snapshot(48_000.0, &harmonic_snapshot(0.4)).expect("backend");
@@ -1361,8 +1527,8 @@ mod tests {
             },
             &mut out,
         );
-        let expected = 2.0 * TAU * 5.0 * MOTION_REFRESH_PERIOD_SAMPLES as f32 / 48_000.0;
-        assert!((backend.lfo_phase_rad - expected).abs() <= 1.0e-6);
+        assert_eq!(backend.motion_block, Some(1));
+        assert_eq!(backend.motion_tick, 16);
     }
 
     #[test]
@@ -1444,6 +1610,7 @@ mod tests {
     fn padding_lanes_stay_silent() {
         let snapshot = BodySnapshot {
             kind: BodyKind::Harmonic,
+            attack_noise: 0.,
             amp_scale: 1.0,
             brightness: 0.6,
             inharmonic: 0.0,
@@ -1462,6 +1629,7 @@ mod tests {
     fn optimized_kernel_matches_basic_kernel() {
         let snapshot = BodySnapshot {
             kind: BodyKind::Harmonic,
+            attack_noise: 0.,
             amp_scale: 1.0,
             brightness: 0.6,
             inharmonic: 0.0,
@@ -1595,6 +1763,7 @@ mod tests {
     fn sine_profile_skips_damping_machinery() {
         let snapshot = BodySnapshot {
             kind: BodyKind::Sine,
+            attack_noise: 0.,
             amp_scale: 1.0,
             brightness: 0.0,
             inharmonic: 0.0,

@@ -11,6 +11,8 @@ impl Voice {
         out: &mut PhonationBatch,
     ) {
         out.clear();
+        out.motion_clock = self.generation_motion_clock();
+        out.motion_update = self.pending_motion_amount.take();
         self.harmonic.events.clear();
         out.source_id = self.id;
         out.source_generation = self.metadata.generation;

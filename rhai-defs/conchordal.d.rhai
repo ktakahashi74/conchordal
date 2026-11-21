@@ -189,6 +189,15 @@ fn attack_cost_fraction(population_spec: PopulationSpec, value: f64) -> Populati
 /// Evidence: Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57).
 fn attack_cost_fraction(population_spec: PopulationSpec, value: i64) -> PopulationSpec;
 
+/// Add a short band-limited noise burst on every harmonic attack.
+/// Initial RMS in dB relative to the note amplitude at unit impulse, up to 0 dB. Omitted or −80 dB is silent. The burst starts at the strike and decays independently of the note envelope with a 15 ms time constant.
+/// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
+fn attack_noise(population_spec: PopulationSpec, db: f64) -> PopulationSpec;
+/// Add a short band-limited noise burst on every harmonic attack.
+/// Initial RMS in dB relative to the note amplitude at unit impulse, up to 0 dB. Omitted or −80 dB is silent. The burst starts at the strike and decays independently of the note envelope with a 15 ms time constant.
+/// Evidence: Not a mechanism (initial body): synthesis traits and initial conditions; see the selected body and behavior terms (§9.3.56).
+fn attack_noise(population_spec: PopulationSpec, db: i64) -> PopulationSpec;
+
 /// Maximum normalized energy restored by a fully consonant attack.
 /// Evidence: Author rule: metabolism, viability, neighbor interaction or lifecycle/respawn; sensory input does not establish an auditory model for this ecology (§9.3.57).
 fn attack_recharge_fraction(population_spec: PopulationSpec, value: f64) -> PopulationSpec;

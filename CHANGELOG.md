@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Harmonic pitch fluctuation now preserves partial and unison ratios across
+  restrikes and overlapping releases of a Voice generation. Add the optional
+  placement method `harmonic().attack_noise(db)` for a seeded 15 ms attack
+  burst. The burst follows strike strength and decays independently of the ADSR.
+
 - Add an acoustic room, off by default. `room("off" | "presentation" | "both")` in a
   score, or `[room] mode` in the config, selects dry mono, stereo reflections heard
   only at the audience, or reflections heard by the ecology as well (`both` needs a

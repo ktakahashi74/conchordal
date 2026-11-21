@@ -174,6 +174,7 @@ impl SoundBody for ModalBody {
     fn snapshot(&self) -> BodySnapshot {
         BodySnapshot {
             kind: BodyKind::Modal,
+            attack_noise: 0.,
             amp_scale: 1.0,
             brightness: brightness_from_modal_tilt(self.modal_tilt),
             inharmonic: 0.0,

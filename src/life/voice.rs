@@ -107,6 +107,7 @@ pub struct Voice {
     pub(crate) selection_environment: bool,
     pub(crate) phonation_scratch: PhonationScratch,
     active_render_notes: Vec<TrackedRenderNote>,
+    pending_motion_amount: Option<f32>,
     amp_update_pending: bool,
     sustain_participation: bool,
     participation_pitch: ParticipationPitchState,
@@ -208,6 +209,10 @@ struct Rearticulation {
 #[derive(Clone, Debug, Default)]
 #[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct PhonationBatch {
+    #[cfg_attr(test, serde(default, skip_serializing_if = "Option::is_none"))]
+    pub motion_clock: Option<super::sound::pitch_motion::MotionClock>,
+    #[cfg_attr(test, serde(default, skip_serializing_if = "Option::is_none"))]
+    pub motion_update: Option<f32>,
     pub body_policy: Option<super::action_candidates::PolicySnapshot>,
     pub source_id: u64,
     pub source_generation: u32,
@@ -219,6 +224,8 @@ pub struct PhonationBatch {
 
 impl PhonationBatch {
     pub(crate) fn clear(&mut self) {
+        self.motion_clock = None;
+        self.motion_update = None;
         self.body_policy = None;
         self.cmds.clear();
         self.tones.clear();
@@ -371,13 +378,17 @@ impl Voice {
         let adaptation =
             crate::life::adaptation::AdaptationContext::from_config(&adaptation_config, 0);
 
-        let body = sound_body::build_sound_body_from_control(
+        let mut body = sound_body::build_sound_body_from_control(
             &effective_control,
             target_freq,
             fs,
             landscape,
             &mut rng,
         );
+
+        if let AnySoundBody::Harmonic(harmonic) = &mut body {
+            harmonic.motion_clock.seed ^= u64::from(metadata.generation).rotate_left(39);
+        }
 
         // Perceive with your own body: the LOO pitch search subtracts the voice's
         // own partials. Ratios are fixed at spawn (timbre patches never change the
@@ -490,6 +501,7 @@ impl Voice {
             !matches!(effective_control.phonation.gate, PhonationGate::WhenViable);
 
         let mut voice = Voice {
+            pending_motion_amount: None,
             support: VoiceSupportState {
                 body: Default::default(),
                 #[cfg(feature = "research")]

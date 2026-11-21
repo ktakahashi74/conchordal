@@ -121,6 +121,8 @@ mod tests {
     #[test]
     fn social_trace_is_delayed_by_one_hop() {
         let batch = PhonationBatch {
+            motion_clock: None,
+            motion_update: None,
             body_policy: None,
             source_id: 1,
             source_generation: 0,

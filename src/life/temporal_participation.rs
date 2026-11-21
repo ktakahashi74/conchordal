@@ -1911,6 +1911,7 @@ mod tests {
             renderer_phase3: false,
             body: crate::life::sound::BodySnapshot {
                 kind: crate::life::sound::BodyKind::Sine,
+                attack_noise: 0.,
                 amp_scale: 1.0,
                 brightness: 0.6,
                 inharmonic: 0.0,

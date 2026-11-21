@@ -1,5 +1,10 @@
 use std::sync::Arc;
 
+#[cfg(test)]
+fn is_zero(value: &f32) -> bool {
+    *value == 0.
+}
+
 pub type VoiceId = u64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -28,5 +33,7 @@ pub struct BodySnapshot {
     pub spread: f32,
     pub unison: usize,
     pub motion: f32,
+    #[cfg_attr(test, serde(default, skip_serializing_if = "is_zero"))]
+    pub attack_noise: f32,
     pub ratios: Option<Arc<[f32]>>,
 }

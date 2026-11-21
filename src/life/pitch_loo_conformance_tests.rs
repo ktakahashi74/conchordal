@@ -81,6 +81,7 @@ fn recipe(family: &str, hz: f32, environment: &Landscape) -> Recipe {
     };
     let mut body = BodySnapshot {
         kind,
+        attack_noise: 0.,
         amp_scale: 1.0,
         brightness: 0.8,
         inharmonic: 0.0,
@@ -101,6 +102,10 @@ fn recipe(family: &str, hz: f32, environment: &Landscape) -> Recipe {
             body.unison = 5;
         }
         "motion" => body.motion = 0.9,
+        "moving_attack" => {
+            body.motion = 0.9;
+            body.attack_noise = 1.;
+        }
         _ => {}
     }
     let adsr = if family == "adsr_slow" {
@@ -294,6 +299,7 @@ fn rendered_loo_conformance() {
         "harmonic_spread",
         "modal_spread",
         "motion",
+        "moving_attack",
         "adsr_slow",
         "drone_sway",
         "landscape_density",
@@ -799,9 +805,9 @@ fn rendered_loo_conformance() {
         } else if motion_only {
             6
         } else if ties_only {
-            28
+            30
         } else {
-            84
+            90
         }
     );
     println!(
@@ -859,6 +865,7 @@ fn projected_power(recipe: &Recipe, environment: &Landscape) -> Vec<f32> {
     control.body.timbre.spread = recipe.body.spread;
     control.body.timbre.unison = recipe.body.unison;
     control.body.timbre.motion = recipe.body.motion;
+    control.body.timbre.attack_noise = recipe.body.attack_noise;
     control.body.modes = recipe
         .body
         .ratios

@@ -9,9 +9,10 @@ This is Task 2 of the [timbre implementation
 plan](../plans/2026-09-29-timbre-synthesis.md). It does not authorize Phase 3.
 The [author decision record](2026-09-29-body-policy-author-decisions.md) adopts
 A1, A3 cost attribution, C1/C3/C4 and C5A's purpose-specific realized-PCM references
-and numerical criteria. **Author amendment, 2026-10-08:** Sine/Harmonic have no
-radiating free tail. Their amplitude follows composer ADSR immediately, with the
-existing onset shaping. This supersedes A2's 0.5 s oscillator T60 prototype and
+and numerical criteria. **Author amendments, 2026-10-08 and 2026-11-21:** The sustained Sine/Harmonic
+components follow composer ADSR and onset shaping immediately and stop at
+effective Off. A struck Harmonic attack burst follows its own decay on its
+original generation until its declared finite endpoint. This supersedes A2's 0.5 s oscillator T60 prototype and
 the October 7 single-round closed-amplitude proposal for this family. Its saved
 evidence remains historical; it is not a requirement for the amended renderer.
 Free-tail rules still apply to Modal and future bodies that declare a tail.
@@ -38,8 +39,8 @@ modules](../../design-notes/timbre.md#core-and-body-modules), plan decisions D6�
 and [listener-model layers, ledger
 §9.3.56](../../design-notes/technote-ledger.md#9356-layers-of-the-listener-model-what-is-fixed-and-who-sets-the-rest).
 The composer sets listener valuation/priors, founder bodies/placements, and macro
-form. This contract adds no composer-facing parameter. The founder vocabulary
-remains `modes`, `brightness`, `spread`, `unison`, and `motion`. Mutation and
+form. The November 21 amendment adds `attack_noise(db)` for Harmonic founders.
+The `noise()` preset enables internal pitch motion. Mutation and
 capture interfaces do not enable heredity: Phase 5's observability and causal-path
 gates still apply, separately for each pathway.
 
@@ -72,10 +73,10 @@ not a claim that isolated body-aware implementations have landed there.
 
 | Location | Observed behavior and consequence |
 |---|---|
-| `src/life/sound_body.rs` | `SoundBody` and its factory registry describe the Voice-side body. The `articulate_wave` API is not the scheduled renderer boundary. A registry extension alone cannot supply a new rendering algorithm. |
+| `src/life/sound_body.rs` | `SoundBody` and its factory registry describe the Voice-side body. Scheduled audio is rendered by the Tone backend. A registry extension alone cannot supply a new rendering algorithm. |
 | `src/life/sound/events.rs`, `sound/any_backend.rs` | `BodySnapshot` closes over three kinds; `AnyBackend` closes over oscillator/resonator. `DriveMode::None` makes Sine ignore drive; the Tone wrapper adds `sine_impulse_boost`. |
 | `src/life/sound/tone.rs` | A Tone owns backend state, envelope, smoothing and randomness. `note_off` changes the output envelope. `render_tick` shapes drive and also multiplies output by the same articulation/envelope path. The new separation changes this behavior. |
-| `src/life/schedule_renderer.rs` | `(source_id, tone_id)` identifies a sounding Tone. Mixing follows deterministic key order. `fork_source` clones retained Tones for offline forward rendering. A new On allocates a Tone; previous Tones may still sound. |
+| `src/life/schedule_renderer.rs` | `(source_id, tone_id, generation)` identifies a sounding Tone. Mixing follows deterministic key order. `fork_source` clones retained Tones for offline forward rendering. A new On allocates a Tone; previous Tones may still sound. |
 | `src/life/action_candidates/footprint.rs` | This is a **temporal** representative footprint: 16 energy windows, peak normalization, and a four-second cap. `compute` constructs a Tone but obtains energies through `ToneEnergy` and coherent `project_window`, not by rendering PCM. It is distinct from F2's 72-frame **spectral** footprint. |
 | `src/life/action_candidates/energy.rs`, `self_prediction/` | Forecasts compose sine/bank/control descriptions, retained Tones, routes and intervention windows. Unknown, known zero and unsupported control already have distinct meanings. |
 | `src/temporal_cognition/body.rs` | The actual path is `src/temporal_cognition/body.rs`, not under `src/life/`. Acoustic descriptors already come from private routed PCM and NSGT. Recipe identity and prediction inputs still inspect body details. |
@@ -93,19 +94,19 @@ and pending author approval are recorded separately at the end.
 | Task 2 question | Chosen behavior | Required conformance test |
 |---|---|---|
 | 1. On / Off / Update | On opens an excitation handle and injects its declared kick; Off closes future drive at its effective sample; Update changes only declared targets. Free state, output silence, and disposal are separate. | Sample-exact command table below, including duplicate On, future Off, same-tick order, and an Off with a nonzero tail. |
-| 2. Decaying / self-sustaining bodies | Both have zero input after Off and a finite free response. Sine/Harmonic respond immediately to shaped excitation and have zero free radiation after effective Off. Modal keeps its own free-response law. | Impulse-only, finite drive, driven steady state, Off, and eventual disposal for every body, including zero excitation. |
+| 2. Decaying / self-sustaining bodies | Both have zero input after Off and a finite free response. Sine/Harmonic respond immediately to shaped excitation and close sustained radiation at effective Off. A previously struck Harmonic burst can radiate through its bounded tail. Modal keeps its own free-response law. | Impulse-only, finite drive, driven steady state, Off, and eventual disposal for every body, including zero excitation. |
 | 3. Excitation units | Nonnegative dimensionless drive level specified at sample times plus a dimensionless instantaneous kick amplitude; time in sample ticks, pitch in Hz. Transfer functions and supported sample-rate domains remain body-specific. These inputs are not measured acoustic energy. | Changing drive changes radiation; every declared rate and cross-rate invariant passes its own drive/kick reference. Undeclared rates are unsupported. The existing Sine onset boost is excitation shaping, not a new gain exception. |
-| 4. Re-excitation | Preserve existing state. Separate Tone states may implement superposition only for a declared linear, fixed-coefficient response under identical output processing. No generic state merging. | One linear state with two kicks versus two summed response states; a nonlinear/damping negative control must not qualify for merging. |
+| 4. Re-excitation | Preserve existing state. Separate Tone states may implement superposition only for a declared linear, fixed-coefficient response under identical output processing. No generic state merging. | A re-strike on the same Harmonic Tone restarts its attack burst. One linear state with two kicks versus two summed response states; a nonlinear/damping negative control must not qualify for merging. |
 | 5. Sounding pitch/coefficient change | Pitch Update transfers state of addressed open handles only, through the core pitch ramp. Closed tails retain their last coefficients. Structural genotype changes apply to future On. See A1 and the lowering rules below. | Active-handle/tail selection, pitch-ramp continuity, unsupported retuning, new-On versus re-kick lowering, simultaneous old/new tails and complete source subtraction. |
-| 6. Fluctuation | The core owns a source-generation modulation clock and distinct Tone noise substreams; the module owns their effect. The logical clock continues through silence at bounded cost. Off ends fresh noise/modulation; the adopted free-tail policy freezes its last effective frequency offset and spectral balance for bodies with free radiation. Sine/Harmonic have none after effective Off. | Split-block equality, bounded silent-gap advance, independent noise, overlapping On, coefficient continuity at Off, tail evolution and checkpoint/replay equality. |
-| 7. ADSR | ADSR shapes excitation only. Core output gain and a separately declared click guard remain outside the body. Ordinary release must not multiply a tail by the old ADSR output release. | Two release settings alter drive termination but do not erase an already free response; constant post-gain scales PCM and measured cost consistently. |
-| 8. Lifetime/resources | The renderer owns sounding state after Voice death. Fixed capacity, deterministic admission and finite tail bounds; no allocation in admitted block rendering or pool-backed Tone creation. | Repeated On/Off and Voice turnover at capacity, longest tails, full queues, rejected On, invalid module output, exact disposal identity, allocator instrumentation. |
+| 6. Fluctuation | The core owns a source-generation modulation clock and distinct Tone noise substreams; the module owns their effect. The logical clock continues through silence at bounded cost. Off ends fresh noise/modulation; the adopted free-tail policy freezes its last effective frequency offset and spectral balance for bodies with free radiation. Harmonic motion creates no oscillator tail. A struck burst finishes with its own realized frequencies and decay. | Split-block equality, bounded silent-gap advance, independent noise, overlapping On, coefficient continuity at Off, tail evolution and checkpoint/replay equality. |
+| 7. ADSR | ADSR shapes excitation only. Core output gain and a separately declared click guard remain outside the body. A Harmonic strike sets the initial burst RMS from its strike amplitude and linear attack-noise amount, independently of the note ADSR. | Two release settings alter drive termination but do not erase an already free response; constant post-gain scales PCM and measured cost consistently. |
+| 8. Lifetime/resources | The renderer owns sounding state after Voice death, including the remaining Harmonic burst. Fixed capacity, deterministic admission and finite tail bounds; no allocation in admitted block rendering or pool-backed Tone creation. | Repeated On/Off and Voice turnover at capacity, longest tails, full queues, rejected On, invalid module output, exact disposal identity, allocator instrumentation. |
 | 9. Regression scope | Preserve routing, determinism, identity, unknown handling, scan invariants and air-gap behavior. Re-register expected waveform changes from excitation/decay, not old audio goldens. | Existing invariant suites below plus Phase 2/F2–F4 re-acceptance on the new renderer. |
 | 10. Three faces | Module-native immutable genotype, bounded renderer state, optional purpose-specific self-model; the core never consumes native lanes or coefficients. | A registry body with no self-model renders and receives offline core-derived evaluation without ecology changes; genotype capture/restore is exact. |
 | 11. Core guarantees | Deterministic input clock and random supply; checked pitch/drive; caller-owned buffers; bounded admission; routes, gain and source PCM capture outside the module. | Identical scheduled input through live and representative entry points, all bus combinations, unsupported capability without fabricated evidence. |
 | 12. Dispatch | Built-ins use static variants inside one module-dispatch boundary; research bodies use a registry factory and an object-safe block renderer. No virtual call per sample. | Register a fourth body without adding consumer branches; verify allocation and dispatch counts at Tone creation and block rendering. |
 | 13. Reference frequency | Commanded Hz is a transposition anchor. It need not be the lowest partial, strongest partial, or perceived pitch; modules disclose the mapping in their schema. Unpitched semantics remain unscheduled. | Known inharmonic ratio set, below/above-band anchors, Nyquist behavior, pitch change, and no inferred fundamental substituted by the core. |
-| 14. Fallback/conformance | Use core render-derived evidence per consumer; fast-path support is conditional on purpose, state, horizon and version. The table below supplies the reference and tolerance. | Disable each self-model independently and compare admitted fast output with its own reference; stale/unknown/silent are distinct. |
+| 14. Fallback/conformance | Use core render-derived evidence per consumer; fast-path support is conditional on purpose, state, horizon and version. For a struck Harmonic, include the residual burst in PCM, window energy and the known-zero endpoint. | Disable each self-model independently and compare admitted fast output with its own reference; stale/unknown/silent are distinct. |
 | 15. Body-aware coordination | Preserve an equivalent representative-render request and provenance, with one shared F2/self-model representation. No closed-kind migration in the current F2 diagnostic. | Old-version fixture reproduction before migration; new-version reference generation and re-acceptance after migration; no mixed-version cache hit. |
 
 ## Excitation, state and output
@@ -126,7 +127,7 @@ handling remains a scheduler concern and is recorded; a module cannot backdate i
 |---|---|---|---|
 | On for a fresh tone identity | Begin its bounded excitation program; apply kick once at the onset tick. | Start from the declared initial state and seed. Existing Tone states remain owned by the same source. | Radiation follows the module transfer function. A silent kick/drive is allowed and is known silence only after successful rendering. |
 | Further excitation of an open retained handle | Add the declared kick and/or update that handle's drive; use the explicit re-kick operation, not duplicate On. | Preserve previous phase, amplitude, resonator memory and body-local drive response. | Never reset the state just to realize a new attack. Closed handles cannot be reopened implicitly. |
-| Off | At the effective Off tick, set this handle's input to zero and cancel future kicks/updates for it. A release-shaped input ramp, if requested, precedes this tick. | Keep the entire free state. Do not reset it or draw new stochastic excitation for it. | Continue the free response until its declared termination condition. Off is known silence for Sine/Harmonic, but is not disposal; bodies with a tail continue radiating. |
+| Off | At the effective Off tick, set this handle's input to zero and cancel future kicks/updates for it. A release-shaped input ramp, if requested, precedes this tick. | Keep the entire free state. Do not reset it or draw new stochastic excitation for it. | Continue the free response until its declared termination condition. Sine and sustained Harmonic radiation are zero. A struck burst can still radiate from its source generation. |
 | Update: amplitude/continuous drive | Change the excitation target through its declared ramp. Core output gain has a separately identified control, never an alias for drive. | Keep state; no implicit kick. | Reflect the body's response to the new drive. An amplitude-zero update does not delete stored energy. |
 | Update: reference pitch | Address only open excitation handles of this source generation, preserving oscillator phase or equivalent resonator state coordinates through the pitch ramp. | Retune those Tones in place. Closed/Off tails are excluded, even when their source ID matches. | Unsupported live retuning is rejected before any addressed state changes; no reset, crossfade or silent deferral. A future On may use a separately accepted pitch. |
 | Structural body replacement | Install a new immutable genotype generation for subsequent On. | Old Tones retain their original genotype, coefficients and ownership until disposal. | New and old generation radiation may overlap. This is not monophony and is included in source cost and exclusion. |
@@ -159,17 +160,20 @@ state. Their body responds without delay to excitation shaped by composer ADSR
 apply a second ADSR to body output. Sine retains additive onset boost gain 0.2,
 maximum 1 and decay time constant 80 ms. Harmonic retains `excitation_gain`, its
 80 ms drive envelope and the existing onset spectral burst. Re-excitation preserves
-the existing onset state and carrier phase. No new transient numbers are selected.
+the existing onset state and carrier phase. The optional attack burst uses eight seeded components with a 15 ms amplitude time constant.
 
-After effective Off, future excitation is canceled and Sine/Harmonic radiation
-is known zero. Zero radiation, closed input and renderer disposal remain distinct.
+At effective Off, new excitation stops and sustained Sine/Harmonic radiation
+is zero. Under the November 21 amendment the last Harmonic strike may still
+radiate its optional attack burst. Total output is known zero once the burst
+ends. The current burst ends at 18 amplitude time constants (270 ms from
+the strike). Include its remaining samples in forecasts and disposal timing. Zero radiation, closed input and renderer disposal remain distinct.
 Reuse the existing zero-residual retirement path. An amplitude-zero Update does
 not itself dispose an open handle. A new oscillator body with its own ringing
 law can be added later; it is not part of this amendment.
 
 This replaces the earlier 0.5-second oscillator T60, its approximately 72 ms rise
 lag, kick-dependent sharp-onset proposal and single-round closed-amplitude law
-for the present Sine/Harmonic family. Off coefficient freezing has no audible
+for the sustained Sine/Harmonic components. Off coefficient freezing has no audible
 oscillator tail to govern. It remains the policy for bodies with free radiation.
 Harmonic's spectral damping and floor still govern relative balance while driven;
 they do not sustain radiation after Off. Explicit body motion remains effective,
@@ -285,12 +289,12 @@ Old PinkNoise bit-exact continuation is not required; this is a renderer-version
 change. The body's input mapping and downstream conformance remain open.
 
 The body applies shared fluctuation to its driven components according to its own
-documented mapping. Existing Harmonic motion uses a shared Hz offset, not identical
-cents on every partial; a replacement must name any change. Revised A2 recommends
+documented mapping. Harmonic motion applies one relative deviation to the partials and their
+detuned copies on the generation clock. Revised A2 recommends
 freezing the last effective motion offset and excitation-dependent spectral-balance
 coefficients at effective Off for bodies with a radiating free response, while
-keeping their state and declared free decay law. The October 8 amendment gives
-Sine/Harmonic no radiating free response; no audible tail depends on this freeze.
+keeping their state and declared free decay law. Sustained Sine/Harmonic carriers end at effective Off. A previously struck
+Harmonic burst completes its own bounded decay on the original generation.
 Fresh random excitation and modulation then stop. With a release ramp,
 the frozen values are those reached at its endpoint; Off adds no further
 coefficient step. The tail may retain a detuned frequency until disposal.
@@ -397,7 +401,8 @@ evidence, never a module ID to choose its scoring formula.
 **Proposed resource policy, pending the existing A3 decision:** retain the
 registered workload, including 64 live Voices and ordinary birth opportunities.
 Total source-generation capacity remains undetermined until retained retired
-generations are included in the bound. With all 64 live generations sounding,
+generations are included in the bound. Count old-generation Harmonic burst
+residence, retained Tone slots and rendering work through the last sample. With all 64 live generations sounding,
 one death with a retained tail and one replacement birth require 65 generations.
 The earlier 64-total proposal is therefore withheld, without reducing live load
 or delaying birth. The proposed 16 Tone states per source also remain unproven;
@@ -559,8 +564,8 @@ completed tests may be reused without changing their claims or rerunning them.
 The October 8 author amendment supersedes the single-round closed-amplitude
 law for the current Sine/Harmonic family. Its finite-zero certificate and bounded
 evaluator remain evidence about the earlier prototype, not a native integration
-gate for oscillators whose free radiation is zero by definition. Their actual
-path must still cancel future inputs and distinguish silence from disposal.
+gate for sustained oscillator components. Their actual path must cancel
+future inputs and account for any remaining struck burst before reporting silence.
 Modal and other tail-bearing bodies retain their own admitted termination rules;
 no new cutoff, tail cap, silence floor or all-parameter proof is introduced.
 
@@ -878,8 +883,9 @@ cannot be inferred from this response.
 Current adoption: A1, A3 cost attribution and C1/C3/C4/C5A remain adopted.
 The October 8 author amendment replaces the earlier A2 oscillator free-decay
 prototype and October 7 single-round closed-amplitude law: Sine/Harmonic follow
-ADSR and the existing onset shaping immediately, then radiate known zero after
-effective Off. The earlier native prototype and its arithmetic evidence are
+ADSR and the existing onset shaping immediately, then cease sustained radiation at
+effective Off. The November 21 amendment retains a previously struck Harmonic
+burst on the old generation through its finite endpoint. The earlier native prototype and its arithmetic evidence are
 historical and do not constrain the new amplitude rule. Modal and future bodies
 with tails retain free-response and separate-disposal policies. Rules and signal
 checks replace the four development-parameter auditions; no subjective acceptance
@@ -891,8 +897,9 @@ with these adopted policies. See the [author record](2026-09-29-body-policy-auth
 On 2026-10-09, the author adopted the legacy f32 partial-rotation kernel for the
 excitation renderer's Sine/Harmonic carriers, without per-sample normalization.
 The previous normalized-carrier bound for a closed oscillator tail has no live
-consumer after the October 8 amendment: effective Off emits known zero before
-carrier evaluation, and its residual bound is zero. Open pitch/phase updates,
+consumer after the October 8 amendment: effective Off closes the sustained
+carrier before evaluation. The independent struck-burst endpoint now bounds
+any remaining Harmonic radiation. Open pitch/phase updates,
 64-sample pitch and 8-sample motion clocks, spectral control, excitation shaping,
 source generations and routing remain unchanged. Floating-point drift follows
 existing legacy practice; no exact unit-circle guarantee is adopted. Sharing
@@ -905,7 +912,7 @@ does not admit those consumers.
 | ID | Decision needed | Draft recommendation |
 |---|---|---|
 | A1 | Pitch scope, lowering and unsupported operation | Retune open handles only; preserve closed tails. New phonation after closure uses fresh On, repeated excitation of an open handle uses re-kick. Reject unsupported live retuning atomically, with no implicit deferral/reset; future On gets a separate pitch request. Structural genotype affects future On. Accept cross-phonation pitch overlap, or explicitly amend this policy. |
-| A2 | Author-amended oscillator response; remaining domain/conformance | 2026-10-08: Sine/Harmonic follow ADSR and existing onset shaping without amplitude lag, and radiate known zero after effective Off. No oscillator T60, rise, kick-gain or motion-scale knobs. Modal retains its free tail; bodies with tails retain Off coefficient freeze and separate disposal. Shared modulation, independent Tone noise and declared/tested module domains remain. Rules and signal checks replace the four-parameter audition. |
+| A2 | Author-amended oscillator response; remaining domain/conformance | 2026-10-08: Sine/Harmonic follow ADSR and existing onset shaping without amplitude lag, and end sustained radiation at effective Off. 2026-11-21: a previously struck Harmonic burst continues on the same generation until its finite endpoint. No oscillator T60, rise, kick-gain or motion-scale knobs. Modal retains its free tail; bodies with tails retain Off coefficient freeze and separate disposal. Shared modulation, independent Tone noise and declared/tested module domains remain. Rules and signal checks replace the four-parameter audition. |
 | A3 | Capacity, lowering envelope, retirement and cost payer | Retain registered load including 64 live Voices and ordinary births. Total source capacity awaits a bound including retired tails; the earlier 64-total proposal is withheld. The proposed 16 states per source remains unproven. The earlier 576 lanes per built-in state, queue 16 and 1e-6 residual threshold remain unadopted proposals. C1 selects certified natural tails; the earlier 60 s cap and 5 ms retirement fade were not adopted. No ordinary onset refusal accepted as success. Determine capacity and lowering without silently reducing load or delaying birth, and register a numeric renderer budget before measurement. Charge post-route habitat PCM to the live owner; keep dead-tail cost on its retired generation, without debiting parent/child. |
 | B5 decision | Adopted C5A references and criteria; remaining domain/conformance | Selected purpose-specific fixed realizations and energy `1e-10 + 0.001*abs(render)`, normalized temporal power 0.001, spectral L1/positive-mass relative 0.01. Exact zero/support/status/masks precede numerical checks; no new silence floor. Ensemble expectation and predictive descriptor shortcuts are unavailable without distinct registrations. Existing F2 limits remain fixed. |
 | F2 entry decision | What satisfies the Phase 3 dependency | Retain the existing unresolved production-representation gate and integration order in B7. Request identity alone is insufficient. Render-only integration with disabled consumers is an explicit possible amendment, not an adopted consequence of the review. No global fast-model feasibility claim. |

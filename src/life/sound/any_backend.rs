@@ -106,6 +106,7 @@ mod tests {
         let fs = 48_000.0;
         let snapshot = BodySnapshot {
             kind: BodyKind::Harmonic,
+            attack_noise: 0.,
             amp_scale: 1.0,
             brightness: 0.6,
             inharmonic: 0.0,

@@ -46,6 +46,30 @@ pub(crate) fn harmonic_gain(
     amp
 }
 
+pub(crate) fn add_vibrato_energy(
+    amps: &mut [f32],
+    space: &Log2Space,
+    freq: f32,
+    amplitude: f32,
+    depth: f32,
+) {
+    let deviation = freq * depth;
+    if deviation <= 0. {
+        add_log2_energy(amps, space, freq, amplitude);
+        return;
+    }
+    // Cycle-average power of sinusoidal FM in each log-frequency bin.
+    let half_step = space.step() * 0.5;
+    for (amp, &center) in amps.iter_mut().zip(&space.centers_log2) {
+        let lo = (((center - half_step).exp2() - freq) / deviation).clamp(-1., 1.);
+        let hi = (((center + half_step).exp2() - freq) / deviation).clamp(-1., 1.);
+        *amp += amplitude
+            * ((hi.asin() - lo.asin()) / std::f32::consts::PI)
+                .max(0.)
+                .sqrt();
+    }
+}
+
 pub(crate) fn add_log2_energy(amps: &mut [f32], space: &Log2Space, freq_hz: f32, energy: f32) {
     if !freq_hz.is_finite() || energy == 0.0 {
         return;

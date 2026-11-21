@@ -29,6 +29,7 @@ fn config() -> TemporalBodyConfig {
 fn recipe() -> BodySnapshot {
     BodySnapshot {
         kind: BodyKind::Sine,
+        attack_noise: 0.,
         amp_scale: 1.,
         brightness: 0.,
         inharmonic: 0.,

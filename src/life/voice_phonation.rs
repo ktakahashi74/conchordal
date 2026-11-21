@@ -608,6 +608,8 @@ impl Voice {
         out.source_generation = self.metadata.generation;
         out.routing = self.effective_control.body.routing;
         out.clear();
+        out.motion_clock = self.generation_motion_clock();
+        out.motion_update = self.pending_motion_amount.take();
         self.phonation_scratch.events.clear();
         let hop_tick = (tb.hop as Tick).max(1);
         let frame_end = now.saturating_add(hop_tick);

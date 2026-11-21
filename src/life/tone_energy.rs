@@ -159,6 +159,10 @@ impl ToneEnergy {
         [
             (inside([begin, end]) && lambda > 0.).then(|| (0.1 / (2. * lambda)) as u64),
             inside([envelope.onset, begin]).then_some(attack / 32),
+            // Cross terms with a free burst also resolve the carrier's linear release.
+            (self.bank.is_some_and(|b| b.burst.is_some())
+                && inside([envelope.hold_end, envelope.release_end]))
+            .then_some(envelope.release_ticks / 32),
             self.control
                 .and_then(|c| c.attack_span())
                 .filter(|s| inside(*s))
@@ -183,6 +187,21 @@ impl ToneEnergy {
         intervention: Option<ScheduledRelease>,
     ) {
         let envelope = self.envelope_at(tick, intervention);
+        if let Some(bank) = self.bank
+            && let Some(burst) = bank.burst
+        {
+            let end = burst.end();
+            // Off can cancel a future strike, but cannot shorten a burst already emitted.
+            let emitted = burst.onset < bank.first_sample;
+            if (emitted || burst.onset < self.envelope_at(burst.onset, intervention).release_end)
+                && span[0] < end
+                && burst.onset < span[1]
+            {
+                for lane in 0..crate::life::sound::attack_noise::NOISE_LANES {
+                    window.add(Some((burst.point(lane, tick), burst.onset, end)));
+                }
+            }
+        }
         let first = match (self.sine, self.bank) {
             (Some(sine), _) => sine.first_sample,
             (None, Some(bank)) => bank.first_sample,

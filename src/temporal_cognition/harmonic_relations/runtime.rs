@@ -191,14 +191,14 @@ pub(crate) fn record_opportunity(
     source: Option<Source>,
     sample: u64,
 ) {
-    if landscape.harmonic_relations_weight == 0. && landscape.harmonic_continuation_weight == 0. {
+    if landscape.harmonic.relations_weight == 0. && landscape.harmonic.continuation_weight == 0. {
         return;
     }
-    if let Some(recorder) = &landscape.harmonic_recorder {
+    if let Some(recorder) = &landscape.harmonic.recorder {
         recorder.opportunity_stats(
             if source.is_some() { 0 } else { 3 },
             1,
-            landscape.harmonic_query_version > 0 && landscape.harmonic_relations.is_none(),
+            landscape.harmonic.query_version > 0 && landscape.harmonic.relations.is_none(),
         );
         recorder.record(Record {
             sample,
@@ -843,7 +843,8 @@ impl Runtime {
             );
             self.metrics.max_publication_age_samples.fetch_max(
                 landscape
-                    .harmonic_now_sample
+                    .harmonic
+                    .now_sample
                     .saturating_sub(publication.boundary),
                 Ordering::Relaxed,
             );
@@ -864,11 +865,11 @@ impl Runtime {
             );
             self.latest = Some(publication.decision);
         }
-        if (landscape.harmonic_relations_weight != 0.
-            || landscape.harmonic_continuation_weight != 0.)
+        if (landscape.harmonic.relations_weight != 0.
+            || landscape.harmonic.continuation_weight != 0.)
             && self.expected_query > 0
         {
-            let now = landscape.harmonic_now_sample as f64 / f64::from(self.sample_rate);
+            let now = landscape.harmonic.now_sample as f64 / f64::from(self.sample_rate);
             let reasons = [
                 self.latest.is_none(),
                 self.latest
@@ -896,7 +897,7 @@ impl Runtime {
                 }
             }
         }
-        landscape.harmonic_relations = self
+        landscape.harmonic.relations = self
             .latest
             .as_ref()
             .filter(|decision| {
@@ -904,15 +905,15 @@ impl Runtime {
                     && decision.prediction.coordinate_version
                         == support.baseline(Observer::Mixed).coordinate_version
                     && decision.prediction.issued_at
-                        <= landscape.harmonic_now_sample as f64 / f64::from(self.sample_rate)
-                    && landscape.harmonic_now_sample as f64 / f64::from(self.sample_rate)
+                        <= landscape.harmonic.now_sample as f64 / f64::from(self.sample_rate)
+                    && landscape.harmonic.now_sample as f64 / f64::from(self.sample_rate)
                         <= decision.expires_at
                     && self.input_misses.load(Ordering::Relaxed) == 0
                     && self.recorder.overflow.load(Ordering::Relaxed) == 0
             })
             .cloned();
         // The worker rejects publications from an older structural query before scoring.
-        landscape.harmonic_query_version = self.expected_query;
+        landscape.harmonic.query_version = self.expected_query;
     }
 }
 
@@ -991,11 +992,11 @@ mod tests {
         );
         let support = Arc::new(Snapshot::new(geometry));
         let mut landscape = Landscape::new(space);
-        landscape.harmonic_now_sample = 1024;
+        landscape.harmonic.now_sample = 1024;
         let deadline = Instant::now() + std::time::Duration::from_secs(5);
         loop {
             runtime.advance(&support, &mut landscape);
-            if landscape.harmonic_relations.is_some() {
+            if landscape.harmonic.relations.is_some() {
                 break;
             }
             assert!(
@@ -1006,7 +1007,8 @@ mod tests {
         }
         assert_eq!(
             landscape
-                .harmonic_relations
+                .harmonic
+                .relations
                 .as_ref()
                 .unwrap()
                 .prediction
@@ -1100,14 +1102,14 @@ mod tests {
         runtime.expected_query = 514;
         let support = Arc::new(Snapshot::new(geometry));
         runtime.advance(&support, &mut landscape);
-        assert!(landscape.harmonic_relations.is_none());
+        assert!(landscape.harmonic.relations.is_none());
         runtime.expected_query = 513;
-        landscape.harmonic_now_sample = 1024;
+        landscape.harmonic.now_sample = 1024;
         runtime.advance(&support, &mut landscape);
-        assert!(landscape.harmonic_relations.is_some());
-        landscape.harmonic_now_sample = ((TMAX + 1.) * 48000.) as u64;
+        assert!(landscape.harmonic.relations.is_some());
+        landscape.harmonic.now_sample = ((TMAX + 1.) * 48000.) as u64;
         runtime.advance(&support, &mut landscape);
-        assert!(landscape.harmonic_relations.is_none());
+        assert!(landscape.harmonic.relations.is_none());
         let before = runtime.observations.load(Ordering::Relaxed);
         runtime.requested_query.store(2049, Ordering::Release);
         runtime
@@ -1142,10 +1144,10 @@ mod tests {
         assert_eq!(measured["pending_hops"], 0);
         assert_eq!(measured["timestamp_groups"], 4);
         assert_eq!(measured["background_joined"], true);
-        landscape.harmonic_relations_weight = 1.;
-        landscape.harmonic_query_version = 1;
-        landscape.harmonic_relations = None;
-        landscape.harmonic_recorder = Some(runtime.recorder.clone());
+        landscape.harmonic.relations_weight = 1.;
+        landscape.harmonic.query_version = 1;
+        landscape.harmonic.relations = None;
+        landscape.harmonic.recorder = Some(runtime.recorder.clone());
         record_opportunity(&landscape, Some(source), 2048);
         record_opportunity(&landscape, None, 2048);
         let mut flora = crate::life::flora::Flora::new(
@@ -1190,7 +1192,7 @@ mod tests {
             .first_flora_miss
             .capture(999, 99, 999, 999, 48000., Availability::default());
         assert_eq!(counters.first_flora_miss.snapshot(), first);
-        landscape.harmonic_relations_weight = 0.;
+        landscape.harmonic.relations_weight = 0.;
         flora.advance(&landscape);
         flora.render_add(&mut [0.; 512], &mut [0.; 512]);
         assert_eq!(

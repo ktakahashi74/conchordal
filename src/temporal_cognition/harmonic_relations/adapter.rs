@@ -251,7 +251,7 @@ mod tests {
             }
             let landscape = stream.process(&audio);
             if frame % 32 == 31 {
-                snapshots.push(landscape.support.as_ref().unwrap().clone());
+                snapshots.push(landscape.harmonic.support.as_ref().unwrap().clone());
             }
         }
         let snapshot = &snapshots[0];

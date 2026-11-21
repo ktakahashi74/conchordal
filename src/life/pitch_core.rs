@@ -1025,7 +1025,7 @@ impl PitchCore for PitchHillClimbPitchCore {
             .loo_input
             .support
             .clone()
-            .filter(|_| leave_self_out && landscape.support_weights.active());
+            .filter(|_| leave_self_out && landscape.harmonic.support_weights.active());
         let single_density = self.loo_input.support_single_density;
         let support_template = self.loo_input.support_template.clone();
         let scorer = |pitch_log2, replace| {
@@ -1058,11 +1058,15 @@ impl PitchCore for PitchHillClimbPitchCore {
                             s.single_partial_value(
                                 pitch_log2,
                                 single_density,
-                                landscape.support_weights,
+                                landscape.harmonic.support_weights,
                             )
                         },
                         |template| {
-                            s.template_value(pitch_log2, template, landscape.support_weights)
+                            s.template_value(
+                                pitch_log2,
+                                template,
+                                landscape.harmonic.support_weights,
+                            )
                         },
                     ))
                 .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
@@ -1331,7 +1335,7 @@ impl PitchCore for PitchPeakSamplerCore {
             .loo_input
             .support
             .clone()
-            .filter(|_| leave_self_out && landscape.support_weights.active());
+            .filter(|_| leave_self_out && landscape.harmonic.support_weights.active());
         let single_density = self.loo_input.support_single_density;
         let support_template = self.loo_input.support_template.clone();
         let mut scorer = |pitch_log2: f32| -> f32 {
@@ -1364,11 +1368,15 @@ impl PitchCore for PitchPeakSamplerCore {
                             s.single_partial_value(
                                 pitch_log2,
                                 single_density,
-                                landscape.support_weights,
+                                landscape.harmonic.support_weights,
                             )
                         },
                         |template| {
-                            s.template_value(pitch_log2, template, landscape.support_weights)
+                            s.template_value(
+                                pitch_log2,
+                                template,
+                                landscape.harmonic.support_weights,
+                            )
                         },
                     ))
                 .clamp(-f64::from(f32::MAX), f64::from(f32::MAX)) as f32
@@ -1890,6 +1898,7 @@ fn loo_score_scan(landscape: &Landscape, input: &mut LooInput) -> Option<Arc<[f3
     if let Some(action) = input.rearticulation
         && action.weight > 0.0
         && let Some(observation) = landscape
+            .ecology
             .loo
             .iter()
             .find(|s| s.id == action.id && s.generation == action.generation)
@@ -3011,8 +3020,8 @@ mod tests {
         for template in [None, Some(Arc::from([(0, 0.4), (24, 0.2)]))] {
             core.loo_input.support_template = template.clone();
             for axis in 0..3 {
-                landscape.support_weights = Default::default();
-                landscape.support_weights.set(axis, 1.);
+                landscape.harmonic.support_weights = Default::default();
+                landscape.harmonic.support_weights.set(axis, 1.);
                 let mut actual_rng = SmallRng::seed_from_u64(735);
                 let mut expected_rng = actual_rng.clone();
                 let expected = core.propose_with_scorer(
@@ -3023,8 +3032,20 @@ mod tests {
                     &mut expected_rng,
                     |pitch| {
                         template.as_ref().map_or_else(
-                            || snapshot.single_partial_value(pitch, 1., landscape.support_weights),
-                            |t| snapshot.template_value(pitch, t, landscape.support_weights),
+                            || {
+                                snapshot.single_partial_value(
+                                    pitch,
+                                    1.,
+                                    landscape.harmonic.support_weights,
+                                )
+                            },
+                            |t| {
+                                snapshot.template_value(
+                                    pitch,
+                                    t,
+                                    landscape.harmonic.support_weights,
+                                )
+                            },
                         ) as f32
                     },
                 );
@@ -3060,7 +3081,7 @@ mod tests {
             &[],
             &mut a,
         );
-        landscape.support_weights = Default::default();
+        landscape.harmonic.support_weights = Default::default();
         let neutral = core.propose_target(
             current,
             current,

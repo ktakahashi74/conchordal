@@ -79,6 +79,6 @@ pub(super) fn rescore(
     FIXED.with_borrow_mut(|v| *v = None);
     assert!(verified, "no native diagonal in fixed replay");
     Some(
-        serde_json::json!({"tick":tick,"decision_hop":landscape.harmonic_now_sample,"voice":id,"generation":generation,"current":target,"candidates":menu,"rows":rows}),
+        serde_json::json!({"tick":tick,"decision_hop":landscape.harmonic.now_sample,"voice":id,"generation":generation,"current":target,"candidates":menu,"rows":rows}),
     )
 }

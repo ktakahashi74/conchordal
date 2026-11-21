@@ -5,9 +5,15 @@
 
 use crate::core::consonance_kernel::{ConsonanceKernel, ConsonanceRepresentationParams};
 use crate::core::float::sanitize_nonnegative_finite;
+use crate::core::harmonic_support;
 use crate::core::log2space::{Log2Space, sample_scan_linear_log2};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::psycho_state::sanitize01;
+use crate::core::spectral_history::SpectralHistorySnapshot;
+use crate::core::stream::loo::{self, FloraObservation, RainObservation, TonalObservation};
+use crate::core::tonal_context::{self, pitch_set};
+use crate::temporal_cognition::harmonic_relations;
+use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct LandscapeParams {
@@ -152,27 +158,61 @@ impl PitchObjectiveMode {
     }
 }
 
-/// Pure data snapshot for UI and agent evaluation.
-/// Values here are perceptual (`perc_*`) unless stated otherwise.
-#[derive(Clone, Debug)]
-pub struct Landscape {
-    pub(crate) sites: Vec<(u32, std::sync::Arc<Landscape>)>,
+#[derive(Clone, Debug, Default)]
+pub(crate) struct EcologyViews {
+    pub(crate) sites: Vec<(u32, Arc<Landscape>)>,
     /// Exclusive render sample of this local observation.
     pub(crate) site_end: Option<u64>,
-    pub(crate) site_resource_power: Option<std::sync::Arc<[f32]>>,
-    pub(crate) harmonic_recorder:
-        Option<crate::temporal_cognition::harmonic_relations::runtime::Recorder>,
-    pub(crate) harmonic_now_sample: u64,
-    pub(crate) harmonic_query_version: u64,
-    pub(crate) harmonic_relations_weight: f64,
-    pub(crate) harmonic_continuation_weight: f64,
-    pub(crate) harmonic_relations:
-        Option<std::sync::Arc<crate::temporal_cognition::harmonic_relations::consumer::Decision>>,
+    pub(crate) site_resource_power: Option<Arc<[f32]>>,
+    pub(crate) flora_observations: Vec<FloraObservation>,
+    pub(crate) rain_observations: Vec<RainObservation>,
+    pub(crate) tonal_observations: Vec<TonalObservation>,
+    pub(crate) tonal_context: Option<Arc<tonal_context::Snapshot>>,
+    pub(crate) pitch_set_weight: f64,
+    pub(crate) pitch_set: Option<Arc<pitch_set::Snapshot>>,
+    pub(crate) loo: Vec<loo::Observation>,
+    pub(crate) spectral_history: Option<Arc<SpectralHistorySnapshot>>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct HarmonicExtensions {
+    pub(crate) recorder: Option<harmonic_relations::runtime::Recorder>,
+    pub(crate) now_sample: u64,
+    pub(crate) query_version: u64,
+    pub(crate) relations_weight: f64,
+    pub(crate) continuation_weight: f64,
+    pub(crate) relations: Option<Arc<harmonic_relations::consumer::Decision>>,
     pub(crate) support_planned: bool,
     pub(crate) support_ref_power: f32,
     pub(crate) support_loudness_exp: f32,
-    pub(crate) support_weights: crate::core::harmonic_support::Weights,
-    pub(crate) support: Option<std::sync::Arc<crate::core::harmonic_support::Snapshot>>,
+    pub(crate) support_weights: harmonic_support::Weights,
+    pub(crate) support: Option<Arc<harmonic_support::Snapshot>>,
+}
+
+impl Default for HarmonicExtensions {
+    fn default() -> Self {
+        Self {
+            recorder: None,
+            now_sample: 0,
+            query_version: 0,
+            relations_weight: 0.,
+            continuation_weight: 0.,
+            relations: None,
+            support_planned: false,
+            support_ref_power: 1.,
+            support_loudness_exp: 1.,
+            support_weights: Default::default(),
+            support: None,
+        }
+    }
+}
+
+/// Pure data snapshot for UI and agent evaluation.
+/// Values here are perceptual (`perc_*`) unless stated otherwise.
+#[derive(Debug)]
+pub struct Landscape {
+    pub(crate) ecology: EcologyViews,
+    pub(crate) harmonic: HarmonicExtensions,
     pub space: Log2Space,
     /// Runtime copy of roughness-kernel center suppression width (ERB).
     /// Used by behavior-side crowding when sigma is synced to roughness settings.
@@ -208,7 +248,7 @@ pub struct Landscape {
     pub consonance_density_mass_eff: Vec<f32>,
     /// perc_habituation_state_scan in [0,1] (copy of the worker-owned state).
     pub perc_habituation_state_scan: Vec<f32>,
-    pub(crate) onset_habituation_state_scan: std::sync::Arc<[f32]>,
+    pub(crate) onset_habituation_state_scan: Arc<[f32]>,
     pub(crate) onset_habituation_end: u64,
     pub(crate) onset_habituation_known: bool,
     /// Level-neutral baseline used by score erosion (mirrors representation theta).
@@ -217,15 +257,6 @@ pub struct Landscape {
     pub(crate) loudness_exp: f32,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
-    pub(crate) flora_observations: Vec<crate::core::stream::loo::FloraObservation>,
-    pub(crate) rain_observations: Vec<crate::core::stream::loo::RainObservation>,
-    pub(crate) tonal_observations: Vec<crate::core::stream::loo::TonalObservation>,
-    pub(crate) tonal_context: Option<std::sync::Arc<crate::core::tonal_context::Snapshot>>,
-    pub(crate) pitch_set_weight: f64,
-    pub(crate) pitch_set: Option<std::sync::Arc<crate::core::tonal_context::pitch_set::Snapshot>>,
-    pub(crate) loo: Vec<crate::core::stream::loo::Observation>,
-    pub(crate) spectral_history:
-        Option<std::sync::Arc<crate::core::spectral_history::SpectralHistorySnapshot>>,
     /// perc_state_R (summary statistics).
     pub roughness01_scalar: f32,
     pub loudness_mass: f32,
@@ -238,11 +269,73 @@ pub struct Landscape {
     pub rhythm: NeuralRhythms,
 }
 
+impl Clone for Landscape {
+    fn clone(&self) -> Self {
+        self.clone_with_views(self.ecology.clone(), self.harmonic.clone())
+    }
+}
+
 impl Landscape {
+    /// The frame builder reads the live ecology before constructing the display snapshot.
+    pub(crate) fn clone_for_ui(&self) -> Self {
+        self.clone_with_views(
+            EcologyViews::default(),
+            HarmonicExtensions {
+                support_planned: self.harmonic.support_planned,
+                support_ref_power: self.harmonic.support_ref_power,
+                support_loudness_exp: self.harmonic.support_loudness_exp,
+                support_weights: self.harmonic.support_weights,
+                support: self.harmonic.support.clone(),
+                ..HarmonicExtensions::default()
+            },
+        )
+    }
+
+    fn clone_with_views(&self, ecology: EcologyViews, harmonic: HarmonicExtensions) -> Self {
+        Self {
+            ecology,
+            harmonic,
+            space: self.space.clone(),
+            roughness_suppress_sigma_erb: self.roughness_suppress_sigma_erb,
+            roughness_kernel_params: self.roughness_kernel_params,
+            roughness: self.roughness.clone(),
+            roughness_shape_raw: self.roughness_shape_raw.clone(),
+            roughness01: self.roughness01.clone(),
+            harmonicity: self.harmonicity.clone(),
+            harmonicity01: self.harmonicity01.clone(),
+            consonance_field_score: self.consonance_field_score.clone(),
+            consonance_field_level: self.consonance_field_level.clone(),
+            consonance_density_mass: self.consonance_density_mass.clone(),
+            consonance_density: self.consonance_density.clone(),
+            consonance_field_energy: self.consonance_field_energy.clone(),
+            consonance_field_score_eff: self.consonance_field_score_eff.clone(),
+            consonance_field_level_eff: self.consonance_field_level_eff.clone(),
+            consonance_density_mass_eff: self.consonance_density_mass_eff.clone(),
+            perc_habituation_state_scan: self.perc_habituation_state_scan.clone(),
+            onset_habituation_state_scan: self.onset_habituation_state_scan.clone(),
+            onset_habituation_end: self.onset_habituation_end,
+            onset_habituation_known: self.onset_habituation_known,
+            consonance_theta: self.consonance_theta,
+            consonance_representation: self.consonance_representation,
+            loudness_exp: self.loudness_exp,
+            subjective_intensity: self.subjective_intensity.clone(),
+            nsgt_power: self.nsgt_power.clone(),
+            roughness01_scalar: self.roughness01_scalar,
+            loudness_mass: self.loudness_mass,
+            pitch_objective_mode: self.pitch_objective_mode,
+            harmonicity_params: self.harmonicity_params,
+            consonance_kernel: self.consonance_kernel,
+            roughness_k: self.roughness_k,
+            roughness_ref_peak: self.roughness_ref_peak,
+            roughness_ref_eps: self.roughness_ref_eps,
+            rhythm: self.rhythm,
+        }
+    }
+
     /// Nominal single-partial density when no spectral self-report is available.
     pub(crate) fn support_single_density(&self, amp: f32) -> f32 {
-        (0.5 * amp.max(0.).powi(2) / self.support_ref_power.max(1e-12))
-            .powf(self.support_loudness_exp)
+        (0.5 * amp.max(0.).powi(2) / self.harmonic.support_ref_power.max(1e-12))
+            .powf(self.harmonic.support_loudness_exp)
     }
 
     pub(crate) fn set_analysis_metadata(
@@ -267,20 +360,8 @@ impl Landscape {
         let n = space.n_bins();
         Self {
             space,
-            sites: Vec::new(),
-            site_end: None,
-            site_resource_power: None,
-            harmonic_recorder: None,
-            harmonic_now_sample: 0,
-            harmonic_query_version: 0,
-            harmonic_relations_weight: 0.,
-            harmonic_continuation_weight: 0.,
-            harmonic_relations: None,
-            support_planned: false,
-            support_ref_power: 1.,
-            support_loudness_exp: 1.,
-            support_weights: Default::default(),
-            support: None,
+            ecology: EcologyViews::default(),
+            harmonic: HarmonicExtensions::default(),
             roughness_suppress_sigma_erb: 0.06,
             roughness_kernel_params: crate::core::roughness_kernel::KernelParams::default(),
             roughness: vec![0.0; n],
@@ -297,7 +378,7 @@ impl Landscape {
             consonance_field_level_eff: vec![0.0; n],
             consonance_density_mass_eff: vec![0.0; n],
             perc_habituation_state_scan: vec![0.0; n],
-            onset_habituation_state_scan: std::sync::Arc::from([]),
+            onset_habituation_state_scan: Arc::from([]),
             onset_habituation_end: 0,
             onset_habituation_known: false,
             consonance_theta: 0.0,
@@ -305,14 +386,6 @@ impl Landscape {
             loudness_exp: 1.0,
             subjective_intensity: vec![0.0; n],
             nsgt_power: vec![0.0; n],
-            spectral_history: None,
-            loo: Vec::new(),
-            tonal_context: None,
-            pitch_set: None,
-            pitch_set_weight: 0.,
-            tonal_observations: Vec::new(),
-            flora_observations: Vec::new(),
-            rain_observations: Vec::new(),
             roughness01_scalar: 0.0,
             loudness_mass: 0.0,
             pitch_objective_mode: PitchObjectiveMode::Consonance,
@@ -326,15 +399,15 @@ impl Landscape {
     }
 
     pub fn resize_to_space(&mut self, space: Log2Space) {
-        self.onset_habituation_state_scan = std::sync::Arc::from([]);
+        self.onset_habituation_state_scan = Arc::from([]);
         self.onset_habituation_end = 0;
         self.onset_habituation_known = false;
-        self.spectral_history = None;
-        self.loo.clear();
-        self.tonal_context = None;
-        self.tonal_observations.clear();
-        self.flora_observations.clear();
-        self.rain_observations.clear();
+        self.ecology.spectral_history = None;
+        self.ecology.loo.clear();
+        self.ecology.tonal_context = None;
+        self.ecology.tonal_observations.clear();
+        self.ecology.flora_observations.clear();
+        self.ecology.rain_observations.clear();
         let n = space.n_bins();
         self.space = space;
         self.roughness.resize(n, 0.0);
@@ -426,10 +499,11 @@ impl Landscape {
     }
 
     pub(crate) fn at_site(&self, id: u32) -> &Self {
-        if self.sites.is_empty() {
+        if self.ecology.sites.is_empty() {
             return self;
         }
-        self.sites
+        self.ecology
+            .sites
             .iter()
             .find(|(site, _)| *site == id)
             .expect("prepared receiver for live reader")
@@ -438,18 +512,18 @@ impl Landscape {
     }
 
     pub fn recompute_consonance(&mut self, params: &LandscapeParams) {
-        for (_, local) in &mut self.sites {
-            std::sync::Arc::make_mut(local).recompute_consonance(params);
+        for (_, local) in &mut self.ecology.sites {
+            Arc::make_mut(local).recompute_consonance(params);
         }
-        self.support_ref_power = params.ref_power;
-        self.support_loudness_exp = params.loudness_exp.max(0.01);
-        for observation in &mut self.loo {
+        self.harmonic.support_ref_power = params.ref_power;
+        self.harmonic.support_loudness_exp = params.loudness_exp.max(0.01);
+        for observation in &mut self.ecology.loo {
             observation.revalue(&self.space, params);
         }
-        for observation in &mut self.flora_observations {
+        for observation in &mut self.ecology.flora_observations {
             observation.revalue(&self.space, params);
         }
-        for observation in &mut self.rain_observations {
+        for observation in &mut self.ecology.rain_observations {
             observation.revalue(&self.space, params);
         }
         self.assert_scan_lengths();

@@ -429,7 +429,7 @@ fn support_reuses_actual_projection_and_does_not_change_hr() {
         assert_eq!(before.harmonicity, after.harmonicity);
         assert_eq!(before.roughness, after.roughness);
         assert_eq!(before.subjective_intensity, after.subjective_intensity);
-        let support = after.support.as_ref().unwrap();
+        let support = after.harmonic.support.as_ref().unwrap();
         assert_eq!(support.end_sample, ((hop + 1) * pcm.len()) as u64);
         let mut smeared = vec![0.; pcm.len().max(after.space.n_bins())];
         smeared.truncate(after.space.n_bins());
@@ -450,22 +450,22 @@ fn support_reuses_actual_projection_and_does_not_change_hr() {
         }
     }
     active.gap_to(96000);
-    assert!(active.last().support.is_none());
+    assert!(active.last().harmonic.support.is_none());
     active.process(&pcm);
     assert_eq!(
-        active.last().support.as_ref().unwrap().end_sample,
+        active.last().harmonic.support.as_ref().unwrap().end_sample,
         96000 + pcm.len() as u64
     );
     active.apply_update(crate::core::landscape::LandscapeUpdate {
         support_preference: [Some(0.); 3],
         ..Default::default()
     });
-    assert!(active.process(&pcm).support.is_none());
+    assert!(active.process(&pcm).harmonic.support.is_none());
     active.apply_update(crate::core::landscape::LandscapeUpdate {
         support_preference: [Some(1.), None, None],
         ..Default::default()
     });
-    assert!(active.process(&pcm).support.is_some());
+    assert!(active.process(&pcm).harmonic.support.is_some());
 }
 
 #[cfg(feature = "profile-alloc")]
@@ -478,11 +478,11 @@ fn support_processing_reuses_scratch_with_one_publication_in_flight() {
     stream.enable_support(g, false);
     let pcm = vec![0.002; stream.hop_samples()];
     stream.process(&pcm);
-    let mut previous = stream.last().support.clone();
+    let mut previous = stream.last().harmonic.support.clone();
     crate::runtime_profile::begin_allocations();
     for _ in 0..16 {
         let frame = stream.process(&pcm);
-        let next = frame.support.clone();
+        let next = frame.harmonic.support.clone();
         std::hint::black_box(&previous);
         previous = next;
     }
@@ -507,19 +507,39 @@ fn support_display_survives_zero_updates_and_gaps_without_enabling_loo() {
         ..Default::default()
     };
     stream.apply_update(zero);
-    assert!(stream.process(&pcm).support.is_some());
-    assert!(stream.voice_observer(false).process(&pcm).support.is_none());
+    assert!(stream.process(&pcm).harmonic.support.is_some());
+    assert!(
+        stream
+            .voice_observer(false)
+            .process(&pcm)
+            .harmonic
+            .support
+            .is_none()
+    );
     stream.gap_to(96_000);
     stream.apply_update(zero);
     assert_eq!(
-        stream.process(&pcm).support.as_ref().unwrap().end_sample,
+        stream
+            .process(&pcm)
+            .harmonic
+            .support
+            .as_ref()
+            .unwrap()
+            .end_sample,
         96_000 + pcm.len() as u64
     );
     stream.apply_update(crate::core::landscape::LandscapeUpdate {
         support_preference: [Some(1.), None, None],
         ..Default::default()
     });
-    assert!(stream.voice_observer(false).process(&pcm).support.is_some());
+    assert!(
+        stream
+            .voice_observer(false)
+            .process(&pcm)
+            .harmonic
+            .support
+            .is_some()
+    );
 }
 
 #[test]
@@ -547,8 +567,8 @@ fn display_only_support_defers_projection_to_identical_bits() {
                 }
             })
             .collect();
-        let expected = streams[0].process(&pcm).support.clone().unwrap();
-        let mut actual = streams[1].process(&pcm).support.clone().unwrap();
+        let expected = streams[0].process(&pcm).harmonic.support.clone().unwrap();
+        let mut actual = streams[1].process(&pcm).harmonic.support.clone().unwrap();
         assert!(!expected.deferred() && actual.deferred());
         assert_eq!(actual.end_sample, expected.end_sample);
         std::sync::Arc::make_mut(&mut actual).finish();

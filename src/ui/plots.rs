@@ -1022,6 +1022,7 @@ pub(crate) fn observe_harmony(
     }
     let mean = frame
         .landscape
+        .harmonic
         .support
         .as_deref()
         .and_then(|s| circular_mean(&folded_support(s)));
@@ -1085,7 +1086,7 @@ pub(crate) fn draw_harmony_circle(
             );
         }
     }
-    let support = landscape.support.as_deref();
+    let support = landscape.harmonic.support.as_deref();
     if let Some(support) = support {
         let folded = folded_support(support);
         let maximum = folded.iter().copied().fold(0.0_f64, f64::max);
@@ -1296,12 +1297,12 @@ mod rhythm_tests {
             crate::core::harmonic_support::Geometry::new(&space, &kernel),
         );
         support.p[0] = 1.0;
-        frame.landscape.support = Some(std::sync::Arc::new(support));
+        frame.landscape.harmonic.support = Some(std::sync::Arc::new(support));
         let mut history = VecDeque::new();
         observe_harmony(&mut history, &frame);
         frame.meta.time_sec = 1.0;
         observe_harmony(&mut history, &frame);
-        frame.landscape.support = None;
+        frame.landscape.harmonic.support = None;
         frame.meta.time_sec = 2.0;
         observe_harmony(&mut history, &frame);
         assert!(history[0].1.is_some());

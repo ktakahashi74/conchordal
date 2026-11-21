@@ -423,7 +423,7 @@ fn onset_tonal_and_hr_consume_the_same_wet_packet_on_the_render_frame() {
             warmed = true;
         }
         let field = analysis.snapshot();
-        let external = &field.loo[0];
+        let external = &field.ecology.loo[0];
         assert!(
             external
                 .h_scan
@@ -439,17 +439,18 @@ fn onset_tonal_and_hr_consume_the_same_wet_packet_on_the_render_frame() {
                 .iter()
                 .all(|&x| x == 0.)
         );
-        assert!(field.loo[1].onset_habituation_state_scan.is_none());
-        heard[0] |= field.loo[1].h_scan.iter().any(|&x| x > 0.);
+        assert!(field.ecology.loo[1].onset_habituation_state_scan.is_none());
+        heard[0] |= field.ecology.loo[1].h_scan.iter().any(|&x| x > 0.);
         heard[1] |= field.onset_habituation_state_scan.iter().any(|&x| x > 0.);
-        let own = &field.tonal_observations[0];
-        let shared = &field.tonal_observations[1];
+        let own = &field.ecology.tonal_observations[0];
+        let shared = &field.ecology.tonal_observations[1];
         assert!(own.excluded && !own.shared && !shared.excluded && shared.shared);
         if let Some(excluded) = &own.snapshot {
-            let reference = silent_reference.snapshot().tonal_context.unwrap();
+            let reference = silent_reference.snapshot().ecology.tonal_context.unwrap();
             assert_eq!(excluded.observed, reference.observed);
             assert_eq!(excluded.end, reference.end);
             heard[2] |= field
+                .ecology
                 .tonal_context
                 .as_ref()
                 .is_some_and(|mix| mix.observed != reference.observed);

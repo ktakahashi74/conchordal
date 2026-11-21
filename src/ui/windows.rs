@@ -928,7 +928,7 @@ pub fn main_window(
         ui.separator();
         egui::CollapsingHeader::new("Harmonic support — first-order fields")
             .show(ui, |ui| {
-                if let Some(global) = &frame.landscape.support {
+                if let Some(global) = &frame.landscape.harmonic.support {
                     ui.label(format!("M {:.4} grid units · C {:.4} · D {:.4} · sample {}", global.mass, global.focus, global.conflict, global.end_sample));
                     ui.label(format!("Support includes sub-roots from {:.2} Hz; not root probabilities", global.geometry.root_start_log2.exp2()));
                     let id = egui::Id::unique("harmonic_support_voice");

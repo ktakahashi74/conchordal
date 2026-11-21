@@ -879,8 +879,8 @@ wait(0.03);
             .expect("a future self-exclusion consumer must be captured from birth");
         if let Some(expected) = &previous {
             assert_eq!(state.last_analysis_frame, Some(state.frame_idx - 1));
-            assert_eq!(state.current_landscape.loo.len(), 1);
-            let actual = &state.current_landscape.loo[0];
+            assert_eq!(state.current_landscape.ecology.loo.len(), 1);
+            let actual = &state.current_landscape.ecology.loo[0];
             assert_eq!(
                 (actual.id, actual.generation),
                 (source.id, source.generation)

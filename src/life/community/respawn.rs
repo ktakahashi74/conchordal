@@ -411,9 +411,9 @@ impl Community {
                 final_weights.clone_from(&scene_weights);
             }
 
-            let temporal = (landscape.harmonic_relations_weight != 0.
-                || landscape.harmonic_continuation_weight != 0.)
-                && landscape.harmonic_relations.is_some()
+            let temporal = (landscape.harmonic.relations_weight != 0.
+                || landscape.harmonic.continuation_weight != 0.)
+                && landscape.harmonic.relations.is_some()
                 && self.refresh_spawn_relations(
                     landscape,
                     Some(&population.template.control),
@@ -560,9 +560,9 @@ impl Community {
             candidates.push(freq);
         }
 
-        let temporal = if (landscape.harmonic_relations_weight != 0.
-            || landscape.harmonic_continuation_weight != 0.)
-            && landscape.harmonic_relations.is_some()
+        let temporal = if (landscape.harmonic.relations_weight != 0.
+            || landscape.harmonic.continuation_weight != 0.)
+            && landscape.harmonic.relations.is_some()
         {
             let lo = candidates.iter().copied().fold(f32::INFINITY, f32::min);
             let hi = candidates.iter().copied().fold(0., f32::max);

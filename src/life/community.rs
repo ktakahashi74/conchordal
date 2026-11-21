@@ -923,12 +923,13 @@ impl Community {
         for voice in &mut self.voices {
             let landscape = landscape.at_site(voice.effective_control.body.site_id);
             let observation = landscape
+                .ecology
                 .loo
                 .iter()
                 .find(|s| s.id == voice.id() && s.generation == voice.metadata.generation);
-            let temporal = landscape.harmonic_relations_weight != 0.
-                || landscape.harmonic_continuation_weight != 0.;
-            let enabled = landscape.support_weights.active() || temporal;
+            let temporal = landscape.harmonic.relations_weight != 0.
+                || landscape.harmonic.continuation_weight != 0.;
+            let enabled = landscape.harmonic.support_weights.active() || temporal;
             let excluded = voice.effective_control.pitch.leave_self_out;
             let density = landscape.support_single_density(voice.body.amp());
             if enabled && (excluded || temporal) {
@@ -949,22 +950,23 @@ impl Community {
             input.onset_habituation_known = observation.is_some_and(|s| s.onset_habituation_known);
             input.support = if enabled && excluded {
                 landscape
+                    .ecology
                     .loo
                     .iter()
                     .find(|s| s.id == voice.id && s.generation == voice.metadata.generation)
                     .and_then(|s| s.support.clone())
             } else if temporal {
-                landscape.support.clone()
+                landscape.harmonic.support.clone()
             } else {
                 None
             };
             if excluded
-                && landscape.site_end.is_some()
+                && landscape.ecology.site_end.is_some()
                 && Some(self.time.frame_start_tick(self.current_frame)) == voice.birth_tick
                 && observation.is_none()
             {
                 input.exact_score = Some(landscape.consonance_field_score.as_slice().into());
-                input.support = landscape.support.clone();
+                input.support = landscape.harmonic.support.clone();
                 if voice.effective_control.pitch.respond_to_onsets > 0. {
                     input.onset_habituation_state_scan =
                         Some(landscape.onset_habituation_state_scan.clone());
@@ -1004,7 +1006,7 @@ impl Community {
             }
             if !excluded
                 && !input.support_warned
-                && landscape.support_weights.0.iter().any(|&w| w > 0.)
+                && landscape.harmonic.support_weights.0.iter().any(|&w| w > 0.)
             {
                 tracing::warn!(
                     voice_id = voice.id,
@@ -1039,14 +1041,15 @@ impl Community {
         let sequence_field = self
             .voices
             .iter()
-            .any(|v| landscape.sites.is_empty() && v.sequence_control.is_some())
+            .any(|v| landscape.ecology.sites.is_empty() && v.sequence_control.is_some())
             .then(|| std::sync::Arc::new(landscape.clone()));
         for voice in &mut self.voices {
             if let Some(deferred) = &mut voice.sequence_control {
-                deferred.field = if landscape.sites.is_empty() {
+                deferred.field = if landscape.ecology.sites.is_empty() {
                     sequence_field.clone()
                 } else {
                     landscape
+                        .ecology
                         .sites
                         .iter()
                         .find(|(id, _)| *id == voice.effective_control.body.site_id)
@@ -1603,17 +1606,20 @@ mod tests {
                 .exact_score
                 .is_none()
         );
-        landscape.loo.push(crate::core::stream::loo::Observation {
-            support: None,
-            id: 70,
-            generation: 0,
-            h_scan: vec![0.; landscape.space.n_bins()],
-            r_scan: vec![0.; landscape.space.n_bins()],
-            score_scan: vec![0.; landscape.space.n_bins()].into(),
-            onset_habituation_state_scan: None,
-            onset_habituation_end: 0,
-            onset_habituation_known: false,
-        });
+        landscape
+            .ecology
+            .loo
+            .push(crate::core::stream::loo::Observation {
+                support: None,
+                id: 70,
+                generation: 0,
+                h_scan: vec![0.; landscape.space.n_bins()],
+                r_scan: vec![0.; landscape.space.n_bins()],
+                score_scan: vec![0.; landscape.space.n_bins()].into(),
+                onset_habituation_state_scan: None,
+                onset_habituation_end: 0,
+                onset_habituation_known: false,
+            });
         community.update_loo_ownership(&landscape);
         assert!(
             community.voices[0]
@@ -1622,7 +1628,7 @@ mod tests {
                 .exact_score
                 .is_some()
         );
-        landscape.loo[0].generation = 1;
+        landscape.ecology.loo[0].generation = 1;
         community.update_loo_ownership(&landscape);
         assert!(
             community.voices[0]
@@ -1631,7 +1637,7 @@ mod tests {
                 .exact_score
                 .is_none()
         );
-        landscape.loo.clear();
+        landscape.ecology.loo.clear();
         community.update_loo_ownership(&landscape);
         assert!(
             community.voices[0]
@@ -1655,8 +1661,8 @@ mod tests {
         let mut density = vec![0.; space.n_bins()];
         density[72] = 1.;
         snapshot.observe(&density, 1e-12, 512);
-        landscape.support = Some(std::sync::Arc::new(snapshot));
-        landscape.harmonic_relations_weight = 0.8;
+        landscape.harmonic.support = Some(std::sync::Arc::new(snapshot));
+        landscape.harmonic.relations_weight = 0.8;
         let mut community = test_pop();
         community.apply_action(
             Action::Spawn {
@@ -1702,19 +1708,22 @@ mod tests {
             (71, 0, true, true, "mixed"),
             (70, 0, true, false, "mixed"),
         ] {
-            landscape.loo.clear();
+            landscape.ecology.loo.clear();
             if present {
-                landscape.loo.push(crate::core::stream::loo::Observation {
-                    support: None,
-                    id,
-                    generation,
-                    h_scan: vec![0.0; landscape.space.n_bins()],
-                    r_scan: vec![0.0; landscape.space.n_bins()],
-                    score_scan: vec![1.2; landscape.space.n_bins()].into(),
-                    onset_habituation_state_scan: None,
-                    onset_habituation_end: 0,
-                    onset_habituation_known: false,
-                });
+                landscape
+                    .ecology
+                    .loo
+                    .push(crate::core::stream::loo::Observation {
+                        support: None,
+                        id,
+                        generation,
+                        h_scan: vec![0.0; landscape.space.n_bins()],
+                        r_scan: vec![0.0; landscape.space.n_bins()],
+                        score_scan: vec![1.2; landscape.space.n_bins()].into(),
+                        onset_habituation_state_scan: None,
+                        onset_habituation_end: 0,
+                        onset_habituation_known: false,
+                    });
             }
             community.update_loo_ownership(&landscape);
             let voice = &mut community.voices[0];

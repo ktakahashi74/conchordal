@@ -540,7 +540,7 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
             let mut seen = observed.lock().unwrap();
             seen[0] |= state.current_landscape.nsgt_power.iter().any(|&p| p > 0.0);
             seen[1] |= state.listener_twin.spectral_history.is_some();
-            seen[2] |= state.current_landscape.spectral_history.is_some();
+            seen[2] |= state.current_landscape.ecology.spectral_history.is_some();
             previous.copy_from_slice(reference.process_hop(pcm[0]));
         }));
         let (ui_tx, ui_rx) = crate::handoff::unbounded();
@@ -1283,7 +1283,7 @@ fn voice_respond_to_onsets_reserves_history_at_run_start_and_reports_only_when_p
                     observed.lock().unwrap().0 = true;
                 }
                 if tick > 96000
-                    && let Some(own) = frame.loo.first()
+                    && let Some(own) = frame.ecology.loo.first()
                 {
                     assert_eq!(own.onset_habituation_state_scan.is_some(), weight > 0.0);
                     assert_eq!(own.onset_habituation_known, weight > 0.0);
@@ -1870,12 +1870,13 @@ fn endless_harmonic_history_starts_before_future_consumers() {
             if tick == 20 * 512 {
                 let support = state
                     .current_landscape
+                    .harmonic
                     .support
                     .as_ref()
                     .expect("reserved support scan");
                 assert!(support.end_sample > 0);
-                assert!(!state.current_landscape.support_weights.active());
-                assert_eq!(state.current_landscape.harmonic_relations_weight, 0.);
+                assert!(!state.current_landscape.harmonic.support_weights.active());
+                assert_eq!(state.current_landscape.harmonic.relations_weight, 0.);
                 assert_eq!(state.harmonic_relations.is_some(), temporal);
                 if let Some(relations) = &state.harmonic_relations {
                     assert_eq!(relations.sources, 36);

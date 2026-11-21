@@ -80,7 +80,7 @@ impl Use {
         fs: f32,
         sample: u64,
     ) {
-        if landscape.harmonic_relations_weight == 0. && landscape.harmonic_continuation_weight == 0.
+        if landscape.harmonic.relations_weight == 0. && landscape.harmonic.continuation_weight == 0.
         {
             if let Some(active) = slot {
                 active.weight = 0.;
@@ -100,8 +100,8 @@ impl Use {
             .is_none_or(|active| active.work.borrow().preview.p.len() != baseline.p.len())
         {
             *slot = Some(Self {
-                weight: landscape.harmonic_relations_weight,
-                continuation: landscape.harmonic_continuation_weight,
+                weight: landscape.harmonic.relations_weight,
+                continuation: landscape.harmonic.continuation_weight,
                 decision: None,
                 observer,
                 source,
@@ -119,9 +119,9 @@ impl Use {
             });
         }
         let active = slot.as_mut().unwrap();
-        active.weight = landscape.harmonic_relations_weight;
-        active.continuation = landscape.harmonic_continuation_weight;
-        active.decision = landscape.harmonic_relations.clone();
+        active.weight = landscape.harmonic.relations_weight;
+        active.continuation = landscape.harmonic.continuation_weight;
+        active.decision = landscape.harmonic.relations.clone();
         active.baseline = baseline;
         active.observer = observer;
         active.source = source;
@@ -656,11 +656,11 @@ impl Use {
 pub(crate) fn test_landscape(weight: f64, known: bool) -> (Landscape, [f32; 2]) {
     let (use_, pitches) = test_use(1., known);
     let mut landscape = Landscape::new(use_.baseline.geometry.space.clone());
-    landscape.support = Some(use_.baseline.clone());
-    landscape.support_planned = true;
-    landscape.harmonic_relations_weight = weight;
-    landscape.harmonic_relations = use_.decision;
-    landscape.harmonic_now_sample = 512;
+    landscape.harmonic.support = Some(use_.baseline.clone());
+    landscape.harmonic.support_planned = true;
+    landscape.harmonic.relations_weight = weight;
+    landscape.harmonic.relations = use_.decision;
+    landscape.harmonic.now_sample = 512;
     (landscape, pitches)
 }
 
@@ -713,11 +713,11 @@ pub(crate) fn test_use(weight: f64, known: bool) -> (Use, [f32; 2]) {
         atom.time = Value::exact(1.);
     }
     let mut landscape = Landscape::new(space);
-    landscape.harmonic_relations_weight = weight;
-    landscape.harmonic_relations = Some(Arc::new(Decision::new(prediction, [0.; 9], 0.)));
+    landscape.harmonic.relations_weight = weight;
+    landscape.harmonic.relations = Some(Arc::new(Decision::new(prediction, [0.; 9], 0.)));
     let mut slot = None;
     // Create storage even for the disabled-path test, then disable without querying it.
-    landscape.harmonic_relations_weight = 1.;
+    landscape.harmonic.relations_weight = 1.;
     Use::refresh(
         &mut slot,
         &landscape,
@@ -729,7 +729,7 @@ pub(crate) fn test_use(weight: f64, known: bool) -> (Use, [f32; 2]) {
         48000.,
         512,
     );
-    landscape.harmonic_relations_weight = weight;
+    landscape.harmonic.relations_weight = weight;
     Use::refresh(
         &mut slot,
         &landscape,

@@ -196,7 +196,7 @@ impl crate::viewdata::UiFrame {
             diagnostics: diagnostics(self),
             landscape: wire::Landscape {
                 space: space(&l.space),
-                support: l.support.as_ref().map(|s| {
+                support: l.harmonic.support.as_ref().map(|s| {
                     std::sync::Arc::new(wire::Snapshot {
                         geometry: wire::Geometry {
                             root_start_log2: s.geometry.root_start_log2,

@@ -20,7 +20,7 @@ fn heard_resource_unknown_hold_geometry_and_fixed_reference() {
     let initial = flora.resource_state_scan.clone();
     flora.advance(&terrain);
     assert_eq!(initial, flora.resource_state_scan);
-    terrain.flora_observations.push(FloraObservation {
+    terrain.ecology.flora_observations.push(FloraObservation {
         id: 7,
         generation: 1,
         perception: None,
@@ -29,7 +29,7 @@ fn heard_resource_unknown_hold_geometry_and_fixed_reference() {
     });
     flora.observe_external(&terrain, Some(8));
     assert!(flora.external_observed_frame.is_none());
-    terrain.flora_observations[0].generation = 0;
+    terrain.ecology.flora_observations[0].generation = 0;
     flora.observe_external(&terrain, Some(9));
     let expected = terrain.space.bins_per_oct as f32 / REFERENCE_DENSITY;
     for &ce in &flora.external_consumption_scan {
@@ -49,7 +49,7 @@ fn heard_resource_unknown_hold_geometry_and_fixed_reference() {
             .iter()
             .all(|&u| (0.0..1.0).contains(&u))
     );
-    terrain.flora_observations.clear();
+    terrain.ecology.flora_observations.clear();
     flora.observe_external(&terrain, None);
     assert_eq!(flora.external_observed_frame, Some(10));
     assert!(!flora.external_current);
@@ -236,7 +236,7 @@ fn heard_power_boundary_checks_geometry() {
         48000.0,
         512,
     );
-    terrain.flora_observations.push(FloraObservation {
+    terrain.ecology.flora_observations.push(FloraObservation {
         id: 7,
         generation: 0,
         perception: None,
@@ -428,7 +428,7 @@ fn growth_and_seed_follow_recorded_pcm_reference() {
                             }
                         }
                     }
-                    terrain.flora_observations.push(observation);
+                    terrain.ecology.flora_observations.push(observation);
                 }
                 terrain.recompute_consonance(&params);
             }
@@ -457,6 +457,7 @@ fn growth_observation_revalues_holds_and_discards_old_geometry() {
     }
     let mut terrain = mixed.last().clone();
     terrain
+        .ecology
         .flora_observations
         .push(observer.resource_snapshot());
     params.set_roughness_aversion(2.1);
@@ -475,7 +476,7 @@ fn growth_observation_revalues_holds_and_discards_old_geometry() {
     );
     flora.rendered_samples = hop as u64;
     flora.advance(&terrain);
-    let observation = &terrain.flora_observations[0];
+    let observation = &terrain.ecology.flora_observations[0];
     let perception = observation.perception.as_ref().unwrap();
     for (i, &level) in flora.growth_level_scan.iter().enumerate() {
         assert_eq!(
@@ -489,7 +490,7 @@ fn growth_observation_revalues_holds_and_discards_old_geometry() {
     }
     let held_growth = flora.growth_level_scan.clone();
     let held_seeds = flora.harmonicity_state_scan.clone();
-    terrain.flora_observations.clear();
+    terrain.ecology.flora_observations.clear();
     terrain.consonance_field_level.fill(1.0);
     terrain.harmonicity01.fill(1.0);
     flora.advance(&terrain);

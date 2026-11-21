@@ -549,6 +549,7 @@ impl Rain {
     pub(crate) fn advance(&mut self, landscape: &Landscape) {
         let observation = if self.needs_observer() && self.rendered {
             let Some(observation) = landscape
+                .ecology
                 .rain_observations
                 .iter()
                 .find(|observation| observation.id == self.id)
@@ -1729,7 +1730,8 @@ mod tests {
             l.consonance_density_mass_eff[i] = peak(mixed_hz, x) - 0.1;
             own.push(peak(own_hz, x));
         }
-        l.rain_observations
+        l.ecology
+            .rain_observations
             .push(crate::core::stream::loo::RainObservation {
                 id: 1,
                 h_scan: vec![0.0; n],
@@ -1932,7 +1934,7 @@ mod tests {
             rain.object_target_log2.clone(),
         );
         let mut gap = l.clone();
-        gap.rain_observations.clear();
+        gap.ecology.rain_observations.clear();
         gap.consonance_field_score_eff.fill(0.5);
         gap.consonance_density_mass_eff.fill(1.0);
         for _ in 0..5 {

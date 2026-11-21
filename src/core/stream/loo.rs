@@ -371,7 +371,7 @@ impl Observer {
             .map(|(&h, &r)| frame.consonance_kernel.score(h, r))
             .collect();
         Observation {
-            support: frame.support.clone(),
+            support: frame.harmonic.support.clone(),
             id: self.id,
             generation: self.generation,
             h_scan,

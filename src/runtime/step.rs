@@ -542,14 +542,14 @@ mod tests {
             let landscape = &engine.runtime.state.current_landscape;
             // Placement is at hop 47; hop 45 still holds the field of silence.
             if hop == 45 {
-                assert!(landscape.rain_observations.is_empty());
+                assert!(landscape.ecology.rain_observations.is_empty());
                 silent = Some((
                     landscape.harmonicity01.clone(),
                     landscape.roughness01.clone(),
                 ));
             }
             if let (Some((h, r)), Some(observation)) =
-                (&silent, landscape.rain_observations.first())
+                (&silent, landscape.ecology.rain_observations.first())
             {
                 assert_eq!(
                     (&observation.h_scan, &observation.r_scan),
@@ -696,8 +696,8 @@ mod strict_room_readers {
                     if n == 728 {
                         rise=serde_json::to_value(probe.report(0.,local)).unwrap()["respond"]["rise_sum"].as_f64().unwrap();
                     }
-                    assert!(local.site_end.is_some_and(|end| end <= n * 512));
-                    if let Some(owner) = local.flora_observations.first() {
+                    assert!(local.ecology.site_end.is_some_and(|end| end <= n * 512));
+                    if let Some(owner) = local.ecology.flora_observations.first() {
                         if let Some(scan) = &owner.power_scan {
                             power += scan.iter().sum::<f32>();
                         }
@@ -747,7 +747,7 @@ mod strict_room_readers {
             let state = &step.runtime.state;
             let f = &state.pop.flora[0];
             let local = state.current_landscape.at_site(f.site_id());
-            if let Some(o) = local.flora_observations.first() {
+            if let Some(o) = local.ecology.flora_observations.first() {
                 let p = o.perception.as_ref().unwrap();
                 assert!(
                     p.onset_habituation_state_scan
@@ -825,15 +825,15 @@ mod strict_room_readers {
             }
             if n == 68 {
                 assert!(state.pop.flora.is_empty() && state.pop.rain.is_empty());
-                assert_eq!(state.current_landscape.sites.len(), 1);
+                assert_eq!(state.current_landscape.ecology.sites.len(), 1);
                 let local = state.current_landscape.at_site(1);
                 assert!(
                     local.onset_habituation_state_scan.is_empty()
-                        && local.site_resource_power.is_none()
+                        && local.ecology.site_resource_power.is_none()
                 );
             }
             if n == 169 {
-                assert!(state.current_landscape.sites.is_empty());
+                assert!(state.current_landscape.ecology.sites.is_empty());
             }
         }
     }
@@ -944,7 +944,7 @@ mod strict_room_readers {
         let state = &mut step.runtime.state;
         let field = &state.current_landscape;
         assert!(heard && field.harmonicity.iter().any(|&x| x > 0.));
-        let observation = &field.flora_observations[0];
+        let observation = &field.ecology.flora_observations[0];
         assert!(
             observation
                 .power_scan

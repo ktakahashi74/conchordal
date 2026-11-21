@@ -165,7 +165,7 @@ impl Shadow {
             return None;
         }
         // A lookahead decision can schedule an onset in a later audio hop.
-        assert_eq!(land.harmonic_now_sample, self.next);
+        assert_eq!(land.harmonic.now_sample, self.next);
         let now: [Scans; 2] = std::array::from_fn(|i| {
             let obs = self.readings[i].observers[&key].snapshot();
             [obs.h_scan, obs.r_scan]
@@ -173,6 +173,7 @@ impl Shadow {
         let live = &self.readings[self.wet_live];
         assert_eq!(live.h.state(), land.perc_habituation_state_scan);
         let native = land
+            .ecology
             .loo
             .iter()
             .find(|o| (o.id, o.generation) == key)

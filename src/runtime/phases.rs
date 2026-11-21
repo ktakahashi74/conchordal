@@ -105,13 +105,13 @@ pub(super) fn advance_population(
             v.id() == receipt.record.voice_id && v.metadata.generation == receipt.record.generation
         }) && let Some(phrase) = &mut voice.phonation_engine.phrase_boundary
         {
-            phrase.harmonic_recorder = state.current_landscape.harmonic_recorder.clone();
+            phrase.harmonic_recorder = state.current_landscape.harmonic.recorder.clone();
             phrase.trace_enabled = state.reporter.is_some();
             phrase.observe(&receipt, now_tick);
         }
     }
     for voice in &mut state.pop.voices {
-        if crate::life::support_action::active(state.current_landscape.support_weights) {
+        if crate::life::support_action::active(state.current_landscape.harmonic.support_weights) {
             voice.support_renderer_phase3 = cfg.render_prototype;
             voice.support_body = state.schedule_renderer.support_body(
                 voice.id(),
@@ -583,7 +583,7 @@ pub(super) fn emit_hop_reports(
         for (bus, history) in [
             (
                 "habitat",
-                state.current_landscape.spectral_history.as_deref(),
+                state.current_landscape.ecology.spectral_history.as_deref(),
             ),
             (
                 "presentation",
@@ -745,9 +745,9 @@ pub(super) fn render_and_route_audio(
     now_tick: Tick,
     phonation_count: usize,
 ) -> Result<(Arc<[f32]>, Arc<[f32]>, f32, Duration), String> {
-    state.schedule_renderer.harmonic_recorder = state.current_landscape.harmonic_recorder.clone();
+    state.schedule_renderer.harmonic_recorder = state.current_landscape.harmonic.recorder.clone();
     for flora in &mut state.pop.flora {
-        flora.harmonic_recorder = state.current_landscape.harmonic_recorder.clone();
+        flora.harmonic_recorder = state.current_landscape.harmonic.recorder.clone();
     }
     state
         .schedule_renderer

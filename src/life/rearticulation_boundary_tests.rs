@@ -231,18 +231,20 @@ fn roughness_view_follows_eligible_off_on_actions() {
         v.effective_control.pitch.leave_self_out = true;
         v.effective_control.pitch.tail_roughness_aversion = 1.0;
         let n = land.space.n_bins();
-        land.loo.push(crate::core::stream::loo::Observation {
-            support: None,
-            id: v.id,
-            generation: v.metadata.generation,
-            h_scan: vec![0.; n],
-            r_scan: vec![0.; n],
-            score_scan: vec![0.; n].into(),
-            onset_habituation_state_scan: None,
-            onset_habituation_end: 0,
-            onset_habituation_known: false,
-        });
-        v.pitch_ctl.loo_input_mut().exact_score = Some(land.loo[0].score_scan.clone());
+        land.ecology
+            .loo
+            .push(crate::core::stream::loo::Observation {
+                support: None,
+                id: v.id,
+                generation: v.metadata.generation,
+                h_scan: vec![0.; n],
+                r_scan: vec![0.; n],
+                score_scan: vec![0.; n].into(),
+                onset_habituation_state_scan: None,
+                onset_habituation_end: 0,
+                onset_habituation_known: false,
+            });
+        v.pitch_ctl.loo_input_mut().exact_score = Some(land.ecology.loo[0].score_scan.clone());
         if case != "no_tone" {
             emit(&mut v, &tb, &r, 0, &mut out);
         }

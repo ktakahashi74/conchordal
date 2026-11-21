@@ -69,17 +69,20 @@ fn loo_observation_delivery_steady_state_allocates_nothing() {
         &landscape,
     );
     for voice in &community.voices {
-        landscape.loo.push(crate::core::stream::loo::Observation {
-            support: None,
-            id: voice.id(),
-            generation: voice.metadata.generation,
-            h_scan: vec![0.; landscape.space.n_bins()],
-            r_scan: vec![0.; landscape.space.n_bins()],
-            score_scan: vec![0.; landscape.space.n_bins()].into(),
-            onset_habituation_state_scan: None,
-            onset_habituation_end: 0,
-            onset_habituation_known: false,
-        });
+        landscape
+            .ecology
+            .loo
+            .push(crate::core::stream::loo::Observation {
+                support: None,
+                id: voice.id(),
+                generation: voice.metadata.generation,
+                h_scan: vec![0.; landscape.space.n_bins()],
+                r_scan: vec![0.; landscape.space.n_bins()],
+                score_scan: vec![0.; landscape.space.n_bins()].into(),
+                onset_habituation_state_scan: None,
+                onset_habituation_end: 0,
+                onset_habituation_known: false,
+            });
     }
     community.update_loo_ownership(&landscape);
     crate::runtime_profile::begin_allocations();

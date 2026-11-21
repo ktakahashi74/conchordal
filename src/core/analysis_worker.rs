@@ -326,14 +326,14 @@ impl AnalysisState {
 
     pub(crate) fn snapshot(&self) -> Landscape {
         let mut frame = Self::snapshot_field(&self.stream, &self.loo_streams);
-        frame.spectral_history = self.spectral_history.as_ref().and_then(|h| h.snapshot());
-        frame.sites = self
+        frame.ecology.spectral_history = self.spectral_history.as_ref().and_then(|h| h.snapshot());
+        frame.ecology.sites = self
             .sites
             .iter()
             .map(|local| {
                 let mut snapshot = Self::snapshot_field(&local.stream, &local.owners);
-                snapshot.site_resource_power = local.stream.resource_power().map(Arc::from);
-                snapshot.site_end = Some(self.next_frame_id * self.hop_samples as u64);
+                snapshot.ecology.site_resource_power = local.stream.resource_power().map(Arc::from);
+                snapshot.ecology.site_end = Some(self.next_frame_id * self.hop_samples as u64);
                 (local.id, Arc::new(snapshot))
             })
             .collect();
@@ -345,22 +345,22 @@ impl AnalysisState {
         loo_streams: &[crate::core::stream::loo::Observer],
     ) -> Landscape {
         let mut frame = stream.last().clone();
-        frame.tonal_context = stream.tonal_snapshot();
-        frame.tonal_observations = loo_streams
+        frame.ecology.tonal_context = stream.tonal_snapshot();
+        frame.ecology.tonal_observations = loo_streams
             .iter()
             .filter_map(|s| s.tonal_snapshot())
             .collect();
-        frame.loo = loo_streams
+        frame.ecology.loo = loo_streams
             .iter()
             .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Voice)
             .map(|s| s.snapshot())
             .collect();
-        frame.flora_observations = loo_streams
+        frame.ecology.flora_observations = loo_streams
             .iter()
             .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Flora)
             .map(|s| s.resource_snapshot())
             .collect();
-        frame.rain_observations = loo_streams
+        frame.ecology.rain_observations = loo_streams
             .iter()
             .filter(|s| s.kind == crate::core::stream::loo::SourceKind::Rain)
             .map(|s| s.rain_snapshot())
@@ -533,6 +533,7 @@ mod tests {
                     .1
                     .as_ref()
                     .unwrap()
+                    .ecology
                     .spectral_history
                     .is_some(),
                 enabled
@@ -717,8 +718,8 @@ mod tests {
                 let frame = frame.expect("contiguous evidence");
                 assert_eq!(frame.nsgt_power, reference.nsgt_power);
                 assert_eq!(frame.subjective_intensity, reference.subjective_intensity);
-                assert_eq!(frame.spectral_history.is_some(), index >= 3);
-                if let Some(history) = frame.spectral_history {
+                assert_eq!(frame.ecology.spectral_history.is_some(), index >= 3);
+                if let Some(history) = frame.ecology.spectral_history {
                     assert_eq!(
                         history.observed_through_sample,
                         (index as u64 + 1) * hop as u64
@@ -798,7 +799,7 @@ mod tests {
         let (id, frame) = result_rx.recv().unwrap();
         assert_eq!(id, 23);
         assert!(result_rx.try_recv().is_err());
-        let history = frame.unwrap().spectral_history.unwrap();
+        let history = frame.unwrap().ecology.spectral_history.unwrap();
         let expected_history = final_history.unwrap();
         assert_eq!(
             history.known_rms_by_age_scan,
@@ -901,7 +902,12 @@ mod tests {
                 assert_eq!(frame_id, 5);
                 let frame = frame.unwrap();
                 assert!(frame.nsgt_power.iter().all(|power| *power == 0.0));
-                assert!(frame.loo[0].h_scan.iter().all(|power| *power == 0.0));
+                assert!(
+                    frame.ecology.loo[0]
+                        .h_scan
+                        .iter()
+                        .all(|power| *power == 0.0)
+                );
             }
             assert!(
                 result_rx.try_recv().is_err(),
@@ -1026,9 +1032,12 @@ mod tests {
             if ready {
                 let snapshot = analysis.snapshot();
                 let f = snapshot.at_site(1);
-                assert_eq!(f.site_end, Some((id + 1) * 512));
-                assert_eq!(f.loo.len(), 1);
-                assert_eq!(f.loo[0].onset_habituation_end, f.onset_habituation_end);
+                assert_eq!(f.ecology.site_end, Some((id + 1) * 512));
+                assert_eq!(f.ecology.loo.len(), 1);
+                assert_eq!(
+                    f.ecology.loo[0].onset_habituation_end,
+                    f.onset_habituation_end
+                );
                 restored |= id > 46;
             }
         }
@@ -1037,7 +1046,7 @@ mod tests {
         packet.sources.clear();
         analysis.begin_hop(94);
         analysis.observe(94, &[0.; 512], Some(&packet));
-        assert!(analysis.sites.is_empty() && analysis.snapshot().sites.is_empty());
+        assert!(analysis.sites.is_empty() && analysis.snapshot().ecology.sites.is_empty());
     }
 
     #[test]
@@ -1098,10 +1107,10 @@ mod tests {
         );
         for (id, frame) in result_rx.try_iter() {
             let frame = frame.unwrap();
-            assert_eq!(frame.loo.len(), 1);
-            assert_eq!(frame.flora_observations.len(), 1);
-            assert!(frame.loo[0].h_scan.iter().all(|&x| x == 0.0));
-            let observation = &frame.flora_observations[0];
+            assert_eq!(frame.ecology.loo.len(), 1);
+            assert_eq!(frame.ecology.flora_observations.len(), 1);
+            assert!(frame.ecology.loo[0].h_scan.iter().all(|&x| x == 0.0));
+            let observation = &frame.ecology.flora_observations[0];
             assert_eq!(
                 (observation.id, observation.generation),
                 (7, u32::from(id >= 36))
@@ -1168,11 +1177,14 @@ mod tests {
             for (id, frame) in frames {
                 let frame = frame.unwrap();
                 if let Some(expected) = &expected[id as usize] {
-                    assert_eq!(frame.loo.len(), 1);
-                    assert_eq!((frame.loo[0].id, frame.loo[0].generation), (7, 2));
-                    assert_eq!(&*frame.loo[0].score_scan, expected);
+                    assert_eq!(frame.ecology.loo.len(), 1);
+                    assert_eq!(
+                        (frame.ecology.loo[0].id, frame.ecology.loo[0].generation),
+                        (7, 2)
+                    );
+                    assert_eq!(&*frame.ecology.loo[0].score_scan, expected);
                 } else {
-                    assert!(frame.loo.is_empty());
+                    assert!(frame.ecology.loo.is_empty());
                 }
             }
         }
@@ -1218,11 +1230,11 @@ mod tests {
         assert_eq!(*id, 39);
         let frame = frame.as_ref().unwrap();
         assert_eq!(
-            frame.loo.len(),
+            frame.ecology.loo.len(),
             1,
             "Latest must publish the final active observer"
         );
-        let observation = &frame.loo[0];
+        let observation = &frame.ecology.loo[0];
         assert_eq!((observation.id, observation.generation), (7, 2));
         let mut expected = reference.last().clone();
         expected.recompute_consonance(&params);
@@ -1325,11 +1337,14 @@ mod tests {
         for (id, frame) in frames {
             let frame = frame.unwrap();
             if let Some((generation, score)) = &expected[id as usize] {
-                assert_eq!(frame.loo.len(), 1);
-                assert_eq!((frame.loo[0].id, frame.loo[0].generation), (7, *generation));
-                assert_eq!(&*frame.loo[0].score_scan, score, "frame {id}");
+                assert_eq!(frame.ecology.loo.len(), 1);
+                assert_eq!(
+                    (frame.ecology.loo[0].id, frame.ecology.loo[0].generation),
+                    (7, *generation)
+                );
+                assert_eq!(&*frame.ecology.loo[0].score_scan, score, "frame {id}");
             } else {
-                assert!(frame.loo.is_empty());
+                assert!(frame.ecology.loo.is_empty());
             }
         }
     }
@@ -1351,7 +1366,7 @@ mod tests {
                         .unwrap();
                     let (actual_id, frame) = result_rx.recv().unwrap();
                     assert_eq!(actual_id, id);
-                    assert_eq!(!frame.unwrap().loo.is_empty(), active);
+                    assert_eq!(!frame.unwrap().ecology.loo.is_empty(), active);
                 }
             });
             run(

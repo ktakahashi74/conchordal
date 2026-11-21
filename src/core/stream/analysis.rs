@@ -94,7 +94,7 @@ impl AnalysisStream {
 
     pub(crate) fn enable_pitch_set(&mut self, weight: f64) {
         assert_eq!(self.params.fs, 48000.);
-        self.analysis.landscape.pitch_set_weight = weight;
+        self.analysis.landscape.ecology.pitch_set_weight = weight;
         self.pitch_set = Some(crate::core::tonal_context::pitch_set::Tracker::new(
             self.tonal_context.as_ref().is_some_and(|s| s.valid()),
             self.hop_samples(),
@@ -149,13 +149,14 @@ impl AnalysisStream {
         if let Some(state) = &mut self.pitch_set {
             state.gap(sample);
         }
-        let pitch_set_weight = self.analysis.landscape.pitch_set_weight;
-        let support_weights = self.analysis.landscape.support_weights;
+        let pitch_set_weight = self.analysis.landscape.ecology.pitch_set_weight;
+        let support_weights = self.analysis.landscape.harmonic.support_weights;
         self.analysis.reset(&self.params);
-        self.analysis.landscape.support_weights = support_weights;
-        self.analysis.landscape.pitch_set_weight = pitch_set_weight;
+        self.analysis.landscape.harmonic.support_weights = support_weights;
+        self.analysis.landscape.ecology.pitch_set_weight = pitch_set_weight;
         self.next_sample = sample;
-        self.analysis.landscape.pitch_set = self.pitch_set.as_ref().and_then(|s| s.snapshot());
+        self.analysis.landscape.ecology.pitch_set =
+            self.pitch_set.as_ref().and_then(|s| s.snapshot());
         self.analysis.landscape.onset_habituation_known = false;
     }
 
@@ -216,10 +217,15 @@ impl AnalysisStream {
         // Display-only support belongs to the mixed habitat, not LOO consumers.
         if self.support_display_planned {
             observer.analysis.potentials.support_active = observer.support_buffers.is_some()
-                && (observer.analysis.landscape.support_weights.active()
+                && (observer
+                    .analysis
+                    .landscape
+                    .harmonic
+                    .support_weights
+                    .active()
                     || observer.support_history_planned);
             if !observer.analysis.potentials.support_active {
-                observer.analysis.landscape.support = None;
+                observer.analysis.landscape.harmonic.support = None;
             }
         }
         if observer.onset_habituation.is_none() {
@@ -245,8 +251,8 @@ impl AnalysisStream {
         if f.tonal {
             stream.tonal_context = self.new_tonal_observer(true);
         }
-        stream.analysis.landscape.pitch_set_weight = 0.;
-        stream.analysis.landscape.pitch_set = None;
+        stream.analysis.landscape.ecology.pitch_set_weight = 0.;
+        stream.analysis.landscape.ecology.pitch_set = None;
         stream
     }
 
@@ -336,13 +342,13 @@ impl AnalysisStream {
                 } else {
                     ps.process_standalone(audio, self.next_sample, gate);
                 }
-                self.analysis.landscape.pitch_set = ps.snapshot();
+                self.analysis.landscape.ecology.pitch_set = ps.snapshot();
             }
             self.next_sample = self.next_sample.saturating_add(audio.len() as u64);
             if self.analysis.potentials.support_active
                 && let Some(buffers) = &mut self.support_buffers
             {
-                self.analysis.landscape.support = None;
+                self.analysis.landscape.harmonic.support = None;
                 let snapshot = std::sync::Arc::make_mut(&mut buffers[self.support_next]);
                 let observe = if self.support_display_only {
                     crate::core::harmonic_support::Snapshot::defer_projection
@@ -356,7 +362,7 @@ impl AnalysisStream {
                     self.params.roughness_ref_eps,
                     self.next_sample,
                 );
-                self.analysis.landscape.support = Some(buffers[self.support_next].clone());
+                self.analysis.landscape.harmonic.support = Some(buffers[self.support_next].clone());
                 self.support_next ^= 1;
             }
             if let Some(state) = &mut self.onset_habituation {
@@ -389,11 +395,11 @@ impl AnalysisStream {
         if let Some(state) = &mut self.tonal_context {
             state.invalidate();
         }
-        let pitch_set_weight = self.analysis.landscape.pitch_set_weight;
-        let support_weights = self.analysis.landscape.support_weights;
+        let pitch_set_weight = self.analysis.landscape.ecology.pitch_set_weight;
+        let support_weights = self.analysis.landscape.harmonic.support_weights;
         self.analysis.reset(&self.params);
-        self.analysis.landscape.support_weights = support_weights;
-        self.analysis.landscape.pitch_set_weight = pitch_set_weight;
+        self.analysis.landscape.harmonic.support_weights = support_weights;
+        self.analysis.landscape.ecology.pitch_set_weight = pitch_set_weight;
         self.next_sample = 0;
         if self.pitch_set.is_some() {
             self.enable_pitch_set(pitch_set_weight);
@@ -406,35 +412,39 @@ impl AnalysisStream {
             && weight.is_finite()
             && (-1. ..=1.).contains(&weight)
         {
-            self.analysis.landscape.harmonic_relations_weight = weight;
+            self.analysis.landscape.harmonic.relations_weight = weight;
             self.support_history_planned |= weight != 0.;
         }
         if let Some(weight) = upd.harmonic_continuation_weight
             && weight.is_finite()
             && (-1. ..=1.).contains(&weight)
         {
-            self.analysis.landscape.harmonic_continuation_weight = weight;
+            self.analysis.landscape.harmonic.continuation_weight = weight;
             self.support_history_planned |= weight != 0.;
         }
         for (axis, value) in upd.support_preference.into_iter().enumerate() {
             if let Some(value) = value {
-                self.analysis.landscape.support_weights.set(axis, value);
+                self.analysis
+                    .landscape
+                    .harmonic
+                    .support_weights
+                    .set(axis, value);
                 self.analysis.potentials.support_active = self.support_buffers.is_some()
-                    && (self.analysis.landscape.support_weights.active()
+                    && (self.analysis.landscape.harmonic.support_weights.active()
                         || self.support_history_planned
                         || self.support_display_planned);
                 if !self.analysis.potentials.support_active {
-                    self.analysis.landscape.support = None;
+                    self.analysis.landscape.harmonic.support = None;
                 }
             }
         }
         if upd.harmonic_relations_weight.is_some() || upd.harmonic_continuation_weight.is_some() {
             self.analysis.potentials.support_active = self.support_buffers.is_some()
-                && (self.analysis.landscape.support_weights.active()
+                && (self.analysis.landscape.harmonic.support_weights.active()
                     || self.support_history_planned
                     || self.support_display_planned);
             if !self.analysis.potentials.support_active {
-                self.analysis.landscape.support = None;
+                self.analysis.landscape.harmonic.support = None;
             }
         }
         if let Some(w) = upd.roughness_aversion {
@@ -474,14 +484,14 @@ mod tests {
         for hop in pcm.chunks(512) {
             stream.process(hop);
         }
-        let before = stream.last().pitch_set.clone().unwrap();
+        let before = stream.last().ecology.pitch_set.clone().unwrap();
         assert!(stream.tonal_snapshot().is_some());
         stream.reset();
-        assert!(stream.last().pitch_set.is_none());
+        assert!(stream.last().ecology.pitch_set.is_none());
         for hop in pcm.chunks(512) {
             stream.process(hop);
         }
-        let after = stream.last().pitch_set.as_ref().unwrap();
+        let after = stream.last().ecology.pitch_set.as_ref().unwrap();
         assert_eq!(before.exposure, after.exposure);
         assert!(stream.tonal_snapshot().is_none());
     }
@@ -609,8 +619,8 @@ mod tests {
             assert_eq!(actual.harmonicity, expected.harmonicity);
             assert_eq!(actual.roughness01, expected.roughness01);
             assert_eq!(
-                actual.support.as_ref().unwrap().focus,
-                expected.support.as_ref().unwrap().focus
+                actual.harmonic.support.as_ref().unwrap().focus,
+                expected.harmonic.support.as_ref().unwrap().focus
             );
         }
     }

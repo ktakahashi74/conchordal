@@ -450,7 +450,7 @@ impl PitchController {
             self.target_pitch_log2
         };
         if let AnyPitchCore::PitchHillClimb(core) = &mut self.core {
-            if landscape.pitch_set_weight > 0. {
+            if landscape.ecology.pitch_set_weight > 0. {
                 let (lo, hi) = landscape.space.voice_pitch_bounds_log2();
                 let center = if pitch.freq.is_finite() && pitch.freq > 0. {
                     pitch.freq.log2()
@@ -462,10 +462,11 @@ impl PitchController {
                 core.pitch_set =
                     (bounds.0 <= bounds.1).then(|| crate::core::tonal_context::pitch_set::Use {
                         snapshot: landscape
+                            .ecology
                             .pitch_set
                             .clone()
                             .filter(|s| self.control_tick.is_some_and(|at| s.available_at <= at)),
-                        weight: landscape.pitch_set_weight,
+                        weight: landscape.ecology.pitch_set_weight,
                         bounds,
                         trace: self.dwell_trace_enabled,
                         decision: Default::default(),
@@ -664,10 +665,10 @@ impl PitchController {
                     weight: 0.0,
                 });
             }
-            if landscape.harmonic_relations_weight != 0.
-                || landscape.harmonic_continuation_weight != 0.
+            if landscape.harmonic.relations_weight != 0.
+                || landscape.harmonic.continuation_weight != 0.
             {
-                let sample = self.control_tick.unwrap_or(landscape.harmonic_now_sample);
+                let sample = self.control_tick.unwrap_or(landscape.harmonic.now_sample);
                 let input = self.core.loo_input_mut();
                 crate::temporal_cognition::harmonic_relations::runtime::record_opportunity(
                     landscape,

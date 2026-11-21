@@ -243,7 +243,7 @@ fn environment_viability_consumes_pcm_observation_without_pitch_self_exclusion()
             is_active: true,
             ..Default::default()
         };
-        landscape.loo = vec![crate::core::stream::loo::Observation {
+        landscape.ecology.loo = vec![crate::core::stream::loo::Observation {
             support: None,
             id: voice.id(),
             generation: voice.metadata.generation,
@@ -1172,7 +1172,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                 let mut observation = candidate.snapshot();
                 observation.id = voice.id();
                 observation.generation = voice.metadata.generation;
-                mix.loo = vec![observation];
+                mix.ecology.loo = vec![observation];
                 let mut pop = Community::new(timebase);
                 pop.voices.push(voice);
                 pop.flora.push(flora[0].clone());
@@ -1509,7 +1509,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                     let mut obs = observer.snapshot();
                     obs.revalue(&land.space, &params);
                     let untouched = obs.score_scan.clone();
-                    land.loo.push(obs);
+                    land.ecology.loo.push(obs);
                     let mut input = LooInput {
                         exact_score: Some(untouched.clone()),
                         rearticulation: Some(RearticulationView {
@@ -1536,7 +1536,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                         &params.consonance_representation,
                     );
                     assert_eq!(gate["registered_movement_gate_pass"], true, "{gate}");
-                    assert_eq!(land.loo[0].score_scan, untouched);
+                    assert_eq!(land.ecology.loo[0].score_scan, untouched);
                     assert_eq!(excluded, untouched);
                     let difference = land
                         .roughness01
@@ -1625,7 +1625,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                         native.loo_input = input.clone();
                         let mut oracle = native.clone();
                         let mut reference_land = land.clone();
-                        reference_land.loo[0].h_scan = external.harmonicity01.clone();
+                        reference_land.ecology.loo[0].h_scan = external.harmonicity01.clone();
                         oracle.loo_input.exact_score =
                             Some(external.consonance_field_score.clone().into());
                         let mut tails_land = reference_land.clone();
@@ -1677,7 +1677,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                     input.rearticulation.as_mut().unwrap().generation = 8;
                     loo_score_scan(&land, &mut input);
                     assert!(input.rearticulation_score.is_empty());
-                    land.loo.clear();
+                    land.ecology.loo.clear();
                     loo_score_scan(&land, &mut input);
                     assert!(input.rearticulation_score.is_empty());
                     observer.reset();

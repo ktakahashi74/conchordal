@@ -108,8 +108,12 @@ pub(crate) fn retiring(live: &std::collections::BTreeSet<Owner>, now: Tick) -> u
 pub(super) fn fields(id: u64, g: u32, land: &Landscape) -> Option<Vec<room_shadow::Field>> {
     FIXED.with_borrow(|slot| {
         let fixed = slot.as_ref()?;
-        let native = land.loo.iter().find(|s| (s.id, s.generation) == (id, g))?;
-        assert_eq!(fixed.end, land.harmonic_now_sample);
+        let native = land
+            .ecology
+            .loo
+            .iter()
+            .find(|s| (s.id, s.generation) == (id, g))?;
+        assert_eq!(fixed.end, land.harmonic.now_sample);
         let frame = fixed.observers[&(id, g)].last();
         let score = frame
             .harmonicity

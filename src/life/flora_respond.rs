@@ -89,7 +89,7 @@ impl Flora {
     /// Reads a new onset-history observation and sets this hop's clock factor.
     /// A rise rho owes w*tau*rho extra seconds, spent at most w*hop_dt per hop.
     pub(crate) fn observe_onsets(&mut self, landscape: &Landscape, now: u64) {
-        let excluded = landscape.site_end.is_some()
+        let excluded = landscape.ecology.site_end.is_some()
             && self.rendered_samples != 0
             && self.needs_external_onsets();
         let Some(respond) = &mut self.respond else {
@@ -97,6 +97,7 @@ impl Flora {
         };
         let (scan, end, known) = if excluded {
             landscape
+                .ecology
                 .flora_observations
                 .iter()
                 .find(|s| s.id == self.id && s.generation == 0)

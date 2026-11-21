@@ -340,19 +340,21 @@ fn rearticulation_candidate_view_preserves_holds_and_glides() {
 fn rearticulation_view_reuses_proposal_storage() {
     let mut land = Landscape::new(Log2Space::new(55., 8000., 96));
     let n = land.space.n_bins();
-    land.loo.push(crate::core::stream::loo::Observation {
-        support: None,
-        id: 1,
-        generation: 0,
-        h_scan: vec![0.3; n],
-        r_scan: vec![0.1; n],
-        score_scan: vec![0.2; n].into(),
-        onset_habituation_state_scan: None,
-        onset_habituation_end: 0,
-        onset_habituation_known: false,
-    });
+    land.ecology
+        .loo
+        .push(crate::core::stream::loo::Observation {
+            support: None,
+            id: 1,
+            generation: 0,
+            h_scan: vec![0.3; n],
+            r_scan: vec![0.1; n],
+            score_scan: vec![0.2; n].into(),
+            onset_habituation_state_scan: None,
+            onset_habituation_end: 0,
+            onset_habituation_known: false,
+        });
     let mut input = LooInput {
-        exact_score: Some(land.loo[0].score_scan.clone()),
+        exact_score: Some(land.ecology.loo[0].score_scan.clone()),
         rearticulation: Some(RearticulationView {
             weight: 1.0,
             id: 1,
@@ -389,17 +391,19 @@ fn harmonic_opportunity_uses_the_same_separate_pitch_view() {
         let n = land.space.n_bins();
         land.roughness01.fill(0.2);
         let external: Arc<[f32]> = vec![0.; n].into();
-        land.loo.push(crate::core::stream::loo::Observation {
-            support: None,
-            id: 1,
-            generation: 0,
-            h_scan: vec![1.; n],
-            r_scan: vec![0.; n],
-            score_scan: external.clone(),
-            onset_habituation_state_scan: None,
-            onset_habituation_end: 0,
-            onset_habituation_known: false,
-        });
+        land.ecology
+            .loo
+            .push(crate::core::stream::loo::Observation {
+                support: None,
+                id: 1,
+                generation: 0,
+                h_scan: vec![1.; n],
+                r_scan: vec![0.; n],
+                score_scan: external.clone(),
+                onset_habituation_state_scan: None,
+                onset_habituation_end: 0,
+                onset_habituation_known: false,
+            });
         let mut c = VoiceControl::default();
         c.pitch.mode = PitchMode::Free;
         c.pitch.freq = 220.;
@@ -441,7 +445,7 @@ fn harmonic_opportunity_uses_the_same_separate_pitch_view() {
         let input = voice.pitch_ctl.loo_input_mut();
         assert_eq!(!input.rearticulation_score.is_empty(), opportunity);
         assert_eq!(input.exact_score.as_ref().unwrap(), &external);
-        assert_eq!(land.loo[0].score_scan, external);
+        assert_eq!(land.ecology.loo[0].score_scan, external);
         assert_eq!(
             batch
                 .cmds
@@ -477,7 +481,7 @@ fn tail_roughness_aversion_interpolates_r_without_changing_h_or_shared_observati
             ConsonanceKernel::default(),
         ] {
             land.consonance_kernel = kernel;
-            land.loo = vec![crate::core::stream::loo::Observation {
+            land.ecology.loo = vec![crate::core::stream::loo::Observation {
                 support: None,
                 id: 1,
                 generation: 0,
@@ -488,7 +492,7 @@ fn tail_roughness_aversion_interpolates_r_without_changing_h_or_shared_observati
                 onset_habituation_end: 0,
                 onset_habituation_known: false,
             }];
-            let original = land.loo[0].score_scan.clone();
+            let original = land.ecology.loo[0].score_scan.clone();
             let mut input = LooInput {
                 exact_score: Some(original.clone()),
                 ..Default::default()
@@ -524,8 +528,8 @@ fn tail_roughness_aversion_interpolates_r_without_changing_h_or_shared_observati
                 if weight == 0. {
                     assert!(input.rearticulation_score.is_empty());
                 }
-                assert_eq!(&*land.loo[0].score_scan, &*original);
-                assert!(land.loo[0].h_scan.iter().all(|&h| h == 0.3));
+                assert_eq!(&*land.ecology.loo[0].score_scan, &*original);
+                assert!(land.ecology.loo[0].h_scan.iter().all(|&h| h == 0.3));
             }
         }
     }

@@ -27,7 +27,7 @@ pub(super) fn merge_latest_analysis_results(
     loop {
         match analysis_result_rx.try_recv() {
             Ok((analyzed_id, Some(frame))) => {
-                if !frame.sites.is_empty() && analyzed_id >= frame_idx {
+                if !frame.ecology.sites.is_empty() && analyzed_id >= frame_idx {
                     continue;
                 }
                 *last_analysis_frame = Some(analyzed_id);
@@ -35,46 +35,46 @@ pub(super) fn merge_latest_analysis_results(
             }
             Ok((_, None)) => {
                 unavailable = true;
-                current_landscape.support = None;
-                for (_, site) in &mut current_landscape.sites {
+                current_landscape.harmonic.support = None;
+                for (_, site) in &mut current_landscape.ecology.sites {
                     let site = Arc::make_mut(site);
-                    site.loo.clear();
-                    site.flora_observations.clear();
-                    site.rain_observations.clear();
-                    site.tonal_observations.clear();
-                    site.tonal_context = None;
+                    site.ecology.loo.clear();
+                    site.ecology.flora_observations.clear();
+                    site.ecology.rain_observations.clear();
+                    site.ecology.tonal_observations.clear();
+                    site.ecology.tonal_context = None;
                     site.onset_habituation_known = false;
-                    site.support = None;
-                    site.site_resource_power = None;
+                    site.harmonic.support = None;
+                    site.ecology.site_resource_power = None;
                 }
                 current_landscape.onset_habituation_known = false;
-                current_landscape.tonal_context = None;
-                current_landscape.tonal_observations.clear();
-                current_landscape.spectral_history = None;
-                current_landscape.loo.clear();
-                current_landscape.flora_observations.clear();
-                current_landscape.rain_observations.clear();
+                current_landscape.ecology.tonal_context = None;
+                current_landscape.ecology.tonal_observations.clear();
+                current_landscape.ecology.spectral_history = None;
+                current_landscape.ecology.loo.clear();
+                current_landscape.ecology.flora_observations.clear();
+                current_landscape.ecology.rain_observations.clear();
                 *last_analysis_frame = None;
                 latest_audio = None;
             }
             Err(TryRecvError::Empty) => break,
             Err(TryRecvError::Disconnected) => {
                 unavailable = true;
-                current_landscape.support = None;
-                for (_, site) in &mut current_landscape.sites {
+                current_landscape.harmonic.support = None;
+                for (_, site) in &mut current_landscape.ecology.sites {
                     let site = Arc::make_mut(site);
-                    site.loo.clear();
-                    site.flora_observations.clear();
-                    site.rain_observations.clear();
-                    site.tonal_observations.clear();
-                    site.tonal_context = None;
+                    site.ecology.loo.clear();
+                    site.ecology.flora_observations.clear();
+                    site.ecology.rain_observations.clear();
+                    site.ecology.tonal_observations.clear();
+                    site.ecology.tonal_context = None;
                     site.onset_habituation_known = false;
-                    site.support = None;
-                    site.site_resource_power = None;
+                    site.harmonic.support = None;
+                    site.ecology.site_resource_power = None;
                 }
                 current_landscape.onset_habituation_known = false;
-                current_landscape.tonal_context = None;
-                current_landscape.tonal_observations.clear();
+                current_landscape.ecology.tonal_context = None;
+                current_landscape.ecology.tonal_observations.clear();
                 break;
             }
         }
@@ -111,18 +111,18 @@ pub(super) fn merge_latest_analysis_results(
     current_landscape.roughness01_scalar = frame.roughness01_scalar;
     current_landscape.loudness_mass = frame.loudness_mass;
     current_landscape.pitch_objective_mode = frame.pitch_objective_mode;
-    current_landscape.support = frame.support;
+    current_landscape.harmonic.support = frame.harmonic.support;
     current_landscape.subjective_intensity = frame.subjective_intensity;
     current_landscape.nsgt_power = frame.nsgt_power;
-    current_landscape.sites = frame.sites;
-    current_landscape.loo = frame.loo;
-    current_landscape.tonal_context = frame.tonal_context;
-    current_landscape.pitch_set = frame.pitch_set;
-    current_landscape.pitch_set_weight = frame.pitch_set_weight;
-    current_landscape.tonal_observations = frame.tonal_observations;
-    current_landscape.flora_observations = frame.flora_observations;
-    current_landscape.rain_observations = frame.rain_observations;
-    current_landscape.spectral_history = frame.spectral_history;
+    current_landscape.ecology.sites = frame.ecology.sites;
+    current_landscape.ecology.loo = frame.ecology.loo;
+    current_landscape.ecology.tonal_context = frame.ecology.tonal_context;
+    current_landscape.ecology.pitch_set = frame.ecology.pitch_set;
+    current_landscape.ecology.pitch_set_weight = frame.ecology.pitch_set_weight;
+    current_landscape.ecology.tonal_observations = frame.ecology.tonal_observations;
+    current_landscape.ecology.flora_observations = frame.ecology.flora_observations;
+    current_landscape.ecology.rain_observations = frame.ecology.rain_observations;
+    current_landscape.ecology.spectral_history = frame.ecology.spectral_history;
     current_landscape.recompute_consonance(lparams);
 
     if cfg!(debug_assertions) && frame_idx.is_multiple_of(30) {
@@ -192,7 +192,7 @@ pub(super) fn drive_and_apply_habituation(
             dt_sec,
         ),
     }
-    for (_, local) in &mut landscape.sites {
+    for (_, local) in &mut landscape.ecology.sites {
         Arc::make_mut(local).apply_habituation(
             hab.state(),
             hab.theta(),
@@ -390,12 +390,12 @@ pub(super) fn apply_landscape_updates(
         state.frame_idx,
     );
     let shared = &mut state.current_landscape;
-    for (_, local) in &mut shared.sites {
+    for (_, local) in &mut shared.ecology.sites {
         let local = Arc::make_mut(local);
         local.rhythm = shared.rhythm;
-        local.pitch_set = shared.pitch_set.clone();
-        local.pitch_set_weight = shared.pitch_set_weight;
-        local.support_weights = shared.support_weights;
+        local.ecology.pitch_set = shared.ecology.pitch_set.clone();
+        local.ecology.pitch_set_weight = shared.ecology.pitch_set_weight;
+        local.harmonic.support_weights = shared.harmonic.support_weights;
     }
     state
         .generator_model
@@ -483,17 +483,17 @@ pub(super) fn apply_pending_landscape_update(
             && weight.is_finite()
             && (-1. ..=1.).contains(&weight)
         {
-            current_landscape.harmonic_relations_weight = weight;
+            current_landscape.harmonic.relations_weight = weight;
         }
         if let Some(weight) = update.harmonic_continuation_weight
             && weight.is_finite()
             && (-1. ..=1.).contains(&weight)
         {
-            current_landscape.harmonic_continuation_weight = weight;
+            current_landscape.harmonic.continuation_weight = weight;
         }
         for (axis, value) in update.support_preference.iter().enumerate() {
             if let Some(value) = value {
-                current_landscape.support_weights.set(axis, *value);
+                current_landscape.harmonic.support_weights.set(axis, *value);
             }
         }
         let roughness_changed = update

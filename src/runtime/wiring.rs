@@ -662,9 +662,9 @@ pub(super) fn prepare_runtime(
     };
 
     let mut landscape = core.landscape;
-    landscape.support_planned = support_enabled;
-    landscape.support_ref_power = core.lparams.ref_power;
-    landscape.support_loudness_exp = core.lparams.loudness_exp;
+    landscape.harmonic.support_planned = support_enabled;
+    landscape.harmonic.support_ref_power = core.lparams.ref_power;
+    landscape.harmonic.support_loudness_exp = core.lparams.loudness_exp;
     if support_enabled {
         tracing::info!(
             "harmonic support: heard first-order fields integrated over cached body partials; no self-report uses a labeled single partial"
@@ -858,12 +858,12 @@ pub(super) fn prepare_runtime(
             body.prepare_sites(&buses.full);
         }
         if let Some(sites) = &sites {
-            state.current_landscape.sites = sites
+            state.current_landscape.ecology.sites = sites
                 .full
                 .iter()
                 .map(|p| {
                     let mut local = state.current_landscape.clone();
-                    local.site_end = Some(0);
+                    local.ecology.site_end = Some(0);
                     (p.id, Arc::new(local))
                 })
                 .collect();

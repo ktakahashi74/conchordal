@@ -3015,7 +3015,7 @@ fn harmonic_relations_weights_are_cursor_events_and_reject_invalid_updates() {
         hop: 512,
     });
     let landscape = Landscape::default();
-    assert_eq!(landscape.harmonic_relations_weight, 0.);
+    assert_eq!(landscape.harmonic.relations_weight, 0.);
     assert!(pop.take_pending_update().is_none());
     pop.apply_action(Action::FollowHarmonicRelations { weight: 0.5 }, &landscape);
     pop.apply_action(

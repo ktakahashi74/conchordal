@@ -111,8 +111,8 @@ impl Community {
             };
             body.project_support_density(
                 &landscape.space,
-                landscape.support_ref_power,
-                landscape.support_loudness_exp,
+                landscape.harmonic.support_ref_power,
+                landscape.harmonic.support_loudness_exp,
                 &signal,
             )
             .map(Arc::from)
@@ -125,7 +125,7 @@ impl Community {
         control: Option<&crate::scenario::control::VoiceControl>,
         template: Option<Arc<[(isize, f32)]>>,
     ) -> bool {
-        if landscape.harmonic_relations_weight == 0. && landscape.harmonic_continuation_weight == 0.
+        if landscape.harmonic.relations_weight == 0. && landscape.harmonic.continuation_weight == 0.
         {
             return false;
         }
@@ -140,11 +140,11 @@ impl Community {
             landscape,
             None,
             crate::core::harmonic_support::preview::Observer::Mixed,
-            landscape.support.clone(),
+            landscape.harmonic.support.clone(),
             template,
             density,
             self.time.fs,
-            landscape.harmonic_now_sample,
+            landscape.harmonic.now_sample,
         );
         slot.as_ref().is_some_and(|u| u.active())
     }
@@ -156,17 +156,17 @@ impl Community {
         frequency: f32,
     ) -> bool {
         let temporal_allowed = (|| {
-            if landscape.harmonic_relations_weight == 0.
-                && landscape.harmonic_continuation_weight == 0.
+            if landscape.harmonic.relations_weight == 0.
+                && landscape.harmonic.continuation_weight == 0.
             {
                 return true;
             }
             crate::temporal_cognition::harmonic_relations::runtime::record_opportunity(
                 landscape,
                 None,
-                landscape.harmonic_now_sample,
+                landscape.harmonic.now_sample,
             );
-            if landscape.harmonic_relations.is_none() {
+            if landscape.harmonic.relations.is_none() {
                 return true;
             }
             let template = self.spawn_body_template(Some(control), landscape, frequency);
@@ -317,8 +317,8 @@ impl Community {
         let (min_freq, max_freq) = strategy.freq_range_hz();
         let (min_freq, max_freq) = (min_freq.min(max_freq), min_freq.max(max_freq));
         let min_dist_erb = strategy.min_dist_erb();
-        if landscape.support_weights.active()
-            && landscape.support.is_some()
+        if landscape.harmonic.support_weights.active()
+            && landscape.harmonic.support.is_some()
             && matches!(strategy, SpawnStrategy::Field { target, .. } if *target != FieldTarget::Uniform)
             && min_freq <= voice_max
             && max_freq >= voice_min
@@ -370,9 +370,9 @@ impl Community {
         let idx_max = space.nearest_index(max_freq);
         let bin_freq = |idx| space.freq_of_index(idx).clamp(min_freq, max_freq);
         let temporal = if condition_temporal
-            && (landscape.harmonic_relations_weight != 0.
-                || landscape.harmonic_continuation_weight != 0.)
-            && landscape.harmonic_relations.is_some()
+            && (landscape.harmonic.relations_weight != 0.
+                || landscape.harmonic.continuation_weight != 0.)
+            && landscape.harmonic.relations.is_some()
         {
             self.refresh_spawn_relations(
                 landscape,
@@ -605,7 +605,7 @@ impl Community {
         else {
             unreachable!()
         };
-        let snapshot = landscape.support.as_ref().unwrap();
+        let snapshot = landscape.harmonic.support.as_ref().unwrap();
         let space = &landscape.space;
         let (a, b) = strategy.freq_range_hz();
         let (voice_min, voice_max) = space.voice_pitch_bounds();
@@ -625,7 +625,7 @@ impl Community {
             space.n_bins(),
             "support spawn scratch must be prepared before running"
         );
-        let weights = landscape.support_weights;
+        let weights = landscape.harmonic.support_weights;
         // Prepare one self-reported body before scanning candidate positions.
         let template = self.spawn_body_template(control, landscape, (lo_hz * hi_hz).sqrt());
         let temporal = condition_temporal
@@ -845,7 +845,7 @@ mod tests {
         e[60] = 1.;
         e[84] = 0.7;
         snapshot.observe(&e, 1e-12, 512);
-        landscape.support = Some(std::sync::Arc::new(snapshot));
+        landscape.harmonic.support = Some(std::sync::Arc::new(snapshot));
         for method in [BodyMethod::Sine, BodyMethod::Harmonic, BodyMethod::Modal] {
             let mut control = VoiceControl::default();
             control.body.method = method;
@@ -867,10 +867,10 @@ mod tests {
                 for seed in 0..8 {
                     let mut a = rand::rngs::SmallRng::seed_from_u64(seed);
                     let mut b = rand::rngs::SmallRng::seed_from_u64(seed);
-                    landscape.support_weights.0 = [1000., 0., 0.];
+                    landscape.harmonic.support_weights.0 = [1000., 0., 0.];
                     let positive =
                         pop.decide_frequency(&strategy, &landscape, &mut a, &[], Some(&control));
-                    landscape.support_weights.0 = [-1000., 0., 0.];
+                    landscape.harmonic.support_weights.0 = [-1000., 0., 0.];
                     let negative =
                         pop.decide_frequency(&strategy, &landscape, &mut b, &[], Some(&control));
                     different |= space.nearest_index(positive) != space.nearest_index(negative);
@@ -908,7 +908,7 @@ mod tests {
         let mut a = rand::rngs::SmallRng::seed_from_u64(735);
         let mut b = rand::rngs::SmallRng::seed_from_u64(735);
         let original = pop.decide_frequency(&strategy, &landscape, &mut a, &[], None);
-        landscape.support = Some(std::sync::Arc::new(snapshot));
+        landscape.harmonic.support = Some(std::sync::Arc::new(snapshot));
         assert_eq!(
             original.to_bits(),
             pop.decide_frequency(&strategy, &landscape, &mut b, &[], None)
@@ -919,11 +919,11 @@ mod tests {
             *sampling = FieldSampling::Peak;
         }
         for axis in 0..3 {
-            landscape.support_weights = Default::default();
+            landscape.harmonic.support_weights = Default::default();
             let mut a = rand::rngs::SmallRng::seed_from_u64(735);
             let mut b = rand::rngs::SmallRng::seed_from_u64(735);
             let neutral = pop.decide_frequency(&strategy, &landscape, &mut a, &[], None);
-            landscape.support_weights.set(axis, 1.);
+            landscape.harmonic.support_weights.set(axis, 1.);
             let changed = pop.decide_frequency(&strategy, &landscape, &mut b, &[], None);
             assert_ne!(
                 space.nearest_index(neutral),
@@ -931,7 +931,7 @@ mod tests {
                 "axis {axis}"
             );
         }
-        landscape.support_weights.0 = [f64::MAX; 3];
+        landscape.harmonic.support_weights.0 = [f64::MAX; 3];
         if let SpawnStrategy::Field { sampling, .. } = &mut strategy {
             *sampling = FieldSampling::Density;
         }
@@ -965,10 +965,10 @@ mod tests {
         landscape.consonance_density_mass_eff.fill(0.);
         landscape.consonance_density_mass_eff[20] = 1.;
         landscape.consonance_density_mass_eff[80] = 1.;
-        let mut preview = Preview::new(landscape.support.as_ref().unwrap());
+        let mut preview = Preview::new(landscape.harmonic.support.as_ref().unwrap());
         let density =
             landscape.support_single_density(crate::scenario::control::BodyControl::default().amp);
-        landscape.support.as_ref().unwrap().preview(
+        landscape.harmonic.support.as_ref().unwrap().preview(
             Observer::Mixed,
             pitches[0],
             &[(0, density)],
@@ -985,7 +985,7 @@ mod tests {
         let mut baseline_rng = rand::rngs::SmallRng::seed_from_u64(7);
         let baseline = pop.decide_frequency(&strategy, &landscape, &mut baseline_rng, &[], None);
         assert_eq!(landscape.space.nearest_index(baseline), 80);
-        let decision = Arc::make_mut(landscape.harmonic_relations.as_mut().unwrap());
+        let decision = Arc::make_mut(landscape.harmonic.relations.as_mut().unwrap());
         decision.prediction.unknown = 0.;
         decision.prediction.len = 1;
         let atom = &mut decision.prediction.atoms[0];
@@ -1030,18 +1030,18 @@ mod tests {
             assert_eq!(a.random::<u64>(), b.random::<u64>());
         }
         assert!(changed);
-        let decision = Arc::make_mut(landscape.harmonic_relations.as_mut().unwrap());
+        let decision = Arc::make_mut(landscape.harmonic.relations.as_mut().unwrap());
         decision.prediction.atoms[0].shape_valid = false;
         decision.prediction.atoms[0].acoustic = Acoustic {
-            mass: Value::exact(landscape.support.as_ref().unwrap().mass),
+            mass: Value::exact(landscape.harmonic.support.as_ref().unwrap().mass),
             ..Default::default()
         };
         let control = crate::scenario::control::VoiceControl::default();
         assert!(pop.harmonic_spawn_allowed(&landscape, &control, baseline));
-        landscape.harmonic_continuation_weight = 1.;
+        landscape.harmonic.continuation_weight = 1.;
         assert!(!pop.harmonic_spawn_allowed(&landscape, &control, baseline));
-        landscape.harmonic_relations_weight = 0.;
-        landscape.harmonic_continuation_weight = 0.;
+        landscape.harmonic.relations_weight = 0.;
+        landscape.harmonic.continuation_weight = 0.;
         assert!(pop.harmonic_spawn_allowed(&landscape, &control, baseline));
     }
 
@@ -1061,12 +1061,12 @@ mod tests {
         let mut density = vec![0.; space.n_bins()];
         density[72] = 1.;
         snapshot.observe(&density, 1e-12, 512);
-        landscape.support = Some(Arc::new(snapshot));
+        landscape.harmonic.support = Some(Arc::new(snapshot));
         let mut pop = test_pop();
         pop.prepare_support(space.n_bins());
         let control = VoiceControl::default();
         for weights in [[0.; 3], [0.3, 0.2, 0.4]] {
-            landscape.support_weights.0 = weights;
+            landscape.harmonic.support_weights.0 = weights;
             for (sampling, tension) in [
                 (FieldSampling::Density, 0.),
                 (FieldSampling::Peak, 0.),

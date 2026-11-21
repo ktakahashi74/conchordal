@@ -45,7 +45,7 @@ pub(super) fn build_initial_ui_frame(
         listener: ListenerFrame::default(),
         listener_rhythm: Vec::new(),
         temporal: Default::default(),
-        landscape: current_landscape.clone(),
+        landscape: current_landscape.clone_for_ui(),
         meta: SimulationMeta {
             #[cfg(feature = "native")]
             script: conductor.score.as_ref().map(|s| s.stream.status()),
@@ -102,6 +102,7 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
                 support_template: agent.support_template.clone(),
                 support: input
                     .current_landscape
+                    .ecology
                     .loo
                     .iter()
                     .find(|s| s.id == agent.id && s.generation == agent.metadata.generation)
@@ -133,9 +134,9 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
         .as_ref()
         .is_some_and(|(gate_tick, _)| *gate_tick >= input.now_tick && *gate_tick < frame_end);
     let pred_c_field_level_next_gate = pred_next_gate.map(|(_, scan)| scan);
-    let mut landscape = input.current_landscape.clone();
+    let mut landscape = input.current_landscape.clone_for_ui();
     // Display-only support is projected for delivered frames alone.
-    if let Some(support) = landscape.support.as_mut().filter(|s| s.deferred()) {
+    if let Some(support) = landscape.harmonic.support.as_mut().filter(|s| s.deferred()) {
         Arc::make_mut(support).finish();
     }
 

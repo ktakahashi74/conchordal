@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn site_full_history_drives_the_same_rest_for_both_self_perception_modes() {
         let (mut local, mut excluded) = setup(4., false);
-        local.site_end = Some(0);
+        local.ecology.site_end = Some(0);
         let (_, mut mixed) = setup(4., false);
         excluded.spec.leave_self_out = true;
         mixed.spec.leave_self_out = false;

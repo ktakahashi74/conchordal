@@ -177,7 +177,7 @@ impl ListenerTwin {
         analysis_frame_id: u64,
         landscape: &Landscape,
     ) -> ListenerState {
-        self.spectral_history = landscape.spectral_history.clone();
+        self.spectral_history = landscape.ecology.spectral_history.clone();
         let space = &landscape.space;
         space.assert_scan_len_named(&landscape.subjective_intensity, "subjective_intensity");
         space.assert_scan_len_named(
@@ -237,7 +237,11 @@ impl ListenerTwin {
                 self.sample_rate,
                 &self.mass_scan,
                 peak,
-                landscape.tonal_context.as_ref().map(|state| state.observed),
+                landscape
+                    .ecology
+                    .tonal_context
+                    .as_ref()
+                    .map(|state| state.observed),
                 self.fast_state.meter_state,
             )
         } else {
@@ -245,8 +249,12 @@ impl ListenerTwin {
         };
         ListenerState {
             prediction,
-            tonal_context: landscape.tonal_context.as_ref().and_then(|s| s.observed),
-            tonal_context_end: landscape.tonal_context.as_ref().map(|s| s.end),
+            tonal_context: landscape
+                .ecology
+                .tonal_context
+                .as_ref()
+                .and_then(|s| s.observed),
+            tonal_context_end: landscape.ecology.tonal_context.as_ref().map(|s| s.end),
             time_sec,
             generated_frame_id,
             analysis_frame_id,

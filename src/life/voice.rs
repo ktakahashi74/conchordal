@@ -809,7 +809,7 @@ impl Voice {
             voice_adsr,
             phonation_gate_open,
         };
-        if let Some(landscape) = landscape.filter(|l| l.support_weights.active())
+        if let Some(landscape) = landscape.filter(|l| l.harmonic.support_weights.active())
             && voice.effective_control.pitch.leave_self_out
         {
             voice.refresh_support_template(landscape);
@@ -892,8 +892,8 @@ impl Voice {
             space.fmin,
             space.fmax,
             space.bins_per_oct,
-            landscape.support_ref_power,
-            landscape.support_loudness_exp,
+            landscape.harmonic.support_ref_power,
+            landscape.harmonic.support_loudness_exp,
         );
         if self.support_template_key == Some(key) {
             return;
@@ -918,13 +918,14 @@ impl Voice {
     ) {
         use crate::life::support_action::{Context, active};
         self.phonation_engine.support_action = None;
-        self.phonation_engine.support_held_enabled = active(landscape.support_weights)
+        self.phonation_engine.support_held_enabled = active(landscape.harmonic.support_weights)
             && self.effective_control.pitch.leave_self_out
             && self.effective_control.body.routing.to_habitat;
         if !self.phonation_engine.support_held_enabled {
             return;
         }
         let Some(snapshot) = landscape
+            .ecology
             .loo
             .iter()
             .find(|s| s.id == self.id && s.generation == self.metadata.generation)
@@ -981,8 +982,8 @@ impl Voice {
             snapshot,
             template: self.support_template.clone(),
             single_density: landscape.support_single_density(self.body.amp()),
-            weights: landscape.support_weights,
-            loudness_exp: landscape.support_loudness_exp,
+            weights: landscape.harmonic.support_weights,
+            loudness_exp: landscape.harmonic.support_loudness_exp,
             nominal_amp: self.body.amp(),
             pitch: self.body.base_freq_hz().log2(),
             onset,
@@ -1277,6 +1278,7 @@ impl Voice {
         if self.effective_control.pitch.follow_tonal_context > 0. {
             let excluded = self.effective_control.pitch.leave_self_out;
             self.pitch_ctl.loo_input_mut().tonal_context = landscape
+                .ecology
                 .tonal_observations
                 .iter()
                 .find(|s| s.id == self.id && s.generation == self.metadata.generation)
@@ -1284,7 +1286,7 @@ impl Voice {
                     if s.excluded != excluded {
                         None
                     } else if s.shared {
-                        landscape.tonal_context.clone()
+                        landscape.ecology.tonal_context.clone()
                     } else {
                         s.snapshot.clone()
                     }
@@ -1292,12 +1294,13 @@ impl Voice {
                 .unwrap_or_else(|| {
                     if excluded
                         && !landscape
+                            .ecology
                             .site_end
                             .is_some_and(|end| end <= self.birth_tick.unwrap_or(0))
                     {
                         None
                     } else {
-                        landscape.tonal_context.clone()
+                        landscape.ecology.tonal_context.clone()
                     }
                 });
         } else {
@@ -1349,7 +1352,7 @@ impl Voice {
             neighbor_salience,
             listener_pressure.temperature_bonus,
         );
-        if crate::life::support_action::active(landscape.support_weights)
+        if crate::life::support_action::active(landscape.harmonic.support_weights)
             && self.phonation_engine.mode == PhonationMode::Hold
             && !self.sustain_participation
             && let Some(at) = self.control_tick
@@ -2574,7 +2577,7 @@ mod tests {
         use crate::life::support_action::{Body, tests::fixture};
         let fixture = fixture();
         let mut landscape = Landscape::new(fixture.snapshot.geometry.space.clone());
-        landscape.support_weights = fixture.weights;
+        landscape.harmonic.support_weights = fixture.weights;
         let mut control = VoiceControl::default();
         control.pitch.freq = fixture.pitch.exp2();
         control.pitch.range_oct = 0.;

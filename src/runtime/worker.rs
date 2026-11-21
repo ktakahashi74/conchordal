@@ -222,7 +222,7 @@ impl WorkerState {
                 cfg.hop,
                 *sources,
             );
-            current_landscape.harmonic_recorder = Some(runtime.recorder.clone());
+            current_landscape.harmonic.recorder = Some(runtime.recorder.clone());
             runtime
         });
         #[cfg(not(feature = "native"))]
@@ -535,7 +535,7 @@ pub(super) fn finish_run(
         wait_for_analysis(state, &channels.analysis_result_rx, &cfg.exiting);
     }
     if let Some(relations) = &mut state.harmonic_relations {
-        if let Some(support) = state.current_landscape.support.clone() {
+        if let Some(support) = state.current_landscape.harmonic.support.clone() {
             relations.advance(&support, &mut state.current_landscape);
         }
         relations.finish();
@@ -800,9 +800,9 @@ pub(super) fn process_hop(
     }
 
     let population_start = state.profile.as_ref().map(|_| Instant::now());
-    state.current_landscape.harmonic_now_sample = now_tick;
+    state.current_landscape.harmonic.now_sample = now_tick;
     if let Some(relations) = &mut state.harmonic_relations
-        && let Some(support) = state.current_landscape.support.clone()
+        && let Some(support) = state.current_landscape.harmonic.support.clone()
     {
         relations.advance(&support, &mut state.current_landscape);
     }

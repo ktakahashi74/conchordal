@@ -53,12 +53,13 @@ wait(0.5);
         let captured = rows.clone();
         let probe: OfflineBodyProbe = Box::new(move |state, start, _, pcm| {
             assert!(state.harmonic_relations.is_none());
-            assert!(!state.current_landscape.support_weights.active());
+            assert!(!state.current_landscape.harmonic.support_weights.active());
             if start >= 48_000 / 2 {
-                assert_eq!(state.current_landscape.support.is_some(), enabled);
+                assert_eq!(state.current_landscape.harmonic.support.is_some(), enabled);
                 assert!(
                     state
                         .current_landscape
+                        .ecology
                         .loo
                         .iter()
                         .all(|s| s.support.is_none())
@@ -100,7 +101,7 @@ wait(0.5);
         let receiver = thread::spawn(move || {
             let mut seen = false;
             for frame in rx {
-                seen |= frame.landscape.support.is_some();
+                seen |= frame.landscape.harmonic.support.is_some();
             }
             seen
         });
@@ -159,7 +160,7 @@ fn gui_support_timing_acquisition() {
         let mut supported = 0;
         let mut current = None;
         for frame in rx {
-            if frame.landscape.support.is_some() {
+            if frame.landscape.harmonic.support.is_some() {
                 supported += 1;
             }
             current = Some(frame);

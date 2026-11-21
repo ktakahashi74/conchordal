@@ -9,10 +9,9 @@ use crate::life::sound::mode_utils::{
 use crate::life::sound::{BodyKind, BodySnapshot, ModalEngine, ModeShape};
 use crate::life::voice::ArticulationSignal;
 use crate::life::voice::sound_body::{
-    AnySoundBody, SineBody, SoundBody, SoundBodyBuildInput, SoundBodyFactory,
-    register_sound_body_factory,
+    AnySoundBody, SoundBody, SoundBodyBuildInput, SoundBodyFactory, register_sound_body_factory,
 };
-use rand::RngExt;
+use crate::scenario::SoundBodyConfig;
 use rand::rngs::SmallRng;
 use std::sync::{Arc, Once};
 use tracing::warn;
@@ -133,23 +132,6 @@ impl SoundBody for ModalBody {
         self.amp
     }
 
-    fn articulate_wave(
-        &mut self,
-        sample: &mut f32,
-        _fs: f32,
-        _dt: f32,
-        signal: &ArticulationSignal,
-    ) {
-        if !signal.is_active || signal.amplitude <= 0.0 || self.amp <= 0.0 {
-            return;
-        }
-        let drive = [signal.amplitude.max(0.0)];
-        let mut out = [0.0f32; 1];
-        self.engine
-            .render_block(&drive, self.control_block(self.amp), &mut out);
-        *sample += out[0];
-    }
-
     fn project_spectral_body(
         &mut self,
         amps: &mut [f32],
@@ -240,11 +222,12 @@ impl SoundBodyFactory for ModalBodyFactory {
             timbre.spread,
             timbre.unison,
         ) else {
-            return AnySoundBody::Sine(SineBody {
-                freq_hz: input.base_freq_hz.max(1.0),
-                amp: input.control.body.amp,
-                audio_phase: rng.random_range(0.0..std::f32::consts::TAU),
-            });
+            return AnySoundBody::from_config(
+                &SoundBodyConfig::Sine { phase: None },
+                input.base_freq_hz.max(1.0),
+                input.control.body.amp,
+                rng,
+            );
         };
         body.seed_modal_phases(rand::Rng::next_u64(rng));
         AnySoundBody::from_dyn(Box::new(body))

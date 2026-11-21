@@ -1,7 +1,8 @@
 # Conchordal 現行アーキテクチャ正本
 
-基準 revision: `origin/main` `dee5a91d`（2026-11-21 時点、`src/` 計 181,191 行 / 289 `.rs` ファイル）。  
-本書は「いま動いている楽器」の構造だけを短く保つ正本である。設計経緯・陰性結果・詳細検証の記録は歴史アーカイブ（`docs/design-notes/technote-ledger.ja.md` 9,022 行、`docs/design-notes/dcc-neurocognitive-hierarchy.md` 5,961 行）に委ね、本書には追記しない。
+基準 revision は `origin/main` の `acc45bb1`（2026-11-21、S4-a 統合時点）。以下は同 revision に S4-b の差分を適用した作業木の実測で、`src/` は計 178,311 行 / 304 `.rs` ファイル。
+
+本書は「いま動いている楽器」の構造を示す。設計経緯・陰性結果・詳細検証の記録は歴史アーカイブ（`docs/design-notes/technote-ledger.ja.md`、`docs/design-notes/dcc-neurocognitive-hierarchy.md`）に収録する。
 
 ---
 
@@ -55,23 +56,28 @@ Rhai 台本 (finite: 一括評価 / endless: 逐次スレッド)
 | **Flora** | `src/life/flora.rs`, `flora_metric.rs`, `flora_respond.rs` | 地形上で育ち、資源を消費し枯れるスペクトル植生（和声の面・床） | トーンレーン＋残差帯域を直接合成 |
 | **Rain** | `src/life/rain.rs`, `sway.rs` | 1/f 揺らぎを持つポアソン衝撃列と、打撃で鳴る共鳴物体 | 衝撃スロット（64）＋モーダル物体（最大16） |
 
+Voice の身体は `SoundBodyFactory` が構築し、`SoundBody` が自己モデルを提供する。PCM 合成は `sound/` のバックエンドが担う。`BodySnapshot` は代表オンセットのハッシュに身体情報を書き込み、自己モデルの適合判定と身体構造の比較を担う。
+
 ---
 
-## 4. モジュール責務と規模（`origin/main` `dee5a91d`）
+## 4. モジュール責務と規模
 
-| モジュール | 総行数（テスト含） | 責務 | 現在の主な課題 |
+行数は追跡対象の `src/**/*.rs` の物理行（テスト込み）。
+
+| モジュール | 総行数 | 責務 | 現在の主な課題 |
 |---|---:|---|---|
-| `src/life/` | 76,084 | Voice・Flora・Rain・Community・発音・レンダラ | `pitch_core.rs` / `voice.rs` / `flora.rs` の肥大、`Voice`/`Flora` の40超フィールド、`RefCell` |
-| `src/core/` | 34,606 | 聴覚前段・R/H/C・NSGT・慣れ・拍・LOO・部屋 | `Landscape` の約45フィールド同居、`auditory_frontend.rs` 内の `#[cfg(test)]` 散在 |
-| `src/temporal_cognition/` | 23,165 | 筋・群・身体観測・到着・和声時間関係・opt-in T2 | 既定オフの研究・拡張コードの占有が大きい |
-| `src/scripting/` | 19,764 | Rhai エンジン・186 API・型定義/ドキュメント自動生成 | 既定0の Experimental/Tuning/Research 語が堆積 |
-| `src/runtime/` | 13,863 | スレッド配線・worker loop・`StepEngine`・予約・監視 | `WorkerState` の40超フィールド、`#[cfg(test)]` フック |
-| `src/ui/` | 2,750 | egui 描画（`windows.rs`, `plots.rs` のみ） | — |
-| `src/listener_twin/` | 2,292 | 提示専用聴き手モデル・E0 予測 | — |
+| `src/life/` | 73,581 | Voice・Flora・Rain・Community・発音・レンダラ | 群管理の `community.rs`（2,320 行）と、ルーティング・捕捉の `schedule_renderer.rs`（3,580 行）の規模 |
+| `src/core/` | 34,754 | 聴覚前段・R/H/C・NSGT・慣れ・拍・LOO・部屋 | `Landscape` は観測と和声拡張をサブ構造体化。音響場と更新処理は同じモジュールにある |
+| `src/temporal_cognition/` | 23,167 | 筋・群・身体観測・到着・和声時間関係・opt-in T2 | 既定オフの診断・研究経路の隔離 |
+| `src/scripting/` | 19,175 | Rhai エンジン・172 文書エントリ・型定義/ドキュメント自動生成 | Research 語の隔離 |
+| `src/runtime/` | 13,924 | スレッド配線・worker loop・`StepEngine`・予約・監視 | `WorkerState` は状態を責務別に集約済み。研究用 opt-in とテスト用フックが実行経路に残る |
+| `src/ui/` | 2,751 | egui 描画・UI モデル | — |
+| `src/listener_twin/` | 2,300 | 提示専用聴き手モデル・E0 予測 | — |
 | `src/audio/` | 1,636 | cpal 出力・Limiter・WAV ライタ・復旧 | — |
-| `src/scenario/` + `scenario.rs` | 2,300+ | シナリオ IR・制御設定・ライフサイクル設定 | — |
-| `src/synth/` | 949 | モーダル共振器バンク・モード表 | 実合成が `src/life/sound/` 等へ分散 |
-| `src/viewdata*.rs`, `config.rs` 他 | 4,767 | UI 契約・TOML 設定・クロック・handoff | `config.rs` に研究用 opt-in 構造体が多数同居 |
+| `src/scenario/` + `src/scenario.rs` | 2,318 | シナリオ IR・制御設定・ライフサイクル設定 | — |
+| `src/synth/` | 949 | モーダル共振器バンク・モード表 | — |
+| `src/bin/` | 130 | オフライン WAV レンダラ・Rhai 定義生成の入口 | — |
+| `src/` 直下の残り | 3,626 | 楽器の入口・UI 契約・TOML 設定・クロック・handoff | `config.rs` に研究用 opt-in 構造体が同居 |
 
 ---
 

@@ -10,8 +10,8 @@ use crate::life::energy_window::project_window;
 use crate::life::phonation_engine::OnsetKick;
 use crate::life::schedule_renderer::modal_phase_seed;
 use crate::life::sound::{
-    AutonomousPulseSpec, BodyKind, BodySnapshot, RenderModulatorSpec, RenderModulatorStateKind,
-    Tone, ToneAdsr,
+    AutonomousPulseSpec, BodySnapshot, RenderModulatorSpec, RenderModulatorStateKind, Tone,
+    ToneAdsr,
 };
 use crate::life::tone_energy::ToneEnergy;
 use serde::Serialize;
@@ -87,32 +87,7 @@ impl Identity {
         if recipe.renderer_phase3 {
             hasher.update(b"renderer:phase3-pcm-v2");
         }
-        let body = &recipe.body;
-        hasher.update([match body.kind {
-            BodyKind::Sine => 0u8,
-            BodyKind::Harmonic => 1,
-            BodyKind::Modal => 2,
-        }]);
-        for value in [
-            body.amp_scale,
-            body.brightness,
-            body.inharmonic,
-            body.spread,
-            body.motion,
-        ] {
-            hasher.update(value.to_bits().to_le_bytes());
-        }
-        hasher.update((body.unison as u64).to_le_bytes());
-        match body.ratios.as_deref() {
-            None => hasher.update([0u8]),
-            Some(ratios) => {
-                hasher.update([1u8]);
-                hasher.update((ratios.len() as u64).to_le_bytes());
-                for ratio in ratios {
-                    hasher.update(ratio.to_bits().to_le_bytes());
-                }
-            }
-        }
+        recipe.body.hash_into(&mut hasher);
         hasher.update(AMP.to_bits().to_le_bytes());
         hasher.update(recipe.freq_hz.to_bits().to_le_bytes());
         hasher.update(recipe.hold.to_le_bytes());
@@ -263,11 +238,7 @@ pub(crate) fn compute(request: &Request) -> Record {
             rhythms_default: true,
         },
     };
-    if !recipe
-        .body
-        .kind
-        .supports_body_models(recipe.renderer_phase3)
-    {
+    if !recipe.body.supports_body_models(recipe.renderer_phase3) {
         record.state = State::Unsupported("renderer-phase3");
         return record;
     }
@@ -455,10 +426,7 @@ impl Worker {
                 .find(|o| o.source == source)
             {
                 owner.live = true;
-                if owner.body.kind != body.kind
-                    || owner.body.unison != body.unison
-                    || owner.body.ratios != body.ratios
-                {
+                if !owner.body.has_same_structure(&body) {
                     owner.body_generation = self.next_generation;
                     self.next_generation += 1;
                 }
@@ -572,6 +540,7 @@ impl Drop for Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::life::sound::BodyKind;
 
     const FS: f32 = 48000.;
 

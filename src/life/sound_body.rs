@@ -1,4 +1,4 @@
-use super::articulation_core::{ArticulationSignal, PinkNoise};
+use super::articulation_core::ArticulationSignal;
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
@@ -15,10 +15,50 @@ use crate::scenario::control::DEFAULT_TIMBRE_UNISON;
 use crate::scenario::control::{BodyMethod, VoiceControl};
 use crate::scenario::{SoundBodyConfig, TimbreGenotype};
 use rand::{Rng, RngExt, rngs::SmallRng};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::f32::consts::PI;
 use std::sync::{Arc, Mutex, OnceLock};
 use tracing::warn;
+
+impl BodySnapshot {
+    pub(crate) fn hash_into(&self, hasher: &mut Sha256) {
+        // Preserve the byte encoding of representative-onset recipe identities.
+        hasher.update([match self.kind {
+            BodyKind::Sine => 0u8,
+            BodyKind::Harmonic => 1,
+            BodyKind::Modal => 2,
+        }]);
+        for value in [
+            self.amp_scale,
+            self.brightness,
+            self.inharmonic,
+            self.spread,
+            self.motion,
+        ] {
+            hasher.update(value.to_bits().to_le_bytes());
+        }
+        hasher.update((self.unison as u64).to_le_bytes());
+        match self.ratios.as_deref() {
+            None => hasher.update([0u8]),
+            Some(ratios) => {
+                hasher.update([1u8]);
+                hasher.update((ratios.len() as u64).to_le_bytes());
+                for ratio in ratios {
+                    hasher.update(ratio.to_bits().to_le_bytes());
+                }
+            }
+        }
+    }
+
+    pub(crate) fn supports_body_models(&self, renderer_phase3: bool) -> bool {
+        self.kind.supports_body_models(renderer_phase3)
+    }
+
+    pub(crate) fn has_same_structure(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.unison == other.unison && self.ratios == other.ratios
+    }
+}
 
 pub trait SoundBody: Send {
     /// Nominal active partial density from the body's spectral self-report.
@@ -55,7 +95,6 @@ pub trait SoundBody: Send {
     fn set_pitch_log2(&mut self, log_freq: f32);
     fn set_amp(&mut self, amp: f32);
     fn amp(&self) -> f32;
-    fn articulate_wave(&mut self, sample: &mut f32, fs: f32, dt: f32, signal: &ArticulationSignal);
     fn project_spectral_body(
         &mut self,
         amps: &mut [f32],
@@ -77,7 +116,6 @@ pub trait SoundBody: Send {
 pub struct SineBody {
     pub freq_hz: f32,
     pub amp: f32,
-    pub audio_phase: f32,
 }
 
 impl SoundBody for SineBody {
@@ -99,20 +137,6 @@ impl SoundBody for SineBody {
 
     fn amp(&self) -> f32 {
         self.amp
-    }
-
-    fn articulate_wave(
-        &mut self,
-        sample: &mut f32,
-        _fs: f32,
-        dt: f32,
-        signal: &ArticulationSignal,
-    ) {
-        if !signal.is_active || signal.amplitude <= 0.0 {
-            return;
-        }
-        self.audio_phase = (self.audio_phase + 2.0 * PI * self.freq_hz * dt).rem_euclid(2.0 * PI);
-        *sample += self.amp * signal.amplitude * self.audio_phase.sin();
     }
 
     fn project_spectral_body(
@@ -160,9 +184,6 @@ pub struct HarmonicBody {
     pub genotype: TimbreGenotype,
     pub cluster_spread_cents: f32,
     pub cluster_unison: usize,
-    pub lfo_phase: f32,
-    pub phases: Vec<f32>,
-    pub jitter_gen: PinkNoise,
     pub custom_ratios: Option<Arc<[f32]>>,
 }
 
@@ -186,14 +207,6 @@ impl HarmonicBody {
 
     fn active_cluster_unison(&self) -> usize {
         active_cluster_unison(self.cluster_spread_cents, self.cluster_unison)
-    }
-
-    fn sync_phase_storage(&mut self) {
-        let phase_len = self
-            .partials
-            .max(1)
-            .saturating_mul(self.active_cluster_unison());
-        self.phases.resize(phase_len.max(1), 0.0);
     }
 
     fn partial_count_below(&self, max_freq_hz: f32) -> usize {
@@ -237,46 +250,6 @@ impl SoundBody for HarmonicBody {
 
     fn amp(&self) -> f32 {
         self.amp
-    }
-
-    fn articulate_wave(&mut self, sample: &mut f32, fs: f32, dt: f32, signal: &ArticulationSignal) {
-        if !signal.is_active || signal.amplitude <= 0.0 {
-            return;
-        }
-        let partials = self.partial_count_below((fs * 0.49).max(1.0));
-        if partials == 0 {
-            return;
-        }
-        self.lfo_phase =
-            (self.lfo_phase + 2.0 * PI * self.genotype.vibrato_rate * dt).rem_euclid(2.0 * PI);
-        let vibrato =
-            self.genotype.vibrato_depth * (1.0 + signal.relaxation * 0.5) * self.lfo_phase.sin();
-        let jitter_scale = (1.0 + signal.tension * 0.5) * (signal.amplitude + 0.1);
-        let jitter = self.jitter_gen.sample() * self.genotype.jitter * jitter_scale;
-        let base_freq = (self.base_freq_hz * (1.0 + vibrato + jitter)).max(1.0);
-
-        let mut acc = 0.0;
-        let cluster_unison = self.active_cluster_unison();
-        let weights = cluster_weights(self.cluster_spread_cents, cluster_unison);
-        for idx in 0..partials {
-            let ratio = self.partial_ratio(idx);
-            let part_amp = self.compute_partial_amp(idx, signal.amplitude);
-            if part_amp <= 0.0 {
-                continue;
-            }
-            for unison_idx in 0..cluster_unison {
-                let detune =
-                    cluster_detune_mul(self.cluster_spread_cents, cluster_unison, unison_idx);
-                let freq = base_freq * ratio * detune;
-                if !freq.is_finite() || freq <= 0.0 || freq > (fs * 0.49).max(1.0) {
-                    continue;
-                }
-                let phase = &mut self.phases[idx * cluster_unison + unison_idx];
-                *phase = (*phase + 2.0 * PI * freq * dt).rem_euclid(2.0 * PI);
-                acc += part_amp * weights[unison_idx] * phase.sin();
-            }
-        }
-        *sample += self.amp * signal.amplitude * acc;
     }
 
     fn project_spectral_body(
@@ -336,7 +309,6 @@ impl SoundBody for HarmonicBody {
         self.genotype.vibrato_depth = self.genotype.jitter * 0.02;
         self.cluster_spread_cents = cluster_spread_cents_from_public(spread);
         self.cluster_unison = sanitize_cluster_unison(unison);
-        self.sync_phase_storage();
     }
 
     fn snapshot(&self) -> BodySnapshot {
@@ -377,17 +349,20 @@ impl AnySoundBody {
         rng: &mut R,
     ) -> Self {
         match config {
-            SoundBodyConfig::Sine { phase } => AnySoundBody::Sine(SineBody {
-                freq_hz,
-                amp,
-                audio_phase: phase.unwrap_or_else(|| rng.random_range(0.0..std::f32::consts::TAU)),
-            }),
+            SoundBodyConfig::Sine { phase } => {
+                // Keep the original phase draw in the caller's RNG stream.
+                if phase.is_none() {
+                    let _ = rng.random_range(0.0f32..std::f32::consts::TAU);
+                }
+                AnySoundBody::Sine(SineBody { freq_hz, amp })
+            }
             SoundBodyConfig::Harmonic { genotype, partials } => {
                 let partials = partials.unwrap_or(DEFAULT_MODE_COUNT).max(1);
-                let mut phases = Vec::with_capacity(partials * DEFAULT_TIMBRE_UNISON);
+                // Keep the original phase and jitter draws in the caller's RNG stream.
                 for _ in 0..(partials * DEFAULT_TIMBRE_UNISON) {
-                    phases.push(rng.random_range(0.0..std::f32::consts::TAU));
+                    let _ = rng.random_range(0.0f32..std::f32::consts::TAU);
                 }
+                let _ = rng.next_u64();
                 AnySoundBody::Harmonic(HarmonicBody {
                     base_freq_hz: freq_hz,
                     amp,
@@ -395,9 +370,6 @@ impl AnySoundBody {
                     genotype: genotype.clone(),
                     cluster_spread_cents: 0.0,
                     cluster_unison: DEFAULT_TIMBRE_UNISON,
-                    lfo_phase: 0.0,
-                    phases,
-                    jitter_gen: PinkNoise::new(rng.next_u64(), 0.001),
                     custom_ratios: None,
                 })
             }
@@ -465,14 +437,6 @@ impl SoundBody for AnySoundBody {
             AnySoundBody::Sine(body) => body.amp(),
             AnySoundBody::Harmonic(body) => body.amp(),
             AnySoundBody::Dyn(body) => body.amp(),
-        }
-    }
-
-    fn articulate_wave(&mut self, sample: &mut f32, fs: f32, dt: f32, signal: &ArticulationSignal) {
-        match self {
-            AnySoundBody::Sine(body) => body.articulate_wave(sample, fs, dt, signal),
-            AnySoundBody::Harmonic(body) => body.articulate_wave(sample, fs, dt, signal),
-            AnySoundBody::Dyn(body) => body.articulate_wave(sample, fs, dt, signal),
         }
     }
 
@@ -648,11 +612,12 @@ impl SoundBodyFactory for SineBodyFactory {
     }
 
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {
-        AnySoundBody::Sine(SineBody {
-            freq_hz: input.base_freq_hz.max(1.0),
-            amp: input.control.body.amp,
-            audio_phase: rng.random_range(0.0..std::f32::consts::TAU),
-        })
+        AnySoundBody::from_config(
+            &SoundBodyConfig::Sine { phase: None },
+            input.base_freq_hz.max(1.0),
+            input.control.body.amp,
+            rng,
+        )
     }
 }
 
@@ -701,10 +666,11 @@ impl SoundBodyFactory for HarmonicBodyFactory {
         let cluster_spread_cents = cluster_spread_cents_from_public(timbre.spread);
         let cluster_unison = sanitize_cluster_unison(timbre.unison);
         let active_cluster_unison = active_cluster_unison(cluster_spread_cents, cluster_unison);
-        let mut phases = Vec::with_capacity(partials * active_cluster_unison);
+        // Keep the original phase and jitter draws in the caller's RNG stream.
         for _ in 0..(partials * active_cluster_unison) {
-            phases.push(rng.random_range(0.0..std::f32::consts::TAU));
+            let _ = rng.random_range(0.0f32..std::f32::consts::TAU);
         }
+        let _ = rng.next_u64();
 
         AnySoundBody::Harmonic(HarmonicBody {
             base_freq_hz: input.base_freq_hz.max(1.0),
@@ -713,9 +679,6 @@ impl SoundBodyFactory for HarmonicBodyFactory {
             genotype,
             cluster_spread_cents,
             cluster_unison,
-            lfo_phase: 0.0,
-            phases,
-            jitter_gen: PinkNoise::new(rng.next_u64(), 0.001),
             custom_ratios,
         })
     }
@@ -745,9 +708,6 @@ mod tests {
             genotype: TimbreGenotype::default(),
             cluster_spread_cents: 0.0,
             cluster_unison: DEFAULT_TIMBRE_UNISON,
-            lfo_phase: 0.0,
-            phases: vec![0.0, 0.0, 0.0],
-            jitter_gen: PinkNoise::new(1, 0.001),
             custom_ratios: Some(Arc::<[f32]>::from(vec![1.0, 3.0, 5.0])),
         };
         body.apply_timbre_controls(0.4, 0.0, 0.2, 0.5, 3);
@@ -771,9 +731,6 @@ mod tests {
             genotype: TimbreGenotype::default(),
             cluster_spread_cents: 0.0,
             cluster_unison: DEFAULT_TIMBRE_UNISON,
-            lfo_phase: 0.0,
-            phases: vec![0.0; DEFAULT_MODE_COUNT],
-            jitter_gen: PinkNoise::new(2, 0.001),
             custom_ratios: None,
         };
         assert_eq!(body.partial_count_below(48_000.0 * 0.49), 5);

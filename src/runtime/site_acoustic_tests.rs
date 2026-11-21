@@ -116,6 +116,7 @@ fn site_score_acoustic_readers() {
                     assert!(
                         step.runtime
                             .state
+                            .listener
                             .listener_twin
                             .enable_contour_reporting(48000.)
                     );
@@ -215,21 +216,21 @@ fn site_score_acoustic_readers() {
                         dorsal.process(&h);
                         let drive = (500. * dorsal.last_metrics().flux.max(0.)).tanh();
                         let expected = meter.process_at(now, 512, 48000., Some(drive)).beat;
-                        let actual = state.flora_rhythm.state.beat;
+                        let actual = state.temporal.flora_rhythm.state.beat;
                         assert_eq!(
                             (actual.phase, actual.freq_hz, actual.confidence),
                             (expected.phase, expected.freq_hz, expected.confidence)
                         );
-                        assert_eq!(state.flora_rhythm.flux, drive);
+                        assert_eq!(state.temporal.flora_rhythm.flux, drive);
                         assert_eq!(
-                            state.flora_meter.as_ref().unwrap().onset_age(),
+                            state.temporal.flora_meter.as_ref().unwrap().onset_age(),
                             meter.onset_age()
                         );
                         if meter.onset_age().is_some_and(|age| age < 512. / 48000.) {
                             fired.push(hop);
                         }
                         let l = listener.observe_presentation_audio(now, hop, &left);
-                        let a = state.latest_listener_fast_state.unwrap();
+                        let a = state.listener.latest_listener_fast_state.unwrap();
                         assert_eq!(
                             (
                                 a.attention_level,
@@ -264,6 +265,7 @@ fn site_score_acoustic_readers() {
                         if hop % 20 == 0 {
                             let expected = temporal.forecast().unwrap();
                             let actual = state
+                                .temporal
                                 .temporal_expectation
                                 .as_mut()
                                 .unwrap()

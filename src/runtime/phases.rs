@@ -29,16 +29,16 @@ pub(super) fn advance_population(
             cfg.audio_counters.is_some(),
         ) {
             tracing::error!("{error}");
-            state.failures.push(error);
+            state.lifecycle.failures.push(error);
         }
-        if !state.script_error_reported {
+        if !state.lifecycle.script_error_reported {
             let error = match &stream.state.lock().unwrap().terminal {
                 Some(crate::scripting::score::Terminal::Failed(error)) => Some(error.clone()),
                 _ => None,
             };
             if let Some(error) = error {
                 eprintln!("script: {:?}: {error}", error.position);
-                state.script_error_reported = true;
+                state.lifecycle.script_error_reported = true;
             }
         }
         while let Some((item, charge)) = stream.pop_due(now_tick, state.timebase) {
@@ -70,7 +70,7 @@ pub(super) fn advance_population(
                         }
                         if let Action::Spawn { spec, .. } = &action
                             && spec.control.phonation.syncopate > 0.0
-                            && let Some(meter) = state.flora_meter.as_mut()
+                            && let Some(meter) = state.temporal.flora_meter.as_mut()
                         {
                             meter.enable_felt_period_guard();
                         }
@@ -96,10 +96,12 @@ pub(super) fn advance_population(
     }
     let finish_due = finish_dispatched
         || state
+            .lifecycle
             .end_sequence
             .as_ref()
             .is_some_and(|end| now_tick >= end.finish_tick);
-    let wet_finish = state.schedule_renderer.room.is_some() && (finish_due || state.finish_begun);
+    let wet_finish =
+        state.schedule_renderer.room.is_some() && (finish_due || state.lifecycle.finish_begun);
     for receipt in state.schedule_renderer.phrase_receipts.drain(..) {
         if let Some(voice) = state.pop.voices.iter_mut().find(|v| {
             v.id() == receipt.record.voice_id && v.metadata.generation == receipt.record.generation
@@ -112,8 +114,8 @@ pub(super) fn advance_population(
     }
     for voice in &mut state.pop.voices {
         if crate::life::support_action::active(state.current_landscape.harmonic.support_weights) {
-            voice.support_renderer_phase3 = cfg.render_prototype;
-            voice.support_body = state.schedule_renderer.support_body(
+            voice.support.renderer_phase3 = cfg.render_prototype;
+            voice.support.body = state.schedule_renderer.support_body(
                 voice.id(),
                 voice.metadata.generation,
                 now_tick,
@@ -130,16 +132,16 @@ pub(super) fn advance_population(
             }
         }
     }
-    if let Some(clock) = &mut state.harmonic_clock {
+    if let Some(clock) = &mut state.temporal.harmonic_clock {
         clock.advance(
             cfg.fs,
             now_tick,
             now_tick + cfg.hop as u64,
-            state.flora_rhythm,
+            state.temporal.flora_rhythm,
         );
         for voice in &mut state.pop.voices {
-            voice.harmonic_temperature_bonus = listener_pressure.temperature_bonus;
-            if voice.harmonic_member && finish_due {
+            voice.harmonic.temperature_bonus = listener_pressure.temperature_bonus;
+            if voice.harmonic.member && finish_due {
                 // Terminal shutdown must veto proposals before collection.
                 voice.start_remove_fade(0.0);
             }
@@ -149,23 +151,23 @@ pub(super) fn advance_population(
         report_try(&mut state.reporter, "harmonic clock", |writer| {
             writer.write_harmonic_clock(
                 now_tick,
-                state.flora_rhythm.observed_end,
+                state.temporal.flora_rhythm.observed_end,
                 clock.observed,
                 &clock.ticks,
             )
         });
     }
     for flora in &mut state.pop.flora {
-        flora.harmonic_ticks = state.harmonic_clock.as_ref().map(|clock| {
-            let mut ticks = flora.harmonic_ticks.take().unwrap_or_default();
+        flora.harmonic.ticks = state.temporal.harmonic_clock.as_ref().map(|clock| {
+            let mut ticks = flora.harmonic.ticks.take().unwrap_or_default();
             ticks.clear();
             ticks.extend_from_slice(&clock.ticks);
             ticks
         });
         let local = state.current_landscape.at_site(flora.site_id());
         flora.observe_onsets(local, now_tick);
-        flora.observe_rhythm(state.flora_rhythm, now_tick, cfg.meter_shaping);
-        flora.observe_external(local, state.last_analysis_frame);
+        flora.observe_rhythm(state.temporal.flora_rhythm, now_tick, cfg.meter_shaping);
+        flora.observe_external(local, state.listener.last_analysis_frame);
         if let Some(gap) = &mut flora.span_gap {
             gap.observe(local, now_tick);
         }
@@ -182,7 +184,7 @@ pub(super) fn advance_population(
         }
     }
     for rain in &mut state.pop.rain {
-        rain.observe_meter(state.flora_rhythm, now_tick);
+        rain.observe_meter(state.temporal.flora_rhythm, now_tick);
         if !wet_finish {
             rain.advance(state.current_landscape.at_site(rain.site_id()));
         }
@@ -221,7 +223,7 @@ pub(super) fn advance_population(
         }
         request_body_footprints(state, cfg.fs, now_tick);
     }
-    if let Some(observer) = state.temporal_expectation.as_mut() {
+    if let Some(observer) = state.temporal.temporal_expectation.as_mut() {
         if let Some(sites) = &mut state.schedule_renderer.sites {
             sites.align_energy(now_tick);
         }
@@ -308,12 +310,13 @@ pub(super) fn advance_population(
         .any(|v| v.phonation_engine.felt.is_some())
         .then(|| {
             state
+                .temporal
                 .flora_meter
                 .as_ref()
                 .and_then(|m| m.felt_beat())
                 .and_then(|snapshot| {
-                    let end = state.flora_rhythm.observed_end?;
-                    (state.flora_rhythm.known && end == now_tick).then_some(
+                    let end = state.temporal.flora_rhythm.observed_end?;
+                    (state.temporal.flora_rhythm.known && end == now_tick).then_some(
                         crate::life::phonation_engine::FeltRhythmInput {
                             snapshot,
                             observed_end: end,
@@ -328,15 +331,15 @@ pub(super) fn advance_population(
             felt.enable_trace(state.reporter.is_some());
         }
     }
-    let phonation_count = if !state.finish_begun && !wet_finish {
+    let phonation_count = if !state.lifecycle.finish_begun && !wet_finish {
         state.pop.collect_phonation_batches_into(
             &mut state.generator_model,
             &state.current_landscape,
             now_tick,
             cfg.onset_comparison
                 .filter(|c| c.arrival)
-                .map(|_| &state.temporal_frames[0]),
-            state.body_snapshot.as_deref(),
+                .map(|_| &state.temporal.temporal_frames[0]),
+            state.temporal.body_snapshot.as_deref(),
             state.schedule_renderer.body_capture.as_ref(),
             &mut state.phonation_batches_buf,
         )
@@ -354,7 +357,7 @@ pub(super) fn advance_population(
                     });
                 }
             }
-            for event in voice.harmonic_events.drain(..) {
+            for event in voice.harmonic.events.drain(..) {
                 report_try(&mut state.reporter, "harmonic voice", |writer| {
                     writer.write_harmonic_voice(id, voice.metadata.generation, &event)
                 });
@@ -396,7 +399,7 @@ pub(super) fn advance_population(
                     )
                 });
             }
-            if state.scenario_end_tick.is_none()
+            if state.lifecycle.scenario_end_tick.is_none()
                 && finish_due
                 && let Some(mut record) = voice.pitch_ctl.dwell_state
             {
@@ -408,7 +411,7 @@ pub(super) fn advance_population(
                 });
             }
             if let Some(gap) = &mut voice.phonation_engine.span_gap {
-                if state.scenario_end_tick.is_none() && finish_due {
+                if state.lifecycle.scenario_end_tick.is_none() && finish_due {
                     gap.finish(now_tick);
                 }
                 for transition in gap.trace.drain(..) {
@@ -422,13 +425,13 @@ pub(super) fn advance_population(
                     });
                 }
             }
-            state.participation_predictions.extend(
+            state.temporal.participation_predictions.extend(
                 voice
                     .phonation_engine
                     .drain_participation_predictions()
                     .map(|prediction| (id, voice.metadata.generation, prediction)),
             );
-            state.participation_decisions.extend(
+            state.temporal.participation_decisions.extend(
                 voice
                     .phonation_engine
                     .drain_participation_decisions()
@@ -468,7 +471,7 @@ pub(super) fn advance_population(
     state.pop.cleanup_dead(
         state.frame_idx,
         cfg.hop_duration.as_secs_f32(),
-        state.finish_begun,
+        state.lifecycle.finish_begun,
         &state.current_landscape,
     );
     state.loo_populations.retain(|id| {
@@ -483,7 +486,7 @@ pub(super) fn advance_population(
 pub(super) fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
     let phase3 = state.schedule_renderer.phase3_enabled();
     let voices = &mut state.pop.voices;
-    let Some(worker) = state.footprint_worker.as_mut() else {
+    let Some(worker) = state.temporal.footprint_worker.as_mut() else {
         return;
     };
     worker.prepare(
@@ -562,7 +565,7 @@ pub(super) fn emit_hop_reports(
     if state.reporter.is_none() {
         return;
     }
-    for (voice_id, decision) in state.participation_decisions.drain(..) {
+    for (voice_id, decision) in state.temporal.participation_decisions.drain(..) {
         report_try(&mut state.reporter, "participation decision", |writer| {
             writer.write_participation_decision(voice_id, cfg.fs as u32, &decision)
         });
@@ -573,7 +576,7 @@ pub(super) fn emit_hop_reports(
         report_try(&mut state.reporter, "estimator status", |writer| {
             writer.write_estimator_status()
         });
-        for observation in state.temporal_frames.iter() {
+        for observation in state.temporal.temporal_frames.iter() {
             if observation.state != crate::temporal_cognition::observation::ObservationState::Off {
                 report_try(&mut state.reporter, "temporal observation", |writer| {
                     writer.write_temporal_observation(now_sec, observation)
@@ -587,7 +590,7 @@ pub(super) fn emit_hop_reports(
             ),
             (
                 "presentation",
-                state.listener_twin.spectral_history.as_deref(),
+                state.listener.listener_twin.spectral_history.as_deref(),
             ),
         ] {
             if let Some(snapshot) = history {
@@ -747,7 +750,7 @@ pub(super) fn render_and_route_audio(
 ) -> Result<(Arc<[f32]>, Arc<[f32]>, f32, Duration), String> {
     state.schedule_renderer.harmonic_recorder = state.current_landscape.harmonic.recorder.clone();
     for flora in &mut state.pop.flora {
-        flora.harmonic_recorder = state.current_landscape.harmonic.recorder.clone();
+        flora.harmonic.recorder = state.current_landscape.harmonic.recorder.clone();
     }
     state
         .schedule_renderer
@@ -788,6 +791,7 @@ pub(super) fn render_and_route_audio(
             }
             Err(error) => {
                 state
+                    .lifecycle
                     .failures
                     .push(format!("LOO capture recycling failed: {error}"));
                 cfg.exiting.store(true, Ordering::SeqCst);
@@ -993,7 +997,7 @@ pub(super) fn render_and_route_audio(
     if let Some(capture) = state.schedule_renderer.body_capture.as_ref() {
         let snapshot = capture.snapshot();
 
-        if let Some(current) = state.body_snapshot.as_mut()
+        if let Some(current) = state.temporal.body_snapshot.as_mut()
             && (current.version != snapshot.version
                 || current.capture_drops != snapshot.capture_drops
                 || current.outside_voice_hops != snapshot.outside_voice_hops)
@@ -1005,7 +1009,7 @@ pub(super) fn render_and_route_audio(
         }
     }
     #[cfg(feature = "native")]
-    if let Some(worker) = state.footprint_worker.as_mut() {
+    if let Some(worker) = state.temporal.footprint_worker.as_mut() {
         route_body_footprints(&mut state.pop.voices, worker, &mut state.reporter, now_tick);
     }
 
@@ -1030,6 +1034,7 @@ pub(super) fn render_and_route_audio(
         && let Err(err) = tx.send(pcm)
     {
         state
+            .lifecycle
             .failures
             .push(format!("WAV render output disconnected: {err}"));
         cfg.exiting.store(true, Ordering::SeqCst);
@@ -1042,6 +1047,7 @@ pub(super) fn render_and_route_audio(
             // consume above keeps the worker at most one frame behind.
             if let Err(err) = tx.send((state.frame_idx, Arc::clone(&presentation_chunk), None)) {
                 state
+                    .lifecycle
                     .failures
                     .push(format!("listener analysis worker disconnected: {err}"));
                 cfg.exiting.store(true, Ordering::SeqCst);
@@ -1051,19 +1057,19 @@ pub(super) fn render_and_route_audio(
             match tx.try_send((state.frame_idx, Arc::clone(&presentation_chunk), None)) {
                 Ok(()) => {}
                 Err(TrySendError::Full(_)) => {
-                    state.latest_listener_state = None;
-                    state.listener_twin.spectral_history = None;
-                    state.listener_twin.invalidate_prediction();
-                    state.last_listener_analysis_frame = None;
-                    state.listener_min_valid_frame = state.frame_idx.saturating_add(1);
+                    state.listener.latest_listener_state = None;
+                    state.listener.listener_twin.spectral_history = None;
+                    state.listener.listener_twin.invalidate_prediction();
+                    state.listener.last_listener_analysis_frame = None;
+                    state.listener.listener_min_valid_frame = state.frame_idx.saturating_add(1);
                     debug!("listener analysis backlog full; dropped presentation hop");
                 }
                 Err(TrySendError::Disconnected(_)) => {
                     warn!("listener analysis worker disconnected");
                     channels.presentation_to_listener_tx = None;
-                    state.latest_listener_state = None;
-                    state.listener_twin.spectral_history = None;
-                    state.listener_twin.invalidate_prediction();
+                    state.listener.latest_listener_state = None;
+                    state.listener.listener_twin.spectral_history = None;
+                    state.listener.listener_twin.invalidate_prediction();
                 }
             }
         }
@@ -1113,15 +1119,14 @@ pub(super) fn drive_production_meter(
     channels: &mut WorkerChannels,
     habitat_chunk: &[f32],
 ) {
-    if state.finished {
+    if state.lifecycle.finished {
         return;
     }
-    if let Some(observer) = state.temporal_expectation.as_mut() {
+    if let Some(observer) = state.temporal.temporal_expectation.as_mut() {
         let now = state.timebase.frame_start_tick(state.frame_idx);
         observer.process(now, habitat_chunk, |observation| {
-            state
-                .participation_predictions
-                .retain(|(voice_id, generation, prediction)| {
+            state.temporal.participation_predictions.retain(
+                |(voice_id, generation, prediction)| {
                     let mut sample_observation = observation;
                     let local_energy = if state.schedule_renderer.sites.is_some() {
                         state
@@ -1155,7 +1160,8 @@ pub(super) fn drive_production_meter(
                         writer.write_participation_outcome(&sample)
                     });
                     false
-                });
+                },
+            );
         });
     }
     let fast_known = !cfg.temporal_meter_t2 || habitat_chunk.iter().all(|v| v.is_finite());
@@ -1176,7 +1182,7 @@ pub(super) fn drive_production_meter(
     let meter_state = if let Some(inbox) = channels.t2_inbox.as_mut() {
         let start = state.timebase.frame_start_tick(state.frame_idx);
         let end = state.timebase.frame_end_tick(state.frame_idx);
-        if let Some(meter) = state.flora_meter.as_mut() {
+        if let Some(meter) = state.temporal.flora_meter.as_mut() {
             if meter.needs_felt_bands() {
                 let m = state.dorsal.last_metrics();
                 meter.set_felt_bands(end, fast_known.then_some([m.e_low, m.e_mid, m.e_high]));
@@ -1188,7 +1194,7 @@ pub(super) fn drive_production_meter(
                 fast_known.then_some(flux_drive),
             );
         }
-        state.prod_meter.continuous_fast(
+        state.temporal.prod_meter.continuous_fast(
             start,
             end,
             cfg.hop_duration.as_secs_f32(),
@@ -1203,13 +1209,13 @@ pub(super) fn drive_production_meter(
             match inbox.rx.try_recv() {
                 Ok(delivery) => {
                     let packet = inbox.received(delivery, end);
-                    if let Some(meter) = state.flora_meter.as_mut()
+                    if let Some(meter) = state.temporal.flora_meter.as_mut()
                         && let Err(reason) = meter.continuous_ingest(packet)
                     {
                         failure = Some(reason);
                         break;
                     }
-                    if let Err(reason) = state.prod_meter.continuous_ingest(packet) {
+                    if let Err(reason) = state.temporal.prod_meter.continuous_ingest(packet) {
                         failure = Some(reason);
                         break;
                     }
@@ -1238,17 +1244,17 @@ pub(super) fn drive_production_meter(
         }
         if let Some(reason) = failure {
             cfg.exiting.store(true, Ordering::SeqCst);
-            state.failures.push(reason.to_owned());
+            state.lifecycle.failures.push(reason.to_owned());
         }
-        if let Some(meter) = state.flora_meter.as_mut() {
-            state.flora_rhythm = crate::life::flora::TemporalObservation {
+        if let Some(meter) = state.temporal.flora_meter.as_mut() {
+            state.temporal.flora_rhythm = crate::life::flora::TemporalObservation {
                 observed_end: Some(end),
                 known: fast_known && failure.is_none(),
                 flux: flux_drive,
                 state: meter.continuous_finish(),
             };
         }
-        let result = state.prod_meter.continuous_finish();
+        let result = state.temporal.prod_meter.continuous_finish();
         if state.reporter.is_some() || state.profile.is_some() {
             let sample = crate::life::report::TemporalMeterSample {
                 sample_rate: cfg.fs as u32,
@@ -1256,6 +1262,7 @@ pub(super) fn drive_production_meter(
                 use_cut: end,
                 input: inbox.diagnostics,
                 recurrence: state
+                    .temporal
                     .prod_meter
                     .continuous_diagnostics()
                     .expect("continuous mode"),
@@ -1264,11 +1271,11 @@ pub(super) fn drive_production_meter(
             report_try(&mut state.reporter, "T2 meter", |writer| {
                 writer.write_temporal_meter(&sample)
             });
-            state.t2_sample = Some(sample);
+            state.temporal.t2_sample = Some(sample);
         }
         result
     } else {
-        if let Some(meter) = state.flora_meter.as_mut() {
+        if let Some(meter) = state.temporal.flora_meter.as_mut() {
             let known = habitat_chunk.iter().all(|v| v.is_finite());
             if meter.needs_felt_bands() {
                 let m = state.dorsal.last_metrics();
@@ -1277,7 +1284,7 @@ pub(super) fn drive_production_meter(
                     known.then_some([m.e_low, m.e_mid, m.e_high]),
                 );
             }
-            state.flora_rhythm = crate::life::flora::TemporalObservation {
+            state.temporal.flora_rhythm = crate::life::flora::TemporalObservation {
                 observed_end: Some(state.timebase.frame_end_tick(state.frame_idx)),
                 known,
                 flux: flux_drive,
@@ -1289,7 +1296,7 @@ pub(super) fn drive_production_meter(
                 ),
             };
         }
-        state.prod_meter.process_at(
+        state.temporal.prod_meter.process_at(
             state.timebase.frame_start_tick(state.frame_idx),
             cfg.hop,
             cfg.fs,
@@ -1297,7 +1304,11 @@ pub(super) fn drive_production_meter(
         )
     };
     if state.reporter.is_some()
-        && let Some(felt) = state.flora_meter.as_ref().and_then(|m| m.felt_beat())
+        && let Some(felt) = state
+            .temporal
+            .flora_meter
+            .as_ref()
+            .and_then(|m| m.felt_beat())
     {
         let end = state.timebase.frame_end_tick(state.frame_idx);
         report_try(&mut state.reporter, "felt beat", |writer| {

@@ -1160,7 +1160,7 @@ mod tests {
             48000.,
             512,
         );
-        flora.harmonic_recorder = Some(runtime.recorder.clone());
+        flora.harmonic.recorder = Some(runtime.recorder.clone());
         flora.advance(&landscape);
         flora.render_add(&mut [0.; 512], &mut [0.; 512]);
         let counters = &runtime.recorder;

@@ -425,7 +425,7 @@ fn harmonic_opportunity_uses_the_same_separate_pitch_view() {
             Some(&land),
             21,
         );
-        voice.harmonic_member = true;
+        voice.harmonic.member = true;
         voice.configure_control_hop(512, 64, 48000.);
         voice.pitch_ctl.loo_input_mut().exact_score = Some(external.clone());
         let mut batch = PhonationBatch::default();

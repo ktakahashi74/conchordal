@@ -43,7 +43,7 @@ fn check_metric_population(
         assert!(pcm.iter().all(|bus| bus.iter().all(|s| s.is_finite())));
         if amplitude == 0.0 {
             assert!(pcm.iter().all(|bus| bus.iter().all(|&s| s == 0.0)));
-            let meter = state.prod_meter.state();
+            let meter = state.temporal.prod_meter.state();
             assert_eq!(meter.beat.confidence, 0.0);
             assert_eq!(meter.subdivision.confidence, 0.0);
             assert_eq!(meter.measure.confidence, 0.0);
@@ -58,7 +58,7 @@ fn check_metric_population(
                     continue;
                 }
                 // The landscape holds the previous hop's meter, exactly as the Voice reads it.
-                let beat = state.prod_meter.state().beat;
+                let beat = state.temporal.prod_meter.state().beat;
                 assert!(
                     beat.confidence > 0.0,
                     "an unconfirmed meter cannot certify synchrony"

@@ -308,7 +308,7 @@ pub(super) fn choose_candidate_by_scene_score<R: Rng + Clone>(
 
 impl Community {
     fn random_respawn_frequency<R: Rng + Clone>(
-        &self,
+        &mut self,
         population: &RuntimePopulationState,
         landscape: &Landscape,
         rng: &mut R,
@@ -337,7 +337,7 @@ impl Community {
     }
 
     fn peak_biased_respawn_candidate<R: Rng + Clone>(
-        &self,
+        &mut self,
         population: &RuntimePopulationState,
         selected_parent: Option<ParentCandidate>,
         landscape: &Landscape,
@@ -445,7 +445,7 @@ impl Community {
                 }
             };
             let center_hz = landscape.space.centers_hz[candidate_bins[chosen_idx]].clamp(lo, hi);
-            let active = self.harmonic_spawn.borrow();
+            let active = &self.spawn_support.relations;
             let temporal = if temporal { active.as_ref() } else { None };
             peak_bias_local_search_frequency(landscape, center_hz, lo, hi, config, temporal)
         };
@@ -464,7 +464,7 @@ impl Community {
     }
 
     fn pick_respawn_candidate<R: Rng + Clone>(
-        &self,
+        &mut self,
         population_id: u64,
         population: &RuntimePopulationState,
         alive_by_population: &BTreeMap<u64, Vec<ParentCandidate>>,
@@ -580,7 +580,7 @@ impl Community {
         };
         let chosen_freq = match population.respawn_policy {
             RespawnPolicy::Random => {
-                let active = self.harmonic_spawn.borrow();
+                let active = &self.spawn_support.relations;
                 choose_candidate_by_scene_score(
                     landscape,
                     &candidates,

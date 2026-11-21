@@ -110,9 +110,9 @@ impl SupportScratch {
 
 impl Flora {
     pub(super) fn support_width(&self) -> Option<u64> {
-        let window = self.support_window?;
+        let window = self.support.window?;
         let end = window.end?;
-        let (snapshot, _) = self.support_action.as_ref()?;
+        let (snapshot, _) = self.support.action.as_ref()?;
         // The next hop may change targets, pace, or ramps; it is not an issued plan.
         if end <= window.start
             || end > window.hop_start + self.hop as u64
@@ -177,16 +177,16 @@ impl Flora {
     }
 
     pub(super) fn support_action_mean(
-        &self,
+        &mut self,
         excluded: Option<usize>,
         candidate: Option<&Lane>,
         cells: u64,
     ) -> Option<[f64; 2]> {
         let width = self.support_width()?;
-        let window = self.support_window?;
-        let (snapshot, _) = self.support_action.as_ref()?;
+        let window = self.support.window?;
+        let (snapshot, _) = self.support.action.as_ref()?;
         let bins = self.space.n_bins();
-        let mut scratch = self.support_scratch.borrow_mut();
+        let scratch = &mut self.support.scratch;
         if cells == 0 || cells > width || width as usize > scratch.summaries.len() {
             return None;
         }
@@ -200,13 +200,13 @@ impl Flora {
             || scratch
                 .score_template
                 .as_ref()
-                .is_none_or(|t| !std::sync::Arc::ptr_eq(t, &self.support_template))
+                .is_none_or(|t| !std::sync::Arc::ptr_eq(t, &self.support.template))
         {
             scratch.cells = 0;
             scratch.reset_scores();
             scratch.score_window = Some(window_key);
             scratch.score_reference = Some(snapshot.clone());
-            scratch.score_template = Some(self.support_template.clone());
+            scratch.score_template = Some(self.support.template.clone());
             scratch.score_lanes.clone_from(&self.lanes);
         }
         if let Some(found) = scratch.scores.iter().find(|s| {
@@ -301,7 +301,7 @@ impl Flora {
                 return Some((0, 0.));
             }
             if cached.r != r || cached.level != level {
-                let scale = (level * r / self.spec.amp).powf(2. * self.support_loudness_exp);
+                let scale = (level * r / self.spec.amp).powf(2. * self.support.loudness_exp);
                 if !scale.is_finite() || scale < 0. {
                     return None;
                 }
@@ -322,11 +322,12 @@ impl Flora {
         {
             scratch.density[..cells as usize * bins].fill(0.);
             scratch.summaries[..cells as usize].fill([0.; 3]);
-            let first = self.support_template.first().map_or(0, |p| p.0);
+            let first = self.support.template.first().map_or(0, |p| p.0);
             let contiguous = self
-                .support_template
+                .support
+                .template
                 .last()
-                .is_some_and(|p| p.0 - first + 1 == self.support_template.len() as isize);
+                .is_some_and(|p| p.0 - first + 1 == self.support.template.len() as isize);
             for point in 0..cells as usize {
                 let t = (u128::from(width) * (2 * point as u128 + 1) / (2 * u128::from(cells)))
                     as usize;
@@ -358,7 +359,7 @@ impl Flora {
                     if contiguous {
                         let start = bin as isize + first;
                         let lo = start.max(0);
-                        let hi = (start + self.support_template.len() as isize).min(bins as isize);
+                        let hi = (start + self.support.template.len() as isize).min(bins as isize);
                         if lo >= hi {
                             continue;
                         }
@@ -366,14 +367,14 @@ impl Flora {
                         let from = (lo as isize - start) as usize;
                         for (out, &(_, q)) in scratch.density[point * bins + lo..point * bins + hi]
                             .iter_mut()
-                            .zip(&self.support_template[from..from + hi - lo])
+                            .zip(&self.support.template[from..from + hi - lo])
                         {
                             *out += f64::from(q * scale);
                         }
                         lower = lower.min(lo);
                         upper = upper.max(hi);
                     } else {
-                        for &(offset, q) in self.support_template.iter() {
+                        for &(offset, q) in self.support.template.iter() {
                             let i = bin as isize + offset;
                             if i < 0 || i >= bins as isize {
                                 continue;
@@ -460,7 +461,7 @@ impl Flora {
                 let summary = snapshot.update_joint_density(
                     &mut scratch.density[row * bins..(row + 1) * bins],
                     summary,
-                    &self.support_template,
+                    &self.support.template,
                     removed,
                     added,
                     false,
@@ -506,10 +507,10 @@ impl Flora {
         ))
     }
 
-    pub(super) fn record_support_choice(&self, choice: SupportChoice) {
+    pub(super) fn record_support_choice(&mut self, choice: SupportChoice) {
         tracing::trace!(flora_id = self.id, ?choice, "support Flora joint action");
         #[cfg(test)]
-        if let Some(records) = self.support_records.borrow_mut().as_mut() {
+        if let Some(records) = self.support.records.as_mut() {
             records.push(choice);
         }
     }

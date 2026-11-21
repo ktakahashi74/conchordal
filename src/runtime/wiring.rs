@@ -851,7 +851,7 @@ pub(super) fn prepare_runtime(
             cfg,
         );
         state.loo_populations = loo_populations;
-        state.body_snapshot = body_capture.as_ref().map(|c| Box::new(c.snapshot()));
+        state.temporal.body_snapshot = body_capture.as_ref().map(|c| Box::new(c.snapshot()));
         state.schedule_renderer.body_capture = body_capture;
         state.schedule_renderer.room = room;
         if let (Some(buses), Some(body)) = (&sites, &mut state.pop.body_metabolism) {

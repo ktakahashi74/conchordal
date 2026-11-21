@@ -52,10 +52,11 @@ pub(super) struct WorkerChannels {
 
 /// Mutable worker state. Built once before the loop; hop phases take it `&mut`.
 pub(super) struct WorkerState {
-    pub(super) script_error_reported: bool,
+    pub(super) lifecycle: PlaybackLifecycle,
+    pub(super) ui: UiDelivery,
+    pub(super) listener: ListenerSync,
+    pub(super) temporal: TemporalState,
     pub(super) loo_populations: Vec<u64>,
-    pub(super) harmonic_relations:
-        Option<crate::temporal_cognition::harmonic_relations::runtime::Runtime>,
     #[cfg(feature = "native")]
     pub(super) loo_recycle: (
         Sender<crate::core::stream::loo::CaptureStorage>,
@@ -65,9 +66,6 @@ pub(super) struct WorkerState {
     pub(super) loo_storage: Option<crate::core::stream::loo::CaptureStorage>,
     #[cfg(test)]
     pub(super) offline_body_probe: Option<OfflineBodyProbe>,
-    pub(super) body_snapshot: Option<Box<crate::temporal_cognition::body::Snapshot>>,
-    pub(super) footprint_worker: Option<crate::life::onset_footprint::Worker>,
-    pub(super) temporal_frames: Box<[crate::temporal_cognition::observation::Snapshot; 2]>,
     pub(super) pop: Community,
     pub(super) conductor: Conductor,
     pub(super) current_landscape: Landscape,
@@ -76,21 +74,35 @@ pub(super) struct WorkerState {
     pub(super) reporter: Option<JsonlReporter>,
     pub(super) profile: Option<RunProfile>,
     pub(super) timebase: crate::core::timebase::Timebase,
+    pub(super) log_space: Log2Space,
+    pub(super) frame_idx: u64,
+    pub(super) generator_model: crate::life::generator_model::GeneratorModel,
+    pub(super) schedule_renderer: ScheduleRenderer,
+    pub(super) phonation_batches_buf: Vec<PhonationBatch>,
+}
+
+pub(super) struct PlaybackLifecycle {
     pub(super) playback_state: PlaybackState,
     pub(super) finish_begun: bool,
     pub(super) end_sequence: Option<EndSequence>,
     pub(super) finish_logged: bool,
     pub(super) finished: bool,
     pub(super) finalized: bool,
+    pub(super) scenario_end_tick: Option<Tick>,
+    pub(super) script_error_reported: bool,
+    pub(super) failures: Vec<String>,
+}
+
+pub(super) struct UiDelivery {
     pub(super) pending_final_ui_frame: Option<UiFrame>,
     pub(super) ui_rhythm_hops: std::collections::VecDeque<crate::viewdata::ListenerRhythmHop>,
-    pub(super) failures: Vec<String>,
-    pub(super) log_space: Log2Space,
-    pub(super) frame_idx: u64,
-    pub(super) monitor: AudioMonitor,
-    pub(super) last_guard_log: Instant,
     pub(super) last_ui_update: Instant,
+    pub(super) last_guard_log: Instant,
     pub(super) last_tick_log: Instant,
+    pub(super) monitor: AudioMonitor,
+}
+
+pub(super) struct ListenerSync {
     pub(super) last_analysis_frame: Option<u64>,
     pub(super) last_listener_analysis_frame: Option<u64>,
     pub(super) listener_min_valid_frame: u64,
@@ -99,6 +111,13 @@ pub(super) struct WorkerState {
     pub(super) latest_listener_state: Option<ListenerState>,
     /// Real-time listener update that met a full queue; merged and retried next hop.
     pub(super) pending_listener_update: Option<LandscapeUpdate>,
+    pub(super) hab_ecology: crate::core::habituation::HabituationField,
+    pub(super) hab_listener: crate::core::habituation::HabituationField,
+}
+
+pub(super) struct TemporalState {
+    pub(super) harmonic_relations:
+        Option<crate::temporal_cognition::harmonic_relations::runtime::Runtime>,
     // Production-side meter core (auditory-motor coupling), separate from the
     // perception meter inside ListenerTwin. See "Perception vs Production".
     // Composer-set terrain priors (meter_stability / temporal_basin) seed it.
@@ -109,18 +128,15 @@ pub(super) struct WorkerState {
     pub(super) t2_sample: Option<crate::life::report::TemporalMeterSample>,
     pub(super) temporal_expectation:
         Option<crate::core::temporal_expectation::AcousticTemporalExpectation>,
+    pub(super) body_snapshot: Option<Box<crate::temporal_cognition::body::Snapshot>>,
+    pub(super) footprint_worker: Option<crate::life::onset_footprint::Worker>,
+    pub(super) temporal_frames: Box<[crate::temporal_cognition::observation::Snapshot; 2]>,
     pub(super) participation_predictions: Vec<(u64, u32, ParticipationPrediction)>,
     /// Traced decisions wait here so their encoding is charged to the report phase.
     pub(super) participation_decisions: Vec<(
         u64,
         crate::life::temporal_participation::ParticipationDecision,
     )>,
-    pub(super) generator_model: crate::life::generator_model::GeneratorModel,
-    pub(super) hab_ecology: crate::core::habituation::HabituationField,
-    pub(super) hab_listener: crate::core::habituation::HabituationField,
-    pub(super) schedule_renderer: ScheduleRenderer,
-    pub(super) scenario_end_tick: Option<Tick>,
-    pub(super) phonation_batches_buf: Vec<PhonationBatch>,
 }
 
 pub(super) struct EndSequence {
@@ -129,16 +145,16 @@ pub(super) struct EndSequence {
 
 impl WorkerState {
     pub(super) fn begin_finish(&mut self, now_tick: Tick) {
-        if self.finish_begun {
+        if self.lifecycle.finish_begun {
             return;
         }
-        self.finish_begun = true;
+        self.lifecycle.finish_begun = true;
         if self.schedule_renderer.room.is_some() {
-            self.playback_state = PlaybackState::Ending;
+            self.lifecycle.playback_state = PlaybackState::Ending;
         }
         self.pop
             .apply_action(Action::Finish, &self.current_landscape);
-        self.scenario_end_tick = Some(now_tick);
+        self.lifecycle.scenario_end_tick = Some(now_tick);
         self.pop.voices.clear();
         for flora in &mut self.pop.flora {
             flora.release_at_scenario_end();
@@ -150,7 +166,7 @@ impl WorkerState {
     }
 
     pub(super) fn request_end(&mut self, now_tick: Tick) {
-        if self.finish_begun || self.end_sequence.is_some() {
+        if self.lifecycle.finish_begun || self.lifecycle.end_sequence.is_some() {
             return;
         }
         self.conductor.discard_pending();
@@ -185,15 +201,15 @@ impl WorkerState {
             .saturating_add(voice_ticks.max(flora_ticks).max(rain_ticks))
             .div_ceil(hop)
             .saturating_mul(hop);
-        self.end_sequence = Some(EndSequence { finish_tick });
-        self.playback_state = PlaybackState::Ending;
+        self.lifecycle.end_sequence = Some(EndSequence { finish_tick });
+        self.lifecycle.playback_state = PlaybackState::Ending;
     }
 
     fn exit_during_recovery(&self, cfg: &WorkerConfig) -> bool {
         cfg.audio_counters
             .as_ref()
             .is_some_and(|c| c.recovering.load(Ordering::Acquire))
-            && (cfg.end_request.load(Ordering::SeqCst) || self.end_sequence.is_some())
+            && (cfg.end_request.load(Ordering::SeqCst) || self.lifecycle.end_sequence.is_some())
     }
 
     pub(super) fn current_time(&self) -> f64 {
@@ -277,13 +293,20 @@ impl WorkerState {
             warn!("listener contour reporting unavailable below 2400 Hz sample rate");
         }
         let now = Instant::now();
+        let temporal_frames = Default::default();
+        let monitor = AudioMonitor::new();
+        let harmonic_clock = (cfg.harmonic_rhythm > 0).then(|| {
+            crate::life::harmonic_rhythm::HarmonicRhythm::new(
+                cfg.harmonic_rhythm,
+                cfg.meter_shaping,
+            )
+        });
+        let temporal_expectation =
+            crate::core::temporal_expectation::AcousticTemporalExpectation::new(cfg.fs as u32);
         Self {
-            harmonic_relations,
             #[cfg(test)]
             offline_body_probe: None,
             pop,
-            temporal_frames: Default::default(),
-            script_error_reported: false,
             loo_populations: Vec::new(),
             conductor,
             current_landscape,
@@ -292,45 +315,9 @@ impl WorkerState {
             reporter,
             profile: None,
             timebase,
-            playback_state: PlaybackState::NotStarted,
-            finish_begun: false,
-            end_sequence: None,
-            finish_logged: false,
-            finished: false,
-            finalized: false,
-            pending_final_ui_frame: None,
-            ui_rhythm_hops: Default::default(),
-            failures: Vec::new(),
             log_space,
             frame_idx: 0,
-            monitor: AudioMonitor::new(),
-            last_guard_log: now - Duration::from_millis(200),
-            last_ui_update: now,
-            last_tick_log: now,
-            last_analysis_frame: None,
-            last_listener_analysis_frame: None,
-            listener_min_valid_frame: 0,
-            listener_twin,
-            latest_listener_fast_state: None,
-            latest_listener_state: None,
-            pending_listener_update: None,
-            prod_meter,
-            harmonic_clock: (cfg.harmonic_rhythm > 0).then(|| {
-                crate::life::harmonic_rhythm::HarmonicRhythm::new(
-                    cfg.harmonic_rhythm,
-                    cfg.meter_shaping,
-                )
-            }),
-            flora_meter,
-            flora_rhythm: Default::default(),
-            t2_sample: None,
-            temporal_expectation:
-                crate::core::temporal_expectation::AcousticTemporalExpectation::new(cfg.fs as u32),
-            participation_predictions: Vec::new(),
-            participation_decisions: Vec::new(),
             generator_model,
-            hab_ecology,
-            hab_listener,
             #[cfg(feature = "native")]
             loo_recycle: {
                 let (tx, rx) = bounded(1);
@@ -343,19 +330,60 @@ impl WorkerState {
             schedule_renderer: ScheduleRenderer::new(timebase)
                 .with_prototype(cfg.render_prototype)
                 .with_expression(expression),
-            scenario_end_tick: None,
             phonation_batches_buf: Vec::new(),
-            body_snapshot: None,
-            #[cfg(feature = "native")]
-            footprint_worker: cfg.onset_comparison.map(|_| {
-                let mut worker = crate::life::onset_footprint::Worker::new();
-                if cfg.deterministic_footprints {
-                    worker.deliver_footprints_deterministically();
-                }
-                worker
-            }),
-            #[cfg(not(feature = "native"))]
-            footprint_worker: None,
+            lifecycle: PlaybackLifecycle {
+                playback_state: PlaybackState::NotStarted,
+                finish_begun: false,
+                end_sequence: None,
+                finish_logged: false,
+                finished: false,
+                finalized: false,
+                scenario_end_tick: None,
+                script_error_reported: false,
+                failures: Vec::new(),
+            },
+            ui: UiDelivery {
+                pending_final_ui_frame: None,
+                ui_rhythm_hops: Default::default(),
+                last_ui_update: now,
+                last_guard_log: now - Duration::from_millis(200),
+                last_tick_log: now,
+                monitor,
+            },
+            listener: ListenerSync {
+                last_analysis_frame: None,
+                last_listener_analysis_frame: None,
+                listener_min_valid_frame: 0,
+                listener_twin,
+                latest_listener_fast_state: None,
+                latest_listener_state: None,
+                pending_listener_update: None,
+                hab_ecology,
+                hab_listener,
+            },
+            temporal: TemporalState {
+                harmonic_relations,
+                prod_meter,
+                harmonic_clock,
+                flora_meter,
+                flora_rhythm: Default::default(),
+                t2_sample: None,
+                temporal_expectation,
+                body_snapshot: None,
+                #[cfg(feature = "native")]
+                footprint_worker: cfg.onset_comparison.map(|_| {
+                    let mut worker = crate::life::onset_footprint::Worker::new();
+                    if cfg.deterministic_footprints {
+                        worker.deliver_footprints_deterministically();
+                    }
+                    worker
+                }),
+                #[cfg(not(feature = "native"))]
+                footprint_worker: None,
+                temporal_frames,
+                participation_predictions: Vec::new(),
+                participation_decisions: Vec::new(),
+            },
         }
     }
 }
@@ -369,7 +397,7 @@ pub(super) fn worker_loop(
     state.schedule_renderer.profile = state.profile.as_ref().map(|_| Default::default());
 
     if cfg.start_flag.load(Ordering::SeqCst) {
-        state.playback_state = PlaybackState::Playing;
+        state.lifecycle.playback_state = PlaybackState::Playing;
     }
     let samples_per_hop = cfg.hop * (1 + usize::from(state.schedule_renderer.room.is_some()));
     let idle_silence = vec![0.0f32; samples_per_hop];
@@ -377,6 +405,7 @@ pub(super) fn worker_loop(
     let mut l1_probe = super::l1_probe::Probe::new("audio");
 
     for (target, snapshot) in state
+        .temporal
         .temporal_frames
         .iter_mut()
         .zip(&channels.temporal_snapshots)
@@ -392,10 +421,10 @@ pub(super) fn worker_loop(
             &state.pop,
             &state.current_landscape,
             state.timebase.frame_start_tick(state.frame_idx),
-            state.playback_state,
+            state.lifecycle.playback_state,
             cfg.fs,
         );
-        initial_frame.temporal = Arc::new(*state.temporal_frames);
+        initial_frame.temporal = Arc::new(*state.temporal.temporal_frames);
         let _ = tx.try_send(initial_frame);
     }
 
@@ -410,8 +439,8 @@ pub(super) fn worker_loop(
         {
             cfg.exiting.store(true, Ordering::SeqCst);
         }
-        if cfg.exiting.load(Ordering::SeqCst) || state.finished {
-            if !state.finalized {
+        if cfg.exiting.load(Ordering::SeqCst) || state.lifecycle.finished {
+            if !state.lifecycle.finalized {
                 #[cfg(test)]
                 drop(l1_probe.take());
                 finish_run(&cfg, &mut channels, &mut state);
@@ -421,25 +450,25 @@ pub(super) fn worker_loop(
             }
         }
 
-        if cfg.end_request.load(Ordering::SeqCst) && !state.finish_begun {
+        if cfg.end_request.load(Ordering::SeqCst) && !state.lifecycle.finish_begun {
             let now = state.timebase.frame_start_tick(state.frame_idx);
             state.request_end(now);
         }
-        if state.playback_state == PlaybackState::NotStarted
+        if state.lifecycle.playback_state == PlaybackState::NotStarted
             && !cfg.start_flag.load(Ordering::SeqCst)
         {
             thread::sleep(Duration::from_millis(10));
             continue;
-        } else if state.playback_state == PlaybackState::NotStarted {
-            state.playback_state = PlaybackState::Playing;
+        } else if state.lifecycle.playback_state == PlaybackState::NotStarted {
+            state.lifecycle.playback_state = PlaybackState::Playing;
         }
 
-        if state.finished && cfg.wait_user_exit {
-            if let Some(frame) = state.pending_final_ui_frame.take()
+        if state.lifecycle.finished && cfg.wait_user_exit {
+            if let Some(frame) = state.ui.pending_final_ui_frame.take()
                 && let Some(tx) = &channels.ui_tx
                 && let Err(crate::handoff::TrySendError::Full(frame)) = tx.try_send(frame)
             {
-                state.pending_final_ui_frame = Some(frame);
+                state.ui.pending_final_ui_frame = Some(frame);
             }
             if let Some(prod) = channels.audio_prod.as_mut() {
                 while prod.vacant_len() >= samples_per_hop {
@@ -457,7 +486,7 @@ pub(super) fn worker_loop(
                 .as_ref()
                 .is_some_and(|prod| prod.vacant_len() >= samples_per_hop)
                 && !cfg.exiting.load(Ordering::SeqCst)
-                && !state.finished
+                && !state.lifecycle.finished
                 && !state.exit_during_recovery(&cfg)
             {
                 process_hop(&cfg, &mut channels, &mut state)?;
@@ -504,13 +533,14 @@ pub(super) fn worker_loop(
         .is_some_and(|counters| counters.failed.load(Ordering::Acquire))
     {
         state
+            .lifecycle
             .failures
             .push("audio stream configuration unsupported during recovery".into());
     }
-    if state.failures.is_empty() {
+    if state.lifecycle.failures.is_empty() {
         Ok(())
     } else {
-        Err(state.failures.join("; "))
+        Err(state.lifecycle.failures.join("; "))
     }
 }
 
@@ -521,7 +551,7 @@ pub(super) fn finish_run(
     state: &mut WorkerState,
 ) {
     #[cfg(test)]
-    if let Some(relations) = &state.harmonic_relations
+    if let Some(relations) = &state.temporal.harmonic_relations
         && let Some(directory) = std::env::var_os("L1_OUTPUT")
     {
         let path = std::path::Path::new(&directory).join("harmonic-relations-at-audio-end.json");
@@ -531,10 +561,10 @@ pub(super) fn finish_run(
         )
         .expect("L1 audio-end harmonic statistics serialization");
     }
-    if state.harmonic_relations.is_some() && state.frame_idx > 0 {
+    if state.temporal.harmonic_relations.is_some() && state.frame_idx > 0 {
         wait_for_analysis(state, &channels.analysis_result_rx, &cfg.exiting);
     }
-    if let Some(relations) = &mut state.harmonic_relations {
+    if let Some(relations) = &mut state.temporal.harmonic_relations {
         if let Some(support) = state.current_landscape.harmonic.support.clone() {
             relations.advance(&support, &mut state.current_landscape);
         }
@@ -554,7 +584,7 @@ pub(super) fn finish_run(
             }
         }
     }
-    if state.scenario_end_tick.is_none() && state.reporter.is_some() {
+    if state.lifecycle.scenario_end_tick.is_none() && state.reporter.is_some() {
         for voice in &state.pop.voices {
             if let Some(mut record) = voice.pitch_ctl.dwell_state {
                 record.event = "end";
@@ -570,7 +600,7 @@ pub(super) fn finish_run(
             }
         }
     }
-    if let Some(worker) = state.footprint_worker.as_mut() {
+    if let Some(worker) = state.temporal.footprint_worker.as_mut() {
         worker.finish();
         route_body_footprints(
             &mut state.pop.voices,
@@ -589,11 +619,12 @@ pub(super) fn finish_run(
         let snapshot = capture.snapshot();
         if snapshot.state == crate::temporal_cognition::observation::ObservationState::Failed {
             state
+                .lifecycle
                 .failures
                 .push("private body analysis worker failed".into());
         }
 
-        if let Some(current) = state.body_snapshot.as_mut() {
+        if let Some(current) = state.temporal.body_snapshot.as_mut() {
             **current = snapshot;
         }
         report_try(&mut state.reporter, "final body observation", |writer| {
@@ -620,7 +651,7 @@ pub(super) fn finish_run(
                 }
             }
             inbox.finish();
-            if let Some(sample) = state.t2_sample.as_mut() {
+            if let Some(sample) = state.temporal.t2_sample.as_mut() {
                 sample.input = inbox.diagnostics;
                 report_try(&mut state.reporter, "final T2 meter", |writer| {
                     writer.write_temporal_meter(sample)
@@ -635,6 +666,7 @@ pub(super) fn finish_run(
         let now_sec = state.current_time();
 
         for (target, snapshot) in state
+            .temporal
             .temporal_frames
             .iter_mut()
             .zip(&channels.temporal_snapshots)
@@ -648,11 +680,11 @@ pub(super) fn finish_run(
                 );
             }
         }
-        state.last_ui_update = Instant::now() - UI_MIN_INTERVAL;
+        state.ui.last_ui_update = Instant::now() - UI_MIN_INTERVAL;
         let now_tick = state.timebase.frame_start_tick(state.frame_idx);
         send_runtime_ui_frame(state, channels, cfg, Arc::from([]), 0.0, [0.0; 2], now_tick);
     }
-    for (voice_id, _, prediction) in state.participation_predictions.drain(..) {
+    for (voice_id, _, prediction) in state.temporal.participation_predictions.drain(..) {
         let sample = participation_outcome(voice_id, cfg.fs as u32, prediction, None)
             .expect("end of input closes every pending observation");
         report_try(&mut state.reporter, "participation outcome", |writer| {
@@ -678,7 +710,7 @@ pub(super) fn finish_run(
             scope: "terminal worker counters after drain/join; null means disabled, not zero cost; resource distributions cover all received frames and sample-clock 100ms windows, not the selected hop measurement interval; wall processing includes publication lock/copy, delivery includes queue wait, neither is thread CPU time; private startup is worker lane initialization; table/rejected are unused for private body; excludes final profile serialization",
             shared: std::array::from_fn(|bus| {
                 channels.temporal_snapshots[bus].as_ref().map(|_| {
-                    let snapshot = &state.temporal_frames[bus];
+                    let snapshot = &state.temporal.temporal_frames[bus];
                     SharedWorkerProfile {
                         bus: snapshot.bus,
                         state: snapshot.state,
@@ -690,6 +722,7 @@ pub(super) fn finish_run(
                 })
             }),
             body: state
+                .temporal
                 .body_snapshot
                 .as_ref()
                 .map(|snapshot| BodyWorkerProfile {
@@ -712,10 +745,10 @@ pub(super) fn finish_run(
         });
     }
     if let Some(err) = failure {
-        state.failures.push(err);
+        state.lifecycle.failures.push(err);
     }
-    state.finalized = true;
-    if !state.failures.is_empty() {
+    state.lifecycle.finalized = true;
+    if !state.lifecycle.failures.is_empty() {
         cfg.exiting.store(true, Ordering::SeqCst);
     }
 }
@@ -759,12 +792,12 @@ pub(super) fn process_hop(
     let now_tick = state.timebase.frame_start_tick(state.frame_idx);
     let now_sec = state.timebase.tick_to_sec(now_tick);
     state.generator_model.advance_to(now_tick);
-    if state.frame_idx == 0 || state.last_tick_log.elapsed() >= Duration::from_secs(1) {
+    if state.frame_idx == 0 || state.ui.last_tick_log.elapsed() >= Duration::from_secs(1) {
         debug!(
             "[tick] frame_idx={} now_tick={} now_sec={:.6}",
             state.frame_idx, now_tick, now_sec
         );
-        state.last_tick_log = Instant::now();
+        state.ui.last_tick_log = Instant::now();
     }
     state.pop.set_current_frame(state.frame_idx);
 
@@ -781,13 +814,16 @@ pub(super) fn process_hop(
     let listener_state_update = wait_for_listener(state, channels, cfg);
     let listener_wait = listener_wait_start.elapsed();
     if let Some(listener_state) = listener_state_update {
-        state.latest_listener_state = listener_state;
+        state.listener.latest_listener_state = listener_state;
     }
-    let listener_pressure = cfg.dcc_coupler.pressure(state.latest_listener_state);
+    let listener_pressure = cfg
+        .dcc_coupler
+        .pressure(state.listener.latest_listener_state);
     let listener_pressure_update =
         listener_state_update.map(|listener_state| cfg.dcc_coupler.pressure(listener_state));
 
     for (target, snapshot) in state
+        .temporal
         .temporal_frames
         .iter_mut()
         .zip(&channels.temporal_snapshots)
@@ -801,7 +837,7 @@ pub(super) fn process_hop(
 
     let population_start = state.profile.as_ref().map(|_| Instant::now());
     state.current_landscape.harmonic.now_sample = now_tick;
-    if let Some(relations) = &mut state.harmonic_relations
+    if let Some(relations) = &mut state.temporal.harmonic_relations
         && let Some(support) = state.current_landscape.harmonic.support.clone()
     {
         relations.advance(&support, &mut state.current_landscape);
@@ -845,7 +881,7 @@ pub(super) fn process_hop(
             JsonlReporter::publish_room_hop,
         );
     }
-    if let Some(relations) = &mut state.harmonic_relations {
+    if let Some(relations) = &mut state.temporal.harmonic_relations {
         relations.collect(now_tick + cfg.hop as u64);
     }
     let render_route = render_start
@@ -857,6 +893,7 @@ pub(super) fn process_hop(
         for flora in &state.pop.flora {
             if flora.lifecycle_changed
                 || state
+                    .temporal
                     .harmonic_clock
                     .as_ref()
                     .is_some_and(|c| !c.ticks.is_empty())
@@ -903,17 +940,19 @@ pub(super) fn process_hop(
             ))
     {
         state
+            .lifecycle
             .failures
             .push(format!("analysis worker disconnected: {err}"));
         cfg.exiting.store(true, Ordering::SeqCst);
     }
     drive_production_meter(state, cfg, channels, habitat_chunk.as_ref());
-    state.latest_listener_fast_state = Some(state.listener_twin.observe_presentation_audio(
-        now_tick,
-        state.frame_idx,
-        presentation_chunk.as_ref(),
-    ));
-    state.listener_twin.observe_contour_audio(
+    state.listener.latest_listener_fast_state =
+        Some(state.listener.listener_twin.observe_presentation_audio(
+            now_tick,
+            state.frame_idx,
+            presentation_chunk.as_ref(),
+        ));
+    state.listener.listener_twin.observe_contour_audio(
         state.timebase.frame_start_tick(state.frame_idx),
         presentation_chunk.as_ref(),
         |event| {
@@ -953,18 +992,19 @@ pub(super) fn process_hop(
             ))
     {
         state
+            .lifecycle
             .failures
             .push(format!("analysis worker disconnected: {err}"));
         cfg.exiting.store(true, Ordering::SeqCst);
     }
 
     let room = state.schedule_renderer.room.as_ref();
-    let normal_wet_finish = state.finish_begun
+    let normal_wet_finish = state.lifecycle.finish_begun
         && room.is_some()
-        && state.failures.is_empty()
+        && state.lifecycle.failures.is_empty()
         && !cfg.exiting.load(Ordering::SeqCst);
     let finished_now = if let Some(room) = room {
-        state.finish_begun
+        state.lifecycle.finish_begun
             && room.drained()
             && state
                 .schedule_renderer
@@ -978,13 +1018,13 @@ pub(super) fn process_hop(
     {
         true
     } else {
-        state.scenario_end_tick.is_some()
+        state.lifecycle.scenario_end_tick.is_some()
             && state.schedule_renderer.is_idle()
             && state.pop.flora.is_empty()
             && state.pop.rain.is_empty()
     };
     if finished_now {
-        state.playback_state = PlaybackState::Finished;
+        state.lifecycle.playback_state = PlaybackState::Finished;
     }
     #[cfg(feature = "native")]
     if finished_now && channels.wav_tx.is_some() {
@@ -993,15 +1033,15 @@ pub(super) fn process_hop(
     }
 
     let should_send_ui = channels.ui_tx.is_some()
-        && (finished_now || state.last_ui_update.elapsed() >= UI_MIN_INTERVAL);
+        && (finished_now || state.ui.last_ui_update.elapsed() >= UI_MIN_INTERVAL);
 
     if channels.ui_tx.is_some() {
         buffer_listener_rhythm_hop(state, cfg);
     }
 
-    let peak_level = state.monitor.max_peak.max(max_abs);
+    let peak_level = state.ui.monitor.max_peak.max(max_abs);
 
-    log_guard_meter(cfg, &mut state.last_guard_log, now_sec);
+    log_guard_meter(cfg, &mut state.ui.last_guard_log, now_sec);
 
     if should_send_ui {
         send_runtime_ui_frame(
@@ -1016,22 +1056,22 @@ pub(super) fn process_hop(
     }
 
     if finished_now {
-        state.finished = true;
-        if !state.finish_logged {
+        state.lifecycle.finished = true;
+        if !state.lifecycle.finish_logged {
             let note = if cfg.wait_user_exit {
                 "Waiting for user exit."
             } else {
                 "Exiting."
             };
             info!("[t={:.6}] Scenario finished. {note}", state.current_time());
-            state.finish_logged = true;
+            state.lifecycle.finish_logged = true;
         }
         if !cfg.wait_user_exit {
             // `exiting` doubles as the stop flag that releases the output stream, so a
             // natural end first lets the device play the queued tail. The wait is
             // bounded by twice the ring duration; stop, recovery and failure end it.
             #[cfg(feature = "native")]
-            if state.failures.is_empty()
+            if state.lifecycle.failures.is_empty()
                 && let Some(prod) = channels.audio_prod.as_ref()
             {
                 let deadline = Instant::now()
@@ -1050,7 +1090,7 @@ pub(super) fn process_hop(
         }
     }
 
-    state.monitor.update(
+    state.ui.monitor.update(
         state.current_time(),
         state.frame_idx,
         cfg.hop,
@@ -1062,7 +1102,7 @@ pub(super) fn process_hop(
         analysis_wait,
         listener_wait,
         cfg.underrun_frames.as_deref(),
-        state.finish_begun && !normal_wet_finish,
+        state.lifecycle.finish_begun && !normal_wet_finish,
         cfg.telemetry,
         #[cfg(feature = "native")]
         state
@@ -1074,7 +1114,7 @@ pub(super) fn process_hop(
         cfg.audio_counters.as_deref(),
     );
 
-    if !state.finished {
+    if !state.lifecycle.finished {
         state.frame_idx += 1;
     }
     // Include preceding telemetry in the hop cost, but exclude this record's own write.
@@ -1126,7 +1166,7 @@ pub(super) fn process_hop(
             rendered_tone_count: state.schedule_renderer.active_tone_count(),
             post_render_us,
             worker_allocations,
-            t2_meter: state.t2_sample,
+            t2_meter: state.temporal.t2_sample,
             underrun_frames_total: cfg
                 .underrun_frames
                 .as_ref()

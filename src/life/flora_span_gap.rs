@@ -203,12 +203,12 @@ mod tests {
     fn harmonic_flora_private_exit_and_ready_wait_for_shared_birth() {
         for active in [false, true] {
             let (l, mut f) = setup(1., false);
-            f.harmonic_ticks = Some(vec![100]);
+            f.harmonic.ticks = Some(vec![100]);
             render(&mut f, &l, 0, active, false);
             assert_eq!(f.span_gap.as_ref().unwrap().phase, SpanPhase::Span);
             let births = f.births;
             f.span_gap.as_mut().unwrap().target = 0.;
-            f.harmonic_ticks = Some(vec![]);
+            f.harmonic.ticks = Some(vec![]);
             render(&mut f, &l, 512, active, true);
             assert_eq!(f.span_gap.as_ref().unwrap().phase, SpanPhase::GapTail);
             let mut ready_at = None;
@@ -225,7 +225,7 @@ mod tests {
                 }
             }
             let now = ready_at.expect("private clock must complete gap and return");
-            f.harmonic_ticks = Some(vec![now + 211]);
+            f.harmonic.ticks = Some(vec![now + 211]);
             render(&mut f, &l, now, active, false);
             assert!(f.births > births);
             assert_eq!(f.span_gap.as_ref().unwrap().phase, SpanPhase::Span);

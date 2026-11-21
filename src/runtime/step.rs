@@ -209,8 +209,8 @@ impl StepEngine {
             return StepStatus::Error(format!("expected {samples} samples"));
         }
         presentation.fill(0.);
-        if !self.runtime.state.failures.is_empty() {
-            return StepStatus::Error(self.runtime.state.failures.join("; "));
+        if !self.runtime.state.lifecycle.failures.is_empty() {
+            return StepStatus::Error(self.runtime.state.lifecycle.failures.join("; "));
         }
         if self.finished() {
             return StepStatus::Finished;
@@ -222,10 +222,10 @@ impl StepEngine {
             analysis_handle,
             listener_analysis_handle,
         } = &mut self.runtime;
-        if state.playback_state == PlaybackState::NotStarted {
-            state.playback_state = PlaybackState::Playing;
+        if state.lifecycle.playback_state == PlaybackState::NotStarted {
+            state.lifecycle.playback_state = PlaybackState::Playing;
         }
-        if cfg.end_request.load(Ordering::SeqCst) && !state.finish_begun {
+        if cfg.end_request.load(Ordering::SeqCst) && !state.lifecycle.finish_begun {
             state.request_end(state.timebase.frame_start_tick(state.frame_idx));
         }
         #[cfg(not(feature = "native"))]
@@ -234,12 +234,12 @@ impl StepEngine {
         let result = process_hop(cfg, channels, state);
         channels.ui_tx = ui_output;
         if let Err(err) = result {
-            state.failures.push(err.clone());
+            state.lifecycle.failures.push(err.clone());
             return StepStatus::Error(err);
         }
         buffer_listener_rhythm_hop(state, cfg);
-        if !state.failures.is_empty() {
-            return StepStatus::Error(state.failures.join("; "));
+        if !state.lifecycle.failures.is_empty() {
+            return StepStatus::Error(state.lifecycle.failures.join("; "));
         }
         #[cfg(feature = "native")]
         let output = self.presentation.try_recv();
@@ -252,6 +252,7 @@ impl StepEngine {
         #[cfg(feature = "native")]
         if !analysis_handle.step() || !listener_analysis_handle.as_mut().is_some_and(|a| a.step()) {
             state
+                .lifecycle
                 .failures
                 .push("inline analysis failed to consume its hop".into());
         }
@@ -330,9 +331,9 @@ impl StepEngine {
                 state.loo_storage = Some((packet.sources, packet.sites));
             }
         }
-        if !state.failures.is_empty() {
-            StepStatus::Error(state.failures.join("; "))
-        } else if state.finished {
+        if !state.lifecycle.failures.is_empty() {
+            StepStatus::Error(state.lifecycle.failures.join("; "))
+        } else if state.lifecycle.finished {
             StepStatus::Finished
         } else {
             StepStatus::Running
@@ -341,7 +342,7 @@ impl StepEngine {
 
     /// Build a snapshot when the host requests a GUI update.
     pub fn ui_frame(&mut self) -> Option<UiFrame> {
-        if !self.runtime.state.failures.is_empty() {
+        if !self.runtime.state.lifecycle.failures.is_empty() {
             return None;
         }
         let left = if self.output_channels() == 2 {
@@ -386,7 +387,7 @@ impl StepEngine {
         self.runtime.cfg.end_request.store(true, Ordering::SeqCst);
     }
     pub fn finished(&self) -> bool {
-        self.runtime.state.finished
+        self.runtime.state.lifecycle.finished
     }
     /// Wall-clock milliseconds of the last hop's worker, ecology and listener stages,
     /// for the browser host's performance counters.
@@ -455,7 +456,10 @@ mod tests {
             let status = engine.step(&mut actual);
             assert!(!matches!(status, StepStatus::Error(_)), "{status:?}");
             if count >= end_hop && status == StepStatus::Running {
-                assert_eq!(engine.runtime.state.playback_state, PlaybackState::Ending);
+                assert_eq!(
+                    engine.runtime.state.lifecycle.playback_state,
+                    PlaybackState::Ending
+                );
             }
             let mismatch = expected
                 .iter()

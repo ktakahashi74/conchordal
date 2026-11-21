@@ -85,11 +85,7 @@ pub struct Community {
     pub(crate) rest_enabled: bool,
     pub(crate) onset_habituation_config: Option<(crate::core::habituation::HabituationParams, f64)>,
     pub(crate) body_metabolism: Option<super::body_metabolism::BodyMetabolism>,
-    support_scratch: std::cell::RefCell<[Vec<f64>; 2]>,
-    harmonic_spawn:
-        std::cell::RefCell<Option<crate::temporal_cognition::harmonic_relations::consumer::Use>>,
-    harmonic_spawn_weights: std::cell::RefCell<Vec<f64>>,
-    harmonic_spawn_candidates: std::cell::RefCell<Vec<usize>>,
+    spawn_support: SpawnSupportScratch,
     pub voices: Vec<Voice>,
     pub(crate) flora: Vec<super::flora::Flora>,
     pub(crate) has_placed_flora: bool,
@@ -126,6 +122,14 @@ pub struct Community {
     gate_open_scratch: Vec<PhonationGateOpenEvent>,
     dead_id_scratch: Vec<u64>,
     population_sway: BTreeMap<u64, PopulationSway>,
+}
+
+#[derive(Default)]
+struct SpawnSupportScratch {
+    scores_and_masses: [Vec<f64>; 2],
+    relations: Option<crate::temporal_cognition::harmonic_relations::consumer::Use>,
+    weights: Vec<f64>,
+    candidates: Vec<usize>,
 }
 
 /// Shared 1/f participation process of one Population (`sway()`).
@@ -251,10 +255,7 @@ impl Community {
             harmonic_ticks: Vec::new(),
             expression: None,
             body_metabolism: None,
-            support_scratch: std::cell::RefCell::new(Default::default()),
-            harmonic_spawn: std::cell::RefCell::new(None),
-            harmonic_spawn_weights: std::cell::RefCell::new(Vec::new()),
-            harmonic_spawn_candidates: std::cell::RefCell::new(Vec::new()),
+            spawn_support: SpawnSupportScratch::default(),
             rest_enabled: false,
             onset_habituation_config: None,
             voices: Vec::new(),
@@ -326,9 +327,9 @@ impl Community {
     }
 
     pub(crate) fn prepare_support(&mut self, bins: usize) {
-        *self.support_scratch.get_mut() = std::array::from_fn(|_| vec![0.; bins]);
-        self.harmonic_spawn_weights.get_mut().resize(bins, 0.);
-        self.harmonic_spawn_candidates.get_mut().reserve(bins);
+        self.spawn_support.scores_and_masses = std::array::from_fn(|_| vec![0.; bins]);
+        self.spawn_support.weights.resize(bins, 0.);
+        self.spawn_support.candidates.reserve(bins);
     }
 
     pub fn set_control_update_mode(&mut self, mode: ControlUpdateMode) {
@@ -546,17 +547,19 @@ impl Community {
             self.update_loo_ownership(landscape);
             self.prepare_substep_snapshot(self.crowding_active());
             for i in 0..self.voices.len() {
-                if self.voices[i].harmonic_member {
+                if self.voices[i].harmonic.member {
                     self.fill_neighbors_from_snapshot(
                         self.voices[i].id(),
                         self.voices[i].metadata.population_id,
                     );
                     self.voices[i]
-                        .harmonic_neighbors
+                        .harmonic
+                        .neighbors
                         .0
                         .clone_from(&self.advance_scratch.neighbor_pitch_log2);
                     self.voices[i]
-                        .harmonic_neighbors
+                        .harmonic
+                        .neighbors
                         .1
                         .clone_from(&self.advance_scratch.neighbor_salience);
                 }
@@ -679,7 +682,7 @@ impl Community {
             {
                 clock.expression = self.expression.filter(|e| e.ritard > 0.0);
             }
-            if voice.harmonic_member {
+            if voice.harmonic.member {
                 voice.refresh_support_actions(landscape, &tb, now);
                 voice.tick_harmonic(&tb, now, landscape, &self.harmonic_ticks, batch);
             } else {
@@ -809,7 +812,7 @@ impl Community {
                 core.enable_plv(observe.plv_window);
             }
         }
-        spawned.harmonic_member = self.harmonic_rhythm && control.supports_harmonic_rhythm();
+        spawned.harmonic.member = self.harmonic_rhythm && control.supports_harmonic_rhythm();
         spawned.configure_control_hop(self.time.hop, Self::CONTROL_STEP_SAMPLES, self.time.fs);
         if let (Some(gap), Some((params, period))) = (
             &mut spawned.phonation_engine.span_gap,
@@ -976,7 +979,7 @@ impl Community {
             }
             input.support_single_density = density;
             input.support_template = if enabled && (excluded || temporal) {
-                voice.support_template.clone()
+                voice.support.template.clone()
             } else {
                 None
             };

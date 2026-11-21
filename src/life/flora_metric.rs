@@ -173,7 +173,7 @@ impl Flora {
     pub(super) fn metric_allocate(&mut self, crossing: bool, offset: usize) {
         let mut m = self.temporal.take().expect("metric state");
         let tick = m.now + offset as u64;
-        let harmonic = self.harmonic_ticks.is_some();
+        let harmonic = self.harmonic.ticks.is_some();
         let allow_assignment = crossing || (!harmonic && !m.active) || self.releasing;
         if harmonic && !allow_assignment {
             m.held.clear();
@@ -218,8 +218,8 @@ impl Flora {
                 m.drops += u64::from(pending.take().is_some());
             }
         } else if crossing || (!harmonic && !m.active) {
-            self.harmonic_act_now = true;
-            let next = if let Some(ticks) = &self.harmonic_ticks {
+            self.harmonic.act_now = true;
+            let next = if let Some(ticks) = &self.harmonic.ticks {
                 ticks.iter().copied().find(|&t| t > tick)
             } else if m.active {
                 m.crossings.iter().map(|c| c.tick).find(|&t| t > tick)
@@ -233,7 +233,7 @@ impl Flora {
             } else {
                 Some(m.now + self.hop as u64)
             };
-            self.support_window = Some(SupportWindow {
+            self.support.window = Some(SupportWindow {
                 start: tick,
                 end: next,
                 hop_start: m.now,
@@ -249,16 +249,16 @@ impl Flora {
             for lane in &mut self.lanes {
                 lane.retirement_decay = decay;
             }
-            if let Some(use_relations) = &self.harmonic_use {
+            if let Some(use_relations) = &self.harmonic.consumer {
                 use_relations.set_sample(tick);
             }
-            if let Some(recorder) = &self.harmonic_recorder {
+            if let Some(recorder) = &self.harmonic.recorder {
                 use crate::temporal_cognition::harmonic_relations::{
                     OPPORTUNITY, Source, runtime::Record,
                 };
-                if self.harmonic_weight > 0. {
-                    let missing = self.harmonic_query_version > 0
-                        && self.harmonic_use.as_ref().is_none_or(|u| !u.active());
+                if self.harmonic.weight > 0. {
+                    let missing = self.harmonic.query_version > 0
+                        && self.harmonic.consumer.as_ref().is_none_or(|u| !u.active());
                     recorder.opportunity_stats(2, 1, missing);
                     let lanes = self
                         .lanes
@@ -270,10 +270,10 @@ impl Flora {
                         recorder.flora_unavailable(
                             tick,
                             self.id,
-                            self.harmonic_query_version,
+                            self.harmonic.query_version,
                             f64::from(self.fs),
                             1 + lanes as u64,
-                            self.harmonic_availability,
+                            self.harmonic.availability,
                         );
                     }
                 }
@@ -300,10 +300,10 @@ impl Flora {
                     });
                 }
             }
-            if let Some(use_relations) = self.harmonic_use.as_ref().filter(|u| u.active()) {
+            if let Some(use_relations) = self.harmonic.consumer.as_ref().filter(|u| u.active()) {
                 use_relations.set_sample(tick);
                 if let Some(next) = next {
-                    self.harmonic_act_now = use_relations.allow_now(next);
+                    self.harmonic.act_now = use_relations.allow_now(next);
                 }
             }
             self.update_tones();
@@ -648,7 +648,7 @@ mod tests {
     fn harmonic_flora_holds_geometry_and_private_pace_but_tracks_amplitude() {
         for known in [false, true] {
             let mut f = setup(FloraTone::Resonant, true);
-            f.harmonic_ticks = Some(vec![173]);
+            f.harmonic.ticks = Some(vec![173]);
             hill(&mut f, 35, 4.0);
             f.observe_rhythm(observation(0, known), 0, Default::default());
             f.metric_allocate(false, 0);
@@ -664,7 +664,7 @@ mod tests {
             for (i, x) in f.biomass_mass_scan.iter_mut().enumerate() {
                 *x = 0.001 + 8.0 * (-0.5 * ((i as f32 - 35.) / 2.0).powi(2)).exp();
             }
-            f.harmonic_ticks = Some(vec![]);
+            f.harmonic.ticks = Some(vec![]);
             f.observe_rhythm(observation(512, known), 512, Default::default());
             f.metric_allocate(false, 0);
             assert_ne!(

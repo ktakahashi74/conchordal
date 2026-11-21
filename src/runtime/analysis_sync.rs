@@ -300,7 +300,7 @@ pub(super) fn wait_for_analysis(
             &mut state.log_space,
             &mut state.generator_model,
             &state.lparams,
-            &mut state.last_analysis_frame,
+            &mut state.listener.last_analysis_frame,
             state.frame_idx,
         );
         if space_changed {
@@ -314,13 +314,14 @@ pub(super) fn wait_for_analysis(
 
         if analysis_ok(
             state.frame_idx,
-            state.last_analysis_frame,
+            state.listener.last_analysis_frame,
             MAX_LANDSCAPE_LAG_FRAMES,
         ) {
             break;
         }
         if analysis_unavailable {
             state
+                .lifecycle
                 .failures
                 .push("Field analysis disconnected or invalidated".to_owned());
             exiting.store(true, Ordering::SeqCst);
@@ -332,6 +333,7 @@ pub(super) fn wait_for_analysis(
         // Without threads the analysis ran inline, so a missing result is final.
         if !cfg!(feature = "native") {
             state
+                .lifecycle
                 .failures
                 .push("inline analysis result is missing".into());
             exiting.store(true, Ordering::SeqCst);
@@ -360,19 +362,19 @@ pub(super) fn apply_landscape_updates(
         channels.listener_analysis_update_tx.as_ref().map(|tx| {
             (
                 tx,
-                &mut state.pending_listener_update,
+                &mut state.listener.pending_listener_update,
                 cfg.deterministic_analysis,
             )
         }),
     );
     drive_and_apply_habituation(
         &mut state.current_landscape,
-        &mut state.hab_ecology,
+        &mut state.listener.hab_ecology,
         &state.lparams,
         cfg.hop_duration.as_secs_f32(),
     );
     if (analysis_updated || landscape_params_updated)
-        && let Some(analysis_id) = state.last_analysis_frame
+        && let Some(analysis_id) = state.listener.last_analysis_frame
     {
         // NSGT is right-aligned; the observed scan is stamped at the analysis frame end.
         let obs_tick = state.timebase.frame_end_tick(analysis_id);
@@ -417,13 +419,13 @@ pub(super) fn wait_for_listener(
     loop {
         let (listener_state, listener_disconnected) = observe_listener_analysis_results(
             channels.listener_result_rx.as_ref(),
-            &mut state.listener_twin,
+            &mut state.listener.listener_twin,
             &state.lparams,
-            &mut state.hab_listener,
+            &mut state.listener.hab_listener,
             state.timebase,
             state.frame_idx,
-            state.listener_min_valid_frame,
-            &mut state.last_listener_analysis_frame,
+            state.listener.listener_min_valid_frame,
+            &mut state.listener.last_listener_analysis_frame,
         );
         if let Some(listener_state) = listener_state {
             listener_state_update = Some(listener_state);
@@ -433,6 +435,7 @@ pub(super) fn wait_for_listener(
         }
         if matches!(listener_state, Some(None)) {
             state
+                .lifecycle
                 .failures
                 .push("Deterministic listener analysis invalidated".to_owned());
             cfg.exiting.store(true, Ordering::SeqCst);
@@ -440,13 +443,14 @@ pub(super) fn wait_for_listener(
         }
         if analysis_ok(
             state.frame_idx,
-            state.last_listener_analysis_frame,
+            state.listener.last_listener_analysis_frame,
             MAX_LANDSCAPE_LAG_FRAMES,
         ) {
             break;
         }
         if listener_disconnected {
             state
+                .lifecycle
                 .failures
                 .push("Listener analysis thread stopped delivering results".to_owned());
             cfg.exiting.store(true, Ordering::SeqCst);
@@ -458,6 +462,7 @@ pub(super) fn wait_for_listener(
         // Without threads the analysis ran inline, so a missing result is final.
         if !cfg!(feature = "native") {
             state
+                .lifecycle
                 .failures
                 .push("inline listener result is missing".into());
             cfg.exiting.store(true, Ordering::SeqCst);

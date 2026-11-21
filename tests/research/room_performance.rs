@@ -115,7 +115,7 @@ fn acquire() {
         }
         let land = &s.current_landscape;
         let density = &land.subjective_intensity;
-        let h = s.hab_ecology.state();
+        let h = s.listener.hab_ecology.state();
         let (i, &peak) = density
             .iter()
             .enumerate()
@@ -163,11 +163,11 @@ fn acquire() {
             .collect();
         let flux = s.dorsal.last_metrics().flux;
         writeln!(hops,"{}",json!({
-            "tick":tick,"frame":s.last_analysis_frame,
+            "tick":tick,"frame":s.listener.last_analysis_frame,
             "density":[peak,i,drive(peak),density.iter().map(|&x|drive(x)).sum::<f32>() / density.len() as f32],
-            "h":[h[i],max_h,mean(h)],"prod":meter(&s.prod_meter),
-            "audio":s.flora_meter.as_ref().map(meter),"flux":flux,
-            "voices":voices,"sources":sources,"end":s.scenario_end_tick,
+            "h":[h[i],max_h,mean(h)],"prod":meter(&s.temporal.prod_meter),
+            "audio":s.temporal.flora_meter.as_ref().map(meter),"flux":flux,
+            "voices":voices,"sources":sources,"end":s.lifecycle.scenario_end_tick,
             "hash":fixed.then(|| [hash_samples(pcm[0]),hash_samples(h),hash_samples(density),
                 hash_samples(&land.consonance_field_score_eff)]),
             "flora_rng":fixed.then(|| s.pop.flora.iter().map(|f|(f.id,f.rng_state_for_test())).collect::<Vec<_>>())

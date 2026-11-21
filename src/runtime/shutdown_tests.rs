@@ -84,7 +84,10 @@ fn tc1b_capture() {
             }
         }
         let rows = crate::core::tonal_context::acquisition::take(
-            state.last_analysis_frame.map_or(0, |n| (n + 1) * 512),
+            state
+                .listener
+                .last_analysis_frame
+                .map_or(0, |n| (n + 1) * 512),
         );
         for row in rows {
             writeln!(decisions, "{}", serde_json::to_string(&row).unwrap()).unwrap();
@@ -332,10 +335,13 @@ fn flora_meter_is_reserved_for_any_flora_and_observes_before_placement() {
             let observed = Arc::clone(&seen);
             let mut opts = options();
             opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
-                assert_eq!(state.flora_meter.is_some(), has_flora);
+                assert_eq!(state.temporal.flora_meter.is_some(), has_flora);
                 if tick > 0 {
-                    assert_eq!(state.flora_rhythm.observed_end, has_flora.then_some(tick));
-                    assert_eq!(state.flora_rhythm.known, has_flora);
+                    assert_eq!(
+                        state.temporal.flora_rhythm.observed_end,
+                        has_flora.then_some(tick)
+                    );
+                    assert_eq!(state.temporal.flora_rhythm.known, has_flora);
                     observed.lock().unwrap()[usize::from(tick >= 2400)] = true;
                 }
                 if tick < 2400 {
@@ -424,8 +430,11 @@ fn multiple_worker_failures_return_without_an_error_receiver() {
     opts.profile =
         Some(RunProfile::create("/dev/full", 21, true, 0.0, false, 48_000, 512, None).unwrap());
     opts.offline_body_probe = Some(Box::new(|state, _, _, _| {
-        if state.failures.is_empty() {
-            state.failures.push("raw T2 producer disconnected".into());
+        if state.lifecycle.failures.is_empty() {
+            state
+                .lifecycle
+                .failures
+                .push("raw T2 producer disconnected".into());
         }
     }));
     let (wiring, _, _, _output) = fixture(opts, "seed(21); wait(0.03);");
@@ -440,8 +449,8 @@ fn no_ui_consumer_builds_no_frames() {
     let mut opts = options();
     opts.offline_body_probe = Some(Box::new(|state, _, _, _| {
         UI_FRAME_BUILDS.with(|count| assert_eq!(count.get(), 0));
-        assert!(state.ui_rhythm_hops.is_empty());
-        assert_eq!(state.ui_rhythm_hops.capacity(), 0);
+        assert!(state.ui.ui_rhythm_hops.is_empty());
+        assert_eq!(state.ui.ui_rhythm_hops.capacity(), 0);
     }));
     let (wiring, _, _, _output) = fixture(opts, "seed(21); wait(0.03);");
     join(wiring).unwrap();
@@ -458,12 +467,12 @@ fn ui_rhythm_batch_retains_actual_hops_across_channel_backpressure() {
     let actual = Arc::clone(&expected);
     let consumer = rx.clone();
     opts.offline_body_probe = Some(Box::new(move |state, _, _, _| {
-        state.last_ui_update = Instant::now() - UI_MIN_INTERVAL;
-        if let Some(fast) = state.latest_listener_fast_state {
+        state.ui.last_ui_update = Instant::now() - UI_MIN_INTERVAL;
+        if let Some(fast) = state.listener.latest_listener_fast_state {
             actual.lock().unwrap().push(fast);
         }
         if state.frame_idx == 3 {
-            assert_eq!(state.ui_rhythm_hops.len(), 3);
+            assert_eq!(state.ui.ui_rhythm_hops.len(), 3);
             assert!(consumer.try_recv().unwrap().listener_rhythm.is_empty());
         } else if state.frame_idx > 3 {
             frames.lock().unwrap().extend(consumer.try_iter());
@@ -530,7 +539,9 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
         let mut opts = options();
         opts.listener_forced = true;
         opts.offline_body_probe = Some(Box::new(move |state, _, _, pcm| {
-            if state.last_analysis_frame == state.frame_idx.checked_sub(1) && state.frame_idx > 0 {
+            if state.listener.last_analysis_frame == state.frame_idx.checked_sub(1)
+                && state.frame_idx > 0
+            {
                 if mixed_enabled {
                     assert_eq!(state.current_landscape.nsgt_power, previous);
                 } else {
@@ -539,7 +550,7 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
             }
             let mut seen = observed.lock().unwrap();
             seen[0] |= state.current_landscape.nsgt_power.iter().any(|&p| p > 0.0);
-            seen[1] |= state.listener_twin.spectral_history.is_some();
+            seen[1] |= state.listener.listener_twin.spectral_history.is_some();
             seen[2] |= state.current_landscape.ecology.spectral_history.is_some();
             previous.copy_from_slice(reference.process_hop(pcm[0]));
         }));
@@ -604,11 +615,11 @@ fn renderer_tail_does_not_bypass_ui_rate_limit_before_finish() {
     let saw_tail = Arc::new(AtomicBool::new(false));
     let tail = Arc::clone(&saw_tail);
     opts.offline_body_probe = Some(Box::new(move |state, _, _, _| {
-        if state.scenario_end_tick.is_some() && !state.schedule_renderer.is_idle() {
+        if state.lifecycle.scenario_end_tick.is_some() && !state.schedule_renderer.is_idle() {
             tail.store(true, Ordering::SeqCst);
             UI_FRAME_BUILDS.with(|count| assert_eq!(count.get(), 1));
         }
-        state.last_ui_update = Instant::now();
+        state.ui.last_ui_update = Instant::now();
     }));
     let (wiring, _, _, _output) = fixture(
         opts,
@@ -649,7 +660,7 @@ fn private_body_worker_panic_fails_the_run_after_final_report_flush() {
             None,
         );
         capture.inject_worker_panic();
-        state.body_snapshot = Some(Box::new(capture.snapshot()));
+        state.temporal.body_snapshot = Some(Box::new(capture.snapshot()));
         state.schedule_renderer.body_capture = Some(capture);
     }));
     let (wiring, _, dir, _output) = fixture(opts, "seed(21); wait(0.03);");
@@ -824,7 +835,7 @@ fn flora_force_stop_ends_generation_without_waiting_for_release() {
         opts.offline_body_probe = Some(Box::new(move |state, _, _, _| {
             if state.frame_idx == 8 {
                 assert!(!state.pop.flora.is_empty());
-                assert!(state.scenario_end_tick.is_some());
+                assert!(state.lifecycle.scenario_end_tick.is_some());
                 trigger.store(true, Ordering::SeqCst);
             }
         }));
@@ -907,7 +918,7 @@ fn auditory_listener_clocks_and_device_rate_validation() {
         opts.listener_forced = true;
         opts.deterministic_analysis = deterministic;
         opts.offline_body_probe = Some(Box::new(move |state, _, _, _| {
-            if let Some(listener) = state.latest_listener_state {
+            if let Some(listener) = state.listener.latest_listener_state {
                 assert!(listener.generated_frame_id <= state.frame_idx);
                 assert!(listener.analysis_frame_id < listener.generated_frame_id);
                 assert_eq!(
@@ -1449,8 +1460,8 @@ fn open_queue_exhaustion_keeps_voices_and_respawn_running() {
         opts.duration_sec = Some(0.15);
         opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
             if tick == 10 * 512 {
-                assert!(!state.finish_begun);
-                assert_eq!(state.playback_state, PlaybackState::Playing);
+                assert!(!state.lifecycle.finish_begun);
+                assert_eq!(state.lifecycle.playback_state, PlaybackState::Playing);
                 assert!(!state.pop.voices.is_empty());
                 if respawn {
                     let (births, deaths) = state.pop.take_lifecycle_counts();
@@ -1481,21 +1492,21 @@ fn duration_dispatches_due_events_then_releases_and_keeps_old_fades() {
     opts.duration_sec = Some(1024.0 / 48000.0);
     opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
         if tick == 1024 {
-            assert_eq!(state.playback_state, PlaybackState::Ending);
+            assert_eq!(state.lifecycle.playback_state, PlaybackState::Ending);
             assert_eq!(
                 state.pop.global_coupling, 0.25,
                 "bound-hop event must run first"
             );
-            let finish = state.end_sequence.as_ref().unwrap().finish_tick;
+            let finish = state.lifecycle.end_sequence.as_ref().unwrap().finish_tick;
             assert!(finish >= 48000 / 5, "older 0.2s Flora fade must finish");
             assert!(state.pop.voices.iter().all(|v| v.release.remove_pending));
             assert!(state.pop.voices.iter().any(|v| v.release.sec == 0.1));
             assert!(state.pop.voices.iter().any(|v| v.release.sec == 0.02));
             observed.store(true, Ordering::SeqCst);
         }
-        if let Some(end) = &state.end_sequence {
+        if let Some(end) = &state.lifecycle.end_sequence {
             if tick < end.finish_tick {
-                assert!(!state.finish_begun);
+                assert!(!state.lifecycle.finish_begun);
                 // A fading Voice must survive until its gain reaches zero.
                 if tick < 4096 {
                     assert!(
@@ -1507,7 +1518,7 @@ fn duration_dispatches_due_events_then_releases_and_keeps_old_fades() {
                     );
                 }
             } else {
-                assert!(state.finish_begun);
+                assert!(state.lifecycle.finish_begun);
                 assert!(
                     state
                         .pop
@@ -1553,8 +1564,8 @@ fn human_end_discards_due_events_and_pending_scripted_finish() {
                 state.pop.global_coupling, 1.0,
                 "human end discards undispatched events"
             );
-            assert_eq!(state.playback_state, PlaybackState::Ending);
-            assert!(!state.finish_begun);
+            assert_eq!(state.lifecycle.playback_state, PlaybackState::Ending);
+            assert!(!state.lifecycle.finish_begun);
             assert_eq!(
                 state.conductor.current_scene_name(tick).as_deref(),
                 Some("active")
@@ -1589,8 +1600,8 @@ fn end_during_recovery_exits_even_when_ring_is_full() {
         if during_fade {
             opts.duration_sec = Some(0.0);
             opts.offline_body_probe = Some(Box::new(move |state, _, _, _| {
-                assert!(state.end_sequence.is_some());
-                assert!(!state.finish_begun);
+                assert!(state.lifecycle.end_sequence.is_some());
+                assert!(!state.lifecycle.finish_begun);
                 recovering.recovering.store(true, Ordering::Release);
             }));
         } else {
@@ -1625,13 +1636,13 @@ fn open_harmonic_queue_does_not_finish_on_exhaustion() {
     opts.duration_sec = Some(0.15);
     opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
         if tick == 10 * 512 {
-            assert!(!state.finish_begun);
+            assert!(!state.lifecycle.finish_begun);
             assert!(
                 state
                     .pop
                     .voices
                     .iter()
-                    .any(|v| v.harmonic_member && !v.release.remove_pending)
+                    .any(|v| v.harmonic.member && !v.release.remove_pending)
             );
             observed.store(true, Ordering::SeqCst);
         }
@@ -1651,10 +1662,10 @@ fn duration_keeps_existing_rain_release_tail() {
     let mut opts = options();
     opts.duration_sec = Some(0.1);
     opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
-        if let Some(end) = &state.end_sequence {
+        if let Some(end) = &state.lifecycle.end_sequence {
             assert!(end.finish_tick >= 21_600);
             if tick < 20_000 {
-                assert!(!state.finish_begun);
+                assert!(!state.lifecycle.finish_begun);
                 assert!(!state.pop.rain.is_empty());
                 observed.store(true, Ordering::SeqCst);
             }
@@ -1732,7 +1743,7 @@ fn incremental_duration_reports_and_presynth_are_repeatable_v4() {
         opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
             saved.lock().unwrap().push((
                 tick,
-                state.finish_begun,
+                state.lifecycle.finish_begun,
                 state
                     .pop
                     .voices
@@ -1748,7 +1759,7 @@ fn incremental_duration_reports_and_presynth_are_repeatable_v4() {
                     .collect::<Vec<_>>(),
             ));
             if tick == 6144 {
-                assert_eq!(state.playback_state, PlaybackState::Ending);
+                assert_eq!(state.lifecycle.playback_state, PlaybackState::Ending);
                 assert!(state.pop.voices.iter().all(|v| v.release.remove_pending));
                 assert_eq!(state.conductor.current_scene.as_deref(), Some("bounded"));
             }
@@ -1877,8 +1888,8 @@ fn endless_harmonic_history_starts_before_future_consumers() {
                 assert!(support.end_sample > 0);
                 assert!(!state.current_landscape.harmonic.support_weights.active());
                 assert_eq!(state.current_landscape.harmonic.relations_weight, 0.);
-                assert_eq!(state.harmonic_relations.is_some(), temporal);
-                if let Some(relations) = &state.harmonic_relations {
+                assert_eq!(state.temporal.harmonic_relations.is_some(), temporal);
+                if let Some(relations) = &state.temporal.harmonic_relations {
                     assert_eq!(relations.sources, 36);
                     assert!(relations.observations.load(Ordering::Relaxed) > 0);
                 }
@@ -2042,8 +2053,8 @@ for i in 0..16 {{
         let ids = Arc::new(std::sync::Mutex::new(Vec::new()));
         let (capture, audio, identity) = (rows.clone(), pcm.clone(), ids.clone());
         opts.offline_body_probe = Some(Box::new(move |state, _, _, buses| {
-            state.listener_twin.set_prediction_enabled(enabled);
-            if let Some(listener) = state.latest_listener_state {
+            state.listener.listener_twin.set_prediction_enabled(enabled);
+            if let Some(listener) = state.listener.latest_listener_state {
                 capture.lock().unwrap().push(listener.prediction);
             }
             audio
@@ -2382,8 +2393,8 @@ fn wet_finish_follows_the_actual_dry_release_of_each_body() {
         let observed = last.clone();
         let mut opts = options();
         opts.offline_body_probe = Some(Box::new(move |state, now, proposals, pcm| {
-            if state.finish_begun {
-                assert_eq!(state.playback_state, PlaybackState::Ending);
+            if state.lifecycle.finish_begun {
+                assert_eq!(state.lifecycle.playback_state, PlaybackState::Ending);
                 assert_eq!(proposals, 0);
                 assert!(state.pop.voices.is_empty());
             }

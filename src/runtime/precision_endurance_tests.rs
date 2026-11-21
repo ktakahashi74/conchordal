@@ -39,7 +39,7 @@ fn indefinite_estimator_precision_v7() {
     let start = Instant::now();
     let mut heartbeat = Instant::now();
     let probe: OfflineBodyProbe = Box::new(move |state, tick, _, _| {
-        let observer = state.temporal_expectation.as_mut().unwrap();
+        let observer = state.temporal.temporal_expectation.as_mut().unwrap();
         if identities.is_none() {
             assert_eq!(tick, 0);
             let drone = &state.pop.voices[0];

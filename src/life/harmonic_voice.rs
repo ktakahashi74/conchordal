@@ -11,7 +11,7 @@ impl Voice {
         out: &mut PhonationBatch,
     ) {
         out.clear();
-        self.harmonic_events.clear();
+        self.harmonic.events.clear();
         out.source_id = self.id;
         out.source_generation = self.metadata.generation;
         out.routing = self.effective_control.body.routing;
@@ -51,7 +51,8 @@ impl Voice {
             && current.log2() <= hi;
         if terminal || !supported {
             if self.pitch_ctl.dwell_trace_enabled && self.phonation_engine.has_active_notes() {
-                self.harmonic_events
+                self.harmonic
+                    .events
                     .push(super::super::harmonic_rhythm::VoiceEvent {
                         tick: now,
                         action: if terminal { "terminal" } else { "support_lost" },
@@ -75,7 +76,7 @@ impl Voice {
                 &mut out.onsets,
             );
             if !terminal {
-                self.harmonic_waiting = true;
+                self.harmonic.waiting = true;
             }
         }
         self.prune_tracked_render_notes(&out.cmds);
@@ -86,7 +87,7 @@ impl Voice {
             self.effective_control.body.continuous_drive,
             &mut out.cmds,
         );
-        let (neighbors, salience) = std::mem::take(&mut self.harmonic_neighbors);
+        let (neighbors, salience) = std::mem::take(&mut self.harmonic.neighbors);
         let mut previous = now;
         let mut at = now;
         let mut opportunity = 0;
@@ -110,7 +111,7 @@ impl Voice {
                     .as_ref()
                     .is_none_or(|g| g.allows_on());
             let initial =
-                at == now && !self.phonation_engine.has_active_notes() && !self.harmonic_waiting;
+                at == now && !self.phonation_engine.has_active_notes() && !self.harmonic.waiting;
             self.pitch_ctl.control_tick = Some(at);
             self.pitch_ctl.harmonic_gate = Some(shared && legal && !initial);
             self.pitch_ctl.harmonic_next_tick = ticks.get(opportunity).copied();
@@ -140,7 +141,7 @@ impl Voice {
                 &self.effective_control.pitch,
                 &neighbors,
                 &salience,
-                self.harmonic_temperature_bonus,
+                self.harmonic.temperature_bonus,
             );
             if self.phonation_engine.support_held_active() {
                 self.phonation_engine.held_next = self.pitch_ctl.harmonic_next_tick;
@@ -155,7 +156,7 @@ impl Voice {
                     && !changed))
                 && !terminal
                 && supported
-                && !self.harmonic_waiting
+                && !self.harmonic.waiting
                 && !(self.phonation_engine.support_held_active() && shared && changed && !initial)
             {
                 self.phonation_engine.tick_with_arrival(
@@ -171,11 +172,11 @@ impl Voice {
                     &mut out.onsets,
                 );
             }
-            let resuming = self.harmonic_waiting;
+            let resuming = self.harmonic.waiting;
             if shared
                 && legal
                 && self.pitch_ctl.harmonic_evaluated
-                && (changed || self.harmonic_waiting)
+                && (changed || self.harmonic.waiting)
             {
                 let pitch = self.target_pitch_log2();
                 if let Some(context) = &mut self.phonation_engine.support_action {
@@ -193,11 +194,12 @@ impl Voice {
                     || self.phonation_engine.mode != PhonationMode::Hold
                 {
                     self.body.set_pitch_log2(pitch);
-                    self.harmonic_waiting = false;
+                    self.harmonic.waiting = false;
                 }
             }
             if shared && self.pitch_ctl.dwell_trace_enabled {
-                self.harmonic_events
+                self.harmonic
+                    .events
                     .push(super::super::harmonic_rhythm::VoiceEvent {
                         tick: at,
                         action: if !legal {
@@ -241,7 +243,7 @@ impl Voice {
                 .min(end)
                 .min(ticks.get(opportunity).copied().unwrap_or(end));
         }
-        self.harmonic_neighbors = (neighbors, salience);
+        self.harmonic.neighbors = (neighbors, salience);
         self.phonation_engine.held_window = None;
         self.pitch_ctl.harmonic_gate = None;
         self.pitch_ctl.harmonic_next_tick = None;
@@ -278,7 +280,7 @@ mod tests {
             Some(&land),
             21,
         );
-        v.harmonic_member = true;
+        v.harmonic.member = true;
         v.pitch_ctl.dwell_trace_enabled = true;
         v.configure_control_hop(512, 64, 48000.);
         (
@@ -297,8 +299,8 @@ mod tests {
         let (mut v, land, tb, mut out) = fixture();
         v.tick_harmonic(&tb, 0, &land, &[47, 49], &mut out);
         assert_eq!(out.tones[0].onset, 0);
-        assert_eq!(v.harmonic_events[0].action, "not_ready");
-        assert_ne!(v.harmonic_events[1].action, "not_ready");
+        assert_eq!(v.harmonic.events[0].action, "not_ready");
+        assert_ne!(v.harmonic.events[1].action, "not_ready");
         let held = v.body.base_freq_hz();
         v.effective_control.pitch.freq = 440.;
         v.effective_control.pitch.range_oct = 0.;
@@ -317,7 +319,7 @@ mod tests {
         assert_eq!(out.tones.len(), 1);
         assert_eq!(out.tones[0].onset, 1700);
         assert_eq!(out.tones[0].freq_hz, held);
-        assert_eq!(v.harmonic_events[0].action, "resume");
+        assert_eq!(v.harmonic.events[0].action, "resume");
         assert!(out.cmds.iter().all(|c| !matches!(
             c,
             ToneCmd::Update {
@@ -331,7 +333,7 @@ mod tests {
         v.start_remove_fade(1.);
         v.tick_harmonic(&tb, 2048, &land, &[2100], &mut out);
         assert!(out.tones.is_empty());
-        assert_eq!(v.harmonic_events.last().unwrap().action, "veto");
+        assert_eq!(v.harmonic.events.last().unwrap().action, "veto");
     }
 
     #[test]
@@ -340,7 +342,7 @@ mod tests {
         v.effective_control.pitch.dwell = 2.0;
         land.consonance_field_score_eff.fill(100.);
         v.tick_harmonic(&tb, 0, &land, &[100, 400], &mut out);
-        assert!(v.harmonic_events.iter().all(|e| e.action == "not_ready"));
+        assert!(v.harmonic.events.iter().all(|e| e.action == "not_ready"));
         let state = v.pitch_ctl.dwell_state.unwrap();
         assert_eq!(state.phase, 0.);
         assert!((state.elapsed_sec - 512. / 48000.).abs() < 1e-6);
@@ -349,7 +351,8 @@ mod tests {
         v.tick_harmonic(&tb, 512, &land, &[600, 700], &mut out);
         assert!(out.tones.is_empty());
         assert!(
-            v.harmonic_events
+            v.harmonic
+                .events
                 .iter()
                 .filter(|e| e.tick >= 600)
                 .all(|e| e.action == "veto")

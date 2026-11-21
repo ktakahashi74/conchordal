@@ -1,4 +1,4 @@
-use super::Community;
+use super::{Community, Voice};
 use crate::core::float::unit_gaussian;
 use crate::core::landscape::Landscape;
 use crate::life::voice::SoundBody;
@@ -120,7 +120,7 @@ impl Community {
     }
 
     pub(super) fn refresh_spawn_relations(
-        &self,
+        &mut self,
         landscape: &Landscape,
         control: Option<&crate::scenario::control::VoiceControl>,
         template: Option<Arc<[(isize, f32)]>>,
@@ -134,9 +134,9 @@ impl Community {
                 c.body.amp
             }),
         );
-        let mut slot = self.harmonic_spawn.borrow_mut();
+        let slot = &mut self.spawn_support.relations;
         crate::temporal_cognition::harmonic_relations::consumer::Use::refresh(
-            &mut slot,
+            slot,
             landscape,
             None,
             crate::core::harmonic_support::preview::Observer::Mixed,
@@ -150,7 +150,7 @@ impl Community {
     }
 
     pub(super) fn harmonic_spawn_allowed(
-        &self,
+        &mut self,
         landscape: &Landscape,
         control: &crate::scenario::control::VoiceControl,
         frequency: f32,
@@ -173,8 +173,8 @@ impl Community {
             if !self.refresh_spawn_relations(landscape, Some(control), template) {
                 return true;
             }
-            self.harmonic_spawn
-                .borrow()
+            self.spawn_support
+                .relations
                 .as_ref()
                 .unwrap()
                 .choose_scored(2, 0, |i| {
@@ -188,16 +188,16 @@ impl Community {
     }
 
     pub(super) fn mix_spawn_weights<R: Rng + Clone>(
-        &self,
+        &mut self,
         frequencies: &[f32],
         weights: &mut [f32],
         rng: &R,
     ) {
-        let active = self.harmonic_spawn.borrow();
+        let active = &self.spawn_support.relations;
         let Some(active) = active.as_ref().filter(|u| u.active()) else {
             return;
         };
-        let mut scratch = self.harmonic_spawn_weights.borrow_mut();
+        let scratch = &mut self.spawn_support.weights;
         scratch.resize(weights.len(), 0.);
         for (out, weight) in scratch.iter_mut().zip(weights.iter()) {
             *out = f64::from(*weight);
@@ -212,7 +212,7 @@ impl Community {
             },
             |dist| dist.sample(&mut rng.clone()),
         );
-        active.mix(&mut scratch, baseline, |i| Some(frequencies[i].log2()));
+        active.mix(scratch, baseline, |i| Some(frequencies[i].log2()));
         for (out, weight) in weights.iter_mut().zip(scratch.iter()) {
             *out = *weight as f32;
         }
@@ -224,7 +224,7 @@ impl Community {
         baseline: usize,
         mut score: impl FnMut(usize) -> f64,
     ) -> usize {
-        let active = self.harmonic_spawn.borrow();
+        let active = &self.spawn_support.relations;
         let Some(active) = active.as_ref().filter(|u| u.active()) else {
             return baseline;
         };
@@ -263,12 +263,17 @@ impl Community {
     /// Returns true if `freq_hz` is within `min_dist_erb` (ERB scale) of any existing
     /// voice's base frequency, or of any `reserved` frequency claimed earlier in the
     /// same spawn batch.
-    fn is_range_occupied_with(&self, freq_hz: f32, min_dist_erb: f32, reserved: &[f32]) -> bool {
+    fn is_range_occupied_with(
+        voices: &[Voice],
+        freq_hz: f32,
+        min_dist_erb: f32,
+        reserved: &[f32],
+    ) -> bool {
         if !freq_hz.is_finite() || min_dist_erb <= 0.0 {
             return false;
         }
         let target_erb = crate::core::erb::hz_to_erb(freq_hz.max(1e-6));
-        for voice in &self.voices {
+        for voice in voices {
             let base_hz = voice.body.base_freq_hz();
             if !base_hz.is_finite() {
                 continue;
@@ -292,7 +297,7 @@ impl Community {
 
     #[cfg(test)]
     fn decide_frequency<R: Rng + Clone>(
-        &self,
+        &mut self,
         strategy: &SpawnStrategy,
         landscape: &Landscape,
         rng: &mut R,
@@ -303,7 +308,7 @@ impl Community {
     }
 
     fn decide_frequency_with_relations<R: Rng + Clone>(
-        &self,
+        &mut self,
         strategy: &SpawnStrategy,
         landscape: &Landscape,
         rng: &mut R,
@@ -357,7 +362,7 @@ impl Community {
         {
             for _ in 0..32 {
                 let f = sample_range(min_freq, max_freq, rng);
-                if !self.is_range_occupied_with(f, min_dist_erb, reserved) {
+                if !Self::is_range_occupied_with(&self.voices, f, min_dist_erb, reserved) {
                     return f;
                 }
             }
@@ -442,7 +447,7 @@ impl Community {
             // Try a few times to jitter within the bin while avoiding occupied bands.
             for _ in 0..16 {
                 let f = jitter_bin(idx, rng);
-                if !self.is_range_occupied_with(f, min_dist_erb, reserved) {
+                if !Self::is_range_occupied_with(&self.voices, f, min_dist_erb, reserved) {
                     return f;
                 }
             }
@@ -475,7 +480,7 @@ impl Community {
                         best_any = (i, score);
                     }
                     let f = bin_freq(i);
-                    if !self.is_range_occupied_with(f, min_dist_erb, reserved)
+                    if !Self::is_range_occupied_with(&self.voices, f, min_dist_erb, reserved)
                         && score > best_free.map_or(f32::MIN, |(_, v)| v)
                     {
                         best_free = Some((i, score));
@@ -484,16 +489,21 @@ impl Community {
                 let baseline = best_free.unwrap_or(best_any).0;
                 if temporal {
                     let has_free = best_free.is_some();
-                    let mut candidates = self.harmonic_spawn_candidates.borrow_mut();
+                    let candidates = &mut self.spawn_support.candidates;
                     candidates.clear();
                     candidates.extend((idx_min..=idx_max).filter(|&i| {
                         !has_free
-                            || !self.is_range_occupied_with(bin_freq(i), min_dist_erb, reserved)
+                            || !Self::is_range_occupied_with(
+                                &self.voices,
+                                bin_freq(i),
+                                min_dist_erb,
+                                reserved,
+                            )
                     }));
                     let baseline = candidates.iter().position(|&i| i == baseline).unwrap();
                     let chosen = self
-                        .harmonic_spawn
-                        .borrow()
+                        .spawn_support
+                        .relations
                         .as_ref()
                         .unwrap()
                         .choose_scored(candidates.len(), baseline, |i| {
@@ -525,7 +535,8 @@ impl Community {
                 let mut sum = 0.0f32;
                 for i in idx_min..=idx_max {
                     let f = bin_freq(i);
-                    let occupied = self.is_range_occupied_with(f, min_dist_erb, reserved);
+                    let occupied =
+                        Self::is_range_occupied_with(&self.voices, f, min_dist_erb, reserved);
                     if !occupied {
                         has_unoccupied = true;
                     }
@@ -557,7 +568,7 @@ impl Community {
                     }
                 }
                 if temporal {
-                    let mut conditioned = self.harmonic_spawn_weights.borrow_mut();
+                    let conditioned = &mut self.spawn_support.weights;
                     conditioned.resize(weights.len(), 0.);
                     for (out, (weight, _)) in conditioned.iter_mut().zip(&weights) {
                         *out = f64::from(*weight);
@@ -565,8 +576,8 @@ impl Community {
                     let mut shadow = rng.clone();
                     let baseline = WeightedIndex::new(weights.iter().map(|(w, _)| *w))
                         .map_or_else(|_| 0, |d| d.sample(&mut shadow));
-                    self.harmonic_spawn.borrow().as_ref().unwrap().mix(
-                        &mut conditioned,
+                    self.spawn_support.relations.as_ref().unwrap().mix(
+                        conditioned,
                         baseline,
                         |i| Some(bin_freq(idx_min + i).log2()),
                     );
@@ -588,7 +599,7 @@ impl Community {
     }
 
     fn decide_support_frequency<R: Rng + Clone>(
-        &self,
+        &mut self,
         strategy: &SpawnStrategy,
         landscape: &Landscape,
         rng: &mut R,
@@ -618,10 +629,8 @@ impl Community {
                 c.body.amp
             }),
         );
-        let mut scratch = self.support_scratch.borrow_mut();
-        let [scores, masses] = &mut *scratch;
         assert_eq!(
-            scores.len(),
+            self.spawn_support.scores_and_masses[0].len(),
             space.n_bins(),
             "support spawn scratch must be prepared before running"
         );
@@ -630,6 +639,7 @@ impl Community {
         let template = self.spawn_body_template(control, landscape, (lo_hz * hi_hz).sqrt());
         let temporal = condition_temporal
             && self.refresh_spawn_relations(landscape, control, template.clone());
+        let [scores, masses] = &mut self.spawn_support.scores_and_masses;
         let mut minimum = f64::MAX;
         let mut maximum = -f64::MAX;
         let gap_ref = landscape.subjective_intensity[lo..=hi]
@@ -677,7 +687,12 @@ impl Community {
             }
         }
         let free = |i| {
-            !self.is_range_occupied_with(space.freq_of_index(i), strategy.min_dist_erb(), reserved)
+            !Self::is_range_occupied_with(
+                &self.voices,
+                space.freq_of_index(i),
+                strategy.min_dist_erb(),
+                reserved,
+            )
         };
         let has_free = (lo..=hi).any(free);
         let selected = if *sampling == FieldSampling::Peak {
@@ -686,13 +701,13 @@ impl Community {
                 .max_by(|&a, &b| scores[a].total_cmp(&scores[b]).then(b.cmp(&a)))
                 .unwrap();
             if temporal {
-                let mut candidates = self.harmonic_spawn_candidates.borrow_mut();
+                let candidates = &mut self.spawn_support.candidates;
                 candidates.clear();
                 candidates.extend((lo..=hi).filter(|&i| !has_free || free(i)));
                 let baseline = candidates.iter().position(|&i| i == baseline).unwrap();
                 let chosen = self
-                    .harmonic_spawn
-                    .borrow()
+                    .spawn_support
+                    .relations
                     .as_ref()
                     .unwrap()
                     .choose_scored(candidates.len(), baseline, |i| {
@@ -733,7 +748,7 @@ impl Community {
                     })
                     .unwrap_or(hi)
                     - lo;
-                self.harmonic_spawn.borrow().as_ref().unwrap().mix(
+                self.spawn_support.relations.as_ref().unwrap().mix(
                     &mut masses[lo..=hi],
                     baseline,
                     |i| Some(space.centers_log2[lo + i]),
@@ -774,7 +789,12 @@ impl Community {
         if low < high {
             for _ in 0..16 {
                 let hz = rng.random_range(low..high).exp2();
-                if !self.is_range_occupied_with(hz, strategy.min_dist_erb(), reserved) {
+                if !Self::is_range_occupied_with(
+                    &self.voices,
+                    hz,
+                    strategy.min_dist_erb(),
+                    reserved,
+                ) {
                     return hz;
                 }
             }
@@ -784,7 +804,7 @@ impl Community {
 
     #[allow(clippy::too_many_arguments)]
     pub(super) fn resolve_strategy_frequency<R: Rng + Clone>(
-        &self,
+        &mut self,
         strategy: &SpawnStrategy,
         landscape: &Landscape,
         rng: &mut R,
@@ -1102,7 +1122,7 @@ mod tests {
                     assert_eq!(old.to_bits(), zero.to_bits());
                     assert!(pop.harmonic_spawn_allowed(&landscape, &control, zero));
                     assert_eq!(a.random::<u64>(), b.random::<u64>());
-                    assert!(pop.harmonic_spawn.borrow().is_none());
+                    assert!(pop.spawn_support.relations.is_none());
                 }
             }
         }
@@ -1112,7 +1132,7 @@ mod tests {
     fn field_placement_keeps_narrow_and_clipped_ranges_in_hz() {
         let space = Log2Space::new(100.0, 410.0, 24);
         let landscape = Landscape::new(space.clone());
-        let pop = test_pop();
+        let mut pop = test_pop();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(1);
         for target in [
             FieldTarget::Consonance,
@@ -1157,7 +1177,7 @@ mod tests {
     #[test]
     fn field_placement_without_analysis_overlap_stays_in_requested_range() {
         let landscape = Landscape::new(Log2Space::new(100.0, 400.0, 24));
-        let pop = test_pop();
+        let mut pop = test_pop();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(2);
         for target in [
             FieldTarget::Consonance,
@@ -1199,7 +1219,7 @@ mod tests {
         landscape.consonance_density_mass_eff[idx_min] = 1.0;
         landscape.consonance_field_level_eff[idx_min + 1] = 0.5;
         landscape.consonance_density_mass_eff[idx_min + 1] = 0.5;
-        let pop = test_pop();
+        let mut pop = test_pop();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(3);
         for sampling in [FieldSampling::Peak, FieldSampling::Density] {
             let strategy = SpawnStrategy::Field {
@@ -1214,7 +1234,12 @@ mod tests {
                 let freq = pop.decide_frequency(&strategy, &landscape, &mut rng, &[min_freq], None);
                 assert!((min_freq..=next_freq).contains(&freq));
                 assert_eq!(space.nearest_index(freq), idx_min + 1);
-                assert!(!pop.is_range_occupied_with(freq, 0.01, &[min_freq]));
+                assert!(!Community::is_range_occupied_with(
+                    &pop.voices,
+                    freq,
+                    0.01,
+                    &[min_freq]
+                ));
             }
         }
     }
@@ -1235,7 +1260,7 @@ mod tests {
         landscape.consonance_field_score[idx_raw] = 10.0;
         landscape.consonance_field_score_eff[idx_raw] = 10.0;
 
-        let pop = test_pop();
+        let mut pop = test_pop();
         let strategy = SpawnStrategy::Field {
             target: FieldTarget::Consonance,
             sampling: FieldSampling::Peak,
@@ -1260,7 +1285,7 @@ mod tests {
         landscape.consonance_density_mass[idx_target] = 1.0;
         landscape.consonance_density_mass_eff[idx_target] = 1.0;
 
-        let pop = test_pop();
+        let mut pop = test_pop();
         let strategy = SpawnStrategy::Field {
             target: FieldTarget::Consonance,
             sampling: FieldSampling::Density,
@@ -1299,7 +1324,7 @@ mod tests {
         landscape.consonance_field_score_eff[idx_mid] = 0.5;
         landscape.consonance_field_score_eff[idx_weak] = 0.0;
 
-        let pop = test_pop();
+        let mut pop = test_pop();
         let mk = |t: f32| SpawnStrategy::Field {
             target: FieldTarget::Consonance,
             sampling: FieldSampling::Peak,
@@ -1331,7 +1356,7 @@ mod tests {
             landscape.consonance_density_mass_eff[i] = 0.0;
         }
 
-        let pop = test_pop();
+        let mut pop = test_pop();
         let strategy = SpawnStrategy::Field {
             target: FieldTarget::Consonance,
             sampling: FieldSampling::Density,
@@ -1373,7 +1398,7 @@ mod tests {
             .map(|i| space.freq_of_index(i))
             .collect();
 
-        let pop = test_pop();
+        let mut pop = test_pop();
         let strategy = SpawnStrategy::Field {
             target: FieldTarget::Consonance,
             sampling: FieldSampling::Density,
@@ -1407,7 +1432,7 @@ mod tests {
         let idx_occupied = 8usize;
         let reserved = vec![space.freq_of_index(idx_occupied)];
 
-        let pop = test_pop();
+        let mut pop = test_pop();
         let strategy = SpawnStrategy::Field {
             target: FieldTarget::Consonance,
             sampling: FieldSampling::Density,
@@ -1448,7 +1473,7 @@ mod tests {
         let idx_occupied = 8usize;
         let reserved = vec![space.freq_of_index(idx_occupied)];
 
-        let pop = test_pop();
+        let mut pop = test_pop();
         let strategy = SpawnStrategy::Field {
             target: FieldTarget::Consonance,
             sampling: FieldSampling::Density,
@@ -1486,7 +1511,7 @@ mod tests {
         landscape.consonance_density_mass[idx_target] = 1.0;
         landscape.consonance_density_mass_eff[idx_target] = 1.0;
 
-        let pop = test_pop();
+        let mut pop = test_pop();
         let strategy = SpawnStrategy::Field {
             target: FieldTarget::Consonance,
             sampling: FieldSampling::Density,
@@ -1516,7 +1541,7 @@ mod tests {
         for (i, &hz) in space.centers_hz.iter().enumerate() {
             landscape.consonance_field_score_eff[i] = if hz > 8000.0 { 1000.0 } else { 1.0 };
         }
-        let pop = test_pop();
+        let mut pop = test_pop();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(21);
         let make = |target, sampling, min_freq, max_freq| SpawnStrategy::Field {
             target,

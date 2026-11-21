@@ -52,7 +52,7 @@ wait(0.5);
         let rows = Arc::new(Mutex::new(Vec::new()));
         let captured = rows.clone();
         let probe: OfflineBodyProbe = Box::new(move |state, start, _, pcm| {
-            assert!(state.harmonic_relations.is_none());
+            assert!(state.temporal.harmonic_relations.is_none());
             assert!(!state.current_landscape.harmonic.support_weights.active());
             if start >= 48_000 / 2 {
                 assert_eq!(state.current_landscape.harmonic.support.is_some(), enabled);

@@ -53,19 +53,31 @@ pub struct VoiceMetadata {
 }
 
 #[derive(Debug)]
+pub(crate) struct VoiceSupportState {
+    pub(crate) body: super::support_action::Body,
+    pub(crate) renderer_phase3: bool,
+    onset: Option<(BodySnapshot, crate::life::sound::Tone)>,
+    held_opportunities: Vec<(Tick, Option<Tick>)>,
+    clock_fs: f32,
+    clock_step: u64,
+    pub(crate) template: Option<std::sync::Arc<[(isize, f32)]>>,
+    template_key: Option<(f32, f32, u32, f32, f32)>,
+}
+
+#[derive(Debug)]
+pub(crate) struct VoiceHarmonicState {
+    pub(crate) member: bool,
+    pub(crate) temperature_bonus: f32,
+    pub(crate) events: Vec<super::harmonic_rhythm::VoiceEvent>,
+    waiting: bool,
+    pub(crate) neighbors: (Vec<f32>, Vec<f32>),
+}
+
+#[derive(Debug)]
 pub struct Voice {
+    pub(crate) support: VoiceSupportState,
+    pub(crate) harmonic: VoiceHarmonicState,
     pub(crate) birth_tick: Option<Tick>,
-    pub(crate) support_body: super::support_action::Body,
-    pub(crate) support_renderer_phase3: bool,
-    support_onset: Option<(BodySnapshot, crate::life::sound::Tone)>,
-    support_held_opportunities: Vec<(Tick, Option<Tick>)>,
-    support_clock_fs: f32,
-    support_clock_step: u64,
-    pub(crate) harmonic_member: bool,
-    pub(crate) harmonic_temperature_bonus: f32,
-    pub(crate) harmonic_events: Vec<super::harmonic_rhythm::VoiceEvent>,
-    harmonic_waiting: bool,
-    pub(crate) harmonic_neighbors: (Vec<f32>, Vec<f32>),
     pub(super) sequence_control: Option<sequence_execution::DeferredPitch>,
     pub id: u64,
     pub metadata: VoiceMetadata,
@@ -78,8 +90,6 @@ pub struct Voice {
     pub phonation_engine: PhonationEngine,
     pub(crate) social_coupling: f32,
     pub body: AnySoundBody,
-    pub(crate) support_template: Option<std::sync::Arc<[(isize, f32)]>>,
-    support_template_key: Option<(f32, f32, u32, f32, f32)>,
     pub last_signal: ArticulationSignal,
     pub(crate) selection_environment: bool,
     pub(crate) phonation_scratch: PhonationScratch,
@@ -744,18 +754,24 @@ impl Voice {
             !matches!(effective_control.phonation.gate, PhonationGate::WhenViable);
 
         let mut voice = Voice {
-            harmonic_member: false,
-            support_body: Default::default(),
+            support: VoiceSupportState {
+                body: Default::default(),
+                renderer_phase3: false,
+                onset: None,
+                held_opportunities: Vec::new(),
+                clock_fs: 0.,
+                clock_step: 1,
+                template: None,
+                template_key: None,
+            },
+            harmonic: VoiceHarmonicState {
+                member: false,
+                temperature_bonus: 0.0,
+                events: Vec::new(),
+                waiting: false,
+                neighbors: Default::default(),
+            },
             birth_tick: None,
-            support_renderer_phase3: false,
-            support_onset: None,
-            support_held_opportunities: Vec::new(),
-            support_clock_fs: 0.,
-            support_clock_step: 1,
-            harmonic_temperature_bonus: 0.0,
-            harmonic_events: Vec::new(),
-            harmonic_waiting: false,
-            harmonic_neighbors: Default::default(),
             sequence_control: ((effective_control.pitch.follow_own_sequence > 0.0
                 || effective_control.pitch.melodic_continuity > 0.0)
                 && effective_control.supports_own_sequence())
@@ -797,8 +813,6 @@ impl Voice {
             phonation_engine,
             social_coupling,
             body,
-            support_template: None,
-            support_template_key: None,
             last_signal: Default::default(),
             selection_environment,
             phonation_scratch: Default::default(),
@@ -837,8 +851,8 @@ impl Voice {
 
     pub(crate) fn configure_control_hop(&mut self, hop: usize, control_step: usize, fs: f32) {
         self.phonation_engine.reserve_felt_hop(hop, fs);
-        self.support_clock_fs = fs;
-        self.support_clock_step = control_step.max(1) as u64;
+        self.support.clock_fs = fs;
+        self.support.clock_step = control_step.max(1) as u64;
         if (self.effective_control.pitch.mode == PitchMode::Free || self.sustain_participation)
             && matches!(self.phonation_engine.mode, PhonationMode::Hold)
         {
@@ -852,7 +866,7 @@ impl Voice {
                 deferred.reserve(capacity + 1);
             }
             self.participation_pitch.rearticulations.reserve(capacity);
-            self.support_held_opportunities.reserve(capacity);
+            self.support.held_opportunities.reserve(capacity);
             if let Some(shape) = self.phonation_engine.clock.shape_mut() {
                 shape.reserve(capacity, hop);
             }
@@ -895,7 +909,7 @@ impl Voice {
             landscape.harmonic.support_ref_power,
             landscape.harmonic.support_loudness_exp,
         );
-        if self.support_template_key == Some(key) {
+        if self.support.template_key == Some(key) {
             return;
         }
         let signal = ArticulationSignal {
@@ -906,8 +920,8 @@ impl Voice {
         let density = self
             .body
             .project_support_density(space, key.3, key.4, &signal);
-        self.support_template = density.map(Into::into);
-        self.support_template_key = Some(key);
+        self.support.template = density.map(Into::into);
+        self.support.template_key = Some(key);
     }
 
     pub(crate) fn refresh_support_actions(
@@ -937,17 +951,18 @@ impl Voice {
         let shape = self.body_snapshot();
         let spec = self
             .articulation
-            .render_modulator_spec(if self.harmonic_member {
+            .render_modulator_spec(if self.harmonic.member {
                 PhonationMode::Gated
             } else {
                 self.phonation_engine.mode
             });
         if self
-            .support_onset
+            .support
+            .onset
             .as_ref()
             .is_none_or(|(cached, _)| cached != &shape)
         {
-            self.support_onset = crate::life::sound::Tone::from_parts(
+            self.support.onset = crate::life::sound::Tone::from_parts(
                 *tb,
                 now,
                 Tick::MAX,
@@ -961,7 +976,8 @@ impl Voice {
         }
         let amp = self.compute_target_amp();
         let onset = self
-            .support_onset
+            .support
+            .onset
             .as_mut()
             .filter(|_| self.phonation_engine.phrase_boundary.is_none())
             .and_then(|(_, tone)| {
@@ -974,20 +990,20 @@ impl Voice {
                     self.voice_adsr,
                     spec,
                     &landscape.rhythm,
-                    self.support_renderer_phase3,
+                    self.support.renderer_phase3,
                 )
             });
         self.phonation_engine.support_action = Some(Context {
             source: Some((self.id, self.metadata.generation)),
             snapshot,
-            template: self.support_template.clone(),
+            template: self.support.template.clone(),
             single_density: landscape.support_single_density(self.body.amp()),
             weights: landscape.harmonic.support_weights,
             loudness_exp: landscape.harmonic.support_loudness_exp,
             nominal_amp: self.body.amp(),
             pitch: self.body.base_freq_hz().log2(),
             onset,
-            body: self.support_body,
+            body: self.support.body,
             retention_bonus: 0.,
             allow_release: true,
             replace: self.phonation_engine.mode == PhonationMode::Hold
@@ -996,7 +1012,7 @@ impl Voice {
     }
 
     fn apply_body_runtime(&mut self) {
-        self.support_template_key = None;
+        self.support.template_key = None;
         let runtime = BodyRuntime::from_control(&self.effective_control.body);
         self.amp_update_pending |= runtime.amp != self.body.amp();
         self.body.set_amp(runtime.amp);
@@ -1143,7 +1159,7 @@ impl Voice {
         }
         let mut control = self.effective_control.clone();
         control.apply_update(patch);
-        if self.harmonic_member && !control.supports_harmonic_rhythm() {
+        if self.harmonic.member && !control.supports_harmonic_rhythm() {
             control.pitch.pitch_apply_mode = self.effective_control.pitch.pitch_apply_mode;
             control.pitch.rearticulate_above_cents =
                 self.effective_control.pitch.rearticulate_above_cents;
@@ -1218,7 +1234,7 @@ impl Voice {
         neighbor_salience: &[f32],
         listener_pressure: ListenerPressure,
     ) {
-        if self.harmonic_member {
+        if self.harmonic.member {
             return;
         }
         if self.effective_control.supports_own_sequence()
@@ -1362,12 +1378,13 @@ impl Voice {
                     at,
                     &self.effective_control.pitch,
                     rhythms,
-                    self.support_clock_fs,
-                    self.support_clock_step,
+                    self.support.clock_fs,
+                    self.support.clock_step,
                 );
             }
             if self.pitch_ctl.harmonic_evaluated {
-                self.support_held_opportunities
+                self.support
+                    .held_opportunities
                     .push((at, self.phonation_engine.held_next));
             }
         }
@@ -1600,7 +1617,7 @@ impl Voice {
     }
 
     pub fn update_articulation_autonomous(&mut self, dt_sec: f32, rhythms: &NeuralRhythms) {
-        if self.harmonic_member {
+        if self.harmonic.member {
             self.articulation.set_gate(1.0);
             return;
         }
@@ -1888,10 +1905,10 @@ impl Voice {
             return;
         }
         if !self.phonation_engine.support_held_active() {
-            self.support_held_opportunities.clear();
+            self.support.held_opportunities.clear();
         }
         if self.phonation_engine.support_held_active()
-            && let Some(&(at, next)) = self.support_held_opportunities.first()
+            && let Some(&(at, next)) = self.support.held_opportunities.first()
         {
             if at == now
                 && !self
@@ -1918,7 +1935,7 @@ impl Voice {
             &mut out.onsets,
         );
         if self.phonation_engine.support_held_active() && !self.sustain_participation {
-            for &(at, next) in &self.support_held_opportunities {
+            for &(at, next) in &self.support.held_opportunities {
                 self.phonation_engine.held_window = Some((at, next));
                 let request_ctx = CoreTickCtx {
                     now_tick: at,
@@ -1941,7 +1958,7 @@ impl Voice {
                         &mut out.onsets,
                     );
                     if !emitted
-                        && let super::support_action::Body::One { pitch, .. } = self.support_body
+                        && let super::support_action::Body::One { pitch, .. } = self.support.body
                     {
                         self.body.set_pitch_log2(pitch);
                     }
@@ -1960,7 +1977,7 @@ impl Voice {
                     );
                 }
             }
-            self.support_held_opportunities.clear();
+            self.support.held_opportunities.clear();
             self.phonation_engine.held_window = None;
             self.participation_pitch.rearticulations.clear();
         }
@@ -1985,7 +2002,7 @@ impl Voice {
                         .as_mut()
                         .and_then(|context| {
                             context.pitch = request.pitch_log2;
-                            match self.support_body {
+                            match self.support.body {
                                 super::support_action::Body::One { pitch, .. } => Some(pitch),
                                 _ => None,
                             }
@@ -2145,7 +2162,7 @@ impl Voice {
             // Explicit amplitude controls bypass the threshold for autonomous vitality drift.
             let amp_changed = self.amp_update_pending
                 || (target_amp - tracked.last_target_amp).abs() >= Self::PHONATION_AMP_UPDATE_EPS;
-            let freq_changed = !self.harmonic_member
+            let freq_changed = !self.harmonic.member
                 && freq_hz.is_finite()
                 && freq_hz > 0.0
                 && (freq_hz - tracked.last_target_freq_hz).abs() > 0.01;
@@ -2411,7 +2428,7 @@ mod tests {
                 735,
             );
             voice.refresh_support_template(&landscape);
-            let first = voice.support_template.clone().expect("body self-report");
+            let first = voice.support.template.clone().expect("body self-report");
             assert!(first.iter().all(|&(_, q)| q.is_finite() && q > 0.));
             #[cfg(feature = "profile-alloc")]
             crate::runtime_profile::begin_allocations();
@@ -2419,7 +2436,7 @@ mod tests {
                 voice.refresh_support_template(&landscape);
                 assert!(std::sync::Arc::ptr_eq(
                     &first,
-                    voice.support_template.as_ref().unwrap()
+                    voice.support.template.as_ref().unwrap()
                 ));
             }
             #[cfg(feature = "profile-alloc")]
@@ -2430,7 +2447,7 @@ mod tests {
             voice.effective_control.body.amp = 0.4;
             voice.apply_body_runtime();
             voice.refresh_support_template(&landscape);
-            let changed = voice.support_template.as_ref().unwrap();
+            let changed = voice.support.template.as_ref().unwrap();
             assert!(!std::sync::Arc::ptr_eq(&first, changed));
             assert!(
                 changed.iter().map(|&(_, q)| q).sum::<f32>()
@@ -2441,7 +2458,8 @@ mod tests {
             voice.refresh_support_template(&landscape);
             assert!(
                 voice
-                    .support_template
+                    .support
+                    .template
                     .as_ref()
                     .expect("silent self-report remains known")
                     .is_empty()
@@ -2596,7 +2614,7 @@ mod tests {
         for at in (512..8512).step_by(tb.hop) {
             voice.set_control_tick(at);
             voice.decide_pitch_target(tb.hop as f32 / tb.fs, &rhythms, &landscape, &[], &[]);
-            let opportunity = voice.support_held_opportunities.first().copied();
+            let opportunity = voice.support.held_opportunities.first().copied();
             if let Some((tick, _)) = opportunity {
                 opportunities.push(tick);
             }
@@ -2611,7 +2629,7 @@ mod tests {
                 Body::Silent
             };
             context.weights.0[0] = if sounding { 1. } else { -1. };
-            voice.support_body = context.body;
+            voice.support.body = context.body;
             voice.phonation_engine.support_action = Some(context);
             voice.phonation_engine.held_comparison = None;
             voice.tick_phonation_into(&tb, at, &rhythms, None, 0., 1., 0.5, &mut batch);
@@ -2666,7 +2684,7 @@ mod tests {
         let mut batch = PhonationBatch::default();
         voice.tick_phonation_into(&timebase, 0, &rhythms, None, 0., 1., 0.5, &mut batch);
         assert_eq!(batch.tones.len(), 1);
-        voice.support_body = context.body;
+        voice.support.body = context.body;
         voice.phonation_engine.support_action = Some(context);
         let proposed = previous + 1. / 1200.;
         voice.body.set_pitch_log2(proposed);
@@ -2677,7 +2695,7 @@ mod tests {
                 at: 1024,
                 pitch_log2: proposed,
             });
-        voice.support_held_opportunities.push((1024, Some(1536)));
+        voice.support.held_opportunities.push((1024, Some(1536)));
         voice.tick_phonation_into(&timebase, 1024, &rhythms, None, 0., 1., 0.5, &mut batch);
         assert!(batch.onsets.is_empty());
         assert!(batch.cmds.iter().all(

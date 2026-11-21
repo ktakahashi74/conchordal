@@ -110,15 +110,19 @@ wait(0.08);
         let observed = Arc::clone(&saw_request);
         let probe: OfflineBodyProbe = Box::new(move |state, _, _, _| {
             assert!(state.schedule_renderer.body_capture.is_none());
-            assert!(state.body_snapshot.is_none());
+            assert!(state.temporal.body_snapshot.is_none());
             assert!(
                 state
+                    .temporal
                     .temporal_frames
                     .iter()
                     .all(|frame| frame.received_frames == 0)
             );
-            assert_eq!(state.footprint_worker.is_some(), comparison.is_some());
-            if let Some(worker) = &state.footprint_worker
+            assert_eq!(
+                state.temporal.footprint_worker.is_some(),
+                comparison.is_some()
+            );
+            if let Some(worker) = &state.temporal.footprint_worker
                 && worker.stats.footprint_requested > 0
             {
                 observed.store(true, Ordering::Relaxed);
@@ -227,7 +231,7 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                 let probe: OfflineBodyProbe = Box::new(move |state, _, _, _| {
                     assert_eq!(state.schedule_renderer.phase3_enabled(), prototype);
                     // Exclude wall-clock UI publication from the allocation control.
-                    state.last_ui_update = Instant::now();
+                    state.ui.last_ui_update = Instant::now();
                 });
                 let (ui_tx, ui_rx) = bounded(UI_CHANNEL_CAPACITY);
                 let wiring = wire_runtime(
@@ -414,7 +418,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         state.generator_model.advance_to(now_tick);
         advance_population(&mut state, &cfg, now_tick, ListenerPressure::default());
         assert_eq!(state.pop.abort_requested, frame == 56_719);
-        assert_eq!(state.finish_begun, frame == 56_719);
+        assert_eq!(state.lifecycle.finish_begun, frame == 56_719);
     }
 }
 
@@ -878,7 +882,10 @@ wait(0.03);
             })
             .expect("a future self-exclusion consumer must be captured from birth");
         if let Some(expected) = &previous {
-            assert_eq!(state.last_analysis_frame, Some(state.frame_idx - 1));
+            assert_eq!(
+                state.listener.last_analysis_frame,
+                Some(state.frame_idx - 1)
+            );
             assert_eq!(state.current_landscape.ecology.loo.len(), 1);
             let actual = &state.current_landscape.ecology.loo[0];
             assert_eq!(
@@ -1109,13 +1116,16 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             drive_production_meter(&mut control, &cfg, &mut a, &pcm);
             drive_production_meter(&mut changed, &cfg, &mut b, &pcm);
             assert_eq!(
-                serde_json::to_value(control.flora_rhythm).unwrap(),
-                serde_json::to_value(changed.flora_rhythm).unwrap()
+                serde_json::to_value(control.temporal.flora_rhythm).unwrap(),
+                serde_json::to_value(changed.temporal.flora_rhythm).unwrap()
             );
-            assert_eq!(control.flora_rhythm.observed_end, Some((frame + 1) * 512));
+            assert_eq!(
+                control.temporal.flora_rhythm.observed_end,
+                Some((frame + 1) * 512)
+            );
             production_differs |= control.current_landscape.rhythm.delta.alpha.to_bits()
                 != changed.current_landscape.rhythm.delta.alpha.to_bits();
-            confirmed |= control.flora_rhythm.state.beat.confidence > 0.;
+            confirmed |= control.temporal.flora_rhythm.state.beat.confidence > 0.;
         }
         assert!(
             production_differs,

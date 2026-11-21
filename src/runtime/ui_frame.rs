@@ -99,7 +99,7 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
         .map(|agent| {
             let freq_hz = agent.body.base_freq_hz();
             VoiceStateInfo {
-                support_template: agent.support_template.clone(),
+                support_template: agent.support.template.clone(),
                 support: input
                     .current_landscape
                     .ecology
@@ -238,12 +238,13 @@ pub(super) fn listener_frame_from_states(
 
 pub(super) fn buffer_listener_rhythm_hop(state: &mut WorkerState, cfg: &WorkerConfig) {
     let Some(fast) = state
+        .listener
         .latest_listener_fast_state
         .filter(|fast| fast.has_state)
     else {
         return;
     };
-    let hops = &mut state.ui_rhythm_hops;
+    let hops = &mut state.ui.ui_rhythm_hops;
     let capacity =
         (crate::viewdata::RHYTHM_HISTORY_SEC * cfg.fs as f64 / cfg.hop as f64).ceil() as usize;
     if hops.capacity() == 0 {
@@ -281,8 +282,8 @@ pub(super) fn send_runtime_ui_frame(
         return;
     };
     let mut frame = build_runtime_ui_frame(RuntimeUiFrameInput {
-        body: state.body_snapshot.as_deref(),
-        temporal: &state.temporal_frames,
+        body: state.temporal.body_snapshot.as_deref(),
+        temporal: &state.temporal.temporal_frames,
         scenario_name: &cfg.scenario_name,
         conductor: &state.conductor,
         pop: &state.pop,
@@ -290,34 +291,34 @@ pub(super) fn send_runtime_ui_frame(
         current_landscape: &state.current_landscape,
         log_space: &state.log_space,
         presentation_chunk,
-        listener_fast_state: state.latest_listener_fast_state,
-        listener_state: state.latest_listener_state,
+        listener_fast_state: state.listener.latest_listener_fast_state,
+        listener_state: state.listener.latest_listener_state,
         current_time: state.current_time(),
-        playback_state: state.playback_state,
+        playback_state: state.lifecycle.playback_state,
         peak_level,
         channel_peak,
         now_tick,
         hop: cfg.hop,
         fs: cfg.fs,
     });
-    frame.listener_rhythm = state.ui_rhythm_hops.iter().copied().collect();
-    frame.meta.slow_hops = state.monitor.slow_hops_total;
+    frame.listener_rhythm = state.ui.ui_rhythm_hops.iter().copied().collect();
+    frame.meta.slow_hops = state.ui.monitor.slow_hops_total;
     if let Some(counters) = &cfg.audio_counters {
         frame.meta.audio_xruns = counters.xruns_total.load(Ordering::Relaxed);
         frame.meta.audio_rebuilds = counters.rebuilds_total.load(Ordering::Relaxed);
         frame.meta.audio_recovering = counters.recovering.load(Ordering::Acquire);
     }
     // A newer terminal snapshot supersedes an undelivered one from the last hop.
-    state.pending_final_ui_frame = None;
+    state.ui.pending_final_ui_frame = None;
     match tx.try_send(frame) {
-        Ok(()) => state.ui_rhythm_hops.clear(),
+        Ok(()) => state.ui.ui_rhythm_hops.clear(),
         Err(crate::handoff::TrySendError::Full(frame))
-            if state.playback_state == PlaybackState::Finished
+            if state.lifecycle.playback_state == PlaybackState::Finished
                 || cfg.exiting.load(Ordering::SeqCst) =>
         {
-            state.pending_final_ui_frame = Some(frame);
+            state.ui.pending_final_ui_frame = Some(frame);
         }
         _ => {}
     }
-    state.last_ui_update = Instant::now();
+    state.ui.last_ui_update = Instant::now();
 }

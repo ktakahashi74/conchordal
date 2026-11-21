@@ -94,6 +94,7 @@ pub(crate) fn count_pcm(owner: Owner, now: Tick, pcm: &[f32]) {
     });
 }
 
+#[cfg(feature = "research")]
 pub(crate) fn retiring(live: &std::collections::BTreeSet<Owner>, now: Tick) -> usize {
     SOUNDING.with_borrow(|(tick, sums)| {
         if *tick != now {

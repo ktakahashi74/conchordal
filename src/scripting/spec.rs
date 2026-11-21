@@ -728,6 +728,7 @@ impl PopulationSpec {
         Ok(())
     }
 
+    #[cfg(feature = "research")]
     pub(super) fn set_syncopate(&mut self, amount: f32) {
         self.control.phonation.syncopate = if amount.is_finite() && amount >= 0.0 {
             amount

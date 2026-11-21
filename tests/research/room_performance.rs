@@ -1,6 +1,7 @@
 //! Offline research capture through the ordered native renderer and its proposal replay.
 use super::*;
 use serde_json::json;
+#[cfg(feature = "research")]
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -12,6 +13,7 @@ pub(crate) mod oracle;
 mod room_shadow;
 pub(crate) use room_shadow::{observe_dry, room_fields};
 
+#[cfg(feature = "research")]
 fn hash_samples(samples: &[f32]) -> String {
     let mut hash = Sha256::new();
     for x in samples {
@@ -20,6 +22,7 @@ fn hash_samples(samples: &[f32]) -> String {
     hash.finalize().iter().map(|b| format!("{b:02x}")).collect()
 }
 
+#[cfg(feature = "research")]
 fn meter(network: &MeterNetwork) -> serde_json::Value {
     let beat = network.state().beat;
     json!([
@@ -32,6 +35,7 @@ fn meter(network: &MeterNetwork) -> serde_json::Value {
 
 #[test]
 #[ignore = "explicit offline paired room performance acquisition"]
+#[cfg(feature = "research")]
 fn acquire() {
     let var = |key| std::env::var(key).unwrap();
     let script = PathBuf::from(var("ROOM_SCORE"));
@@ -300,6 +304,7 @@ fn render_reservation() {
             end_request: end,
             duration_sec: None,
             offline_body_probe: Some(probe),
+            #[cfg(feature = "research")]
             raw_t2_delay: Duration::ZERO,
             ui_tx: None,
             listener_forced: true,
@@ -309,6 +314,7 @@ fn render_reservation() {
             wav_tx: Some(wav),
             reporter: Some(reporter),
             deterministic_analysis: true,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,

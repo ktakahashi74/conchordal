@@ -57,7 +57,19 @@ fn emit(
     out: &mut PhonationBatch,
     space: &Log2Space,
 ) {
-    v.tick_phonation_into_with_arrival(tb, at, r, None, 0.0, 1.0, 0.8, None, Some(space), out);
+    v.tick_phonation_into_with_arrival(
+        tb,
+        at,
+        r,
+        None,
+        0.0,
+        1.0,
+        0.8,
+        #[cfg(feature = "research")]
+        None,
+        Some(space),
+        out,
+    );
 }
 
 fn adoption(v: &mut Voice, at: Tick, hz: f32) {

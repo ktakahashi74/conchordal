@@ -229,6 +229,7 @@ impl Voice {
         self.commit_decided_control(dt_sec, rhythms, landscape, global_coupling)
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn commit_with_body_metabolism(
         &mut self,
         dt_sec: f32,
@@ -398,6 +399,7 @@ impl Voice {
             rhythms,
             landscape,
             global_coupling,
+            #[cfg(feature = "research")]
             None,
         )
     }
@@ -408,7 +410,7 @@ impl Voice {
         rhythms: &NeuralRhythms,
         landscape: &Landscape,
         global_coupling: f32,
-        body: Option<crate::life::body_fitness::BodyFitness>,
+        #[cfg(feature = "research")] body: Option<crate::life::body_fitness::BodyFitness>,
     ) -> ArticulationSignal {
         let consonance_level = landscape.evaluate_pitch_level(self.body.base_freq_hz());
         let selection_score = if self.selection_environment {
@@ -417,13 +419,15 @@ impl Voice {
         } else {
             landscape.evaluate_pitch_score(self.body.base_freq_hz())
         };
-        let mut signal = self.articulation.process(
-            body.map_or(consonance_level, |value| value.level),
-            body.map_or(selection_score, |value| value.score),
-            rhythms,
-            dt_sec,
-            global_coupling,
-        );
+        #[cfg(feature = "research")]
+        let (level, score) = body.map_or((consonance_level, selection_score), |value| {
+            (value.level, value.score)
+        });
+        #[cfg(not(feature = "research"))]
+        let (level, score) = (consonance_level, selection_score);
+        let mut signal = self
+            .articulation
+            .process(level, score, rhythms, dt_sec, global_coupling);
         let energy_depleted = matches!(
             &self.articulation.core,
             AnyArticulationCore::Entrain(core) if core.energy <= 0.0

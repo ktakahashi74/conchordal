@@ -1,3 +1,5 @@
+#![cfg(feature = "research")]
+
 //! Public configuration and offline causal determinism.
 use std::fs;
 use std::io::{BufRead, BufReader};

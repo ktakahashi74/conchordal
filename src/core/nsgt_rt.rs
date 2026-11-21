@@ -66,6 +66,7 @@ pub struct BandState {
 pub struct RtNsgtKernelLog2 {
     // Immutable kernels are shared; clones own independent streaming state below.
     nsgt: Arc<NsgtKernelLog2>,
+    #[cfg(any(test, feature = "research"))]
     fs: f32,
     nfft: usize,
     hop: usize,
@@ -137,6 +138,7 @@ impl RtNsgtKernelLog2 {
         let n_bands = nsgt.bands().len();
         Self {
             nsgt: Arc::new(nsgt),
+            #[cfg(any(test, feature = "research"))]
             fs,
             nfft,
             hop,
@@ -336,6 +338,7 @@ impl RtNsgtKernelLog2 {
         self.dt
     }
     #[inline]
+    #[cfg(any(test, feature = "research"))]
     pub fn fs(&self) -> f32 {
         self.fs
     }

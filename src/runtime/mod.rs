@@ -131,6 +131,7 @@ mod hr2_tests;
 type OfflineBodyProbe = Box<dyn FnMut(&mut WorkerState, Tick, usize, [&[f32]; 2]) + Send>;
 
 #[cfg(test)]
+#[cfg(feature = "research")]
 mod body_metabolism_assay;
 
 #[cfg(test)]
@@ -155,6 +156,7 @@ mod gui_support_tests;
 
 #[cfg(test)]
 #[path = "temporal_meter_tests.rs"]
+#[cfg(feature = "research")]
 mod temporal_meter_tests;
 
 #[cfg(test)]

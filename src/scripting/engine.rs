@@ -915,9 +915,40 @@ impl ScriptHost {
                 ("entrainment", PopulationSpec::set_entrainment),
                 ("microtiming", PopulationSpec::set_microtiming),
                 ("measure_accent", PopulationSpec::set_measure_accent),
+                #[cfg(feature = "research")]
                 ("syncopate", PopulationSpec::set_syncopate),
             ],
         );
+        #[cfg(not(feature = "research"))]
+        {
+            let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
+            let register =
+                move |call: NativeCallContext, mut spec: PopulationSpecHandle, nonzero| {
+                    if nonzero {
+                        return Err(EvalAltResult::ErrorRuntime(
+                            "syncopate requires the research feature".into(),
+                            call.call_position(),
+                        )
+                        .into());
+                    }
+                    spec.spec
+                        .record_call("syncopate", call.call_position(), &diagnostics);
+                    Ok::<_, Box<EvalAltResult>>(spec)
+                };
+            let register_int = register.clone();
+            engine.register_fn(
+                "syncopate",
+                move |call: NativeCallContext, spec: PopulationSpecHandle, value: INT| {
+                    register_int(call, spec, value != 0)
+                },
+            );
+            engine.register_fn(
+                "syncopate",
+                move |call: NativeCallContext, spec: PopulationSpecHandle, value: FLOAT| {
+                    register(call, spec, value != 0.0)
+                },
+            );
+        }
         // Tier 2: explicit when/duration
         let diagnostics = ctx.lock().expect("lock script context").warnings.clone();
         engine.register_fn(
@@ -1384,15 +1415,27 @@ impl ScriptHost {
             },
         );
 
+        #[cfg(feature = "research")]
         let ctx_for_felt = ctx.clone();
         engine.register_fn(
             "observe_felt_beat",
             move |call: NativeCallContext| -> Result<(), Box<EvalAltResult>> {
-                let mut ctx = ctx_for_felt.lock().expect("lock script context");
-                ctx.check_header("observe_felt_beat", call.call_position())?;
-                ctx.scenario.observe_felt_beat = true;
-                ctx.felt_observation_position = Some(call.call_position());
-                Ok(())
+                #[cfg(not(feature = "research"))]
+                {
+                    Err(EvalAltResult::ErrorRuntime(
+                        "observe_felt_beat requires the research feature".into(),
+                        call.call_position(),
+                    )
+                    .into())
+                }
+                #[cfg(feature = "research")]
+                {
+                    let mut ctx = ctx_for_felt.lock().expect("lock script context");
+                    ctx.check_header("observe_felt_beat", call.call_position())?;
+                    ctx.scenario.observe_felt_beat = true;
+                    ctx.felt_observation_position = Some(call.call_position());
+                    Ok(())
+                }
             },
         );
 
@@ -1455,6 +1498,14 @@ impl ScriptHost {
                         ("observe", crate::scenario::TemporalMode::Observe),
                     ],
                 )?;
+                #[cfg(not(feature = "research"))]
+                if mode == crate::scenario::TemporalMode::Observe {
+                    return Err(EvalAltResult::ErrorRuntime(
+                        "temporal_mode observe requires the research feature".into(),
+                        call.call_position(),
+                    )
+                    .into());
+                }
                 ctx.scenario.temporal_mode = mode;
                 ctx.temporal_mode_declared = true;
                 Ok(())

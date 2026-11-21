@@ -1,12 +1,15 @@
 pub(crate) mod action_candidates;
+#[cfg(feature = "research")]
 pub(crate) mod arrival_cost;
 pub(crate) mod articulation_envelope;
 pub(crate) mod conductor;
 pub(crate) mod constants;
 mod control_adapters;
+#[cfg(any(test, feature = "research"))]
 pub(crate) mod energy_window;
 pub(crate) mod flora;
 pub mod gate_clock;
+#[cfg(any(test, feature = "research"))]
 pub(crate) mod onset_footprint;
 pub(crate) mod rain;
 pub(crate) mod support_action;
@@ -27,7 +30,9 @@ pub(crate) mod social_density;
 pub(crate) mod telemetry;
 pub(crate) mod temporal_participation;
 
+#[cfg(any(test, feature = "research"))]
 pub(crate) mod body_fitness;
+#[cfg(feature = "research")]
 pub(crate) mod body_metabolism;
 pub mod sound;
 #[cfg(test)]

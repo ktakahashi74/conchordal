@@ -93,6 +93,7 @@ struct RoutedTone {
     tone: Tone,
     routing: Routing,
     self_slot: Option<usize>,
+    #[cfg(feature = "research")]
     body_slot: Option<(usize, u32)>,
     source_pcm_slot: Option<usize>,
     loo_slot: Option<usize>,
@@ -149,6 +150,7 @@ struct SelfSound {
 }
 
 pub struct RenderFrame<'a> {
+    #[cfg(any(test, feature = "research"))]
     pub(crate) sites: Option<&'a SiteBuses>,
     pub presentation: &'a [f32],
     pub habitat: &'a [f32],
@@ -203,6 +205,7 @@ pub struct ScheduleRenderer {
     expression: Option<crate::scenario::expression::Expression>,
     expression_gain: Vec<f32>,
     pub(crate) rest_sources: Vec<RestSource>,
+    #[cfg(feature = "research")]
     prototype: bool,
     time: Timebase,
     buf_presentation: Vec<f32>,
@@ -215,6 +218,7 @@ pub struct ScheduleRenderer {
     tones: BTreeMap<ToneKey, RoutedTone>,
     cutoff_tick: Option<Tick>,
     self_sound: Vec<Option<Box<SelfSound>>>,
+    #[cfg(feature = "research")]
     pub(crate) body_capture: Option<crate::temporal_cognition::body::Capture>,
     pub(crate) profile: Option<RenderProfile>,
 }
@@ -320,6 +324,7 @@ impl ScheduleRenderer {
             expression: None,
             expression_gain: Vec::new(),
             rest_sources: Vec::new(),
+            #[cfg(feature = "research")]
             prototype: false,
             time,
             buf_presentation: vec![0.0; time.hop],
@@ -332,6 +337,7 @@ impl ScheduleRenderer {
             tones: BTreeMap::new(),
             cutoff_tick: None,
             self_sound: Vec::new(),
+            #[cfg(feature = "research")]
             body_capture: None,
             profile: None,
         }
@@ -348,11 +354,19 @@ impl ScheduleRenderer {
         self
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn with_prototype(mut self, prototype: bool) -> Self {
         self.prototype = prototype;
         self
     }
 
+    #[cfg(all(test, not(feature = "research")))]
+    pub(crate) fn with_prototype(self, prototype: bool) -> Self {
+        assert!(!prototype);
+        self
+    }
+
+    #[cfg(feature = "research")]
     pub(crate) fn phase3_enabled(&self) -> bool {
         self.prototype
     }
@@ -364,7 +378,10 @@ impl ScheduleRenderer {
     pub fn fork_source(&self, source_id: u64) -> Self {
         let mut fork = Self::new(self.time);
         fork = fork.with_expression(self.expression);
-        fork.prototype = self.prototype;
+        #[cfg(feature = "research")]
+        {
+            fork.prototype = self.prototype;
+        }
         fork.cutoff_tick = self.cutoff_tick;
         fork.phrase_sources = self
             .phrase_sources
@@ -386,6 +403,7 @@ impl ScheduleRenderer {
                         routing: routed.routing,
                         site_id: routed.site_id,
                         self_slot: None,
+                        #[cfg(feature = "research")]
                         body_slot: None,
                         source_pcm_slot: None,
                         loo_slot: None,
@@ -397,6 +415,7 @@ impl ScheduleRenderer {
     }
 
     #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
+    #[cfg(feature = "research")]
     pub(crate) fn oracle_readers(
         &self,
         live: &std::collections::BTreeSet<(u64, u32)>,
@@ -558,6 +577,7 @@ impl ScheduleRenderer {
         self.render_with_prediction_matches(phonation_batches, now, rhythms, |_, _, _, _| {})
     }
 
+    #[cfg(feature = "research")]
     fn retire_closed_sources(&mut self, now: Tick) {
         #[cfg(test)]
         if self.sample_major_oracle {
@@ -608,6 +628,7 @@ impl ScheduleRenderer {
     }
 
     #[cfg(test)]
+    #[cfg(feature = "research")]
     fn retire_closed_sources_oracle(&mut self, now: Tick) {
         use std::ops::Bound::{Excluded, Unbounded};
         let mut after = None;
@@ -689,6 +710,7 @@ impl ScheduleRenderer {
                 "duplicate source PCM identity"
             );
         }
+        #[cfg(feature = "research")]
         if self.prototype {
             self.retire_closed_sources(now);
         }
@@ -696,6 +718,7 @@ impl ScheduleRenderer {
         self.profile = self.profile.map(|_| RenderProfile::default());
         let hop = self.time.hop;
         #[cfg(feature = "native")]
+        #[cfg(feature = "research")]
         if let Some(capture) = self.body_capture.as_mut() {
             capture.begin(now);
         }
@@ -719,6 +742,7 @@ impl ScheduleRenderer {
         let fs = self.time.fs;
         if fs <= 0.0 {
             return Ok(RenderFrame {
+                #[cfg(any(test, feature = "research"))]
                 sites: self.sites.as_ref(),
                 presentation: &self.buf_presentation,
                 stereo: None,
@@ -924,6 +948,7 @@ impl ScheduleRenderer {
                         pcm,
                     );
                 }
+                #[cfg(feature = "research")]
                 if let (Some(capture), Some(slot)) = (self.body_capture.as_mut(), rt.body_slot) {
                     for (idx, &sample) in pcm.iter().enumerate() {
                         capture.sample(slot, idx, sample, rt.routing);
@@ -1073,6 +1098,7 @@ impl ScheduleRenderer {
         let history_us = profile_lap(&mut checkpoint);
 
         #[cfg(feature = "native")]
+        #[cfg(feature = "research")]
         if let Some(capture) = self.body_capture.as_mut() {
             capture.end();
         }
@@ -1087,6 +1113,7 @@ impl ScheduleRenderer {
             };
         }
         Ok(RenderFrame {
+            #[cfg(any(test, feature = "research"))]
             sites: self.sites.as_ref(),
             stereo: self.room.as_ref().map(|r| r.interleaved.as_slice()),
             presentation: &self.buf_presentation,
@@ -1144,6 +1171,7 @@ impl ScheduleRenderer {
                     sample *= self.expression_gain[(tick - now) as usize];
                 }
 
+                #[cfg(feature = "research")]
                 if let (Some(capture), Some(slot)) = (self.body_capture.as_mut(), rt.body_slot) {
                     capture.sample(slot, idx, sample, rt.routing);
                 }
@@ -1371,11 +1399,13 @@ impl ScheduleRenderer {
                         {
                             continue;
                         }
-                        let hold_ticks = spec.hold_ticks.unwrap_or(if self.prototype {
+                        #[cfg(feature = "research")]
+                        let default_hold_ticks = if self.prototype {
                             Tick::MAX
                         } else {
                             default_hold_ticks
-                        });
+                        };
+                        let hold_ticks = spec.hold_ticks.unwrap_or(default_hold_ticks);
                         if let Some(mut tone) = Tone::from_parts(
                             self.time,
                             spec.onset,
@@ -1392,19 +1422,19 @@ impl ScheduleRenderer {
                                     .entry((batch.source_id, batch.source_generation))
                                     .or_default();
                             }
+                            #[cfg(feature = "research")]
                             if self.prototype {
                                 tone.enable_phase3();
                             }
+                            let seed_source = batch.source_id;
+                            #[cfg(feature = "research")]
+                            let seed_source = if self.prototype {
+                                modal_phase_seed(seed_source, u64::from(batch.source_generation), 0)
+                            } else {
+                                seed_source
+                            };
                             tone.seed_modal_phases(modal_phase_seed(
-                                if self.prototype {
-                                    modal_phase_seed(
-                                        batch.source_id,
-                                        u64::from(batch.source_generation),
-                                        0,
-                                    )
-                                } else {
-                                    batch.source_id
-                                },
+                                seed_source,
                                 spec.onset,
                                 tone_id,
                             ));
@@ -1438,6 +1468,7 @@ impl ScheduleRenderer {
                                                 && sound.generation == batch.source_generation
                                         })
                                     }),
+                                    #[cfg(feature = "research")]
                                     body_slot: self.body_capture.as_ref().and_then(|c| {
                                         c.token(batch.source_id, batch.source_generation)
                                     }),
@@ -1770,7 +1801,11 @@ mod tests {
                 bits.extend(m.issued_features.unwrap_or(&[]).iter().map(|v| v.to_bits()));
                 bits
             };
-        for prototype in [false, true] {
+        for prototype in [
+            false,
+            #[cfg(feature = "research")]
+            true,
+        ] {
             for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
                 let mut actual = ScheduleRenderer::new(time).with_prototype(prototype);
                 let mut oracle = ScheduleRenderer::new(time).with_prototype(prototype);
@@ -2099,7 +2134,11 @@ mod tests {
             fs: 48_000.0,
             hop: 64,
         };
-        for prototype in [false, true] {
+        for prototype in [
+            false,
+            #[cfg(feature = "research")]
+            true,
+        ] {
             for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
                 let mut renderer = ScheduleRenderer::new(time).with_prototype(prototype);
                 let mut batch = outcome_batch(kind);
@@ -2129,6 +2168,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn phase3_retirement_uses_source_generation_sum_not_single_sample() {
         let time = Timebase {
             fs: 48_000.0,
@@ -2173,6 +2213,7 @@ mod tests {
                     tone: tone.clone(),
                     routing: Routing::default(),
                     self_slot: None,
+                    #[cfg(feature = "research")]
                     body_slot: None,
                     source_pcm_slot: None,
                     loo_slot: None,
@@ -2568,6 +2609,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn support_action_native_silence_is_not_new_onset_support() {
         use crate::life::support_action::{Action, Body, tests::fixture};
         let tb = Timebase { fs: 8000., hop: 64 };
@@ -2658,7 +2700,11 @@ mod tests {
         use crate::core::log2space::Log2Space;
         use crate::life::flora::Flora;
         use crate::scenario::{FloraSeeding, FloraSpec, FloraTone};
-        for prototype in [false, true] {
+        for prototype in [
+            false,
+            #[cfg(feature = "research")]
+            true,
+        ] {
             for oracle in [false, true] {
                 let time = Timebase {
                     fs: 8000.0,
@@ -3354,7 +3400,11 @@ mod tests {
     fn rest_all_tones_generations_and_actual_pcm_on_both_renderers() {
         let tb = Timebase { fs: 8000., hop: 64 };
         let rhythms = NeuralRhythms::default();
-        for native in [false, true] {
+        for native in [
+            false,
+            #[cfg(feature = "research")]
+            true,
+        ] {
             for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
                 let mut renderer = ScheduleRenderer::new(tb).with_prototype(native);
                 renderer.prepare_rest_sources([(2, 7), (2, 8)].into_iter());
@@ -3475,7 +3525,10 @@ mod tests {
     fn rest_renderer_warmed_completion_and_storage_allocate_zero() {
         let tb = Timebase { fs: 8000., hop: 64 };
         let rhythms = NeuralRhythms::default();
-        let mut renderer = ScheduleRenderer::new(tb).with_prototype(true);
+        let renderer = ScheduleRenderer::new(tb);
+        #[cfg(feature = "research")]
+        let renderer = renderer.with_prototype(true);
+        let mut renderer = renderer;
         renderer.loo_pcm.push(SourcePcm {
             site_id: 0,
             kind: crate::core::stream::loo::SourceKind::Voice,

@@ -82,6 +82,7 @@ impl StepEngine {
         #[cfg(not(test))]
         check_site_host(&scenario)?;
         config.audio.sample_rate = sample_rate;
+        #[cfg(feature = "research")]
         if config.temporal_meter_t2
             || config.temporal_t2.is_some()
             || config.temporal_onset_comparison.is_some()
@@ -95,8 +96,13 @@ impl StepEngine {
                 "step execution does not support background temporal observation".into(),
             ));
         }
-        if scenario.temporal_mode == crate::scenario::TemporalMode::Observe
-            || scenario.harmonic_relation_sources.is_some()
+        #[cfg(feature = "research")]
+        if scenario.temporal_mode == crate::scenario::TemporalMode::Observe {
+            return Err(error(
+                "step execution does not support background temporal observation".into(),
+            ));
+        }
+        if scenario.harmonic_relation_sources.is_some()
             || scenario.events.iter().flat_map(|e| &e.actions).any(|a| {
                 let active = |w: f64| w.is_finite() && w != 0. && (-1. ..=1.).contains(&w);
                 match a {
@@ -137,6 +143,7 @@ impl StepEngine {
                 #[cfg(test)]
                 offline_body_probe: None,
                 #[cfg(test)]
+                #[cfg(feature = "research")]
                 raw_t2_delay: Duration::ZERO,
                 ui_tx: Some(ui_tx),
                 listener_forced: true,
@@ -147,6 +154,7 @@ impl StepEngine {
                 wav_tx: Some(output),
                 reporter: None,
                 deterministic_analysis: true,
+                #[cfg(feature = "research")]
                 deterministic_footprints: true,
                 guard_meter: None,
                 underrun_frames: None,
@@ -426,6 +434,7 @@ mod tests {
                 end_request: Arc::new(AtomicBool::new(false)),
                 duration_sec: Some(end_hop as f64 * config.analysis.hop_size as f64 / 48_000.),
                 offline_body_probe: None,
+                #[cfg(feature = "research")]
                 raw_t2_delay: Duration::ZERO,
                 ui_tx: None,
                 listener_forced: true,
@@ -435,6 +444,7 @@ mod tests {
                 wav_tx: Some(tx),
                 reporter: None,
                 deterministic_analysis: true,
+                #[cfg(feature = "research")]
                 deterministic_footprints: true,
                 guard_meter: None,
                 underrun_frames: None,

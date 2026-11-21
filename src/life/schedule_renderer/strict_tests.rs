@@ -366,8 +366,20 @@ fn onset_tonal_and_hr_consume_the_same_wet_packet_on_the_render_frame() {
     let mut stream = AnalysisStream::new(params, kernel);
     stream.enable_tonal_context(Decoder::unqueried_for_test());
     stream.enable_onset_habituation(0.5);
-    let mut silent_reference = AnalysisState::new(stream.clone(), None, None);
-    let mut analysis = AnalysisState::new(stream, None, None);
+    let mut silent_reference = AnalysisState::new(
+        stream.clone(),
+        #[cfg(feature = "research")]
+        None,
+        #[cfg(feature = "research")]
+        None,
+    );
+    let mut analysis = AnalysisState::new(
+        stream,
+        #[cfg(feature = "research")]
+        None,
+        #[cfg(feature = "research")]
+        None,
+    );
     let mut r = wet(2);
     let mut a = source(SourceKind::Voice, 7);
     a.onset_history = true;

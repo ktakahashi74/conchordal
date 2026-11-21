@@ -58,6 +58,7 @@ pub struct ModalEngine {
 }
 
 impl ModalEngine {
+    #[cfg(any(test, feature = "research"))]
     pub(super) fn reset_representative(&mut self) {
         self.bank.reset_representative();
         self.coefficients_seeded = false;
@@ -108,6 +109,7 @@ impl ModalEngine {
         self.last_modes_len
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn phase3_sample(&mut self, pitch: f32, drive: f32, open: bool) -> f32 {
         if open {
             if self.counter == 0 || (pitch - self.last_built_pitch_hz).abs() > 1e-6 {
@@ -124,6 +126,7 @@ impl ModalEngine {
 
     /// MCF invariant Q = r*x^2-r*e*x*y+y^2. Include binary32 operation
     /// errors and gradual-underflow residue in the future free-response bound.
+    #[cfg(feature = "research")]
     pub(crate) fn phase3_residual_bound(&self) -> f64 {
         let u = f64::from(f32::EPSILON) / 2.0;
         let gamma = 6.0 * u / (1.0 - 6.0 * u);

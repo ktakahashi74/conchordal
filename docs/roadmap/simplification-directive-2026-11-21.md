@@ -72,7 +72,7 @@ Conchordal は `origin/main`（`dee5a91d`）時点で `src/` **181,191 行**・R
 
 ### Unit S2：コードの引き算 —— 廃止削除・研究隔離・`#[cfg(test)]` 掃除（目安：12/01〜12/08）
 
-**2026-11-21 完了（S2-a / S2-c の実施範囲）**。`2fdb8f2bcff994560992a4f29edec8fb22035257` に、承認済みの削除（Rhai 13入口、`use_incoherent_power`、`birth_surrogate`）と聴覚前段のテスト支援分離を統合。研究経路の隔離（S2-b）は完了日・統合 commit とも未記録。
+**2026-11-21 完了（S2-a / S2-b / S2-c）**。`2fdb8f2bcff994560992a4f29edec8fb22035257` に承認済み削除（Rhai 13入口、`use_incoherent_power`、`birth_surrogate`）と聴覚前段のテスト支援分離を統合。続く SIMP-S2B1 / S2B2 により、`Cargo.toml` の `research = []` feature（CI ゲート付き）へ `temporal_cognition` 16サブモジュール、`body_metabolism`、`render_prototype`、`felt_beat` の計 51 ファイル（約 30,700 行）を隔離完了。
 
 **前提**：Unit S1 で確定したリスト（分類 B・C のうちマニフェスト非依存のみ）を入力とする。削除と隔離は別 commit に分ける。
 

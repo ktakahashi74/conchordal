@@ -6,6 +6,7 @@ fn options() -> WiringOptions {
         end_request: Arc::new(AtomicBool::new(false)),
         duration_sec: None,
         offline_body_probe: None,
+        #[cfg(feature = "research")]
         raw_t2_delay: Duration::ZERO,
         ui_tx: None,
         listener_forced: false,
@@ -15,6 +16,7 @@ fn options() -> WiringOptions {
         wav_tx: None,
         reporter: None,
         deterministic_analysis: true,
+        #[cfg(feature = "research")]
         deterministic_footprints: true,
         guard_meter: None,
         underrun_frames: None,
@@ -121,11 +123,19 @@ fn l1_sample_acquisition() {
         &events,
     )
     .unwrap();
-    let mut config = AppConfig::default();
-    config.temporal_meter_t2 = std::env::var_os("L1_CONTINUOUS").is_some();
+    let config = AppConfig::default();
+    #[cfg(feature = "research")]
+    let config = {
+        let mut config = config;
+        config.temporal_meter_t2 = std::env::var_os("L1_CONTINUOUS").is_some();
+        config
+    };
     let mut opts = options();
     opts.deterministic_analysis = false;
-    opts.deterministic_footprints = false;
+    #[cfg(feature = "research")]
+    {
+        opts.deterministic_footprints = false;
+    }
     let wiring = wire_runtime(
         &config,
         48_000,
@@ -288,8 +298,14 @@ fn fixture(
     opts.score = score;
     let mut config = AppConfig::default();
     config.analysis.nfft = 2048;
-    config.render_prototype = true;
-    config.temporal_onset_comparison = Some(Default::default());
+    #[cfg(feature = "research")]
+    {
+        config.render_prototype = true;
+    }
+    #[cfg(feature = "research")]
+    {
+        config.temporal_onset_comparison = Some(Default::default());
+    }
     if opts.reporter.is_none() {
         opts.reporter =
             Some(JsonlReporter::create(dir.join("run.jsonl").to_str().unwrap()).unwrap());
@@ -319,7 +335,11 @@ fn join(wiring: RuntimeWiring) -> Result<(), String> {
 
 #[test]
 fn flora_meter_is_reserved_for_any_flora_and_observes_before_placement() {
-    for continuous in [false, true] {
+    for continuous in [
+        false,
+        #[cfg(feature = "research")]
+        true,
+    ] {
         for placement in ["", "let g = place(flora(), consonance(220, 880));"] {
             let has_flora = !placement.is_empty();
             let dir = std::env::temp_dir().join(format!(
@@ -352,7 +372,10 @@ fn flora_meter_is_reserved_for_any_flora_and_observes_before_placement() {
             }));
             let mut config = AppConfig::default();
             config.analysis.nfft = 2048;
-            config.temporal_meter_t2 = continuous;
+            #[cfg(feature = "research")]
+            {
+                config.temporal_meter_t2 = continuous;
+            }
             let wiring = wire_runtime(
                 &config,
                 48_000,
@@ -412,6 +435,7 @@ fn final_report_is_written_once_while_waiting_for_user_exit() {
     for kind in [
         "rhythm_summary",
         "listener_confidence_summary",
+        #[cfg(feature = "research")]
         "body_footprint_worker",
     ] {
         assert_eq!(
@@ -510,7 +534,14 @@ fn ui_rhythm_batch_retains_actual_hops_across_channel_backpressure() {
 
 #[test]
 fn nsgt_wiring_retains_only_requested_bus_power() {
-    for kind in ["none", "gui", "report", "tap", "flora"] {
+    for kind in [
+        "none",
+        "gui",
+        "report",
+        #[cfg(feature = "research")]
+        "tap",
+        "flora",
+    ] {
         let directory =
             std::env::temp_dir().join(format!("conchordal-nsgt-{}-{kind}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
@@ -521,10 +552,16 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
             ""
         };
         std::fs::write(&script,format!("seed(21); let g=place(sine().amp(0.05).sustain().anchor(),at(220)); {flora} wait(0.12); release(g); wait(0.05);")).unwrap();
-        let mut scenario = compile_scenario_from_script(&script, None).unwrap();
-        if kind == "tap" {
-            scenario.temporal_mode = crate::scenario::TemporalMode::Observe;
-        }
+        let scenario = compile_scenario_from_script(&script, None).unwrap();
+        #[cfg(feature = "research")]
+        let scenario = crate::scenario::Scenario {
+            temporal_mode: if kind == "tap" {
+                crate::scenario::TemporalMode::Observe
+            } else {
+                scenario.temporal_mode
+            },
+            ..scenario
+        };
         let mut config = AppConfig::default();
         config.analysis.nfft = 2048;
         config.dcc.coupling_strength = 0.0;
@@ -636,6 +673,7 @@ fn renderer_tail_does_not_bypass_ui_rate_limit_before_finish() {
 }
 
 #[test]
+#[cfg(feature = "research")]
 fn private_body_worker_panic_fails_the_run_after_final_report_flush() {
     let mut opts = options();
     opts.listener_forced = true;
@@ -773,6 +811,7 @@ fn unsupported_recovery_after_finalization_fails_the_worker_result() {
 }
 
 #[test]
+#[cfg(feature = "research")]
 fn final_ui_snapshot_is_retried_after_a_full_channel_becomes_available() {
     use crate::temporal_cognition::observation::ObservationState;
     let (tx, rx) = bounded(UI_CHANNEL_CAPACITY);
@@ -812,7 +851,12 @@ fn final_ui_snapshot_is_retried_after_a_full_channel_becomes_available() {
 
 #[test]
 fn flora_force_stop_ends_generation_without_waiting_for_release() {
-    for (prototype, room) in [(false, "off"), (true, "off"), (false, "both")] {
+    for (prototype, room) in [
+        (false, "off"),
+        #[cfg(feature = "research")]
+        (true, "off"),
+        (false, "both"),
+    ] {
         let dir = std::env::temp_dir().join(format!(
             "conchordal-flora-stop-{}-{prototype}-{}",
             std::process::id(),
@@ -855,7 +899,10 @@ fn flora_force_stop_ends_generation_without_waiting_for_release() {
         );
         let mut config = AppConfig::from_toml(&format!("[room]\nmode='{room}'")).unwrap();
         config.analysis.nfft = 2048;
-        config.render_prototype = prototype;
+        #[cfg(feature = "research")]
+        {
+            config.render_prototype = prototype;
+        }
         let wiring = wire_runtime(
             &config,
             48000,
@@ -2365,11 +2412,12 @@ fn natural_end_waits_for_the_queued_audio_tail() {
 #[test]
 fn wet_finish_follows_the_actual_dry_release_of_each_body() {
     let n = crate::core::room::york_response().len();
-    for (prototype, body) in [
+    for (_prototype, body) in [
         (
             false,
             "place(sine().sustain().anchor().adsr(0,0,1,0.1), at(220));",
         ),
+        #[cfg(feature = "research")]
         (
             true,
             "place(sine().sustain().anchor().adsr(0,0,1,0.1), at(220));",
@@ -2383,10 +2431,12 @@ fn wet_finish_follows_the_actual_dry_release_of_each_body() {
             "place(rain().amp(0.1).objects(4).rate(100).fade(0.2), consonance(220, 2000));",
         ),
     ] {
-        let config = AppConfig::from_toml(&format!(
-            "render_prototype={prototype}\n[room]\nmode='presentation'"
-        ))
-        .unwrap();
+        let config = AppConfig::from_toml("[room]\nmode='presentation'").unwrap();
+        #[cfg(feature = "research")]
+        let config = AppConfig {
+            render_prototype: _prototype,
+            ..config
+        };
         let (scene, _) =
             ScriptHost::compile_source(&format!("{body} wait(0.5);"), Some(21)).unwrap();
         let last = Arc::new(AtomicU64::new(0));

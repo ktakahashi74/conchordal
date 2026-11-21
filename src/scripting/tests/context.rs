@@ -118,6 +118,7 @@ fn temporal_mode_is_a_single_pre_performance_setting() {
         run_script("temporal_mode(\"off\");").0.temporal_mode,
         TemporalMode::Off
     );
+    #[cfg(feature = "research")]
     assert_eq!(
         run_script("temporal_mode(\"observe\"); create(sine(), 1);")
             .0
@@ -125,7 +126,9 @@ fn temporal_mode_is_a_single_pre_performance_setting() {
         TemporalMode::Observe
     );
     for script in [
+        #[cfg(feature = "research")]
         "temporal_mode(\"observe\"); temporal_mode(\"observe\");",
+        "temporal_mode(\"off\"); temporal_mode(\"off\");",
         "wait(1.0); temporal_mode(\"observe\");",
         "create(sine(), 1); temporal_mode(\"observe\");",
         "section(\"a\", || { temporal_mode(\"observe\"); });",
@@ -161,9 +164,22 @@ fn temporal_mode_is_a_single_pre_performance_setting() {
         ctx.lock().unwrap().scenario.temporal_mode,
         TemporalMode::Off
     );
+    #[cfg(feature = "research")]
     let _ = engine
         .eval::<Dynamic>("temporal_mode(\"observe\");")
         .unwrap();
+    #[cfg(not(feature = "research"))]
+    {
+        let err = engine
+            .eval::<Dynamic>("temporal_mode(\"observe\");")
+            .unwrap_err();
+        assert!(err.to_string().contains("requires the research feature"));
+        assert_eq!(
+            ctx.lock().unwrap().scenario.temporal_mode,
+            TemporalMode::Off
+        );
+        let _ = engine.eval::<Dynamic>("temporal_mode(\"off\");").unwrap();
+    }
 }
 
 #[test]
@@ -1277,6 +1293,7 @@ fn articulation_persistence_respawn_during_suspension_can_reenter_scope() {
                 0.,
                 1.,
                 0.8,
+                #[cfg(feature = "research")]
                 None,
                 None,
                 &mut out,
@@ -3208,6 +3225,27 @@ fn parallel_branch_emits_outer_handle_actions_at_its_own_end() {
 }
 
 #[test]
+#[cfg(not(feature = "research"))]
+fn felt_words_require_research_except_at_zero_weight() {
+    for (script, word) in [
+        ("observe_felt_beat();", "observe_felt_beat"),
+        ("let spec = sine().syncopate(1);", "syncopate"),
+        ("let spec = sine().syncopate(-0.25);", "syncopate"),
+        ("let spec = sine().syncopate(1e-100);", "syncopate"),
+    ] {
+        let error = run_script_err(script);
+        assert!(
+            error
+                .to_string()
+                .contains(&format!("{word} requires the research feature")),
+            "{script}: {error}"
+        );
+    }
+    run_script("place(sine().metric().syncopate(0).syncopate(0.0), at(220)); wait(1);");
+}
+
+#[test]
+#[cfg(feature = "research")]
 fn felt_generation_is_initial_only_validated_and_inherited_by_templates() {
     for chain in ["metric().syncopate(2)", "syncopate(2).metric()"] {
         let s = first_spawn_spec_for_script(&format!(
@@ -3238,6 +3276,7 @@ fn felt_generation_is_initial_only_validated_and_inherited_by_templates() {
 }
 
 #[test]
+#[cfg(feature = "research")]
 fn felt_observation_header_reserves_endless_and_is_ignored_for_finite_scenes() {
     let (s, warnings) = run_script(
         "observe_felt_beat(); place(harmonic().metric().syncopate(1),at(220)); wait(1);",

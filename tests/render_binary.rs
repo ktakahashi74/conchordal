@@ -4,8 +4,10 @@ use std::process::Command;
 use std::sync::{Arc, atomic::AtomicBool};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(feature = "research")]
 #[path = "support/test_output_directory.rs"]
 mod test_output_directory;
+#[cfg(feature = "research")]
 use test_output_directory::TestOutputDirectory;
 
 fn unique_temp_path(ext: &str) -> PathBuf {
@@ -91,6 +93,7 @@ fn conchordal_render_generates_valid_wav() {
 }
 
 #[test]
+#[cfg(feature = "research")]
 fn temporal_observation_preserves_audio_and_finishes_both_buses() {
     let config = unique_temp_path("toml");
     fs::write(
@@ -774,6 +777,7 @@ wait(0.1);
 }
 
 #[test]
+#[cfg(feature = "research")]
 fn body_prototypes_match_actual_descriptors_without_changing_audio() {
     use conchordal::config::{
         AppConfig, ArrivalModel, TemporalAcousticConfig, TemporalBodyConfig, TemporalBodyMedoid,
@@ -1013,6 +1017,7 @@ wait(0.3);
 }
 
 #[test]
+#[cfg(feature = "research")]
 fn private_body_descriptors_use_real_routes_and_do_not_change_audio() {
     let config = unique_temp_path("toml");
     fs::write(
@@ -1131,6 +1136,7 @@ wait(2.1);
 }
 
 #[test]
+#[cfg(feature = "research")]
 fn footprint_only_renders_repeat_exactly_without_observe_or_body_analysis() {
     let directory = unique_temp_path("dir");
     let _output = TestOutputDirectory::new(directory.clone());

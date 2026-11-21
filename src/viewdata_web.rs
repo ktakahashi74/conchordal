@@ -1,7 +1,9 @@
 //! Display projection shared by native acquisition and the GUI-free Web Worker.
 use super::{UiFrame, VoiceStateInfo};
-use conchordal_web_ui::frame::{self as wire, Diagnostic};
+use conchordal_web_ui::frame as wire;
+use conchordal_web_ui::frame::Diagnostic;
 
+#[cfg(feature = "research")]
 pub(crate) fn diagnostics(frame: &UiFrame) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     // The GUI draws the "Listener Twin" heading with its state bars even before the
@@ -160,6 +162,11 @@ pub(crate) fn diagnostics(frame: &UiFrame) -> Vec<Diagnostic> {
     }
     out
 }
+#[cfg(not(feature = "research"))]
+pub(crate) fn diagnostics(_frame: &UiFrame) -> Vec<Diagnostic> {
+    Vec::new()
+}
+
 pub(crate) fn support_scans(voice: &VoiceStateInfo, bins: usize) -> Option<[Vec<f64>; 3]> {
     let reference = voice.support.as_ref()?;
     let mut scans = std::array::from_fn(|_| vec![0.; bins]);

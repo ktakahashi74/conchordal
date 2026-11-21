@@ -33,8 +33,14 @@ fn render_case(
     std::fs::create_dir_all(directory).unwrap();
     let script_path = directory.join("input.rhai");
     std::fs::write(&script_path, script).unwrap();
-    let mut config: AppConfig = toml::from_str(CONFIG).unwrap();
-    config.render_prototype = native;
+    let config: AppConfig = toml::from_str(CONFIG).unwrap();
+    #[cfg(feature = "research")]
+    let config = AppConfig {
+        render_prototype: native,
+        ..config
+    };
+    #[cfg(not(feature = "research"))]
+    let _ = native;
     config.validate().unwrap();
     let mut scenario = compile_scenario_from_script(&script_path, None).unwrap();
     for action in scenario
@@ -130,6 +136,7 @@ fn render_case(
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
+            #[cfg(feature = "research")]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: true,
@@ -139,6 +146,7 @@ fn render_case(
             wav_tx: Some(wav_tx),
             reporter: Some(reporter),
             deterministic_analysis: true,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter,
             underrun_frames: None,
@@ -237,7 +245,11 @@ fn articulation_persistence_fixed_base_peer_full_audio_and_release_report_match(
 fn articulation_persistence_all_bodies_both_renderers_flow_repeat() {
     let directory = output_directory("bodies");
     let _output = TestOutputDirectory::new(directory.clone());
-    for native in [false, true] {
+    for native in [
+        false,
+        #[cfg(feature = "research")]
+        true,
+    ] {
         for body in ["sine", "harmonic", "modal"] {
             let script = ONE
                 .replace("harmonic()", &format!("{body}()"))
@@ -278,6 +290,7 @@ fn articulation_persistence_audition_materials() {
             changed(ONE, "0.75").replace("entrained()", "flow()"),
             false,
         ),
+        #[cfg(feature = "research")]
         (
             "modal-p075",
             changed(ONE, "0.75").replace("harmonic()", "modal()"),
@@ -318,7 +331,11 @@ fn tie_forced_attack_and_explicit_zero_match_one_and_peer_complete_output() {
 fn tie_all_bodies_renderers_flow_rest_persistence_and_repeat() {
     let directory = output_directory("tie-bodies");
     let _output = TestOutputDirectory::new(directory.clone());
-    for native in [false, true] {
+    for native in [
+        false,
+        #[cfg(feature = "research")]
+        true,
+    ] {
         for body in ["sine", "harmonic", "modal"] {
             for extra in ["", ".cycles(2).rest(1).articulation_persistence(0.75)"] {
                 let script = ONE

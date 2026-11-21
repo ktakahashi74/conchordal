@@ -67,6 +67,7 @@ pub struct VoiceMetadata {
 #[derive(Debug)]
 pub(crate) struct VoiceSupportState {
     pub(crate) body: super::support_action::Body,
+    #[cfg(feature = "research")]
     pub(crate) renderer_phase3: bool,
     onset: Option<(BodySnapshot, crate::life::sound::Tone)>,
     held_opportunities: Vec<(Tick, Option<Tick>)>,
@@ -266,6 +267,7 @@ impl Voice {
 
         let mut phonation_engine =
             PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
+        #[cfg(feature = "research")]
         if effective_control.phonation.syncopate > 0.0 {
             phonation_engine.felt = Some(Box::new(super::phonation_engine::FeltRhythm::new(
                 effective_control.phonation.syncopate,
@@ -490,6 +492,7 @@ impl Voice {
         let mut voice = Voice {
             support: VoiceSupportState {
                 body: Default::default(),
+                #[cfg(feature = "research")]
                 renderer_phase3: false,
                 onset: None,
                 held_opportunities: Vec::new(),

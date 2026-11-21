@@ -19,18 +19,22 @@ use crate::core::onset::{Onset, OnsetDetector, REFRACTORY_SEC};
 use crate::core::phase::wrap_pm_pi;
 
 #[path = "meter/continuous_recurrence.rs"]
+#[cfg(feature = "research")]
 mod continuous;
+#[cfg(feature = "research")]
 pub(crate) use continuous::{Diagnostics as ContinuousDiagnostics, Packet as TemporalPacket};
 
 #[derive(Debug)]
 enum RecurrenceInput {
     Events(Recurrence),
+    #[cfg(feature = "research")]
     Continuous(Box<continuous::State>),
 }
 impl RecurrenceInput {
     fn events(&self) -> Option<&Recurrence> {
         match self {
             Self::Events(s) => Some(s),
+            #[cfg(feature = "research")]
             Self::Continuous(_) => None,
         }
     }
@@ -388,8 +392,11 @@ impl Recurrence {
 /// detection). One instance per listener.
 #[derive(Debug)]
 pub struct MeterNetwork {
+    #[cfg(feature = "research")]
     felt_beat: Option<Box<crate::core::felt_beat::FeltBeat>>,
+    #[cfg(feature = "research")]
     felt_period_guard: bool,
+    #[cfg(feature = "research")]
     felt_input: Option<Box<crate::core::felt_input::FeltInput>>,
     recurrence: RecurrenceInput,
     // Beat oscillator state.
@@ -433,8 +440,11 @@ impl Default for MeterNetwork {
 impl MeterNetwork {
     fn with_input(recurrence: RecurrenceInput) -> Self {
         Self {
+            #[cfg(feature = "research")]
             felt_beat: None,
+            #[cfg(feature = "research")]
             felt_period_guard: false,
+            #[cfg(feature = "research")]
             felt_input: None,
             recurrence,
             beat_phi: 0.0,
@@ -467,30 +477,36 @@ impl MeterNetwork {
         Self::default()
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn enable_felt_beat(&mut self, params: crate::config::FeltBeatParams) {
         self.felt_beat = Some(Box::new(crate::core::felt_beat::FeltBeat::new(params)));
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn enable_felt_input(&mut self, fs: f32, hop: usize) {
         if self.felt_beat.is_some() {
             self.felt_input = Some(Box::new(crate::core::felt_input::FeltInput::new(fs, hop)));
         }
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn needs_felt_bands(&self) -> bool {
         self.felt_input.is_some()
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn set_felt_bands(&mut self, end: u64, bands: Option<[f32; 3]>) {
         if let Some(input) = self.felt_input.as_mut() {
             input.set_bands(end, bands);
         }
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn enable_felt_period_guard(&mut self) {
         self.felt_period_guard = true;
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn felt_beat(&self) -> Option<crate::core::felt_beat::FeltBeatState> {
         self.felt_beat.as_ref().map(|f| {
             let mut state = f.state();
@@ -538,14 +554,18 @@ impl MeterNetwork {
             .map_or(0, |s| s.origin_tick + (s.time * 1e9).round() as u64);
         self.process_at(start, (dt as f64 * 1e9).round() as usize, 1e9, Some(drive))
     }
+    #[cfg(feature = "research")]
     fn continuous(&self) -> Option<&continuous::State> {
         match &self.recurrence {
+            #[cfg(feature = "research")]
             RecurrenceInput::Continuous(s) => Some(s),
             _ => None,
         }
     }
+    #[cfg(feature = "research")]
     fn continuous_mut(&mut self) -> Option<&mut continuous::State> {
         match &mut self.recurrence {
+            #[cfg(feature = "research")]
             RecurrenceInput::Continuous(s) => Some(s),
             _ => None,
         }
@@ -575,6 +595,7 @@ impl MeterNetwork {
         fs: f32,
     ) -> MeterState {
         let preference_weight = self.shaping.stability;
+        #[cfg(feature = "research")]
         let drive_known = drive.is_some();
         let drive = drive.unwrap_or(0.0);
         let confirmed_period = self.confirm_period(dt, onset, start, hop, fs);
@@ -617,16 +638,17 @@ impl MeterNetwork {
             *age += dt;
         }
         self.accumulate_evidence(dt, onset.fired, seeded_now, observed_phi, drive);
-        if let RecurrenceInput::Events(state) = &mut self.recurrence
-            && onset.fired
-            && self.seeded
-            && !seeded_now
-        {
-            state.issue();
+        if onset.fired && self.seeded && !seeded_now {
+            match &mut self.recurrence {
+                RecurrenceInput::Events(state) => state.issue(),
+                #[cfg(feature = "research")]
+                RecurrenceInput::Continuous(_) => {}
+            }
         }
         let att_a = (-dt / 0.3).exp();
         self.attention_ema = att_a * self.attention_ema + (1.0 - att_a) * drive;
         self.last = self.build_state();
+        #[cfg(feature = "research")]
         if let Some(felt) = self.felt_beat.as_mut() {
             if !drive_known {
                 felt.invalidate();
@@ -695,6 +717,7 @@ impl MeterNetwork {
         fs: f32,
     ) -> Option<f32> {
         let confirmed_period = match &mut self.recurrence {
+            #[cfg(feature = "research")]
             RecurrenceInput::Continuous(state) => {
                 let onset_tick = state.fast_start as f64
                     + dt as f64 * onset.frac as f64 * state.sample_rate() as f64;
@@ -817,6 +840,7 @@ impl MeterNetwork {
                     }
                     // Author rule: the felt half-peak explains odd half-cycle multiples.
                     // Observation alone must never change the acoustic meter.
+                    #[cfg(feature = "research")]
                     if self.felt_period_guard
                         && self.felt_beat.as_ref().is_some_and(|felt| {
                             let state = felt.state();
@@ -842,6 +866,7 @@ impl MeterNetwork {
         if let (Some(period), Some(frequency)) = (confirmed_period, proposal) {
             let ratio = frequency * period;
             match &mut self.recurrence {
+                #[cfg(feature = "research")]
                 RecurrenceInput::Continuous(state) => state.accept(ratio.min(1.0 / ratio)),
                 RecurrenceInput::Events(state) => state.accept(period, ratio.min(1.0 / ratio)),
             }
@@ -855,6 +880,7 @@ impl MeterNetwork {
         self.beat_cycles = wrap_beat_cycles(self.beat_omega * dt * (1.0 - onset_frac) / TAU);
         // A new coordinate discards old evidence; this onset cannot certify itself.
         match &mut self.recurrence {
+            #[cfg(feature = "research")]
             RecurrenceInput::Continuous(state) => state.seed(),
             RecurrenceInput::Events(state) => state.reset_evidence(),
         }
@@ -974,6 +1000,7 @@ impl MeterNetwork {
 
         let beat_plv = (self.beat_re * self.beat_re + self.beat_im * self.beat_im).sqrt() / count;
         let beat_conf = match &self.recurrence {
+            #[cfg(feature = "research")]
             RecurrenceInput::Continuous(state) => state.confidence(beat_plv, presence),
             RecurrenceInput::Events(state) => {
                 let support = if state.multi {
@@ -1102,6 +1129,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "research")]
     fn felt_period_guard_external_trains() {
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("../../tests/research/felt_period_trains.json"))

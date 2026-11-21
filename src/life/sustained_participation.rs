@@ -66,7 +66,9 @@ impl Voice {
         state: &CoreState,
         consonance: f32,
         target_amp: f32,
-        arrival: Option<&crate::life::arrival_cost::ArrivalContext<'_>>,
+        #[cfg(feature = "research")] arrival: Option<
+            &crate::life::arrival_cost::ArrivalContext<'_>,
+        >,
         space: Option<&Log2Space>,
         out: &mut PhonationBatch,
     ) {
@@ -94,7 +96,13 @@ impl Voice {
                             .map(|m| m.at),
                     );
                     self.prepare_span_segment(&segment, space);
-                    self.tick_participation_segment(&segment, state, arrival, out);
+                    self.tick_participation_segment(
+                        &segment,
+                        state,
+                        #[cfg(feature = "research")]
+                        arrival,
+                        out,
+                    );
                 }
                 let segment = self.phonation_segment(ctx, step.at, step.at.saturating_add(1));
                 self.phonation_engine.set_adoption_candidate(
@@ -106,13 +114,25 @@ impl Voice {
                         .map(|m| m.at),
                 );
                 self.prepare_span_segment(&segment, space);
-                self.tick_participation_segment(&segment, state, arrival, out);
+                self.tick_participation_segment(
+                    &segment,
+                    state,
+                    #[cfg(feature = "research")]
+                    arrival,
+                    out,
+                );
                 cursor = step.at.saturating_add(1);
             }
             if cursor < ctx.frame_end {
                 let segment = self.phonation_segment(ctx, cursor, ctx.frame_end);
                 self.prepare_span_segment(&segment, space);
-                self.tick_participation_segment(&segment, state, arrival, out);
+                self.tick_participation_segment(
+                    &segment,
+                    state,
+                    #[cfg(feature = "research")]
+                    arrival,
+                    out,
+                );
             }
         }
         if deferred
@@ -453,6 +473,7 @@ mod tests {
             },
             0.8,
             0.1,
+            #[cfg(feature = "research")]
             None,
             None,
             &mut out,
@@ -501,6 +522,7 @@ mod tests {
         ));
     }
     #[test]
+    #[cfg(feature = "research")]
     fn deferred_participation_skip_preserves_pending_pitch_and_tone() {
         for steady in [false, true] {
             (|| {
@@ -756,6 +778,7 @@ mod tests {
         }
     }
     #[test]
+    #[cfg(feature = "research")]
     fn sustained_participation_skip_keeps_the_current_tone() {
         for steady in [false, true] {
             {
@@ -1094,6 +1117,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn rest_intent_consumes_opportunities_without_cost_skip_or_prediction() {
         let (mut v, tb, r, mut out) = rest_setup(1.);
         v.phonation_engine
@@ -1292,6 +1316,7 @@ mod tests {
             0.,
             1.,
             0.8,
+            #[cfg(feature = "research")]
             None,
             Some(bounded_space()),
             out,
@@ -1562,6 +1587,7 @@ mod tests {
             },
             0.8,
             0.1,
+            #[cfg(feature = "research")]
             None,
             Some(bounded_space()),
             &mut out,
@@ -1626,6 +1652,7 @@ mod tests {
         assert_eq!((counts.count, counts.bytes), (0, 0));
     }
     #[test]
+    #[cfg(feature = "research")]
     fn bounded_skip_preserves_pending_pitch_and_tone() {
         for steady in [false, true] {
             (|| {
@@ -2105,6 +2132,7 @@ mod tests {
                 0.0,
                 1.0,
                 0.8,
+                #[cfg(feature = "research")]
                 None,
                 Some(space),
                 &mut out,
@@ -2114,6 +2142,7 @@ mod tests {
         assert_eq!((counts.count, counts.bytes), (0, 0));
     }
     #[test]
+    #[cfg(feature = "research")]
     fn articulation_persistence_cost_skip_cannot_be_forced_into_an_on() {
         for steady in [false, true] {
             {
@@ -2174,6 +2203,7 @@ mod tests {
                 0.0,
                 1.0,
                 0.8,
+                #[cfg(feature = "research")]
                 None,
                 Some(space),
                 &mut a,
@@ -2190,6 +2220,7 @@ mod tests {
                 0.0,
                 1.0,
                 0.8,
+                #[cfg(feature = "research")]
                 None,
                 Some(space),
                 &mut b,

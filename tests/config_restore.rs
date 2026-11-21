@@ -141,15 +141,25 @@ fn config_load_custom_values() {
     let path_str = path.to_string_lossy().to_string();
     let custom = AppConfig {
         room: None,
+        #[cfg(feature = "research")]
         body_metabolism: None,
+        #[cfg(feature = "research")]
         render_prototype: false,
+        #[cfg(feature = "research")]
         temporal_meter_t2: false,
+        #[cfg(feature = "research")]
         temporal_ridge: None,
+        #[cfg(feature = "research")]
         temporal_acoustic: None,
+        #[cfg(feature = "research")]
         temporal_period: None,
+        #[cfg(feature = "research")]
         temporal_t2: None,
+        #[cfg(feature = "research")]
         temporal_body: None,
+        #[cfg(feature = "research")]
         temporal_body_prototypes: None,
+        #[cfg(feature = "research")]
         temporal_onset_comparison: None,
         audio: AudioConfig {
             latency_ms: 75.0,
@@ -158,6 +168,7 @@ fn config_load_custom_values() {
             output_gain_db: Some(-3.0),
         },
         analysis: AnalysisConfig {
+            #[cfg(feature = "research")]
             felt_beat: None,
             nfft: 8192,
             hop_size: 256,

@@ -101,6 +101,7 @@ rustfft = { version = "6", features = ["wasm_simd"] }
 default = ["native"]
 native = ["dep:ringbuf", "dep:clap", "dep:ctrlc", "dep:egui", "dep:egui_plot", "dep:eframe", "dep:cpal", "dep:hound", "dep:crossbeam-channel", "dep:tracing-subscriber", "rand/thread_rng", "rhai/default"]
 web = ["dep:web-time", "rhai/no_time"]
+research = []
 profile-alloc = []
 # Temporary proposal replay for the isolated T-31 prototype.
 loo-diagnostic = []

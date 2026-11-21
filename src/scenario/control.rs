@@ -344,6 +344,7 @@ impl Default for PitchControl {
 
 #[derive(Debug, Clone, Default)]
 pub struct PhonationControl {
+    #[cfg(feature = "research")]
     pub(crate) syncopate: f32,
     pub spec: crate::scenario::PhonationSpec,
     pub gate: PhonationGate,

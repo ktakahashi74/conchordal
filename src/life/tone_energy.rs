@@ -65,6 +65,7 @@ impl ToneEnergy {
     }
 
     /// Reuse this tone's energy evaluated at the same tick and intervention.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn sine_point_from_energy(
         self,
         tick: u64,
@@ -92,6 +93,7 @@ impl ToneEnergy {
 
     /// Ticks where this tone's envelope or control changes slope; zero marks an unused
     /// slot. Spans cut here keep each frozen-envelope rule on one smooth piece.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn breakpoints(self, intervention: Option<ScheduledRelease>) -> [u64; 32] {
         let mut out = [0; 32];
         let mut n = 0;
@@ -142,6 +144,7 @@ impl ToneEnergy {
     /// envelope decay keeps `2 lambda h <= 0.1`; an envelope or modulator attack, whose two
     /// ramps make the energy a quartic, uses 32 spans. Partial beats inside a tone ride on
     /// these pieces, so they need more than the smooth Simpson bound alone would ask for.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn fast_span(
         self,
         [from, to]: [u64; 2],
@@ -171,6 +174,7 @@ impl ToneEnergy {
     /// envelope energy, times a bank lane's own squared gain, is read as a local exponential
     /// whose mean is Simpson's rule; its rate joins the carrier's log decay, so the kernel
     /// integrates envelope and carrier together instead of multiplying two span means.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn add_span(
         self,
         window: &mut CoherentWindow,
@@ -264,6 +268,7 @@ impl ToneEnergy {
 
     /// Add this tone's carriers, reusing its energy at the same tick and intervention:
     /// the sine, or every lane of a harmonic or modal bank.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn add_carriers(
         self,
         window: &mut CoherentWindow,
@@ -307,12 +312,14 @@ impl ToneEnergy {
 }
 
 #[derive(Clone, Copy)]
+#[cfg(any(test, feature = "research"))]
 pub(crate) struct CoherentWindow {
     points: [([f64; 4], u64, u64); 64],
     len: usize,
     complete: bool,
 }
 
+#[cfg(any(test, feature = "research"))]
 impl CoherentWindow {
     pub(crate) fn new() -> Self {
         Self {
@@ -483,6 +490,7 @@ impl CoherentWindow {
     }
 }
 
+#[cfg(any(test, feature = "research"))]
 impl CoherentWindow {
     /// The same integer-sample mean for carriers `Re(a exp(u k))` with a per-sample log
     /// decay in `u`, as complex geometric sums about the midpoint.

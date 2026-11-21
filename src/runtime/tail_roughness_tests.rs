@@ -12,12 +12,19 @@ wait(3); q.amp(0.2); wait(3); release(q); wait(2); release(p); wait(2);
 "#;
 const CONFIG: &str = include_str!("../../tests/fixtures/articulation_persistence/scene.toml");
 
-fn render(directory: &Path, script: &str, mut config: AppConfig, native: bool) {
+fn render(directory: &Path, script: &str, config: AppConfig, native: bool) {
     std::fs::create_dir_all(directory).unwrap();
     let script_path = directory.join("input.rhai");
     std::fs::write(&script_path, script).unwrap();
-    config.render_prototype = native;
+    #[cfg(feature = "research")]
+    let config = AppConfig {
+        render_prototype: native,
+        ..config
+    };
+    #[cfg(not(feature = "research"))]
+    let _ = native;
     config.validate().unwrap();
+    let mut config = config;
     let stop_flag = Arc::new(AtomicBool::new(false));
     let end_request = Arc::new(AtomicBool::new(false));
     let (label, scenario, score) = load_scenario(
@@ -76,6 +83,7 @@ fn render(directory: &Path, script: &str, mut config: AppConfig, native: bool) {
             end_request,
             duration_sec: None,
             offline_body_probe: Some(probe),
+            #[cfg(feature = "research")]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: true,
@@ -85,6 +93,7 @@ fn render(directory: &Path, script: &str, mut config: AppConfig, native: bool) {
             wav_tx: Some(wav_tx),
             reporter: Some(reporter),
             deterministic_analysis: true,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter,
             underrun_frames: None,
@@ -109,7 +118,11 @@ fn render(directory: &Path, script: &str, mut config: AppConfig, native: bool) {
 fn tail_roughness_zero_preserves_whole_wav_events_and_rng() {
     let root = std::env::temp_dir().join(format!("conchordal-tail-zero-{}", std::process::id()));
     let _cleanup = super::test_output_directory::TestOutputDirectory::new(root.clone());
-    for native in [false, true] {
+    for native in [
+        false,
+        #[cfg(feature = "research")]
+        true,
+    ] {
         let a = root.join(format!("{native}-default"));
         let b = root.join(format!("{native}-zero"));
         render(
@@ -157,6 +170,9 @@ fn tail_roughness_reference_acquisition() {
         |path| std::fs::read_to_string(path).unwrap(),
     );
     let config: AppConfig = toml::from_str(&config).unwrap();
+    #[cfg(feature = "research")]
     let native = config.render_prototype;
+    #[cfg(not(feature = "research"))]
+    let native = false;
     render(Path::new(&output), &script, config, native);
 }

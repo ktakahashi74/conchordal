@@ -63,6 +63,12 @@ jobs:
       - name: Tests
         run: cargo test
 
+      - name: Research feature
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          cargo clippy --all-targets --features research -- -D warnings
+          cargo test --features research
+
       - name: Set up Python
         if: matrix.os == 'ubuntu-latest'
         uses: actions/setup-python@v5

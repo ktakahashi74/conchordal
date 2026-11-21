@@ -2,13 +2,18 @@ use super::*;
 
 /// Immutable per-run settings and shared control flags for the worker thread.
 pub(super) struct WorkerConfig {
+    #[cfg(feature = "research")]
     pub(super) felt_beat: Option<crate::config::FeltBeatParams>,
+    #[cfg(feature = "research")]
     pub(super) felt_period_guard: bool,
     pub(super) harmonic_relations: Option<(Arc<crate::core::harmonic_support::Geometry>, usize)>,
     /// Reserve the habitat audio-only meter (Flora, harmonic rhythm, Rain follow_meter).
     pub(super) habitat_meter: bool,
+    #[cfg(feature = "research")]
     pub(super) render_prototype: bool,
+    #[cfg(feature = "research")]
     pub(super) temporal_meter_t2: bool,
+    #[cfg(feature = "research")]
     pub(super) onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
     pub(super) scenario_name: String,
     pub(super) wait_user_exit: bool,
@@ -30,12 +35,15 @@ pub(super) struct WorkerConfig {
     /// Offline/report paths consume analysis with a fixed lag so results do not
     /// depend on worker scheduling. Real-time leaves the listener best-effort.
     pub(super) deterministic_analysis: bool,
+    #[cfg(feature = "research")]
     pub(super) deterministic_footprints: bool,
 }
 
 /// Channel endpoints and the audio ring-buffer producer owned by the worker.
 pub(super) struct WorkerChannels {
+    #[cfg(feature = "research")]
     pub(super) t2_inbox: Option<crate::temporal_cognition::t2::runtime_input::Inbox>,
+    #[cfg(feature = "research")]
     pub(super) temporal_snapshots:
         [Option<Arc<std::sync::Mutex<crate::temporal_cognition::observation::Snapshot>>>; 2],
     pub(super) ui_tx: Option<Sender<UiFrame>>,
@@ -125,14 +133,19 @@ pub(super) struct TemporalState {
     pub(super) harmonic_clock: Option<crate::life::harmonic_rhythm::HarmonicRhythm>,
     pub(super) flora_meter: Option<MeterNetwork>,
     pub(super) flora_rhythm: crate::life::flora::TemporalObservation,
+    #[cfg(feature = "research")]
     pub(super) t2_sample: Option<crate::life::report::TemporalMeterSample>,
     pub(super) temporal_expectation:
         Option<crate::core::temporal_expectation::AcousticTemporalExpectation>,
+    #[cfg(feature = "research")]
     pub(super) body_snapshot: Option<Box<crate::temporal_cognition::body::Snapshot>>,
+    #[cfg(feature = "research")]
     pub(super) footprint_worker: Option<crate::life::onset_footprint::Worker>,
+    #[cfg(feature = "research")]
     pub(super) temporal_frames: Box<[crate::temporal_cognition::observation::Snapshot; 2]>,
     pub(super) participation_predictions: Vec<(u64, u32, ParticipationPrediction)>,
     /// Traced decisions wait here so their encoding is charged to the report phase.
+    #[cfg(feature = "research")]
     pub(super) participation_decisions: Vec<(
         u64,
         crate::life::temporal_participation::ParticipationDecision,
@@ -248,29 +261,31 @@ impl WorkerState {
             fs: cfg.fs,
             hop: cfg.hop,
         };
-        let mut prod_meter = if cfg.temporal_meter_t2 {
-            MeterNetwork::new_continuous(cfg.fs as u32, cfg.hop as u64)
-        } else {
+        let new_meter = || {
+            #[cfg(feature = "research")]
+            if cfg.temporal_meter_t2 {
+                return MeterNetwork::new_continuous(cfg.fs as u32, cfg.hop as u64);
+            }
             MeterNetwork::new()
         };
+        let mut prod_meter = new_meter();
         prod_meter.set_shaping(cfg.meter_shaping);
-        let flora_meter = (cfg.habitat_meter || cfg.harmonic_rhythm > 0 || cfg.felt_beat.is_some())
-            .then(|| {
-                let mut meter = if cfg.temporal_meter_t2 {
-                    MeterNetwork::new_continuous(cfg.fs as u32, cfg.hop as u64)
-                } else {
-                    MeterNetwork::new()
-                };
-                meter.set_shaping(cfg.meter_shaping);
-                if let Some(params) = cfg.felt_beat {
-                    meter.enable_felt_beat(params);
-                    meter.enable_felt_input(cfg.fs, cfg.hop);
-                    if cfg.felt_period_guard {
-                        meter.enable_felt_period_guard();
-                    }
+        let needs_flora_meter = cfg.habitat_meter || cfg.harmonic_rhythm > 0;
+        #[cfg(feature = "research")]
+        let needs_flora_meter = needs_flora_meter || cfg.felt_beat.is_some();
+        let flora_meter = needs_flora_meter.then(|| {
+            let mut meter = new_meter();
+            meter.set_shaping(cfg.meter_shaping);
+            #[cfg(feature = "research")]
+            if let Some(params) = cfg.felt_beat {
+                meter.enable_felt_beat(params);
+                meter.enable_felt_input(cfg.fs, cfg.hop);
+                if cfg.felt_period_guard {
+                    meter.enable_felt_period_guard();
                 }
-                meter
-            });
+            }
+            meter
+        });
         let mut generator_model =
             crate::life::generator_model::GeneratorModel::new(timebase, log_space.clone());
         generator_model.advance_to(timebase.frame_start_tick(0));
@@ -293,6 +308,7 @@ impl WorkerState {
             warn!("listener contour reporting unavailable below 2400 Hz sample rate");
         }
         let now = Instant::now();
+        #[cfg(feature = "research")]
         let temporal_frames = Default::default();
         let monitor = AudioMonitor::new();
         let harmonic_clock = (cfg.harmonic_rhythm > 0).then(|| {
@@ -303,6 +319,9 @@ impl WorkerState {
         });
         let temporal_expectation =
             crate::core::temporal_expectation::AcousticTemporalExpectation::new(cfg.fs as u32);
+        let schedule_renderer = ScheduleRenderer::new(timebase).with_expression(expression);
+        #[cfg(feature = "research")]
+        let schedule_renderer = schedule_renderer.with_prototype(cfg.render_prototype);
         Self {
             #[cfg(test)]
             offline_body_probe: None,
@@ -327,9 +346,7 @@ impl WorkerState {
             },
             #[cfg(not(feature = "native"))]
             loo_storage: Some(Default::default()),
-            schedule_renderer: ScheduleRenderer::new(timebase)
-                .with_prototype(cfg.render_prototype)
-                .with_expression(expression),
+            schedule_renderer,
             phonation_batches_buf: Vec::new(),
             lifecycle: PlaybackLifecycle {
                 playback_state: PlaybackState::NotStarted,
@@ -367,10 +384,13 @@ impl WorkerState {
                 harmonic_clock,
                 flora_meter,
                 flora_rhythm: Default::default(),
+                #[cfg(feature = "research")]
                 t2_sample: None,
                 temporal_expectation,
+                #[cfg(feature = "research")]
                 body_snapshot: None,
                 #[cfg(feature = "native")]
+                #[cfg(feature = "research")]
                 footprint_worker: cfg.onset_comparison.map(|_| {
                     let mut worker = crate::life::onset_footprint::Worker::new();
                     if cfg.deterministic_footprints {
@@ -379,9 +399,12 @@ impl WorkerState {
                     worker
                 }),
                 #[cfg(not(feature = "native"))]
+                #[cfg(feature = "research")]
                 footprint_worker: None,
+                #[cfg(feature = "research")]
                 temporal_frames,
                 participation_predictions: Vec::new(),
+                #[cfg(feature = "research")]
                 participation_decisions: Vec::new(),
             },
         }
@@ -404,6 +427,7 @@ pub(super) fn worker_loop(
     #[cfg(test)]
     let mut l1_probe = super::l1_probe::Probe::new("audio");
 
+    #[cfg(feature = "research")]
     for (target, snapshot) in state
         .temporal
         .temporal_frames
@@ -415,7 +439,7 @@ pub(super) fn worker_loop(
         }
     }
     if let Some(tx) = &channels.ui_tx {
-        let mut initial_frame = build_initial_ui_frame(
+        let initial_frame = build_initial_ui_frame(
             &cfg.scenario_name,
             &state.conductor,
             &state.pop,
@@ -424,7 +448,11 @@ pub(super) fn worker_loop(
             state.lifecycle.playback_state,
             cfg.fs,
         );
-        initial_frame.temporal = Arc::new(*state.temporal.temporal_frames);
+        #[cfg(feature = "research")]
+        let initial_frame = UiFrame {
+            temporal: Arc::new(*state.temporal.temporal_frames),
+            ..initial_frame
+        };
         let _ = tx.try_send(initial_frame);
     }
 
@@ -600,6 +628,7 @@ pub(super) fn finish_run(
             }
         }
     }
+    #[cfg(feature = "research")]
     if let Some(worker) = state.temporal.footprint_worker.as_mut() {
         worker.finish();
         route_body_footprints(
@@ -614,6 +643,7 @@ pub(super) fn finish_run(
             |writer| writer.write_body_footprint_worker(&worker.stats),
         );
     }
+    #[cfg(feature = "research")]
     if let Some(capture) = state.schedule_renderer.body_capture.as_mut() {
         capture.finish();
         let snapshot = capture.snapshot();
@@ -632,6 +662,7 @@ pub(super) fn finish_run(
         });
     }
 
+    #[cfg(feature = "research")]
     if (channels.temporal_snapshots.iter().any(Option::is_some) || channels.t2_inbox.is_some())
         && channels.audio_to_analysis_tx.is_some()
     {
@@ -665,6 +696,7 @@ pub(super) fn finish_run(
         }
         let now_sec = state.current_time();
 
+        #[cfg(feature = "research")]
         for (target, snapshot) in state
             .temporal
             .temporal_frames
@@ -705,9 +737,12 @@ pub(super) fn finish_run(
         .as_mut()
         .and_then(|writer| writer.failure.take());
     if let Some(profile) = state.profile.as_mut() {
-        use crate::runtime_profile::{BackgroundProfile, BodyWorkerProfile, SharedWorkerProfile};
+        use crate::runtime_profile::BackgroundProfile;
+        #[cfg(feature = "research")]
+        use crate::runtime_profile::{BodyWorkerProfile, SharedWorkerProfile};
         profile.background = Some(BackgroundProfile {
             scope: "terminal worker counters after drain/join; null means disabled, not zero cost; resource distributions cover all received frames and sample-clock 100ms windows, not the selected hop measurement interval; wall processing includes publication lock/copy, delivery includes queue wait, neither is thread CPU time; private startup is worker lane initialization; table/rejected are unused for private body; excludes final profile serialization",
+            #[cfg(feature = "research")]
             shared: std::array::from_fn(|bus| {
                 channels.temporal_snapshots[bus].as_ref().map(|_| {
                     let snapshot = &state.temporal.temporal_frames[bus];
@@ -721,6 +756,7 @@ pub(super) fn finish_run(
                     }
                 })
             }),
+            #[cfg(feature = "research")]
             body: state
                 .temporal
                 .body_snapshot
@@ -734,6 +770,10 @@ pub(super) fn finish_run(
                     outside_voice_hops: snapshot.outside_voice_hops,
                     worker_resources: snapshot.worker_resources,
                 }),
+            #[cfg(not(feature = "research"))]
+            shared: [None; 2],
+            #[cfg(not(feature = "research"))]
+            body: None,
         });
     }
     if let Some(profile) = state.profile.take()
@@ -822,6 +862,7 @@ pub(super) fn process_hop(
     let listener_pressure_update =
         listener_state_update.map(|listener_state| cfg.dcc_coupler.pressure(listener_state));
 
+    #[cfg(feature = "research")]
     for (target, snapshot) in state
         .temporal
         .temporal_frames
@@ -928,6 +969,7 @@ pub(super) fn process_hop(
         });
     let channel_peak = [max_abs, max_abs];
 
+    #[cfg(feature = "research")]
     if cfg.temporal_meter_t2
         && let Err(err) = channels
             .audio_to_analysis_tx
@@ -945,7 +987,13 @@ pub(super) fn process_hop(
             .push(format!("analysis worker disconnected: {err}"));
         cfg.exiting.store(true, Ordering::SeqCst);
     }
-    drive_production_meter(state, cfg, channels, habitat_chunk.as_ref());
+    drive_production_meter(
+        state,
+        cfg,
+        #[cfg(feature = "research")]
+        channels,
+        habitat_chunk.as_ref(),
+    );
     state.listener.latest_listener_fast_state =
         Some(state.listener.listener_twin.observe_presentation_audio(
             now_tick,
@@ -980,7 +1028,11 @@ pub(super) fn process_hop(
     );
 
     // Feed every habitat hop to analysis. Dropping hops breaks time continuity.
-    if !cfg.temporal_meter_t2
+    #[cfg(feature = "research")]
+    let send_after_meter = !cfg.temporal_meter_t2;
+    #[cfg(not(feature = "research"))]
+    let send_after_meter = true;
+    if send_after_meter
         && let Err(err) = channels
             .audio_to_analysis_tx
             .as_ref()
@@ -1003,6 +1055,9 @@ pub(super) fn process_hop(
         && room.is_some()
         && state.lifecycle.failures.is_empty()
         && !cfg.exiting.load(Ordering::SeqCst);
+    let abort_without_tails = state.pop.abort_requested;
+    #[cfg(feature = "research")]
+    let abort_without_tails = abort_without_tails && !cfg.render_prototype;
     let finished_now = if let Some(room) = room {
         state.lifecycle.finish_begun
             && room.drained()
@@ -1011,11 +1066,7 @@ pub(super) fn process_hop(
                 .is_idle_at(state.timebase.frame_end_tick(frame_idx))
             && state.pop.flora.iter().all(|flora| flora.is_finished())
             && state.pop.rain.iter().all(|rain| rain.is_finished())
-    } else if state.pop.abort_requested
-        && !cfg.render_prototype
-        && !state.pop.has_placed_flora
-        && !state.pop.has_placed_rain
-    {
+    } else if abort_without_tails && !state.pop.has_placed_flora && !state.pop.has_placed_rain {
         true
     } else {
         state.lifecycle.scenario_end_tick.is_some()
@@ -1166,6 +1217,7 @@ pub(super) fn process_hop(
             rendered_tone_count: state.schedule_renderer.active_tone_count(),
             post_render_us,
             worker_allocations,
+            #[cfg(feature = "research")]
             t2_meter: state.temporal.t2_sample,
             underrun_frames_total: cfg
                 .underrun_frames

@@ -74,6 +74,7 @@ pub struct OscillatorBank {
 }
 
 impl OscillatorBank {
+    #[cfg(any(test, feature = "research"))]
     pub(super) fn reset_representative(&mut self) {
         self.x.fill(1.0);
         self.y.fill(0.0);
@@ -255,6 +256,7 @@ impl OscillatorBank {
 
     /// Keep native excitation separate while sharing the legacy f32 carrier kernel.
     /// The Tone stops oscillator radiation at effective Off before reaching this path.
+    #[cfg(feature = "research")]
     pub(crate) fn phase3_carrier(
         &mut self,
         pitch: f32,
@@ -412,7 +414,7 @@ impl OscillatorBank {
         self.motion_refresh_count
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, feature = "research"))]
     pub(super) fn spectral_state_for_test(&self) -> (f32, &[f32]) {
         (self.spectral_env, &self.gain_mask)
     }
@@ -984,6 +986,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn sustained_carrier_norm_stays_bounded_with_motion_and_closed_control() {
         // 20 million samples span both signs of f32 rotation-radius error.
         // The 2e-4 squared-norm budget includes 64 steps of two rounded rotations.
@@ -1013,6 +1016,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn norm_correction_preserves_phase_seed_and_culled_lanes() {
         let mut bank = OscillatorBank::from_snapshot(48_000., &harmonic_snapshot(0.)).unwrap();
         bank.seed_phases(73);
@@ -1045,6 +1049,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn oscillator_forecasts_keep_the_carrier_radius_at_distant_ticks() {
         use super::super::sine_forecast::SineForecast;
         let mut bank = OscillatorBank::from_snapshot(48_000., &harmonic_snapshot(0.)).unwrap();
@@ -1074,6 +1079,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "profile-alloc")]
+    #[cfg(feature = "research")]
     fn oscillator_norm_correction_has_no_steady_state_allocations() {
         let mut bank = OscillatorBank::from_snapshot(48_000., &harmonic_snapshot(0.4)).unwrap();
         bank.seed_phases(42);
@@ -1090,6 +1096,7 @@ mod tests {
 
     #[test]
     #[ignore = "manual normalization cost measurement; no timing acceptance threshold"]
+    #[cfg(feature = "research")]
     fn oscillator_norm_correction_cost_probe() {
         for motion in [false, true] {
             for lanes in [1, 9, 48] {
@@ -1120,6 +1127,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn native_carrier_matches_legacy_kernel_with_motion_spectral_and_pitch_updates() {
         for kind in [BodyKind::Sine, BodyKind::Harmonic] {
             for motion in [0.0, 0.2] {

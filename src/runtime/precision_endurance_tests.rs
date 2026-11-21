@@ -190,6 +190,7 @@ fn indefinite_estimator_precision_v7() {
         end_request: Arc::new(AtomicBool::new(false)),
         duration_sec: None,
         offline_body_probe: Some(probe),
+        #[cfg(feature = "research")]
         raw_t2_delay: Duration::ZERO,
         ui_tx: None,
         listener_forced: false,
@@ -199,6 +200,7 @@ fn indefinite_estimator_precision_v7() {
         wav_tx: None,
         reporter: None,
         deterministic_analysis: true,
+        #[cfg(feature = "research")]
         deterministic_footprints: false,
         guard_meter: None,
         underrun_frames: None,

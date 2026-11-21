@@ -4,6 +4,7 @@ use crate::core::landscape::{Landscape, LandscapeUpdate};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::dcc_coupler::ListenerPressure;
+#[cfg(feature = "research")]
 use crate::life::arrival_cost::{self, ArrivalContext};
 use crate::life::generator_model::GeneratorModel;
 use crate::life::social_density::SocialDensityTrace;
@@ -84,6 +85,7 @@ pub struct Community {
     pub(crate) expression: Option<crate::scenario::expression::Expression>,
     pub(crate) rest_enabled: bool,
     pub(crate) onset_habituation_config: Option<(crate::core::habituation::HabituationParams, f64)>,
+    #[cfg(feature = "research")]
     pub(crate) body_metabolism: Option<super::body_metabolism::BodyMetabolism>,
     spawn_support: SpawnSupportScratch,
     pub voices: Vec<Voice>,
@@ -254,6 +256,7 @@ impl Community {
             harmonic_rhythm: false,
             harmonic_ticks: Vec::new(),
             expression: None,
+            #[cfg(feature = "research")]
             body_metabolism: None,
             spawn_support: SpawnSupportScratch::default(),
             rest_enabled: false,
@@ -504,8 +507,11 @@ impl Community {
             generator_model,
             landscape,
             now,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
             &mut batches,
         );
@@ -519,9 +525,11 @@ impl Community {
         generator_model: &mut GeneratorModel,
         landscape: &Landscape,
         now: Tick,
-        arrival: Option<&crate::temporal_cognition::observation::Snapshot>,
-        body: Option<&crate::temporal_cognition::body::Snapshot>,
-        capture: Option<&crate::temporal_cognition::body::Capture>,
+        #[cfg(feature = "research")] arrival: Option<
+            &crate::temporal_cognition::observation::Snapshot,
+        >,
+        #[cfg(feature = "research")] body: Option<&crate::temporal_cognition::body::Snapshot>,
+        #[cfg(feature = "research")] capture: Option<&crate::temporal_cognition::body::Capture>,
         out: &mut Vec<PhonationBatch>,
     ) -> usize {
         let tb = generator_model.time;
@@ -616,6 +624,7 @@ impl Community {
                 }
                 None => 1.0,
             };
+            #[cfg(feature = "research")]
             let arrival_context = arrival.map(|snapshot| {
                 let binding = body.and_then(|body| {
                     crate::temporal_cognition::body_model::bindings(body).find(|binding| {
@@ -695,11 +704,13 @@ impl Community {
                     social_coupling,
                     extra_gate_gain,
                     consonance,
+                    #[cfg(feature = "research")]
                     arrival_context.as_ref(),
                     Some(&landscape.space),
                     batch,
                 );
             }
+            #[cfg(feature = "research")]
             if let Some(felt) = &mut voice.phonation_engine.felt {
                 for tone in &batch.tones {
                     felt.executed(tone.onset, tone.freq_hz);
@@ -1290,6 +1301,7 @@ impl Community {
                 && voice.is_alive()
             {
                 let landscape = landscape.at_site(voice.effective_control.body.site_id);
+                #[cfg(feature = "research")]
                 if let Some((source, params)) = self
                     .body_metabolism
                     .as_mut()
@@ -1303,9 +1315,9 @@ impl Community {
                         source,
                         params,
                     );
-                } else {
-                    voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
+                    continue;
                 }
+                voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
             }
         }
     }
@@ -1361,6 +1373,7 @@ impl Community {
                     neighbor_weights,
                     listener_pressure,
                 );
+                #[cfg(feature = "research")]
                 if let Some((source, params)) = self
                     .body_metabolism
                     .as_mut()
@@ -1374,9 +1387,9 @@ impl Community {
                         source,
                         params,
                     );
-                } else {
-                    voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
+                    continue;
                 }
+                voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
             }
         }
     }
@@ -2165,8 +2178,11 @@ mod tests {
             &mut world,
             &landscape,
             0,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
             &mut batches,
         );
@@ -2181,8 +2197,11 @@ mod tests {
             &mut world,
             &landscape,
             64,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
             &mut batches,
         );
@@ -2225,8 +2244,11 @@ mod tests {
             &mut world,
             &landscape_low,
             0,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
             &mut batches,
         );
@@ -2239,8 +2261,11 @@ mod tests {
             &mut world,
             &landscape_high,
             64,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
             &mut batches,
         );
@@ -2253,8 +2278,11 @@ mod tests {
             &mut world,
             &landscape_high,
             128,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
             &mut batches,
         );
@@ -2295,8 +2323,11 @@ mod tests {
             &mut world,
             &landscape_high,
             0,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
             &mut batches,
         );
@@ -2304,8 +2335,11 @@ mod tests {
             &mut world,
             &landscape_high,
             64,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
+            #[cfg(feature = "research")]
             None,
             &mut batches,
         );

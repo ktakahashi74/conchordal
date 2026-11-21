@@ -69,6 +69,7 @@ fn analysis_runtime_core_uses_config_values() {
 }
 
 #[test]
+#[cfg(feature = "research")]
 fn footprint_only_wiring_leaves_observation_and_candidate_analysis_off() {
     use crate::config::{FootprintSource, TemporalOnsetComparisonConfig};
     let script = std::env::temp_dir().join(format!(
@@ -140,6 +141,7 @@ wait(0.08);
                 duration_sec: None,
                 offline_body_probe: Some(probe),
                 #[cfg(test)]
+                #[cfg(feature = "research")]
                 raw_t2_delay: Duration::ZERO,
                 ui_tx: None,
                 listener_forced: false,
@@ -149,6 +151,7 @@ wait(0.08);
                 wav_tx: None,
                 reporter: None,
                 deterministic_analysis: true,
+                #[cfg(feature = "research")]
                 deterministic_footprints: true,
                 guard_meter: None,
                 underrun_frames: None,
@@ -182,16 +185,23 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
     ));
     std::fs::create_dir(&dir).unwrap();
     for wait_user_exit in [false, true] {
+        #[cfg(feature = "research")]
         let mut native_hops = Vec::new();
         for body in ["sine", "harmonic", "modal"] {
             #[cfg(feature = "profile-alloc")]
+            #[cfg(feature = "research")]
             let mut legacy_counts = Vec::new();
-            for prototype in [false, true] {
-                let script = dir.join("scenario.rhai");
+            for prototype in [
+                false,
+                #[cfg(feature = "research")]
+                true,
+            ] {
+                let script = dir.join(format!("scenario-{prototype}.rhai"));
                 std::fs::write(&script, format!(
                     "let a = place({body}().brain(\"drone\").sustain().anchor().amp(0.05).adsr(0.01, 0.0, 1.0, 0.01), at(220.0));\nwait(0.1);\nrelease(a);\nwait(0.03);\n"
                 )).unwrap();
                 let mut config = AppConfig {
+                    #[cfg(feature = "research")]
                     render_prototype: prototype,
                     ..Default::default()
                 };
@@ -229,6 +239,7 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                 )
                 .unwrap();
                 let probe: OfflineBodyProbe = Box::new(move |state, _, _, _| {
+                    #[cfg(feature = "research")]
                     assert_eq!(state.schedule_renderer.phase3_enabled(), prototype);
                     // Exclude wall-clock UI publication from the allocation control.
                     state.ui.last_ui_update = Instant::now();
@@ -246,6 +257,7 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                         duration_sec: None,
                         offline_body_probe: Some(probe),
                         #[cfg(test)]
+                        #[cfg(feature = "research")]
                         raw_t2_delay: Duration::ZERO,
                         ui_tx: Some(ui_tx),
                         listener_forced: wait_user_exit,
@@ -255,6 +267,7 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                         wav_tx: None,
                         reporter: None,
                         deterministic_analysis: true,
+                        #[cfg(feature = "research")]
                         deterministic_footprints: false,
                         guard_meter: None,
                         underrun_frames: None,
@@ -286,6 +299,8 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                 let profile: serde_json::Value =
                     serde_json::from_slice(&std::fs::read(&profile_path).unwrap()).unwrap();
                 let hops = profile["hops"].as_array().unwrap();
+                assert!(!hops.is_empty());
+                #[cfg(feature = "research")]
                 if prototype {
                     native_hops.push(hops.len());
                 }
@@ -302,6 +317,7 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                         })
                         .collect();
                     assert!(!counts.is_empty());
+                    #[cfg(feature = "research")]
                     if prototype {
                         assert_eq!(counts, legacy_counts, "{body} GUI={wait_user_exit}");
                         println!(
@@ -314,6 +330,7 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                 }
             }
         }
+        #[cfg(feature = "research")]
         assert!(native_hops[2] > native_hops[0] && native_hops[2] > native_hops[1]);
     }
     std::fs::remove_dir_all(dir).unwrap();
@@ -347,14 +364,19 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
     let hop = 512;
     let timebase = Timebase { fs, hop };
     let cfg = WorkerConfig {
+        #[cfg(feature = "research")]
         felt_beat: None,
+        #[cfg(feature = "research")]
         felt_period_guard: false,
         end_request: Arc::new(AtomicBool::new(false)),
         duration_tick: None,
         harmonic_relations: None,
         habitat_meter: false,
+        #[cfg(feature = "research")]
         render_prototype: false,
+        #[cfg(feature = "research")]
         temporal_meter_t2: false,
+        #[cfg(feature = "research")]
         onset_comparison: None,
         scenario_name: "clock regression".into(),
         wait_user_exit: false,
@@ -372,10 +394,12 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
         fs,
         deterministic_analysis: true,
+        #[cfg(feature = "research")]
         deterministic_footprints: true,
     };
     let scenario = crate::scenario::Scenario {
         observe_tonal_context: false,
+        #[cfg(feature = "research")]
         observe_felt_beat: false,
         harmonic_relation_sources: None,
         expression: None,
@@ -918,6 +942,7 @@ wait(0.03);
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
+            #[cfg(feature = "research")]
             raw_t2_delay: Duration::ZERO,
             ui_tx: None,
             listener_forced: false,
@@ -927,6 +952,7 @@ wait(0.03);
             wav_tx: None,
             reporter: None,
             deterministic_analysis: true,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,
@@ -951,19 +977,28 @@ wait(0.03);
 
 #[test]
 fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
-    for continuous in [false, true] {
+    #[cfg(feature = "research")]
+    let modes = [false, true];
+    #[cfg(not(feature = "research"))]
+    let modes = [false];
+    for _continuous in modes {
         let fs = 48_000.0;
         let hop = 512;
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
+            #[cfg(feature = "research")]
             felt_beat: None,
+            #[cfg(feature = "research")]
             felt_period_guard: false,
             end_request: Arc::new(AtomicBool::new(false)),
             duration_tick: None,
             harmonic_relations: None,
             habitat_meter: true,
+            #[cfg(feature = "research")]
             render_prototype: false,
-            temporal_meter_t2: continuous,
+            #[cfg(feature = "research")]
+            temporal_meter_t2: _continuous,
+            #[cfg(feature = "research")]
             onset_comparison: None,
             scenario_name: "clock regression".into(),
             wait_user_exit: false,
@@ -981,10 +1016,12 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
             fs,
             deterministic_analysis: true,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
         };
         let scenario = crate::scenario::Scenario {
             observe_tonal_context: false,
+            #[cfg(feature = "research")]
             observe_felt_beat: false,
             harmonic_relation_sources: None,
             expression: None,
@@ -1022,8 +1059,11 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             &cfg,
         );
 
+        #[cfg(feature = "research")]
         let make_channels = |inbox| WorkerChannels {
+            #[cfg(feature = "research")]
             t2_inbox: inbox,
+            #[cfg(feature = "research")]
             temporal_snapshots: [None, None],
             ui_tx: None,
             audio_prod: None,
@@ -1037,6 +1077,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         };
         let scenario = crate::scenario::Scenario {
             observe_tonal_context: false,
+            #[cfg(feature = "research")]
             observe_felt_beat: false,
             harmonic_relation_sources: None,
             expression: None,
@@ -1073,22 +1114,28 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             &cfg,
         );
         let mut changed = state;
+        #[cfg(feature = "research")]
         let (output_a, inbox_a) = crate::temporal_cognition::t2::runtime_input::channel(48000, 512);
+        #[cfg(feature = "research")]
         let (output_b, inbox_b) = crate::temporal_cognition::t2::runtime_input::channel(48000, 512);
+        #[cfg(feature = "research")]
         let mut input_a = crate::temporal_cognition::t2::runtime_input::Input::new(
             48000,
             512,
-            continuous.then_some(output_a),
+            _continuous.then_some(output_a),
         )
         .unwrap();
+        #[cfg(feature = "research")]
         let mut input_b = crate::temporal_cognition::t2::runtime_input::Input::new(
             48000,
             512,
-            continuous.then_some(output_b),
+            _continuous.then_some(output_b),
         )
         .unwrap();
-        let mut a = make_channels(continuous.then_some(inbox_a));
-        let mut b = make_channels(continuous.then_some(inbox_b));
+        #[cfg(feature = "research")]
+        let mut a = make_channels(_continuous.then_some(inbox_a));
+        #[cfg(feature = "research")]
+        let mut b = make_channels(_continuous.then_some(inbox_b));
         let mut pcm = [0.; 512];
         let mut production_differs = false;
         let mut confirmed = false;
@@ -1103,7 +1150,8 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
                     0.
                 };
             }
-            if continuous {
+            #[cfg(feature = "research")]
+            if _continuous {
                 input_a.observe(frame, &pcm);
                 input_b.observe(frame, &pcm);
             }
@@ -1113,8 +1161,20 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             changed
                 .pop
                 .set_test_habitat_onset_strength(if frame % 17 == 0 { 4. } else { 0. });
-            drive_production_meter(&mut control, &cfg, &mut a, &pcm);
-            drive_production_meter(&mut changed, &cfg, &mut b, &pcm);
+            drive_production_meter(
+                &mut control,
+                &cfg,
+                #[cfg(feature = "research")]
+                &mut a,
+                &pcm,
+            );
+            drive_production_meter(
+                &mut changed,
+                &cfg,
+                #[cfg(feature = "research")]
+                &mut b,
+                &pcm,
+            );
             assert_eq!(
                 serde_json::to_value(control.temporal.flora_rhythm).unwrap(),
                 serde_json::to_value(changed.temporal.flora_rhythm).unwrap()
@@ -1147,14 +1207,19 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
         let hop = 512;
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
+            #[cfg(feature = "research")]
             felt_beat: None,
+            #[cfg(feature = "research")]
             felt_period_guard: false,
             end_request: Arc::new(AtomicBool::new(false)),
             duration_tick: None,
             harmonic_relations: None,
             habitat_meter: false,
+            #[cfg(feature = "research")]
             render_prototype: false,
+            #[cfg(feature = "research")]
             temporal_meter_t2: false,
+            #[cfg(feature = "research")]
             onset_comparison: None,
             scenario_name: "listener update".into(),
             wait_user_exit: false,
@@ -1172,10 +1237,12 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
             hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
             fs,
             deterministic_analysis: false,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
         };
         let scenario = crate::scenario::Scenario {
             observe_tonal_context: false,
+            #[cfg(feature = "research")]
             observe_felt_beat: false,
             harmonic_relation_sources: None,
             expression: None,
@@ -1209,7 +1276,9 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
         let (listener_tx, listener_rx) = bounded::<LandscapeUpdate>(1);
         listener_tx.send(LandscapeUpdate::default()).unwrap();
         let channels = WorkerChannels {
+            #[cfg(feature = "research")]
             t2_inbox: None,
+            #[cfg(feature = "research")]
             temporal_snapshots: [None, None],
             ui_tx: None,
             audio_prod: None,

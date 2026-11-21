@@ -23,6 +23,7 @@ pub enum AnyBackend {
 }
 
 impl AnyBackend {
+    #[cfg(any(test, feature = "research"))]
     pub(super) fn reset_representative(&mut self) {
         match self {
             Self::Oscillator(bank) => bank.reset_representative(),

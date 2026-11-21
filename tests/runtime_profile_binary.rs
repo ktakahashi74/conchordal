@@ -61,7 +61,14 @@ fn assert_success(output: &Output) {
 
 #[test]
 fn device_free_profile_is_independent_of_report_and_tracks_effective_listener() {
-    for (dcc, observe) in [(false, false), (true, false), (false, true), (true, true)] {
+    for (dcc, observe) in [
+        (false, false),
+        (true, false),
+        #[cfg(feature = "research")]
+        (false, true),
+        #[cfg(feature = "research")]
+        (true, true),
+    ] {
         for report in [false, true] {
             let dir = fixture(dcc);
             if observe {

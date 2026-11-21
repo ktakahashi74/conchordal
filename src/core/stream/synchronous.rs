@@ -5,15 +5,16 @@ use super::potentials::PotentialScratch;
 use crate::core::auditory_frontend::AuditoryFrontEnd;
 #[cfg(test)]
 use crate::core::auditory_frontend::ShadowFrontEnd as AuditoryFrontEnd;
+#[cfg(any(test, feature = "research"))]
 use crate::core::auditory_frontend::SpectralFrameView;
 use crate::core::landscape::{Landscape, LandscapeParams};
 #[cfg(test)]
 use crate::core::landscape_spectral::SpectralFrontEnd;
 use crate::core::nsgt_rt::RtNsgtKernelLog2;
+#[cfg(any(test, feature = "research"))]
+use crate::core::psycho_state::h_pot_scan_to_h_state01_scan;
 use crate::core::psycho_state::roughness_ratio_to_state01;
-use crate::core::psycho_state::{
-    compute_roughness_reference, h_pot_scan_to_h_state01_scan, r_pot_scan_to_r_state01_scan,
-};
+use crate::core::psycho_state::{compute_roughness_reference, r_pot_scan_to_r_state01_scan};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -77,6 +78,7 @@ impl SynchronousAnalysis {
         }
     }
 
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn density<'a>(
         &'a mut self,
         audio: &[f32],
@@ -102,6 +104,7 @@ impl SynchronousAnalysis {
         self.process_gap(audio, 1, params);
     }
 
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn skip(&mut self, audio: &[f32]) {
         #[cfg(test)]
         if self.legacy.is_some() {
@@ -111,6 +114,7 @@ impl SynchronousAnalysis {
         self.frontend.skip(audio);
     }
 
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn process_body_gap(&mut self, audio: &[f32], gap: i32, params: &LandscapeParams) {
         assert!(gap > 0);
         assert_eq!(audio.len(), self.nsgt.hop(), "one complete analysis hop");
@@ -239,6 +243,7 @@ impl SynchronousAnalysis {
         );
     }
 
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn recompute_body_score(
         &mut self,
         params: &LandscapeParams,

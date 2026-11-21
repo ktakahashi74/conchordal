@@ -53,6 +53,7 @@ fn participation_context_capacity_uses_whole_hop_for_one_sample_segments() {
                         0.0,
                         1.0,
                         None,
+                        #[cfg(feature = "research")]
                         None,
                         &mut cmds,
                         &mut events,
@@ -589,6 +590,7 @@ fn candidate_at_gate(gate: u64) -> CandidatePoint {
 }
 
 #[test]
+#[cfg(feature = "research")]
 fn a_footprint_is_representative_only_while_the_comparison_configures_it() {
     use crate::config::{FootprintSource, TemporalOnsetComparisonConfig};
     let mut engine = test_engine(
@@ -596,6 +598,7 @@ fn a_footprint_is_representative_only_while_the_comparison_configures_it() {
         DurationRule::fixed_gate(1),
     );
     // A theta gate compares no onset times and has no recipe to freeze.
+    #[cfg(feature = "research")]
     assert!(engine.footprint_hold().is_none());
     engine.clock = PhonationClock::from_config(
         &PhonationClockConfig::Participation {
@@ -634,6 +637,7 @@ fn a_footprint_is_representative_only_while_the_comparison_configures_it() {
 
 fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
     PhonationEngine {
+        #[cfg(feature = "research")]
         felt: None,
         support_action: None,
         support_held_enabled: false,
@@ -2950,6 +2954,7 @@ fn expression_maps_new_gate_offs_but_preserves_already_reserved_off() {
             .iter()
             .any(|p| p.0.tone_id == 77 && p.0.off_tick == 60000)
     );
+    #[cfg(feature = "research")]
     assert!(engine.footprint_hold().is_none());
 }
 

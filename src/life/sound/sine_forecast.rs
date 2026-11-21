@@ -10,6 +10,7 @@ pub struct SineForecast {
 }
 
 impl SineForecast {
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn at(self, tick: u64) -> Option<[f64; 3]> {
         let elapsed = tick.checked_sub(self.first_sample)?;
         let [x, y] = self.state.map(f64::from);

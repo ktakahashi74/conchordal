@@ -1,3 +1,4 @@
+#![cfg(feature = "research")]
 use std::fs;
 use std::process::Command;
 
@@ -88,6 +89,7 @@ wait(0.03);
 }
 
 #[test]
+#[cfg(feature = "research")]
 fn phase3_binary_is_seeded_and_reports_body_capabilities_with_real_audio() {
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

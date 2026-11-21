@@ -19,7 +19,11 @@ fn replacement_keeps_pre_off_pcm_and_overlaps_independent_release_with_fresh_att
         include_str!("../../tests/fixtures/reattack/modal.json"),
     ] {
         let records: Vec<Record> = serde_json::from_str(fixture).unwrap();
-        for native in [false, true] {
+        for native in [
+            false,
+            #[cfg(feature = "research")]
+            true,
+        ] {
             for replacement_hop in [512, records[1].now] {
                 for offset in [0, 192, 511] {
                     let initial = &records[0];

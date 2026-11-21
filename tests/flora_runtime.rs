@@ -74,7 +74,11 @@ fn flora_finishes_with_its_fade_in_both_renderers() {
         std::process::id()
     ));
     let _guard = TestOutputDirectory::new(dir.clone());
-    for prototype in [false, true] {
+    for prototype in [
+        false,
+        #[cfg(feature = "research")]
+        true,
+    ] {
         for (name, script, end) in [
             (
                 "lone",
@@ -113,7 +117,10 @@ fn flora_finishes_with_its_fade_in_both_renderers() {
             let report = dir.join(format!("{name}-{prototype}.jsonl"));
             let mut config = AppConfig::default();
             config.analysis.nfft = 2048;
-            config.render_prototype = prototype;
+            #[cfg(feature = "research")]
+            {
+                config.render_prototype = prototype;
+            }
             let hop_sec = config.analysis.hop_size as f64 / config.audio.sample_rate as f64;
             run_render(
                 script_path.to_str().unwrap(),

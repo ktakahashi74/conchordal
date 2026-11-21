@@ -127,6 +127,7 @@ impl Voice {
                     self.voice_adsr,
                     spec,
                     &landscape.rhythm,
+                    #[cfg(feature = "research")]
                     self.support.renderer_phase3,
                 )
             });
@@ -308,6 +309,7 @@ impl Voice {
         self.body.snapshot()
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn supports_body_metabolism(&self, renderer_phase3: bool) -> bool {
         sound_body::supports_body_model(
             &self.effective_control,
@@ -316,6 +318,7 @@ impl Voice {
         )
     }
 
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn representative_body_recipe(
         &self,
         fs: f32,
@@ -335,6 +338,7 @@ impl Voice {
             other => other,
         };
         crate::life::onset_footprint::Recipe {
+            #[cfg(feature = "research")]
             renderer_phase3: false,
             body: self.body_snapshot(),
             freq_hz: self.body.base_freq_hz(),
@@ -348,10 +352,12 @@ impl Voice {
 
     /// The representative recipe of I11-1 §4.2, frozen from what this Voice would
     /// emit now. `None` unless a participation clock configures onset comparison.
+    #[cfg(feature = "research")]
     pub(crate) fn footprint_recipe(&self, fs: f32) -> Option<crate::life::onset_footprint::Recipe> {
         let (hold_sec, adsr) = self.phonation_engine.footprint_hold()?;
         let phonation_mode = self.phonation_engine.mode;
         Some(crate::life::onset_footprint::Recipe {
+            #[cfg(feature = "research")]
             renderer_phase3: false,
             body: self.body_snapshot(),
             freq_hz: self.body.base_freq_hz(),

@@ -68,16 +68,16 @@ Voice の身体は `SoundBodyFactory` が構築し、`SoundBody` が自己モデ
 |---|---:|---|---|
 | `src/life/` | 73,581 | Voice・Flora・Rain・Community・発音・レンダラ | 群管理の `community.rs`（2,320 行）と、ルーティング・捕捉の `schedule_renderer.rs`（3,580 行）の規模 |
 | `src/core/` | 34,754 | 聴覚前段・R/H/C・NSGT・慣れ・拍・LOO・部屋 | `Landscape` は観測と和声拡張をサブ構造体化。音響場と更新処理は同じモジュールにある |
-| `src/temporal_cognition/` | 23,167 | 筋・群・身体観測・到着・和声時間関係・opt-in T2 | 既定オフの診断・研究経路の隔離 |
-| `src/scripting/` | 19,175 | Rhai エンジン・172 文書エントリ・型定義/ドキュメント自動生成 | Research 語の隔離 |
-| `src/runtime/` | 13,924 | スレッド配線・worker loop・`StepEngine`・予約・監視 | `WorkerState` は状態を責務別に集約済み。研究用 opt-in とテスト用フックが実行経路に残る |
+| `src/temporal_cognition/` | 23,167 | 筋・群・身体観測・到着・和声時間関係・opt-in T2 | 研究専用16サブモジュール（43ファイル）を `research` feature へ隔離済み（既定は `harmonic_relations` のみ） |
+| `src/scripting/` | 19,175 | Rhai エンジン・172 文書エントリ・型定義/ドキュメント自動生成 | 既定 0 の候補層（分類 D）は 12/25 改訂後に再判定 |
+| `src/runtime/` | 13,924 | スレッド配線・worker loop・`StepEngine`・予約・監視 | `WorkerState` は責務別集約済み、研究経路は `research` feature へ隔離済み |
 | `src/ui/` | 2,751 | egui 描画・UI モデル | — |
 | `src/listener_twin/` | 2,300 | 提示専用聴き手モデル・E0 予測 | — |
 | `src/audio/` | 1,636 | cpal 出力・Limiter・WAV ライタ・復旧 | — |
 | `src/scenario/` + `src/scenario.rs` | 2,318 | シナリオ IR・制御設定・ライフサイクル設定 | — |
 | `src/synth/` | 949 | モーダル共振器バンク・モード表 | — |
 | `src/bin/` | 130 | オフライン WAV レンダラ・Rhai 定義生成の入口 | — |
-| `src/` 直下の残り | 3,626 | 楽器の入口・UI 契約・TOML 設定・クロック・handoff | `config.rs` に研究用 opt-in 構造体が同居 |
+| `src/` 直下の残り | 3,626 | 楽器の入口・UI 契約・TOML 設定・クロック・handoff | `config.rs` の研究 opt-in 11項目は `research` feature へ隔離済み |
 
 ---
 
@@ -88,11 +88,12 @@ Voice の身体は `SoundBodyFactory` が構築し、`SoundBody` が自己モデ
   - Population（Voice の移動・発音・代謝・再出生）・Flora・Rain
   - 提示専用 `ListenerTwin`（GUI 時 E0 予測表示、生成へは戻さない）
   - 部屋 `off`（デモ・明示指定時は `presentation` ステレオ）
-- **既定 0 / opt-in（明示指定または研究設定時のみ有効）**：
-  - `[dcc].coupling_strength`、`[room] mode = "both"`、`felt_beat` / `syncopate`
+- **既定 0（通常ビルドに含むが明示指定時のみ有効）**：
+  - `[dcc].coupling_strength`、`[room] mode = "both"`
   - 候補層（TC・PS-1・SQ・ME・PX・PE・`listener_profile("tonal")`）
   - 和声拡張（`support_*`・`harmonic_relations`・`harmonic_rhythm`・`tail_roughness_aversion`）
-  - `temporal_meter_t2`、7種の `temporal_*` 診断設定、`render_prototype`
+- **`research` feature 隔離済み（`--features research` 指定時のみコンパイル）**：
+  - `temporal_meter_t2`、7種の `temporal_*` 診断設定（`temporal_cognition` 16サブモジュール）、`body_metabolism`、`render_prototype`、`analysis.felt_beat`（`observe_felt_beat` / `syncopate` 実行経路）
 
 ---
 

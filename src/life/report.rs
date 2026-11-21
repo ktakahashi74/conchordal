@@ -99,6 +99,7 @@ pub(crate) struct ListenerStateSample {
 }
 
 #[derive(Clone, Copy, Debug, Serialize)]
+#[cfg(feature = "research")]
 pub(crate) struct TemporalMeterSample {
     pub sample_rate: u32,
     pub hop: u64,
@@ -243,26 +244,32 @@ enum ReportRecord<'a> {
         reason: Option<&'static str>,
     },
     Flora(crate::life::flora::FloraReport<'a>),
+    #[cfg(feature = "research")]
     TemporalMeter(&'a TemporalMeterSample),
+    #[cfg(feature = "research")]
     FeltRhythm {
         voice_id: u64,
         generation: u32,
         #[serde(flatten)]
         record: &'a crate::life::phonation_engine::FeltRhythmRecord,
     },
+    #[cfg(feature = "research")]
     FeltBeat {
         observed_end: u64,
         sample_rate: u32,
         #[serde(flatten)]
         state: crate::core::felt_beat::FeltBeatState,
     },
+    #[cfg(feature = "research")]
     BodyObservation(&'a crate::temporal_cognition::body::Snapshot),
+    #[cfg(feature = "research")]
     BodyDescriptor {
         #[serde(flatten)]
         record: &'a crate::temporal_cognition::body::Record,
         standardized: [Option<f64>; 6],
         prototype_assignment: Option<crate::temporal_cognition::body_model::Assignment>,
     },
+    #[cfg(feature = "research")]
     TemporalObservation {
         time_sec: f64,
         observation: &'a crate::temporal_cognition::observation::Snapshot,
@@ -417,13 +424,16 @@ enum ReportRecord<'a> {
         bins_per_octave: u32,
         state_scan: &'a [f32],
     },
+    #[cfg(feature = "research")]
     ParticipationDecision {
         voice_id: u64,
         sample_rate: u32,
         #[serde(flatten)]
         decision: &'a crate::life::temporal_participation::ParticipationDecision,
     },
+    #[cfg(feature = "research")]
     BodyFootprintWorker(&'a crate::life::onset_footprint::Stats),
+    #[cfg(feature = "research")]
     BodyFootprint {
         /// The Voice discarded the record because its request was superseded.
         superseded: bool,
@@ -543,6 +553,7 @@ impl JsonlReporter {
         self.write_record(&ReportRecord::Flora(flora.report(time_sec, landscape)))
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn write_body_observation(
         &mut self,
         snapshot: &crate::temporal_cognition::body::Snapshot,
@@ -581,6 +592,7 @@ impl JsonlReporter {
 
     /// Header record identifying the effective scenario seed, written first
     /// so a report can be matched back to a `--seed` replay.
+    #[cfg(feature = "research")]
     pub(crate) fn write_temporal_observation(
         &mut self,
         time_sec: f64,
@@ -607,12 +619,14 @@ impl JsonlReporter {
         })
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn write_temporal_meter(
         &mut self,
         sample: &TemporalMeterSample,
     ) -> Result<(), String> {
         self.write_record(&ReportRecord::TemporalMeter(sample))
     }
+    #[cfg(feature = "research")]
     pub(crate) fn write_felt_rhythm(
         &mut self,
         voice_id: u64,
@@ -626,6 +640,7 @@ impl JsonlReporter {
         })
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn write_felt_beat(
         &mut self,
         observed_end: u64,
@@ -688,6 +703,7 @@ impl JsonlReporter {
         })
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn write_participation_decision(
         &mut self,
         voice_id: u64,
@@ -701,6 +717,7 @@ impl JsonlReporter {
         })
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn write_body_footprint_worker(
         &mut self,
         stats: &crate::life::onset_footprint::Stats,
@@ -708,6 +725,7 @@ impl JsonlReporter {
         self.write_record(&ReportRecord::BodyFootprintWorker(stats))
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn write_body_footprint(
         &mut self,
         record: &crate::life::onset_footprint::Record,

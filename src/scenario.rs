@@ -198,6 +198,7 @@ pub struct Scenario {
     pub(crate) room: Option<crate::config::RoomMode>,
     pub(crate) sites: Vec<Site>,
     pub(crate) observe_tonal_context: bool,
+    #[cfg(feature = "research")]
     pub(crate) observe_felt_beat: bool,
     pub(crate) harmonic_relation_sources: Option<usize>,
     pub(crate) expression: Option<expression::Expression>,

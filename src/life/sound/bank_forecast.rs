@@ -78,6 +78,7 @@ impl BankForecast {
     /// Slowly varying gain of one lane relative to `lane_at` at `reference`: the damped
     /// partial gain and the excitation gain of an oscillator. A resonator's decay stays in
     /// the carrier, so its ratio is one.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn gain_ratio(&self, lane: usize, tick: u64, reference: u64) -> Option<f64> {
         if matches!(self.response, Response::Resonator { .. }) {
             return Some(1.);
@@ -91,6 +92,7 @@ impl BankForecast {
     }
 
     /// `[x, y, omega, log_decay]` of one lane, where `y` is its unit-envelope output.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn lane_at(&self, lane: usize, tick: u64) -> Option<[f64; 4]> {
         // A span that contains the onset is referenced before it; gains stay at the onset.
         let steps = (i128::from(tick) - i128::from(self.first_sample)) as f64 + 1.;

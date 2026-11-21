@@ -112,6 +112,7 @@ fn n3_offline_body_equivalence() {
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
+            #[cfg(feature = "research")]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: false,
@@ -121,6 +122,7 @@ fn n3_offline_body_equivalence() {
             wav_tx: None,
             reporter: Some(reporter),
             deterministic_analysis: true,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,
@@ -217,6 +219,7 @@ fn render_metabolism_flags(metabolism: Option<bool>, prototype: bool) -> Vec<Fla
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
+            #[cfg(feature = "research")]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: false,
@@ -226,6 +229,7 @@ fn render_metabolism_flags(metabolism: Option<bool>, prototype: bool) -> Vec<Fla
             wav_tx: prototype.then_some(wav_tx),
             reporter: None,
             deterministic_analysis: true,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,
@@ -429,6 +433,7 @@ fn b7_dynamic_etude_render() {
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
+            #[cfg(feature = "research")]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: false,
@@ -438,6 +443,7 @@ fn b7_dynamic_etude_render() {
             wav_tx: None,
             reporter: Some(reporter),
             deterministic_analysis: true,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,

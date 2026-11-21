@@ -52,6 +52,7 @@ pub struct ResonatorBank {
 }
 
 impl ResonatorBank {
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn reset_representative(&mut self) {
         self.active_len = 0;
         for buffer in [

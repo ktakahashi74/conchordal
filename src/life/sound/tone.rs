@@ -35,6 +35,7 @@ struct PendingTrigger {
 }
 
 #[derive(Clone)]
+#[cfg(feature = "research")]
 struct ExcitedState {
     closed: bool,
     retired: bool,
@@ -48,6 +49,7 @@ pub struct Tone {
     pub(crate) phrase_pitch_changed: bool,
     pub(crate) phrase_off_origin: &'static str,
     pub(crate) phrase_gain: f32,
+    #[cfg(feature = "research")]
     excited: Option<ExcitedState>,
     backend: AnyBackend,
     render_modulator: Option<RenderModulator>,
@@ -116,6 +118,7 @@ impl Tone {
         assert_eq!(self.envelope, other.envelope);
         assert_eq!(self.started, other.started);
         assert_eq!(self.noise_state, other.noise_state);
+        #[cfg(feature = "research")]
         assert_eq!(
             self.excited.as_ref().map(|s| (s.closed, s.retired)),
             other.excited.as_ref().map(|s| (s.closed, s.retired))
@@ -143,11 +146,13 @@ impl Tone {
         }
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn set_representative_modulator(&mut self, spec: RenderModulatorSpec) {
         assert!(!self.started);
         self.render_modulator = Some(RenderModulator::from_spec(spec));
     }
     /// Reset a probe of this same body without rebuilding its allocated backend.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn reset_representative(&mut self, template: &Self, pitch_hz: f32) {
         assert!(!template.started && template.pending_updates.is_empty());
         self.phrase = template.phrase;
@@ -157,7 +162,10 @@ impl Tone {
         self.phrase_off_origin = template.phrase_off_origin;
         self.phrase_gain = template.phrase_gain;
         self.backend.reset_representative();
-        self.excited = template.excited.clone();
+        #[cfg(feature = "research")]
+        {
+            self.excited = template.excited.clone();
+        }
         self.render_modulator = template.render_modulator.clone();
         self.pending_impulse_energy = template.pending_impulse_energy;
         self.envelope = template.envelope;
@@ -232,6 +240,7 @@ impl Tone {
             phrase_pitch_changed: false,
             phrase_off_origin: "materialized_duration",
             phrase_gain: 1.,
+            #[cfg(feature = "research")]
             excited: None,
             backend,
             render_modulator: render_modulator.map(RenderModulator::from_spec),
@@ -262,11 +271,13 @@ impl Tone {
 
     pub fn seed_modal_phases(&mut self, seed: u64) {
         self.backend.seed_modal_phases(seed);
+        #[cfg(feature = "research")]
         if self.excited.is_some() {
             self.noise_state = seed;
         }
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn enable_phase3(&mut self) {
         self.excited = Some(ExcitedState {
             closed: false,
@@ -275,7 +286,11 @@ impl Tone {
     }
 
     pub(crate) fn supports_self_model(&self) -> bool {
-        self.excited.is_none() && self.phrase.is_none_or(|p| p.reservation.is_none())
+        #[cfg(feature = "research")]
+        if self.excited.is_some() {
+            return false;
+        }
+        self.phrase.is_none_or(|p| p.reservation.is_none())
     }
 
     /// Reuse a recipe-only tone; no PCM, phase draw, or backend allocation occurs here.
@@ -290,9 +305,13 @@ impl Tone {
         adsr: Option<ToneAdsr>,
         modulator: RenderModulatorSpec,
         rhythms: &NeuralRhythms,
-        renderer_phase3: bool,
+        #[cfg(feature = "research")] renderer_phase3: bool,
     ) -> Option<crate::life::tone_energy::ToneEnergy> {
-        if renderer_phase3 || !self.supports_self_model() || hold == 0 {
+        #[cfg(feature = "research")]
+        if renderer_phase3 {
+            return None;
+        }
+        if !self.supports_self_model() || hold == 0 {
             return None;
         }
         self.envelope = preview_envelope(time, onset, hold, adsr);
@@ -313,6 +332,7 @@ impl Tone {
         })
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn residual_bound(&self, now: Tick) -> Option<f64> {
         let state = self.excited.as_ref()?;
         if now < self.envelope.release_end {
@@ -330,6 +350,7 @@ impl Tone {
         })
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn retire_phase3(&mut self) {
         if let Some(state) = &mut self.excited {
             state.retired = true;
@@ -384,6 +405,7 @@ impl Tone {
     }
 
     pub fn trigger_impulse(&mut self, energy: f32) {
+        #[cfg(feature = "research")]
         if self.excited.as_ref().is_some_and(|s| s.closed || s.retired) {
             return;
         }
@@ -406,6 +428,7 @@ impl Tone {
     }
 
     pub fn schedule_update(&mut self, at_tick: Tick, update: ToneUpdate) -> bool {
+        #[cfg(feature = "research")]
         if self.excited.is_some()
             && (at_tick >= self.envelope.release_end
                 || self.excited.as_ref().is_some_and(|s| s.closed || s.retired)
@@ -433,6 +456,7 @@ impl Tone {
     }
 
     pub fn apply_updates_if_due(&mut self, tick: Tick) {
+        #[cfg(feature = "research")]
         if self.excited.is_some() && tick >= self.envelope.release_end {
             self.pending_updates.clear();
             return;
@@ -444,12 +468,17 @@ impl Tone {
             }
             self.apply_update(&pending.update);
         }
-        if self.excited.is_none() && tick >= self.envelope.hold_end {
+        if tick >= self.envelope.hold_end {
+            #[cfg(feature = "research")]
+            if self.excited.is_some() {
+                return;
+            }
             self.pending_updates.clear();
         }
     }
 
     pub fn kick_planned_if_due(&mut self, tick: Tick) -> bool {
+        #[cfg(feature = "research")]
         if self.excited.is_some() && tick >= self.envelope.release_end {
             self.planned_kick_pending = None;
             return false;
@@ -465,12 +494,16 @@ impl Tone {
     }
 
     pub(crate) fn phrase_start_due(&self, at: Tick) -> bool {
+        #[cfg(feature = "research")]
+        if self
+            .excited
+            .as_ref()
+            .is_some_and(|state| state.closed || state.retired)
+        {
+            return false;
+        }
         at >= self.envelope.onset
             && at < self.envelope.release_end
-            && self
-                .excited
-                .as_ref()
-                .is_none_or(|s| !s.closed && !s.retired)
             && !self.started
             && (self.pending_impulse_energy > 0.
                 || self.pending_trigger.is_some_and(|t| at >= t.at_tick))
@@ -495,12 +528,16 @@ impl Tone {
     }
 
     pub(crate) fn harmonic_impulse_due(&self, sample: Tick) -> bool {
+        #[cfg(feature = "research")]
+        if self
+            .excited
+            .as_ref()
+            .is_some_and(|state| state.closed || state.retired)
+        {
+            return false;
+        }
         sample >= self.envelope.onset
             && sample < self.envelope.release_end
-            && self
-                .excited
-                .as_ref()
-                .is_none_or(|state| !state.closed && !state.retired)
             && (self.pending_impulse_energy > 0.
                 || self
                     .pending_trigger
@@ -525,6 +562,7 @@ impl Tone {
         {
             self.radiated_amplitude = 0.0;
         }
+        #[cfg(feature = "research")]
         if self.excited.is_some() {
             return self.render_excited_tick(tick, dt, rhythms);
         }
@@ -610,6 +648,7 @@ impl Tone {
         sample
     }
 
+    #[cfg(feature = "research")]
     fn render_excited_tick(&mut self, tick: Tick, dt: f32, rhythms: &NeuralRhythms) -> f32 {
         if tick < self.envelope.onset || self.excited.as_ref().unwrap().retired {
             return 0.0;
@@ -942,11 +981,13 @@ impl Tone {
         )
     }
 
+    #[cfg(feature = "research")]
     pub(crate) fn excitation_end_tick(&self) -> Tick {
         self.envelope.release_end
     }
 
     pub fn end_tick(&self) -> Tick {
+        #[cfg(feature = "research")]
         if self.excited.is_some() {
             return Tick::MAX;
         }
@@ -958,6 +999,7 @@ impl Tone {
     }
 
     pub fn is_done(&self, now: Tick) -> bool {
+        #[cfg(feature = "research")]
         if let Some(state) = &self.excited {
             return state.retired;
         }
@@ -1174,6 +1216,7 @@ pub(crate) fn preview_envelope(
 mod tests {
     #[test]
     fn support_action_new_onset_uses_prediction_api_and_rejects_native_before_and_after_on() {
+        #[cfg(feature = "research")]
         use crate::life::support_action::{Action, Body, tests::fixture};
         let tb = Timebase {
             fs: 48000.,
@@ -1202,37 +1245,41 @@ mod tests {
                 None,
                 spec.clone(),
                 &rhythms,
+                #[cfg(feature = "research")]
                 false,
             )
             .unwrap();
         assert_eq!(known.control.unwrap().starts_at, Some(512));
         assert_eq!(known.at(511, None), Some(0.));
         assert!(known.at(1024, None).unwrap() > 0.);
-        let mut context = fixture();
-        context.body = Body::Silent;
-        context.onset = tone.preview_new_energy(
-            tb,
-            512,
-            Tick::MAX,
-            0.2,
-            1.,
-            None,
-            spec.clone(),
-            &rhythms,
-            true,
-        );
-        assert!(context.onset.is_none());
-        assert_eq!(context.choose(512, 2048, Action::Onset), Action::Onset);
-        tone.enable_phase3();
-        tone.render_tick(512, tb.fs, 1. / tb.fs, &rhythms);
-        context.body = Body::Unknown;
-        context.onset =
-            tone.preview_new_energy(tb, 1024, Tick::MAX, 0.2, 1., None, spec, &rhythms, true);
-        assert!(context.onset.is_none());
-        assert_eq!(
-            context.choose(1024, 2048, Action::Continue),
-            Action::Continue
-        );
+        #[cfg(feature = "research")]
+        {
+            let mut context = fixture();
+            context.body = Body::Silent;
+            context.onset = tone.preview_new_energy(
+                tb,
+                512,
+                Tick::MAX,
+                0.2,
+                1.,
+                None,
+                spec.clone(),
+                &rhythms,
+                true,
+            );
+            assert!(context.onset.is_none());
+            assert_eq!(context.choose(512, 2048, Action::Onset), Action::Onset);
+            tone.enable_phase3();
+            tone.render_tick(512, tb.fs, 1. / tb.fs, &rhythms);
+            context.body = Body::Unknown;
+            context.onset =
+                tone.preview_new_energy(tb, 1024, Tick::MAX, 0.2, 1., None, spec, &rhythms, true);
+            assert!(context.onset.is_none());
+            assert_eq!(
+                context.choose(1024, 2048, Action::Continue),
+                Action::Continue
+            );
+        }
     }
 
     #[test]
@@ -1325,6 +1372,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "research")]
     fn phase3_flat_unit_hold_matches_legacy_pcm_without_changing_release_rules() {
         let time = Timebase {
             fs: 48_000.0,
@@ -1384,6 +1432,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn phase3_oscillator_amplitudes_match_legacy() {
         let time = Timebase {
             fs: 48_000.0,
@@ -1517,6 +1566,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn phase3_harmonic_spectral_burst_matches_legacy_and_freezes_at_off() {
         let time = Timebase {
             fs: 48_000.0,
@@ -1611,6 +1661,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn phase3_preserves_explicit_motion_and_has_no_implicit_motion() {
         let time = Timebase {
             fs: 48_000.0,
@@ -1662,6 +1713,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn phase3_hold_release_pitch_and_future_residual_are_separate() {
         for fs in [44_100.0, 48_000.0, 96_000.0] {
             for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
@@ -1771,6 +1823,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn phase3_rejects_entire_invalid_update_and_prevents_old_energy_prior() {
         let time = Timebase {
             fs: 48_000.0,

@@ -142,7 +142,9 @@ impl Voice {
         &mut self,
         ctx: &CoreTickCtx,
         state: &CoreState,
-        arrival: Option<&crate::life::arrival_cost::ArrivalContext<'_>>,
+        #[cfg(feature = "research")] arrival: Option<
+            &crate::life::arrival_cost::ArrivalContext<'_>,
+        >,
         out: &mut PhonationBatch,
     ) {
         self.phonation_engine.tick_with_arrival(
@@ -152,6 +154,7 @@ impl Voice {
             0.0,
             1.0,
             None,
+            #[cfg(feature = "research")]
             arrival,
             &mut out.cmds,
             &mut self.phonation_scratch.events,
@@ -191,6 +194,7 @@ impl Voice {
     }
 
     pub(crate) fn configure_control_hop(&mut self, hop: usize, control_step: usize, fs: f32) {
+        #[cfg(feature = "research")]
         self.phonation_engine.reserve_felt_hop(hop, fs);
         self.support.clock_fs = fs;
         self.support.clock_step = control_step.max(1) as u64;
@@ -518,7 +522,7 @@ impl Voice {
         neighbor_salience: &[f32],
         listener_pressure: ListenerPressure,
     ) {
-        #[cfg(test)]
+        #[cfg(all(test, feature = "research"))]
         {
             self.pitch_ctl.trace_owner = Some((self.id(), self.metadata.generation));
         }
@@ -577,6 +581,7 @@ impl Voice {
             social_coupling,
             extra_gate_gain,
             consonance,
+            #[cfg(feature = "research")]
             None,
             None,
             out,
@@ -593,7 +598,9 @@ impl Voice {
         social_coupling: f32,
         extra_gate_gain: f32,
         consonance: f32,
-        arrival: Option<&crate::life::arrival_cost::ArrivalContext<'_>>,
+        #[cfg(feature = "research")] arrival: Option<
+            &crate::life::arrival_cost::ArrivalContext<'_>,
+        >,
         space: Option<&Log2Space>,
         out: &mut PhonationBatch,
     ) {
@@ -608,11 +615,14 @@ impl Voice {
             now_tick: now,
             frame_end,
             fs: tb.fs,
+            #[cfg(feature = "research")]
             rhythms: self
                 .phonation_engine
                 .felt
                 .as_ref()
                 .map_or(*rhythms, |felt| felt.rhythms(*rhythms, now, tb.fs)),
+            #[cfg(not(feature = "research"))]
+            rhythms: *rhythms,
         };
         // Target amp and the phonation gate are both evaluated up front and fed
         // into `onset_allowed`, which the engine uses to gate onset *emission*.
@@ -642,7 +652,14 @@ impl Voice {
         self.phonation_engine.set_sound_adsr(self.voice_adsr);
         if self.sequence_control.is_some() && self.effective_control.supports_own_sequence() {
             self.emit_sequence_participation(
-                &ctx, &state, consonance, target_amp, arrival, space, out,
+                &ctx,
+                &state,
+                consonance,
+                target_amp,
+                #[cfg(feature = "research")]
+                arrival,
+                space,
+                out,
             );
             return;
         }
@@ -656,7 +673,14 @@ impl Voice {
                     && shape.retention_active;
                 if shape.enabled || tie.enabled {
                     self.emit_shape_participation(
-                        &ctx, &state, consonance, target_amp, arrival, space, out,
+                        &ctx,
+                        &state,
+                        consonance,
+                        target_amp,
+                        #[cfg(feature = "research")]
+                        arrival,
+                        space,
+                        out,
                     );
                     return;
                 }
@@ -664,7 +688,14 @@ impl Voice {
                 shape.enabled = self.effective_control.supports_articulation_persistence();
                 if shape.enabled {
                     self.emit_shape_participation(
-                        &ctx, &state, consonance, target_amp, arrival, space, out,
+                        &ctx,
+                        &state,
+                        consonance,
+                        target_amp,
+                        #[cfg(feature = "research")]
+                        arrival,
+                        space,
+                        out,
                     );
                     return;
                 }
@@ -672,7 +703,14 @@ impl Voice {
         }
         if self.sustain_participation {
             self.emit_sustained_participation(
-                &ctx, &state, consonance, target_amp, arrival, space, out,
+                &ctx,
+                &state,
+                consonance,
+                target_amp,
+                #[cfg(feature = "research")]
+                arrival,
+                space,
+                out,
             );
             return;
         }
@@ -701,6 +739,7 @@ impl Voice {
             social_coupling,
             extra_gate_gain,
             None,
+            #[cfg(feature = "research")]
             arrival,
             &mut out.cmds,
             &mut self.phonation_scratch.events,
@@ -743,6 +782,7 @@ impl Voice {
                         social_coupling,
                         extra_gate_gain,
                         None,
+                        #[cfg(feature = "research")]
                         arrival,
                         &mut out.cmds,
                         &mut self.phonation_scratch.events,

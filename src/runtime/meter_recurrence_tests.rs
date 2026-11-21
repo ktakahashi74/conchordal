@@ -111,6 +111,7 @@ fn check_metric_population(
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
+            #[cfg(feature = "research")]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: false,
@@ -120,6 +121,7 @@ fn check_metric_population(
             wav_tx: None,
             reporter: None,
             deterministic_analysis: true,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,

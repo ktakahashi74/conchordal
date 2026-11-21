@@ -1,7 +1,9 @@
 use super::*;
 
 pub(super) struct RuntimeUiFrameInput<'a> {
+    #[cfg(feature = "research")]
     pub(super) body: Option<&'a crate::temporal_cognition::body::Snapshot>,
+    #[cfg(feature = "research")]
     pub(super) temporal: &'a [crate::temporal_cognition::observation::Snapshot; 2],
     pub(super) scenario_name: &'a str,
     pub(super) conductor: &'a Conductor,
@@ -33,6 +35,7 @@ pub(super) fn build_initial_ui_frame(
     #[cfg(test)]
     UI_FRAME_BUILDS.with(|count| count.set(count.get() + 1));
     UiFrame {
+        #[cfg(feature = "research")]
         body: None,
         wave: WaveFrame {
             fs,
@@ -44,6 +47,7 @@ pub(super) fn build_initial_ui_frame(
         },
         listener: ListenerFrame::default(),
         listener_rhythm: Vec::new(),
+        #[cfg(feature = "research")]
         temporal: Default::default(),
         landscape: current_landscape.clone_for_ui(),
         meta: SimulationMeta {
@@ -142,7 +146,9 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
 
     UiFrame {
         wave,
+        #[cfg(feature = "research")]
         body: input.body.map(|b| Arc::new(*b)),
+        #[cfg(feature = "research")]
         temporal: Arc::new(*input.temporal),
         spec,
         listener: listener_frame_from_states(input.listener_fast_state, input.listener_state),
@@ -282,7 +288,9 @@ pub(super) fn send_runtime_ui_frame(
         return;
     };
     let mut frame = build_runtime_ui_frame(RuntimeUiFrameInput {
+        #[cfg(feature = "research")]
         body: state.temporal.body_snapshot.as_deref(),
+        #[cfg(feature = "research")]
         temporal: &state.temporal.temporal_frames,
         scenario_name: &cfg.scenario_name,
         conductor: &state.conductor,

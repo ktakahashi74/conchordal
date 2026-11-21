@@ -1,3 +1,4 @@
+#[cfg(feature = "research")]
 pub use crate::core::felt_beat::FeltBeatParams;
 use crate::core::nsgt_kernel::KernelAlign;
 use anyhow::{Context, Result, ensure};
@@ -55,6 +56,7 @@ pub enum LimiterSetting {
 pub struct AnalysisConfig {
     /// Research observation; omission disables it. Parameters are source figure values.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg(feature = "research")]
     pub felt_beat: Option<FeltBeatParams>,
     /// NSGT window for UI, spectral taps, gap warmup and Flora resource coverage.
     /// Auditory H/R resolution is fixed independently of this window.
@@ -90,6 +92,7 @@ impl AnalysisConfig {
 impl Default for AnalysisConfig {
     fn default() -> Self {
         Self {
+            #[cfg(feature = "research")]
             felt_beat: None,
             nfft: Self::default_nfft(),
             hop_size: Self::default_hop_size(),
@@ -320,12 +323,15 @@ pub struct AppConfig {
     pub room: Option<RoomConfig>,
     /// Body-weighted energy metabolism; omission leaves the point path unchanged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg(feature = "research")]
     pub body_metabolism: Option<BodyMetabolismConfig>,
     /// Opt-in excitation renderer; omission preserves the legacy path.
     #[serde(default)]
+    #[cfg(feature = "research")]
     pub render_prototype: bool,
     /// Raw habitat T2 recurrence for the production meter; independent of group events.
     #[serde(default)]
+    #[cfg(feature = "research")]
     pub temporal_meter_t2: bool,
     #[serde(default)]
     pub audio: AudioConfig,
@@ -338,23 +344,31 @@ pub struct AppConfig {
     #[serde(default)]
     pub playback: PlaybackConfig,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg(feature = "research")]
     pub temporal_ridge: Option<TemporalRidgeConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg(feature = "research")]
     pub temporal_acoustic: Option<TemporalAcousticConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg(feature = "research")]
     pub temporal_period: Option<TemporalPeriodConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg(feature = "research")]
     pub temporal_t2: Option<TemporalT2Config>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg(feature = "research")]
     pub temporal_body: Option<TemporalBodyConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg(feature = "research")]
     pub temporal_body_prototypes: Option<TemporalBodyPrototypesConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg(feature = "research")]
     pub temporal_onset_comparison: Option<TemporalOnsetComparisonConfig>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "research")]
 pub struct BodyMetabolismConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -366,6 +380,7 @@ pub struct BodyMetabolismConfig {
 /// Which footprint the participation onset comparison consumes (I11-1 §4.10).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
+#[cfg(feature = "research")]
 pub enum FootprintSource {
     #[default]
     Body,
@@ -375,6 +390,7 @@ pub enum FootprintSource {
 /// Absent keeps the legacy 64-point proxy path; present selects the bounded comparison.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "research")]
 pub struct TemporalOnsetComparisonConfig {
     #[serde(default)]
     pub footprint: FootprintSource,
@@ -387,6 +403,7 @@ pub struct TemporalOnsetComparisonConfig {
 /// Frozen development scales for private body diagnostics; no adopted calibration.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "research")]
 pub struct TemporalBodyConfig {
     pub means: [f64; 6],
     pub deviations: [f64; 6],
@@ -397,6 +414,7 @@ pub struct TemporalBodyConfig {
 /// Frozen descriptive medoids; these do not authorize counterfactual action projections.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "research")]
 pub struct TemporalBodyPrototypesConfig {
     pub model_version: String,
     pub sample_rate: u32,
@@ -411,6 +429,7 @@ pub struct TemporalBodyPrototypesConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "research")]
 pub struct TemporalBodyMedoid {
     pub record_id: String,
     pub raw_values: [f64; 6],
@@ -420,6 +439,7 @@ pub struct TemporalBodyMedoid {
 /// Explicit research scales for passive ridge diagnostics, not an adopted fit.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "research")]
 pub struct TemporalRidgeConfig {
     pub means: [f64; 3],
     pub deviations: [f64; 3],
@@ -428,6 +448,7 @@ pub struct TemporalRidgeConfig {
 /// Frozen inputs for uncalibrated acoustic diagnostics; no implicit fit scales.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "research")]
 pub struct TemporalAcousticConfig {
     pub group_means: [f64; 3],
     pub group_deviations: [f64; 3],
@@ -443,6 +464,7 @@ pub struct TemporalAcousticConfig {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[cfg(feature = "research")]
 pub enum ArrivalModel {
     Periodic,
 }
@@ -450,6 +472,7 @@ pub enum ArrivalModel {
 /// Explicit horizon for the uncalibrated Periodic arrival model.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "research")]
 pub struct TemporalPeriodConfig {
     pub model: ArrivalModel,
     pub horizon_sec: f64,
@@ -458,6 +481,7 @@ pub struct TemporalPeriodConfig {
 /// Explicit author rules for whole-bus T2 attribution and direct accent events.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+#[cfg(feature = "research")]
 pub struct TemporalT2Config {
     pub component_weights: [f64; 4],
     pub gain: f64,
@@ -471,24 +495,28 @@ pub struct TemporalT2Config {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg(feature = "research")]
 pub enum T2Window {
     HopMean,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg(feature = "research")]
 pub enum T2Combination {
     PositiveComponentRise,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg(feature = "research")]
 pub enum T2Attribution {
     FirstHopMassFraction,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg(feature = "research")]
 pub enum T2Unknown {
     Suppress,
 }
@@ -599,6 +627,7 @@ impl AppConfig {
 
     /// Validate the parsed settings before a score has selected the room.
     fn validate_settings(&self) -> Result<()> {
+        #[cfg(feature = "research")]
         if let Some(p) = self.analysis.felt_beat {
             ensure!(
                 p.lambda + p.weak_lambda + p.lambda_0 > 0.0,
@@ -684,6 +713,7 @@ impl AppConfig {
                 && (0.0..=1.0).contains(&self.dcc.coupling_strength),
             "dcc.coupling_strength must be finite and in [0, 1]"
         );
+        #[cfg(feature = "research")]
         if let Some(body) = self.body_metabolism.filter(|body| body.enabled) {
             ensure!(
                 body.updates_per_hop > 0,
@@ -703,6 +733,7 @@ impl AppConfig {
                 "body_metabolism representative hold exceeds the sample clock"
             );
         }
+        #[cfg(feature = "research")]
         if let Some(ridge) = self.temporal_ridge {
             ensure!(
                 ridge.means.iter().all(|v| v.is_finite())
@@ -755,70 +786,74 @@ impl AppConfig {
             .is_zero(),
             "analysis.hop_size / audio.sample_rate must produce a nonzero hop duration"
         );
-        if let Some(body) = self.temporal_body {
-            crate::temporal_cognition::body::validate(body).map_err(anyhow::Error::msg)?;
-            if let Some(acoustic) = self.temporal_acoustic {
-                ensure!(
-                    body.accent_means == acoustic.accent_means
-                        && body.accent_deviations == acoustic.accent_deviations,
-                    "temporal_body and temporal_acoustic must share frozen accent scales"
-                );
+        #[cfg(feature = "research")]
+        {
+            if let Some(body) = self.temporal_body {
+                crate::temporal_cognition::body::validate(body).map_err(anyhow::Error::msg)?;
+                if let Some(acoustic) = self.temporal_acoustic {
+                    ensure!(
+                        body.accent_means == acoustic.accent_means
+                            && body.accent_deviations == acoustic.accent_deviations,
+                        "temporal_body and temporal_acoustic must share frozen accent scales"
+                    );
+                }
             }
-        }
-        crate::temporal_cognition::body_model::validate(self)?;
-        if self.temporal_meter_t2 || self.temporal_t2.is_some() {
-            crate::temporal_cognition::t2::Producer::new(self.audio.sample_rate)
+            crate::temporal_cognition::body_model::validate(self)?;
+            if self.temporal_meter_t2 || self.temporal_t2.is_some() {
+                crate::temporal_cognition::t2::Producer::new(self.audio.sample_rate)
+                    .map_err(anyhow::Error::msg)?;
+            }
+            if self.temporal_meter_t2 {
+                crate::core::meter::MeterNetwork::continuous_geometry(
+                    self.audio.sample_rate,
+                    self.analysis.hop_size as u64,
+                )
                 .map_err(anyhow::Error::msg)?;
-        }
-        if self.temporal_meter_t2 {
-            crate::core::meter::MeterNetwork::continuous_geometry(
-                self.audio.sample_rate,
-                self.analysis.hop_size as u64,
-            )
-            .map_err(anyhow::Error::msg)?;
-        }
-        if let Some(t2) = self.temporal_t2 {
-            crate::temporal_cognition::t2::validate_config(t2).map_err(anyhow::Error::msg)?;
-            ensure!(
-                self.temporal_acoustic.is_some() && self.temporal_period.is_some(),
-                "temporal_t2 requires temporal_acoustic and temporal_period"
-            );
-        }
-        if let Some(acoustic) = self.temporal_acoustic {
-            let ridge = self
-                .temporal_ridge
-                .context("temporal_acoustic requires temporal_ridge scales")?;
-            crate::temporal_cognition::proposals::frontend::Frontend::configured(
-                crate::core::log2space::Log2Space::new(100.0, 200.0, 1),
-                0,
-                (0, 0),
-                self.audio.sample_rate,
-                self.analysis.hop_size as u64,
-                ridge,
-                acoustic,
-            )
-            .map_err(anyhow::Error::msg)?;
-        }
-
-        if let Some(period) = self.temporal_period {
-            ensure!(
-                self.temporal_acoustic.is_some(),
-                "temporal_period requires temporal_acoustic"
-            );
-            crate::temporal_cognition::arrival::Engine::new(period).map_err(anyhow::Error::msg)?;
-        }
-        if let Some(onset) = self.temporal_onset_comparison {
-            if let Some(weight) = onset.arrival_weight {
+            }
+            if let Some(t2) = self.temporal_t2 {
+                crate::temporal_cognition::t2::validate_config(t2).map_err(anyhow::Error::msg)?;
                 ensure!(
-                    weight.is_finite() && weight >= 0.,
-                    "arrival_weight must be finite and nonnegative"
+                    self.temporal_acoustic.is_some() && self.temporal_period.is_some(),
+                    "temporal_t2 requires temporal_acoustic and temporal_period"
                 );
             }
-            if onset.arrival {
+            if let Some(acoustic) = self.temporal_acoustic {
+                let ridge = self
+                    .temporal_ridge
+                    .context("temporal_acoustic requires temporal_ridge scales")?;
+                crate::temporal_cognition::proposals::frontend::Frontend::configured(
+                    crate::core::log2space::Log2Space::new(100.0, 200.0, 1),
+                    0,
+                    (0, 0),
+                    self.audio.sample_rate,
+                    self.analysis.hop_size as u64,
+                    ridge,
+                    acoustic,
+                )
+                .map_err(anyhow::Error::msg)?;
+            }
+
+            if let Some(period) = self.temporal_period {
                 ensure!(
-                    self.temporal_period.is_some(),
-                    "arrival requires temporal_period"
+                    self.temporal_acoustic.is_some(),
+                    "temporal_period requires temporal_acoustic"
                 );
+                crate::temporal_cognition::arrival::Engine::new(period)
+                    .map_err(anyhow::Error::msg)?;
+            }
+            if let Some(onset) = self.temporal_onset_comparison {
+                if let Some(weight) = onset.arrival_weight {
+                    ensure!(
+                        weight.is_finite() && weight >= 0.,
+                        "arrival_weight must be finite and nonnegative"
+                    );
+                }
+                if onset.arrival {
+                    ensure!(
+                        self.temporal_period.is_some(),
+                        "arrival requires temporal_period"
+                    );
+                }
             }
         }
         Ok(())
@@ -964,6 +999,7 @@ impl AppConfig {
 #[cfg(test)]
 mod tests {
     #[test]
+    #[cfg(feature = "research")]
     fn body_metabolism_requires_explicit_budget_and_probe_settings() {
         assert!(AppConfig::default().body_metabolism.is_none());
         let missing = "[body_metabolism]\nenabled = true\nobservation_frames = 8\nrepresentative_hold_sec = 1.0\n";
@@ -983,6 +1019,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn t2_has_no_implicit_author_values_and_requires_its_consumers() {
         use super::*;
         let empty: AppConfig = toml::from_str("").unwrap();
@@ -993,6 +1030,7 @@ mod tests {
         let t2: TemporalT2Config = toml::from_str(explicit).unwrap();
         crate::temporal_cognition::t2::validate_config(t2).unwrap();
         let config = AppConfig {
+            #[cfg(feature = "research")]
             temporal_t2: Some(t2),
             ..AppConfig::default()
         };
@@ -1044,6 +1082,7 @@ mod tests {
     use std::fs;
 
     #[test]
+    #[cfg(feature = "research")]
     fn ridge_diagnostics_require_explicit_finite_scales() {
         assert!(AppConfig::default().temporal_ridge.is_none());
         let config = "[temporal_ridge]\nmeans = [0.0, 0.0, 0.0]\ndeviations = [0.05, 4.0, 1.0]\n";
@@ -1069,6 +1108,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn onset_comparison_defaults_to_body_and_requires_period_for_arrival() {
         assert!(AppConfig::default().temporal_onset_comparison.is_none());
         let bare: AppConfig = toml::from_str("[temporal_onset_comparison]\n").unwrap();
@@ -1118,6 +1158,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn render_prototype_is_a_false_by_default_bool() {
         let legacy: AppConfig = toml::from_str("").unwrap();
         assert!(!legacy.render_prototype);
@@ -1199,15 +1240,25 @@ mod tests {
         let path_str = path.to_string_lossy().to_string();
         let custom = AppConfig {
             room: None,
+            #[cfg(feature = "research")]
             body_metabolism: None,
+            #[cfg(feature = "research")]
             render_prototype: false,
+            #[cfg(feature = "research")]
             temporal_meter_t2: false,
+            #[cfg(feature = "research")]
             temporal_ridge: None,
+            #[cfg(feature = "research")]
             temporal_acoustic: None,
+            #[cfg(feature = "research")]
             temporal_period: None,
+            #[cfg(feature = "research")]
             temporal_t2: None,
+            #[cfg(feature = "research")]
             temporal_body: None,
+            #[cfg(feature = "research")]
             temporal_body_prototypes: None,
+            #[cfg(feature = "research")]
             temporal_onset_comparison: None,
             audio: AudioConfig {
                 latency_ms: 75.0,
@@ -1216,6 +1267,7 @@ mod tests {
                 output_gain_db: Some(-3.0),
             },
             analysis: AnalysisConfig {
+                #[cfg(feature = "research")]
                 felt_beat: None,
                 nfft: 8192,
                 hop_size: 256,
@@ -1478,12 +1530,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn period_configuration_requires_explicit_valid_model_inputs() {
         let period = TemporalPeriodConfig {
             model: ArrivalModel::Periodic,
             horizon_sec: 0.1,
         };
         let cfg = AppConfig {
+            #[cfg(feature = "research")]
             temporal_period: Some(period),
             ..Default::default()
         };
@@ -1525,6 +1579,22 @@ mod tests {
     #[test]
     fn research_configuration_keys_are_explicitly_rejected() {
         for key in [
+            #[cfg(not(feature = "research"))]
+            "temporal_meter_t2",
+            #[cfg(not(feature = "research"))]
+            "temporal_t2",
+            #[cfg(not(feature = "research"))]
+            "temporal_ridge",
+            #[cfg(not(feature = "research"))]
+            "temporal_acoustic",
+            #[cfg(not(feature = "research"))]
+            "temporal_period",
+            #[cfg(not(feature = "research"))]
+            "temporal_body",
+            #[cfg(not(feature = "research"))]
+            "temporal_body_prototypes",
+            #[cfg(not(feature = "research"))]
+            "temporal_onset_comparison",
             "temporal_memory",
             "temporal_gesture",
             "temporal_private_trace",

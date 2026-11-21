@@ -15,12 +15,14 @@ use crate::scenario::control::DEFAULT_TIMBRE_UNISON;
 use crate::scenario::control::{BodyMethod, VoiceControl};
 use crate::scenario::{SoundBodyConfig, TimbreGenotype};
 use rand::{Rng, RngExt, rngs::SmallRng};
+#[cfg(any(test, feature = "research"))]
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::f32::consts::PI;
 use std::sync::{Arc, Mutex, OnceLock};
 use tracing::warn;
 
+#[cfg(any(test, feature = "research"))]
 impl BodySnapshot {
     pub(crate) fn hash_into(&self, hasher: &mut Sha256) {
         // Preserve the byte encoding of representative-onset recipe identities.
@@ -51,10 +53,13 @@ impl BodySnapshot {
         }
     }
 
+    #[cfg(any(test, feature = "research"))]
+    #[cfg(feature = "research")]
     pub(crate) fn supports_body_models(&self, renderer_phase3: bool) -> bool {
         self.kind.supports_body_models(renderer_phase3)
     }
 
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn has_same_structure(&self, other: &Self) -> bool {
         self.kind == other.kind && self.unison == other.unison && self.ratios == other.ratios
     }
@@ -494,11 +499,13 @@ pub trait SoundBodyFactory: Send + Sync {
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody;
 
     /// Declare conformance of birth and PCM body models to the selected renderer.
+    #[cfg(feature = "research")]
     fn model_kind(&self, _renderer_phase3: bool) -> Option<BodyKind> {
         None
     }
 }
 
+#[cfg(feature = "research")]
 pub(crate) fn supports_body_model(
     control: &VoiceControl,
     snapshot: &BodySnapshot,
@@ -507,6 +514,7 @@ pub(crate) fn supports_body_model(
     model_kind(control, renderer_phase3) == Some(snapshot.kind)
 }
 
+#[cfg(feature = "research")]
 pub(crate) fn model_kind(control: &VoiceControl, renderer_phase3: bool) -> Option<BodyKind> {
     let registry = global_factory_registry()
         .lock()
@@ -605,6 +613,7 @@ pub fn build_sound_body_from_control(
 struct SineBodyFactory;
 
 impl SoundBodyFactory for SineBodyFactory {
+    #[cfg(feature = "research")]
     fn model_kind(&self, renderer_phase3: bool) -> Option<BodyKind> {
         BodyKind::Sine
             .supports_body_models(renderer_phase3)
@@ -624,6 +633,7 @@ impl SoundBodyFactory for SineBodyFactory {
 struct HarmonicBodyFactory;
 
 impl SoundBodyFactory for HarmonicBodyFactory {
+    #[cfg(feature = "research")]
     fn model_kind(&self, renderer_phase3: bool) -> Option<BodyKind> {
         BodyKind::Harmonic
             .supports_body_models(renderer_phase3)

@@ -1,3 +1,4 @@
+#![cfg(feature = "research")]
 #![cfg(all(feature = "web", not(feature = "native")))]
 use conchordal::{StepEngine, StepStatus};
 use std::io::Write;

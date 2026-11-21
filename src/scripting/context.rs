@@ -56,6 +56,7 @@ pub(super) struct ScopeFrame {}
 #[derive(Debug, Clone)]
 pub struct ScriptContext {
     pub(super) tonal_observation_position: Option<Position>,
+    #[cfg(feature = "research")]
     pub(super) felt_observation_position: Option<Position>,
     pub(super) harmonic_observation_position: Option<Position>,
     #[cfg(feature = "native")]
@@ -113,6 +114,7 @@ impl ScriptContext {
     pub(super) fn with_seed(seed: u64) -> Self {
         Self {
             tonal_observation_position: None,
+            #[cfg(feature = "research")]
             felt_observation_position: None,
             harmonic_observation_position: None,
             harmonic_position: Position::NONE,
@@ -128,6 +130,7 @@ impl ScriptContext {
             expression_sections: Vec::new(),
             scenario: Scenario {
                 observe_tonal_context: false,
+                #[cfg(feature = "research")]
                 observe_felt_beat: false,
                 harmonic_relation_sources: None,
                 expression: None,
@@ -813,6 +816,7 @@ impl ScriptContext {
             self.warn("finite_harmonic_observation", "observe_harmonic_relations ignored in a finite scenario; events determine observation and source capacity".into(), position);
             self.scenario.harmonic_relation_sources = None;
         }
+        #[cfg(feature = "research")]
         if let Some(position) = self.felt_observation_position {
             self.warn(
                 "finite_felt_observation",
@@ -920,6 +924,7 @@ impl ScriptContext {
                 specified.get(label).copied().unwrap_or(position),
             );
         };
+        #[cfg(feature = "research")]
         if population_spec.spec.control.phonation.syncopate > 0.0
             && (!population_spec.spec.explicit_metric
                 || population_spec.spec.microtiming_or(0.0) != 0.0)
@@ -930,6 +935,7 @@ impl ScriptContext {
             );
             population_spec.spec.control.phonation.syncopate = 0.0;
         }
+        #[cfg(feature = "research")]
         if self.scenario.end == ScenarioEnd::Open
             && population_spec.spec.control.phonation.syncopate > 0.0
             && !self.scenario.observe_felt_beat

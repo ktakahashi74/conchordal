@@ -100,7 +100,7 @@ pub(super) fn spawn_analysis_worker(
     analysis_result_tx: Sender<analysis_worker::AnalysisResult>,
     analysis_update_rx: Receiver<LandscapeUpdate>,
     delivery: analysis_worker::AnalysisDelivery,
-    temporal_inputs: (
+    #[cfg(feature = "research")] temporal_inputs: (
         Option<crate::temporal_cognition::observation::Tap>,
         Option<crate::temporal_cognition::t2::runtime_input::Output>,
     ),
@@ -108,6 +108,7 @@ pub(super) fn spawn_analysis_worker(
     thread::Builder::new()
         .name(name.into())
         .spawn(move || {
+            #[cfg(feature = "research")]
             let (temporal_tap, raw_output) = temporal_inputs;
             analysis_worker::run(
                 analysis_stream,
@@ -115,7 +116,9 @@ pub(super) fn spawn_analysis_worker(
                 analysis_result_tx,
                 analysis_update_rx,
                 delivery,
+                #[cfg(feature = "research")]
                 temporal_tap,
+                #[cfg(feature = "research")]
                 raw_output,
             )
         })
@@ -143,7 +146,7 @@ pub(super) struct WiringOptions {
     pub(super) duration_sec: Option<f64>,
     #[cfg(test)]
     pub(super) offline_body_probe: Option<OfflineBodyProbe>,
-    #[cfg(test)]
+    #[cfg(all(test, feature = "research"))]
     pub(super) raw_t2_delay: Duration,
     pub(super) ui_tx: Option<Sender<UiFrame>>,
     /// Enables listener analysis even without DCC coupling (GUI display / report).
@@ -157,6 +160,7 @@ pub(super) struct WiringOptions {
     pub(super) deterministic_analysis: bool,
     /// Offline render only: footprints return at the hop that asked, whatever the worker's
     /// pace. The instrument keeps wall-clock delivery, even with `--play=false`.
+    #[cfg(feature = "research")]
     pub(super) deterministic_footprints: bool,
     pub(super) guard_meter: Option<Arc<LimiterMeter>>,
     pub(super) underrun_frames: Option<Arc<AtomicU64>>,
@@ -305,7 +309,11 @@ pub(super) fn prepare_score(
         if streaming {
             return Err("strict room needs a pre-scannable score to bound Voice, Flora and Rain generations".into());
         }
-        room_reservation::source_bound(&scenario, fs, hop, !config.temporal_meter_t2)?
+        #[cfg(feature = "research")]
+        let inject_tick_zero = !config.temporal_meter_t2;
+        #[cfg(not(feature = "research"))]
+        let inject_tick_zero = true;
+        room_reservation::source_bound(&scenario, fs, hop, inject_tick_zero)?
     } else {
         0
     };
@@ -353,7 +361,7 @@ pub(super) fn prepare_runtime(
         duration_sec,
         #[cfg(test)]
         offline_body_probe,
-        #[cfg(test)]
+        #[cfg(all(test, feature = "research"))]
         raw_t2_delay,
         ui_tx,
         listener_forced,
@@ -364,6 +372,7 @@ pub(super) fn prepare_runtime(
         wav_tx,
         mut reporter,
         deterministic_analysis,
+        #[cfg(feature = "research")]
         deterministic_footprints,
         guard_meter,
         underrun_frames,
@@ -413,6 +422,7 @@ pub(super) fn prepare_runtime(
     let analysis_result_rx = crate::handoff::Slot::new(4);
 
     #[cfg(feature = "native")]
+    #[cfg(feature = "research")]
     let (raw_output, t2_inbox) = if config.temporal_meter_t2 {
         let (output, inbox) =
             crate::temporal_cognition::t2::runtime_input::channel(runtime_sample_rate, hop as u64);
@@ -427,12 +437,18 @@ pub(super) fn prepare_runtime(
         (None, None)
     };
     #[cfg(not(feature = "native"))]
+    #[cfg(feature = "research")]
     let t2_inbox = None;
-    // NSGT-RT based audio analysis thread.
+    #[cfg(feature = "research")]
     let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
+    #[cfg(not(feature = "research"))]
+    let observing = false;
+    #[cfg(feature = "research")]
     let arrival_enabled = config.temporal_onset_comparison.is_some_and(|c| c.arrival);
+    #[cfg(feature = "research")]
     let mut temporal_snapshots = [None, None];
     #[cfg(feature = "native")]
+    #[cfg(feature = "research")]
     let mut taps = std::array::from_fn::<_, 2, _>(|bus| {
         (observing || ((arrival_enabled || config.temporal_t2.is_some()) && bus == 0)).then(|| {
             let tap = crate::temporal_cognition::observation::Tap::spawn(
@@ -465,6 +481,7 @@ pub(super) fn prepare_runtime(
         })
     });
     #[cfg(feature = "native")]
+    #[cfg(feature = "research")]
     let body_capture = if observing || arrival_enabled {
         config.temporal_body.map(|body| {
             crate::temporal_cognition::body::Capture::spawn(
@@ -480,8 +497,10 @@ pub(super) fn prepare_runtime(
         None
     };
     #[cfg(not(feature = "native"))]
+    #[cfg(feature = "research")]
     let taps: [Option<crate::temporal_cognition::observation::Tap>; 2] = [None, None];
     #[cfg(not(feature = "native"))]
+    #[cfg(feature = "research")]
     let body_capture: Option<crate::temporal_cognition::body::Capture> = None;
     let resource_power = scenario.end == crate::scenario::ScenarioEnd::Open
         || scenario
@@ -489,9 +508,13 @@ pub(super) fn prepare_runtime(
             .iter()
             .flat_map(|event| &event.actions)
             .any(|action| matches!(action, crate::scenario::Action::PlaceFlora { .. }));
+    #[cfg(feature = "research")]
+    let habitat_tap = taps[0].is_some();
+    #[cfg(not(feature = "research"))]
+    let habitat_tap = false;
     let display_or_report = ui_tx.is_some() || reporter.is_some();
     let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
-        .with_nsgt_power(display_or_report || taps[0].is_some() || resource_power)
+        .with_nsgt_power(display_or_report || habitat_tap || resource_power)
         .with_spectral_history(reporter.is_some());
     let harmonic_relations_enabled = scenario.harmonic_relation_sources.is_some()
         || scenario
@@ -594,13 +617,16 @@ pub(super) fn prepare_runtime(
         analysis_result_tx,
         analysis_update_rx,
         analysis_worker::AnalysisDelivery::Latest(analysis_result_rx.clone()),
+        #[cfg(feature = "research")]
         (taps[0].take(), raw_output),
     );
 
     #[cfg(not(feature = "native"))]
     let analysis_handle = AnalysisExecution::Inline(Box::new(analysis_worker::AnalysisState::new(
         analysis_stream,
+        #[cfg(feature = "research")]
         None,
+        #[cfg(feature = "research")]
         None,
     )));
 
@@ -616,10 +642,14 @@ pub(super) fn prepare_runtime(
         listener_analysis_update_tx,
         listener_analysis_handle,
     ) = if listener_analysis_enabled {
+        #[cfg(feature = "research")]
+        let presentation_tap = taps[1].is_some();
+        #[cfg(not(feature = "research"))]
+        let presentation_tap = false;
         // The GUI shows only habitat power; the presentation bus's NSGT power feeds
         // its report history and the listener-side research tap.
         let mut listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
-            .with_nsgt_power(reporter.is_some() || taps[1].is_some())
+            .with_nsgt_power(reporter.is_some() || presentation_tap)
             .with_spectral_history(reporter.is_some());
         if let Some(decoder) = &tonal_decoder {
             listener_stream.enable_tonal_context(decoder.clone());
@@ -637,6 +667,7 @@ pub(super) fn prepare_runtime(
                 result_tx,
                 update_rx,
                 analysis_worker::AnalysisDelivery::Ordered,
+                #[cfg(feature = "research")]
                 (taps[1].take(), None),
             );
             (
@@ -653,7 +684,13 @@ pub(super) fn prepare_runtime(
                 Some(crate::handoff::Slot::new(4)),
                 Some(crate::handoff::Slot::new(8)),
                 Some(AnalysisExecution::Inline(Box::new(
-                    analysis_worker::AnalysisState::new(listener_stream, None, None),
+                    analysis_worker::AnalysisState::new(
+                        listener_stream,
+                        #[cfg(feature = "research")]
+                        None,
+                        #[cfg(feature = "research")]
+                        None,
+                    ),
                 ))),
             )
         }
@@ -676,6 +713,7 @@ pub(super) fn prepare_runtime(
     if support_enabled {
         pop.prepare_support(core.nsgt.space().n_bins());
     }
+    #[cfg(feature = "research")]
     if let Some(settings) = config.body_metabolism.filter(|settings| settings.enabled) {
         pop.body_metabolism = Some(
             crate::life::body_metabolism::BodyMetabolism::new(
@@ -779,10 +817,12 @@ pub(super) fn prepare_runtime(
             sources,
         )
     });
+    #[cfg(feature = "research")]
     let felt_period_guard =
         scenario.events.iter().flat_map(|e| &e.actions).any(
             |a| matches!(a, Action::Spawn { spec, .. } if spec.control.phonation.syncopate > 0.0),
         );
+    #[cfg(feature = "research")]
     let felt_beat = config.analysis.felt_beat.or_else(|| {
         (scenario.observe_felt_beat || felt_period_guard)
             .then(crate::config::FeltBeatParams::default)
@@ -797,12 +837,17 @@ pub(super) fn prepare_runtime(
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
+        #[cfg(feature = "research")]
         felt_beat,
+        #[cfg(feature = "research")]
         felt_period_guard,
         harmonic_relations,
         habitat_meter,
+        #[cfg(feature = "research")]
         render_prototype: config.render_prototype,
+        #[cfg(feature = "research")]
         temporal_meter_t2: config.temporal_meter_t2,
+        #[cfg(feature = "research")]
         onset_comparison: config.temporal_onset_comparison,
         scenario_name: scenario_label,
         wait_user_exit,
@@ -823,10 +868,13 @@ pub(super) fn prepare_runtime(
         hop_duration,
         fs,
         deterministic_analysis,
+        #[cfg(feature = "research")]
         deterministic_footprints,
     };
     let channels = WorkerChannels {
+        #[cfg(feature = "research")]
         t2_inbox,
+        #[cfg(feature = "research")]
         temporal_snapshots,
         ui_tx,
         #[cfg(feature = "native")]
@@ -851,9 +899,13 @@ pub(super) fn prepare_runtime(
             cfg,
         );
         state.loo_populations = loo_populations;
-        state.temporal.body_snapshot = body_capture.as_ref().map(|c| Box::new(c.snapshot()));
-        state.schedule_renderer.body_capture = body_capture;
+        #[cfg(feature = "research")]
+        {
+            state.temporal.body_snapshot = body_capture.as_ref().map(|c| Box::new(c.snapshot()));
+            state.schedule_renderer.body_capture = body_capture;
+        }
         state.schedule_renderer.room = room;
+        #[cfg(feature = "research")]
         if let (Some(buses), Some(body)) = (&sites, &mut state.pop.body_metabolism) {
             body.prepare_sites(&buses.full);
         }
@@ -895,7 +947,7 @@ fn start_analysis(
     output: Sender<analysis_worker::AnalysisResult>,
     updates: Receiver<LandscapeUpdate>,
     delivery: analysis_worker::AnalysisDelivery,
-    temporal: (
+    #[cfg(feature = "research")] temporal: (
         Option<crate::temporal_cognition::observation::Tap>,
         Option<crate::temporal_cognition::t2::runtime_input::Output>,
     ),
@@ -903,7 +955,14 @@ fn start_analysis(
     #[cfg(feature = "native")]
     if !inline {
         return AnalysisExecution::Thread(spawn_analysis_worker(
-            name, stream, input, output, updates, delivery, temporal,
+            name,
+            stream,
+            input,
+            output,
+            updates,
+            delivery,
+            #[cfg(feature = "research")]
+            temporal,
         ));
     }
     {
@@ -913,7 +972,9 @@ fn start_analysis(
             output,
             updates,
             analysis_worker::AnalysisDelivery::Ordered,
+            #[cfg(feature = "research")]
             temporal.0,
+            #[cfg(feature = "research")]
             temporal.1,
         );
         AnalysisExecution::Inline(Box::new(move || input.try_recv().is_ok_and(&mut step)))
@@ -1029,7 +1090,10 @@ pub(crate) fn init_runtime(
         std::process::exit(1);
     }
     let seed = scenario.seed;
+    #[cfg(feature = "research")]
     let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
+    #[cfg(not(feature = "research"))]
+    let observing = false;
     let prepared = prepare_score(&config, runtime_sample_rate, scenario, score.is_some())
         .unwrap_or_else(|err| {
             eprintln!("{err}");
@@ -1095,7 +1159,7 @@ pub(crate) fn init_runtime(
             duration_sec: args.duration,
             #[cfg(test)]
             offline_body_probe: None,
-            #[cfg(test)]
+            #[cfg(all(test, feature = "research"))]
             raw_t2_delay: Duration::ZERO,
             ui_tx,
             listener_forced: !args.nogui || args.report.is_some(),
@@ -1106,6 +1170,7 @@ pub(crate) fn init_runtime(
             wav_tx: None,
             reporter,
             deterministic_analysis,
+            #[cfg(feature = "research")]
             deterministic_footprints: false,
             guard_meter,
             underrun_frames: audio_out.as_ref().map(AudioOutput::underrun_frames),
@@ -1243,7 +1308,7 @@ pub fn run_render(
             duration_sec,
             #[cfg(test)]
             offline_body_probe: None,
-            #[cfg(test)]
+            #[cfg(all(test, feature = "research"))]
             raw_t2_delay: Duration::ZERO,
             ui_tx: None,
             listener_forced: reporter.is_some(),
@@ -1253,6 +1318,7 @@ pub fn run_render(
             wav_tx: Some(wav_tx),
             reporter,
             deterministic_analysis: true,
+            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter,
             underrun_frames: None,

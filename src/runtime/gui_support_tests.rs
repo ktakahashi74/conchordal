@@ -7,6 +7,7 @@ fn options(ui_tx: Option<Sender<UiFrame>>) -> WiringOptions {
         end_request: Arc::new(AtomicBool::new(false)),
         duration_sec: None,
         offline_body_probe: None,
+        #[cfg(feature = "research")]
         raw_t2_delay: Duration::ZERO,
         ui_tx,
         listener_forced: true,
@@ -16,6 +17,7 @@ fn options(ui_tx: Option<Sender<UiFrame>>) -> WiringOptions {
         wav_tx: None,
         reporter: None,
         deterministic_analysis: true,
+        #[cfg(feature = "research")]
         deterministic_footprints: false,
         guard_meter: None,
         underrun_frames: None,

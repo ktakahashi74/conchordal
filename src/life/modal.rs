@@ -189,6 +189,7 @@ impl SoundBody for ModalBody {
 struct ModalBodyFactory;
 
 impl SoundBodyFactory for ModalBodyFactory {
+    #[cfg(feature = "research")]
     fn model_kind(&self, renderer_phase3: bool) -> Option<BodyKind> {
         BodyKind::Modal
             .supports_body_models(renderer_phase3)

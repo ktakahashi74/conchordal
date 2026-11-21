@@ -8,6 +8,7 @@ use fearless_simd::{Level, Simd, prelude::*};
 use rustfft::num_complex::Complex32;
 use std::f32::consts::TAU;
 
+#[cfg(any(test, feature = "research"))]
 pub(crate) struct SpectralFrameView<'a> {
     pub subjective_intensity: &'a [f32],
 }
@@ -415,6 +416,7 @@ impl AuditoryFrontEnd {
     }
 
     // Unselected bodies still advance the filter and hop-statistic history.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn skip(&mut self, pcm: &[f32]) {
         self.bank
             .read_complex_hop(pcm.iter().map(|&x| Complex32::new(x, 0.0)));

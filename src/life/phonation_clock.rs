@@ -470,8 +470,11 @@ pub struct ParticipationClock {
     pub(super) own_profile: [f32; 3],
     pub(super) hold_theta: f32,
     pub(super) adsr: Option<crate::life::sound::ToneAdsr>,
+    #[cfg(feature = "research")]
     pub(super) onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
+    #[cfg(feature = "research")]
     pub(super) footprint: crate::life::temporal_participation::FootprintTracker,
+    #[cfg(feature = "research")]
     pub(super) decision_trace: bool,
     pub(super) gate_index: u64,
 }
@@ -479,6 +482,7 @@ pub struct ParticipationClock {
 impl ParticipationClock {
     /// The representative hold and envelope of I11-1 §4.2 for either configured
     /// footprint source, so both sources can use the same record span.
+    #[cfg(feature = "research")]
     pub(super) fn footprint_hold(&self) -> Option<(f32, Option<crate::life::sound::ToneAdsr>)> {
         self.onset_comparison
             .map(|_| (self.hold_theta / self.base_rate_hz, self.adsr))
@@ -489,7 +493,7 @@ impl ParticipationClock {
         ctx: &CoreTickCtx,
         cursor: Tick,
         allowed: bool,
-        arrival: Option<&ArrivalContext<'_>>,
+        #[cfg(feature = "research")] arrival: Option<&ArrivalContext<'_>>,
     ) -> Option<CandidatePoint> {
         if !ctx.fs.is_finite() || ctx.fs < 1.0 {
             return None;
@@ -519,9 +523,13 @@ impl ParticipationClock {
         }
         policy.set_overlap(0.8, self.own_profile);
         policy.set_sound_duration(self.hold_theta / self.base_rate_hz, self.adsr);
+        #[cfg(feature = "research")]
         policy.set_onset_comparison(self.onset_comparison);
+        #[cfg(feature = "research")]
         policy.set_body_footprint(self.footprint.selected());
+        #[cfg(feature = "research")]
         policy.set_current_identity(self.footprint.identity());
+        #[cfg(feature = "research")]
         policy.set_decision_trace(self.decision_trace);
         let extra = self.adoption_candidate.take();
         let tick = policy.candidate_with_shape(
@@ -529,6 +537,7 @@ impl ParticipationClock {
             ctx.frame_end,
             allowed,
             self.forecast.as_ref(),
+            #[cfg(feature = "research")]
             arrival,
             extra,
             self.shape.as_mut().filter(|shape| shape.enabled),
@@ -664,7 +673,13 @@ impl PhonationClock {
             PhonationClock::Participation(clock) => {
                 clock.hop_frames = ctx.frame_end.saturating_sub(ctx.now_tick);
                 let mut cursor = ctx.now_tick;
-                while let Some(candidate) = clock.candidate(ctx, cursor, false, None) {
+                while let Some(candidate) = clock.candidate(
+                    ctx,
+                    cursor,
+                    false,
+                    #[cfg(feature = "research")]
+                    None,
+                ) {
                     clock.resolve(candidate.tick, false);
                     cursor = candidate.tick.saturating_add(1);
                     out.push(candidate);
@@ -739,8 +754,11 @@ impl PhonationClock {
                 issued_predictions: Vec::new(),
                 hold_theta: 1.0,
                 adsr: None,
+                #[cfg(feature = "research")]
                 onset_comparison: None,
+                #[cfg(feature = "research")]
                 footprint: Default::default(),
+                #[cfg(feature = "research")]
                 decision_trace: false,
                 gate_index: 0,
             })),

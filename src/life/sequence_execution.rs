@@ -160,6 +160,7 @@ mod tests {
                         0.0,
                         1.0,
                         0.8,
+                        #[cfg(feature = "research")]
                         None,
                         Some(&field.space),
                         batch,
@@ -641,6 +642,7 @@ mod tests {
                         0.0,
                         1.0,
                         0.8,
+                        #[cfg(feature = "research")]
                         None,
                         Some(&field.space),
                         batch,
@@ -882,7 +884,9 @@ impl Voice {
         state: &CoreState,
         consonance: f32,
         target_amp: f32,
-        arrival: Option<&crate::life::arrival_cost::ArrivalContext<'_>>,
+        #[cfg(feature = "research")] arrival: Option<
+            &crate::life::arrival_cost::ArrivalContext<'_>,
+        >,
         space: Option<&Log2Space>,
         out: &mut PhonationBatch,
     ) {
@@ -920,7 +924,13 @@ impl Voice {
             if cursor < at {
                 let segment = self.phonation_segment(ctx, cursor, at);
                 self.prepare_sequence_segment(&segment, space);
-                self.tick_participation_segment(&segment, state, arrival, out);
+                self.tick_participation_segment(
+                    &segment,
+                    state,
+                    #[cfg(feature = "research")]
+                    arrival,
+                    out,
+                );
                 self.materialize_sequence_events(&mut emitted, target_amp, out);
                 self.consume_sequence_execution(
                     &mut deferred,
@@ -955,7 +965,13 @@ impl Voice {
             }
             let segment = self.phonation_segment(ctx, step.at, step.at.saturating_add(1));
             self.prepare_sequence_segment(&segment, space);
-            self.tick_participation_segment(&segment, state, arrival, out);
+            self.tick_participation_segment(
+                &segment,
+                state,
+                #[cfg(feature = "research")]
+                arrival,
+                out,
+            );
             self.materialize_sequence_events(&mut emitted, target_amp, out);
             cursor = step.at.saturating_add(1);
             self.consume_sequence_execution(
@@ -969,7 +985,13 @@ impl Voice {
         if cursor < ctx.frame_end {
             let segment = self.phonation_segment(ctx, cursor, ctx.frame_end);
             self.prepare_sequence_segment(&segment, space);
-            self.tick_participation_segment(&segment, state, arrival, out);
+            self.tick_participation_segment(
+                &segment,
+                state,
+                #[cfg(feature = "research")]
+                arrival,
+                out,
+            );
             self.materialize_sequence_events(&mut emitted, target_amp, out);
         }
         self.consume_sequence_execution(

@@ -12,13 +12,16 @@ fn intrinsic_rate_renders_bodies_reproducibly_and_stops_on_release() {
         std::process::id()
     ));
     fs::create_dir(&dir).unwrap();
-    for prototype in [false, true] {
+    for prototype in [
+        false,
+        #[cfg(feature = "research")]
+        true,
+    ] {
         let config = dir.join(format!("config-{prototype}.toml"));
-        fs::write(
-            &config,
-            format!("render_prototype = {prototype}\n[analysis]\nnfft = 2048\nhop_size = 512\n"),
-        )
-        .unwrap();
+        let settings = "[analysis]\nnfft = 2048\nhop_size = 512\n";
+        #[cfg(feature = "research")]
+        let settings = format!("render_prototype = {prototype}\n{settings}");
+        fs::write(&config, settings).unwrap();
         for body in ["sine", "harmonic", "modal"] {
             {
                 let end = "release";

@@ -121,6 +121,7 @@ impl ControlForecast {
 
     /// Includes the target sample's control step, without stepping a DSP backend.
     /// Ticks where the amplitude target steps or a sequence gate closes.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn steps(self) -> [Option<u64>; 5] {
         let mut out = [None; 5];
         if let Some(updates) = self.amplitude_updates {
@@ -151,6 +152,7 @@ impl ControlForecast {
     /// Span bound while `[from, to)` overlaps an amplitude-smoothing transient: the same
     /// `2 lambda h <= 0.1` rule as the envelope decay, over seven time constants after the
     /// issue or a target step.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn smoothing_span(self, [from, to]: [u64; 2]) -> Option<u64> {
         let alpha = f64::from(self.amplitude_smoothing?.alpha);
         if !(alpha > 0. && alpha < 1.) {
@@ -166,6 +168,7 @@ impl ControlForecast {
     }
 
     /// The modulator's linear attack `[origin, end)`; its gain changes slope at `end`.
+    #[cfg(any(test, feature = "research"))]
     pub(crate) fn attack_span(self) -> Option<[u64; 2]> {
         let AmplitudeModel::EntrainPulse {
             attack_step,

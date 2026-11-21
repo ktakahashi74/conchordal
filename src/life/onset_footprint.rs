@@ -1,24 +1,36 @@
 //! Representative-onset body footprint: a declared approximation frozen from the recipe
 //! alone, not a prediction of the tone that will actually sound.
 
+#[cfg(any(test, feature = "research"))]
 use crate::core::modulation::NeuralRhythms;
-use crate::core::timebase::{Tick, Timebase};
+use crate::core::timebase::Tick;
+#[cfg(any(test, feature = "research"))]
+use crate::core::timebase::Timebase;
+#[cfg(any(test, feature = "research"))]
 use crate::handoff::{Receiver, Sender};
 #[cfg(feature = "native")]
+#[cfg(any(test, feature = "research"))]
 use crate::handoff::{bounded, select};
+#[cfg(any(test, feature = "research"))]
 use crate::life::energy_window::project_window;
+#[cfg(any(test, feature = "research"))]
 use crate::life::phonation_engine::OnsetKick;
 use crate::life::schedule_renderer::modal_phase_seed;
+#[cfg(any(test, feature = "research"))]
+use crate::life::sound::Tone;
 use crate::life::sound::{
-    AutonomousPulseSpec, BodySnapshot, RenderModulatorSpec, RenderModulatorStateKind, Tone,
-    ToneAdsr,
+    AutonomousPulseSpec, BodySnapshot, RenderModulatorSpec, RenderModulatorStateKind, ToneAdsr,
 };
+#[cfg(any(test, feature = "research"))]
 use crate::life::tone_energy::ToneEnergy;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+#[cfg(any(test, feature = "research"))]
 use std::sync::Arc;
+#[cfg(any(test, feature = "research"))]
 use std::sync::atomic::{AtomicU64, Ordering};
 #[cfg(feature = "native")]
+#[cfg(any(test, feature = "research"))]
 use std::thread::JoinHandle;
 
 /// Registered representative values (i11-onset-comparison §4.2).
@@ -26,8 +38,11 @@ const KICK_STRENGTH: f32 = 1.0;
 /// The footprint is normalized to its peak bin, so the amplitude is a pure scale. A fixed
 /// value keeps the live gain (gate, vitality, release) out of the identity.
 const AMP: f32 = 1.0;
+#[cfg(any(test, feature = "research"))]
 const CAP_SECONDS: f32 = 4.0;
+#[cfg(any(test, feature = "research"))]
 const HOP: usize = 64;
+#[cfg(any(test, feature = "research"))]
 const CAPACITY: usize = 64;
 
 /// Pins the live envelope state out of the recipe. The representative kick restarts an
@@ -64,6 +79,7 @@ pub(crate) fn representative_modulator(spec: RenderModulatorSpec) -> RenderModul
 /// Generation inputs of the representative tone. Everything here is hashed into `Identity`.
 #[derive(Clone, Debug)]
 pub(crate) struct Recipe {
+    #[cfg(feature = "research")]
     pub renderer_phase3: bool,
     pub body: BodySnapshot,
     pub freq_hz: f32,
@@ -84,6 +100,7 @@ pub(crate) struct Identity {
 impl Identity {
     pub(crate) fn new(source_id: u64, body_generation: u32, recipe: &Recipe) -> Self {
         let mut hasher = Sha256::new();
+        #[cfg(feature = "research")]
         if recipe.renderer_phase3 {
             hasher.update(b"renderer:phase3-pcm-v2");
         }
@@ -176,6 +193,7 @@ fn hash_modulator(hasher: &mut Sha256, spec: &RenderModulatorSpec) {
 }
 
 #[derive(Clone, Debug)]
+#[cfg(any(test, feature = "research"))]
 pub(crate) struct Request {
     pub identity: Identity,
     pub requested_at: u64,
@@ -184,6 +202,7 @@ pub(crate) struct Request {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg(any(test, feature = "research"))]
 pub(crate) enum State {
     Body,
     BodySilent,
@@ -192,6 +211,7 @@ pub(crate) enum State {
 
 /// The values stood in for quantities that only exist after the selection.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[cfg(any(test, feature = "research"))]
 pub(crate) struct Representative {
     pub amp: f32,
     pub kick_strength: f32,
@@ -201,6 +221,7 @@ pub(crate) struct Representative {
 }
 
 #[derive(Clone, Debug, Serialize)]
+#[cfg(any(test, feature = "research"))]
 pub(crate) struct Record {
     pub identity: Identity,
     pub requested_at: u64,
@@ -214,6 +235,7 @@ pub(crate) struct Record {
     pub representative: Representative,
 }
 
+#[cfg(any(test, feature = "research"))]
 pub(crate) fn compute(request: &Request) -> Record {
     let started = crate::clock::Instant::now();
     let recipe = &request.recipe;
@@ -238,6 +260,7 @@ pub(crate) fn compute(request: &Request) -> Record {
             rhythms_default: true,
         },
     };
+    #[cfg(feature = "research")]
     if !recipe.body.supports_body_models(recipe.renderer_phase3) {
         record.state = State::Unsupported("renderer-phase3");
         return record;
@@ -264,6 +287,7 @@ pub(crate) fn compute(request: &Request) -> Record {
     ) else {
         return finish(record);
     };
+    #[cfg(feature = "research")]
     if recipe.renderer_phase3 {
         tone.enable_phase3();
     }
@@ -275,7 +299,12 @@ pub(crate) fn compute(request: &Request) -> Record {
     tone.arm_onset_trigger(KICK_STRENGTH);
 
     let mut energies = [0.; 16];
-    if recipe.renderer_phase3 {
+    #[cfg(feature = "research")]
+    let legacy = !recipe.renderer_phase3;
+    #[cfg(not(feature = "research"))]
+    let legacy = true;
+    #[cfg(feature = "research")]
+    if !legacy {
         // Oscillators have no free tail: excitation closure is the support end.
         record.d_samples = tone.excitation_end_tick().min(cap);
         record.truncated = tone.excitation_end_tick() > cap;
@@ -294,7 +323,8 @@ pub(crate) fn compute(request: &Request) -> Record {
             }
             *energy /= (right - left) as f64;
         }
-    } else {
+    }
+    if legacy {
         let (_, amplitude, envelope) = tone.prediction_parameters(None);
         let frozen = ToneEnergy {
             amplitude,
@@ -341,6 +371,7 @@ pub(crate) fn compute(request: &Request) -> Record {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
+#[cfg(any(test, feature = "research"))]
 pub(crate) struct Stats {
     pub footprint_requested: u64,
     pub footprint_dropped: u64,
@@ -353,6 +384,7 @@ pub(crate) struct Stats {
     pub worker_failed: bool,
 }
 
+#[cfg(any(test, feature = "research"))]
 struct Owner {
     source: (u64, u32),
     body_generation: u32,
@@ -361,6 +393,7 @@ struct Owner {
 }
 
 /// Independent of diagnostic candidate packets and private PCM analysis.
+#[cfg(any(test, feature = "research"))]
 pub(crate) struct Worker {
     footprint_input: Option<Sender<Request>>,
     footprint_output: Receiver<Record>,
@@ -376,6 +409,7 @@ pub(crate) struct Worker {
     pub stats: Stats,
 }
 
+#[cfg(any(test, feature = "research"))]
 impl Worker {
     #[cfg(feature = "native")]
     pub(crate) fn new() -> Self {
@@ -531,6 +565,7 @@ impl Worker {
     }
 }
 
+#[cfg(any(test, feature = "research"))]
 impl Drop for Worker {
     fn drop(&mut self) {
         self.finish();
@@ -545,6 +580,7 @@ mod tests {
     const FS: f32 = 48000.;
 
     #[test]
+    #[cfg(feature = "research")]
     fn phase3_footprint_never_reuses_legacy_identity_or_energy_prior() {
         for kind in [BodyKind::Sine, BodyKind::Harmonic, BodyKind::Modal] {
             let legacy = recipe(kind, 1000);
@@ -573,6 +609,7 @@ mod tests {
 
     fn recipe(kind: BodyKind, hold: Tick) -> Recipe {
         Recipe {
+            #[cfg(feature = "research")]
             renderer_phase3: false,
             body: BodySnapshot {
                 kind,
@@ -608,6 +645,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "research")]
     fn native_footprints_preserve_support_and_silent_status() {
         for kind in [BodyKind::Sine, BodyKind::Harmonic] {
             let mut body = recipe(kind, Tick::MAX);
@@ -827,16 +865,23 @@ mod tests {
     fn the_sine_footprint_matches_the_rendered_bin_energies() {
         for (native, kind) in [
             (false, BodyKind::Sine),
+            #[cfg(feature = "research")]
             (true, BodyKind::Sine),
+            #[cfg(feature = "research")]
             (true, BodyKind::Harmonic),
         ] {
-            let mut recipe = recipe(kind, (0.25 * FS) as Tick);
-            recipe.renderer_phase3 = native;
-            if native && kind == BodyKind::Harmonic {
-                recipe.body.motion = 0.5;
-                recipe.body.unison = 3;
-                recipe.body.spread = 0.2;
-            }
+            let recipe = recipe(kind, (0.25 * FS) as Tick);
+            #[cfg(feature = "research")]
+            let recipe = {
+                let mut recipe = recipe;
+                recipe.renderer_phase3 = native;
+                if native && kind == BodyKind::Harmonic {
+                    recipe.body.motion = 0.5;
+                    recipe.body.unison = 3;
+                    recipe.body.spread = 0.2;
+                }
+                recipe
+            };
             let record = compute(&request(recipe.clone()));
             assert_eq!(record.state, State::Body);
             let mut tone = Tone::from_parts(
@@ -850,6 +895,7 @@ mod tests {
                 recipe.adsr,
             )
             .unwrap();
+            #[cfg(feature = "research")]
             if native {
                 tone.enable_phase3();
             }

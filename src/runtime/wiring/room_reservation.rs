@@ -59,11 +59,14 @@ fn retiring_cohorts(
     let DurationSpec::Gates(gates) = control.spec.duration else {
         return None;
     };
+    #[cfg(feature = "research")]
+    if control.syncopate != 0. {
+        return None;
+    }
     if !normal_meter
         || scenario.expression.is_some()
         || clock.relation != RhythmRelation::Synchronized
         || clock.flow_depth != 0.
-        || control.syncopate != 0.
         || control.rest_on_habituation != 0.
         || control.rest_periods.is_some()
         || control.spec.sustain_participation
@@ -267,10 +270,18 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        for edit in [0, 1, 2, 3, 4] {
+        for edit in [
+            #[cfg(feature = "research")]
+            0,
+            1,
+            2,
+            3,
+            4,
+        ] {
             let mut spec = colony.clone();
             let ctl = &mut spec.control.phonation;
             match edit {
+                #[cfg(feature = "research")]
                 0 => ctl.syncopate = 1.,
                 1 => ctl.rest_on_habituation = 1.,
                 2 => ctl.spec.sustain_participation = true,

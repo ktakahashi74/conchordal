@@ -178,6 +178,7 @@ pub struct PitchController {
     pub(crate) harmonic_next_tick: Option<u64>,
     pub(crate) harmonic_evaluated: bool,
     #[cfg(test)]
+    #[cfg(feature = "research")]
     pub(crate) trace_owner: Option<(u64, u32)>,
     core: AnyPitchCore,
     pub(crate) melodic: Option<crate::life::melodic_continuity::MelodicContinuity>,
@@ -287,6 +288,7 @@ impl PitchController {
             harmonic_next_tick: None,
             harmonic_evaluated: false,
             #[cfg(test)]
+            #[cfg(feature = "research")]
             trace_owner: None,
             core,
             own_sequence: None,
@@ -849,7 +851,7 @@ impl PitchController {
         {
             sequence.bind_target(at, target_pitch_log2);
         }
-        #[cfg(test)]
+        #[cfg(all(test, feature = "research"))]
         if should_propose && let Some(owner) = self.trace_owner {
             crate::life::body_metabolism::assay::log_move(owner, target_pitch_log2);
         }

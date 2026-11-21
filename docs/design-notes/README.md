@@ -1,6 +1,7 @@
 # 設計ノートの索引
 
-実装を読む入口と、設計・取得・判断の履歴を分けて案内する。
+現行仕様と実装の構造を把握するには、まず[現行アーキテクチャ正本](../architecture-current.md)を読む。
+[技術ノート設計台帳の日本語版](technote-ledger.ja.md)と[英語版](technote-ledger.md)は設計判断の歴史アーカイブ、[DCCの認知神経階層](dcc-neurocognitive-hierarchy.md)は階層設計とその根拠の詳細記録である。
 現在の作業範囲は[現行計画](../roadmap/plan-current.md)、文書全体の入口は[docs/README](../README.md)にある。
 過去の記録が指す取得物の制約は[証拠の所在](../operations/evidence-locations.md)を参照する。
 ファイルは移動・改名していない。

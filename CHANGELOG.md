@@ -6,6 +6,7 @@
   restrikes and overlapping releases of a Voice generation. Add the optional
   placement method `harmonic().attack_noise(db)` for a seeded 15 ms attack
   burst. The burst follows strike strength and decays independently of the ADSR.
+  The demo piece Line uses it on its line at -12 dB.
 
 - Add an acoustic room, off by default. `room("off" | "presentation" | "both")` in a
   score, or `[room] mode` in the config, selects dry mono, stereo reflections heard

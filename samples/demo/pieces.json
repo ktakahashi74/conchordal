@@ -4,7 +4,7 @@
     "score": "line-moss-response.rhai",
     "duration_sec": 120,
     "title": "Line",
-    "authored": "The orchestration lead chose the line's attack and brightness, its layering (three copies within ±8 cents), its entry range, the moss's response weight (respond_to_onsets 16), the line's two 12-second absences and the sections (about two minutes, shortened from an earlier draft). The line draws no lottery (temperature 0) and its movement cost is 0.125; both were chosen by rule from rendered records.",
+    "authored": "The orchestration lead chose the line's attack, its struck transient (attack_noise −12 dB, kept after a blind comparison with and without it) and its brightness, its layering (three copies within ±8 cents), its entry range, the moss's response weight (respond_to_onsets 16), the line's two 12-second absences and the sections (about two minutes, shortened from an earlier draft). The line draws no lottery (temperature 0) and its movement cost is 0.125; both were chosen by rule from rendered records.",
     "generated": "One line (a Voice) enters where the field offers and chooses each new pitch from the consonance field it hears without itself. While the moss hears new onsets from other sounds in its range, its ecological time runs faster; when the line is away, the moss slows and quiets. No pitch or onset time is written for the moss.",
     "authored_harmony": null
   },

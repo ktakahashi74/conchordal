@@ -5,7 +5,7 @@ temporal_basin(1.6, 2.4);
 meter_stability(0.55);
 
 let line = harmonic().brain("drone").sustain().seek_consonance()
-    .modes(harmonic_modes().count(8)).amp(0.04).brightness(0.0)
+    .modes(harmonic_modes().count(8)).amp(0.04).brightness(0.0).attack_noise(-12.0)
     .unison(3).spread(0.3333333)
     .temperature(0.0).move_cost(0.125)
     .pitch_apply_mode("rearticulate").leave_self_out(true).adsr(0.02, 0.5, 0.8, 2.0);

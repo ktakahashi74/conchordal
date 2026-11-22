@@ -30,7 +30,7 @@ Conchordal は `origin/main`（`dee5a91d`）時点で `src/` **181,191 行**・R
   - 未 commit の変更があった137本は、乗っていた branch の先端（69本）か `archive/wt-<名前>`（68本）へ未検証の退避 commit にした。どの branch からも辿れない detached HEAD の1本にも `archive/wt-<名前>` を付けた。
   - worktree 内の取得記録（`target/` の cargo 以外の子、worktree 内の `.orchestration/`、`test_report.txt`／`test_status.txt`、5 MB を超える未追跡ファイルと音声）と、登録の外れた7つのディレクトリは、`.orchestration/records/worktree-leftovers-20261122/` へ移した（約 82 GB、同じファイルシステム内の移動）。消したのは cargo のビルド出力と生成物だけである。
   - 処置の一覧、使ったスクリプト、前後の ref は `.orchestration/units/SIMP-S0/` にある。
-- 残る worktree は共有 checkout と `simplify-20261121` の2本。`.worktrees/alife-fitness/conc-paper-2026` は論文 repo の worktree なので触れていない。
+- 残る worktree は共有 checkout と `simplify-20261121` の2本。`simplify-20261121` は 11-22 の全曲照合（S4 の項）に使った後に外し、共有 checkout の1本になった。`.worktrees/alife-fitness/conc-paper-2026` は論文 repo の worktree なので触れていない。
 
 **前提**：`origin/main` は `dee5a91d`、ローカル `main` は `04c6ba7e`（未 commit 4ファイルあり）。
 
@@ -80,7 +80,7 @@ Conchordal は `origin/main`（`dee5a91d`）時点で `src/` **181,191 行**・R
 
 ### Unit S2：コードの引き算 —— 廃止削除・研究隔離・`#[cfg(test)]` 掃除（目安：12/01〜12/08）
 
-**2026-11-21 完了（S2-a / S2-b / S2-c）**。`2fdb8f2bcff994560992a4f29edec8fb22035257` に承認済み削除（Rhai 13入口、`use_incoherent_power`、`birth_surrogate`）と聴覚前段のテスト支援分離を統合。続く SIMP-S2B1 / S2B2 により、`Cargo.toml` の `research = []` feature（CI ゲート付き）へ `temporal_cognition` 16サブモジュール、`body_metabolism`、`render_prototype`、`felt_beat` の計 51 ファイル（約 30,700 行）を隔離完了。
+**2026-11-21 完了（S2-a / S2-b / S2-c）**。`2fdb8f2bcff994560992a4f29edec8fb22035257` に承認済み削除（Rhai 13入口、`use_incoherent_power`、`birth_surrogate`）と聴覚前段のテスト支援分離を統合。続く SIMP-S2B1 / S2B2 により、`Cargo.toml` の `research = []` feature（CI ゲート付き）へ `temporal_cognition` 16サブモジュール、`body_metabolism`、`render_prototype`、`felt_beat` の計 51 ファイル（約 30,700 行）を隔離完了。統合 commit は `da83b565a61cdb132b0b0d51d8c528bc6966cdf7`。
 
 **前提**：Unit S1 で確定したリスト（分類 B・C のうちマニフェスト非依存のみ）を入力とする。削除と隔離は別 commit に分ける。
 
@@ -129,7 +129,12 @@ Conchordal は `origin/main`（`dee5a91d`）時点で `src/` **181,191 行**・R
 
 ### Unit S4：巨大ファイル分割と身体モジュール境界（目安：12/15〜12/22）
 
-**2026-11-21 完了（S4-a）**。pitch core と Rhai 文書レジストリの分割は `e82f4f46c23e0a79cd676f0eb054bcf60ab3fe08`、Voice と Flora の分割は `acc45bb1e8bbf368cd71e92ebce48944311c95e4`。S4-b は同日、作業木で身体境界を整理し、代表4曲の native PCM 一致と担当分の検査通過を確認した。統合 commit は未記録。
+**2026-11-21 完了（S4-a）**。pitch core と Rhai 文書レジストリの分割は `e82f4f46c23e0a79cd676f0eb054bcf60ab3fe08`、Voice と Flora の分割は `acc45bb1e8bbf368cd71e92ebce48944311c95e4`。S4-b は同日、作業木で身体境界を整理し、代表4曲の native PCM 一致と担当分の検査通過を確認した。統合 commit は `77aaf829fa4c127884b7e90c8dabe6f5edd58fed`。
+
+**2026-11-22 の全曲照合（SIMP-PCM-SWEEP）**。S2〜S4 の各単位は代表4曲で照合していた。受入ゲートの「全サンプル＋デモ曲」を閉じるため、S2 の前の `46b172c7` と最後の整理の commit `da83b565` を比べた。その次の `33060257` は意図して音を変えたので範囲に含めない。
+- 対象は `samples/*.rhai` の18曲と `samples/demo/` の2曲。二つの版で台本は同じで、廃止語を使う曲は無かった。
+- 条件は各単位と同じ。debug 版 `conchordal-render`、`--seed 21`、コメントだけの明示 TOML で終端まで描画した（出力はモノラル 16 bit）。
+- 20曲すべてで WAV の `sha256sum` と `cmp` が一致した。一覧は `.orchestration/units/SIMP-PCM-SWEEP/compare.tsv`。
 
 **前提**：Unit S3 完了。**音・挙動を変えない純粋な構造整理のみ**を実施する（励起契約変更や音色遺伝は混ぜない）。
 

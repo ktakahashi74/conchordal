@@ -1,7 +1,7 @@
 # 次のセッションの始め方
 
-2026-11-19更新。この版は、作者が認めた構成を一本にまとめた統合（DR-1、branch `work/dr1-consolidate-20261119`）と同じ変更に含まれる。統合の前の `origin/main` は `04c6ba7e`、GTは研究branchの `d30d3f9c` である。
-経過は、2026-11-19の設計の見直しと、作者の二つの採択（認められた構成をまとめる、慣れの既定を鳴った所の順応に変える）までの統括記録を反映した再開点である。
+2026-11-22更新（簡素化のS0）。作者が認めた構成の統合（DR-1）は `3180847b` でmainに入った。2026-11-21からは[簡素化の指示書](simplification-directive-2026-11-21.md)の期間（2026-12-25まで）である。mainへ新しい原理や機構を入れず、研究と不採用分はローカルの研究branchへ退避commitする。
+経過は、2026-11-19の設計の見直しと作者の二つの採択（認められた構成をまとめる、慣れの既定を鳴った所の順応に変える）に、11-21の簡素化（S1〜S4）と11-22のS0を加えた再開点である。
 曲の段の目標はbetaデモ。新しいセッションで、古い「自己除外の比較試聴待ち」「残るのはv0.5.0公開だけ」「方向Bのデモを進める」へ戻さない。
 
 ## 最初に読むもの
@@ -30,10 +30,10 @@
 DOC-3からはuser busへ接続できず、実際の稼働・終了・freeze状態は確認できていない。
 既存取得の再起動や、別のsourceでの取り直しを始める前に、固定sourceとbinary、既存出力、真の終了状態を確かめる。
 
-- **統合（DR-1）。** 統合のbranch `work/dr1-consolidate-20261119`（worktree `.worktrees/dr1-consolidate-20261119`）の変更は未commitである。commit、mainへの統合、pushは、それぞれ作者の指示を待つ。
-  - 新セッションでは、まずこのbranchがmainへ入ったかを確かめる。入っていなければ、worktreeの `test_status.txt` と差分を読む。
-  - `.worktrees/demo-20261116`（未commit）と `research/felt-beat-20261117` は、統合の土台と同じ内容である。統合がmainへ入った後は、これらを新しいmainの上へ移すか、片づけるかを、使っているsessionと作者に確かめる。勝手に消さない。
-  - 統合に入れていないもの：GTとGT-E（研究branch）、苔の聴く範囲の語（`.worktrees/rs1-respond-20261114` に未commit）、`habituated_growth`（`.orchestration/units/MO-4/` のpatch）。
+- **統合（DR-1）とworktreeの整理（S0）。** 統合は `3180847b` でmainに入り、demo-20261116の写し（`0bc8db99`）とfelt-beat一段目（`8255cf21`）も同じ時にmainへ入った。
+  - 2026-11-22のS0で、共有checkoutのmainを `origin/main` に揃え、worktreeを整理した。未commitの変更は、worktreeが乗っていたbranchの先端へ、detachedのものは `archive/wt-<名前>` へ、未検証の退避commitとして残した。dr1-consolidateとdemo-20261116の未commitは、照合でmainに吸収済みと確かめた上で、同じく退避commitにした。
+  - worktreeの中にあった取得の記録、`test_report.txt`／`test_status.txt`、worktree内の `.orchestration/` は、`.orchestration/records/worktree-leftovers-20261122/<名前>/` へ移した。消したのはcargoのビルド出力だけである。各worktreeの処置は `.orchestration/units/SIMP-S0/run.tsv` にある。
+  - 統合に入れていないもの：GTとGT-E（`research/gt-gesture-20261109`）、苔の聴く範囲の語（`research/rs1-respond-20261114` の退避commit）、`habituated_growth`（`.orchestration/units/MO-4/` のpatch）。
 - **IP-ACQ V7：推定器の精度。** 最初の取得で2×10⁷発行（演奏約55時間ぶん）まで全件合格。3×10⁷の取り直しは作者の指示で止めた（変わる判断を名指せない）。
   取得も再開もしない。55時間を超える連続演奏が必要になった時に、その必要を消費者として取り直しを判断する。
 - **IP-ACQのV6・V8は取得済み。** V6は譜面132,000秒を合格、V8は計測交絡の限定切り分けと疑い2条件の実機再取得まで記録済み。
@@ -43,11 +43,11 @@ DOC-3からはuser busへ接続できず、実際の稼働・終了・freeze状�
   - GT-E は研究branchのworktreeに実装した（未commit、`.orchestration/units/GT-13/`）。音高の側は門を通った。時刻の側は発音の87〜90%が拍の位置に乗り、二つの門に当たった。
   - 作者の依頼で六つのデモを描き（`.orchestration/units/WK-3/`）、作者が聴いた。答えは「temporal DCCを感じられるものはひとつもない」。線と苔（P1）は単調さを除けばアンビエント音楽として成り立つ。群れや拍に乗る声を足すと苔と別個に聴こえ、一緒にいる必然性が無い。線と雨では線が邪魔（`WK-3/listen-result.md`）。
   - 作り直しの相談（RP-3）の推奨を作者が採った（拍の位置合わせはこの作品では止める、群れは入れない、GT-Eは研究branchへcommit `d30d3f9c`）。部品のあいだの応答（RS-1）を開いた。
-  - 苔の側：Floraの `respond_to_onsets`（外から聴こえた立ち上がりの後に生態の時間を速める、既定0）。作者は30秒の対で「応じている」と聴き、P1の苔に強さ8を足した版の全長で「temporal DCCを感じる。現時点の一つのデモとしていい」と答えた（2026-11-14、`.orchestration/units/RS-9/decisions.md`）。台本は研究branch `research/rs1-respond-20261114`（worktree `.worktrees/rs1-respond-20261114`）の `samples/research/demo_p1r_w8_s20261109.rhai`、未commit。
+  - 苔の側：Floraの `respond_to_onsets`（外から聴こえた立ち上がりの後に生態の時間を速める、既定0）。作者は30秒の対で「応じている」と聴き、P1の苔に強さ8を足した版の全長で「temporal DCCを感じる。現時点の一つのデモとしていい」と答えた（2026-11-14、`.orchestration/units/RS-9/decisions.md`）。台本は研究branch `research/rs1-respond-20261114` の `samples/research/demo_p1r_w8_s20261109.rhai` で、2026-11-22のS0で未検証の退避commit `3c353530` に入れた。
   - 線の側（Voiceの `respond_to_onsets`）は門を通らず、作者が閉じた（既定0のまま研究branchに残し、mainへ入れない。RS-7、RS-8）。
   - 次は、保存（commit）の判断、作品の値の宣言、mainへの統合、ページの公開の扱いを作者に問う。A'とBは本来のゴールとして残る。
-- **雨（RW-1〜RW-12）。** 作者の求め（激しい時にこそ場、弱い雨から、強弱は1/fだけ、協和した所ほどよく響く）に答える雨を作った。worktree `.worktrees/rain-ring-20261114`（branch `research/rain-ring-20261114`、未commit）。雨が自分の滴を除いた場を読む `leave_drops_out`、鳴り終えた共鳴体が滴の高さへ移る `objects_follow_drops`、協和な所の滴ほど長く鳴る `ring`、滴の高さのずれを場の解像度に収める `width(0.0052)`、滴と共鳴体を整数比の倍音にする素材（`harmonic_modes()`）。作者は場を読まない対照との対で「違いはきこえる」と答えた（RW-12）。`ring` を残すか、新しい語の既定、commitは後で問う。
-- **送り手の音型（GT）。** GT-8〜GT-11は完了した。実装は研究branch `research/gt-gesture-20261109` の `d15987b8`（worktree `.worktrees/gt-gesture-20261109`）で、push・mainへの統合は指示を待つ。
+- **雨（RW-1〜RW-12）。** 作者の求め（激しい時にこそ場、弱い雨から、強弱は1/fだけ、協和した所ほどよく響く）に答える雨を作った。研究branch `research/rain-ring-20261114`（未commitだった分は2026-11-22のS0で未検証の退避commit `54c95500` に入れた）。雨が自分の滴を除いた場を読む `leave_drops_out`、鳴り終えた共鳴体が滴の高さへ移る `objects_follow_drops`、協和な所の滴ほど長く鳴る `ring`、滴の高さのずれを場の解像度に収める `width(0.0052)`、滴と共鳴体を整数比の倍音にする素材（`harmonic_modes()`）。作者は場を読まない対照との対で「違いはきこえる」と答えた（RW-12）。`ring` を残すか、新しい語の既定は後で問う。
+- **送り手の音型（GT）。** GT-8〜GT-11は完了した。実装は研究branch `research/gt-gesture-20261109` の `d15987b8` で、push・mainへの統合は指示を待つ。その後の未commit分は2026-11-22のS0で未検証の退避commit `17727e1d` に入れた。
   - 可聴性の門の既定化の準備（GT-7Rの指摘の修正、持続音への対応）は凍結している。自分から始めない。
   - 聴き手の側の道（NR-1の続き、PD-1の再試行）へは、自動で戻らない。
   - 変異（3b）、選択（3c）、生態が入れ替わりを自分で生むかは、作者の判断である。自分から始めない。

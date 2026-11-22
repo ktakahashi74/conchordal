@@ -22,7 +22,15 @@ Conchordal は `origin/main`（`dee5a91d`）時点で `src/` **181,191 行**・R
 
 ### Unit S0：足場固め・正本同期・worktree 整理（目安：11/21〜11/25）
 
-**2026-11-21 の記録**。足場の文書と棚卸しは `46b172c7d04663da7f2fdb8c5fe3cfd910d79411`。共有 checkout のローカル `main` は `04c6ba7e`、登録 worktree は197本。S0 全体の完了日は未記録。
+**2026-11-21 の記録**。足場の文書と棚卸しは `46b172c7d04663da7f2fdb8c5fe3cfd910d79411`。共有 checkout のローカル `main` は `04c6ba7e`、登録 worktree は197本。
+
+**2026-11-22 の記録（SIMP-S0）**。
+- 共有 checkout の GUI 3ファイルの差分は、追加行がすべて `origin/main` にあることを確かめて捨て、ローカル `main` を `351bac99` へ fast-forward した。`scripts/worker-shell.el` の差分はこの単位の commit に入れた。
+- 登録 worktree 197本を削除した（作業中の可能性がある `simplify-20261121` は残した）。
+  - 未 commit の変更があった137本は、乗っていた branch の先端（69本）か `archive/wt-<名前>`（68本）へ未検証の退避 commit にした。どの branch からも辿れない detached HEAD の1本にも `archive/wt-<名前>` を付けた。
+  - worktree 内の取得記録（`target/` の cargo 以外の子、worktree 内の `.orchestration/`、`test_report.txt`／`test_status.txt`、5 MB を超える未追跡ファイルと音声）と、登録の外れた7つのディレクトリは、`.orchestration/records/worktree-leftovers-20261122/` へ移した（約 82 GB、同じファイルシステム内の移動）。消したのは cargo のビルド出力と生成物だけである。
+  - 処置の一覧、使ったスクリプト、前後の ref は `.orchestration/units/SIMP-S0/` にある。
+- 残る worktree は共有 checkout と `simplify-20261121` の2本。`.worktrees/alife-fitness/conc-paper-2026` は論文 repo の worktree なので触れていない。
 
 **前提**：`origin/main` は `dee5a91d`、ローカル `main` は `04c6ba7e`（未 commit 4ファイルあり）。
 

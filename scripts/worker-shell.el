@@ -11,21 +11,27 @@
    (directory-file-name (file-name-directory (or load-file-name buffer-file-name))))
   "Checkout the workers start in.")
 
+(defconst conchordal-worker-model "gpt-6.2-sol"
+  "Model every worker shell requests before its first prompt (author, 2026-11-18).")
+
 (defun conchordal-worker-start (name)
   "Start a background Codex worker shell called NAME and return its buffer name.
-The model and effort come from the Codex defaults of this Emacs.  The KEIO
-account is forced because Codex otherwise resolves this checkout to RIKEN."
+The model is `conchordal-worker-model', independent of this Emacs's Codex
+default; the effort comes from the Codex defaults.  The KEIO account is forced
+because Codex otherwise resolves this checkout to RIKEN."
   (let* ((default-directory conchordal-worker-root)
          (my/profile-override 'keio)
-         (buffer (agent-shell--start
-                  :config (agent-shell-openai-make-codex-config)
-                  :no-focus t
-                  :new-session t
-                  :session-strategy 'new)))
-    ;; A bare `rename-buffer' leaves shell-maker looking up the old name, and
-    ;; every later submit fails with (wrong-type-argument processp nil).
-    (shell-maker-set-buffer-name buffer (format "Codex worker %s @ conchordal" name))
-    (buffer-name buffer)))
+         (config (agent-shell-openai-make-codex-config)))
+    (setf (alist-get :default-model-id config) (lambda () conchordal-worker-model))
+    (let ((buffer (agent-shell--start
+                   :config config
+                   :no-focus t
+                   :new-session t
+                   :session-strategy 'new)))
+      ;; A bare `rename-buffer' leaves shell-maker looking up the old name, and
+      ;; every later submit fails with (wrong-type-argument processp nil).
+      (shell-maker-set-buffer-name buffer (format "Codex worker %s @ conchordal" name))
+      (buffer-name buffer))))
 
 (defun conchordal-worker-send (buffer-name prompt)
   "Submit PROMPT to the worker shell BUFFER-NAME without selecting it."

@@ -116,10 +116,6 @@ impl SoundBody for ModalBody {
         self.base_freq_hz
     }
 
-    fn set_freq(&mut self, freq: f32) {
-        self.base_freq_hz = freq.max(1.0);
-    }
-
     fn set_pitch_log2(&mut self, log_freq: f32) {
         self.base_freq_hz = 2.0f32.powf(log_freq).max(1.0);
     }

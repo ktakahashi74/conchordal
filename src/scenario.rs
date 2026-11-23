@@ -657,13 +657,7 @@ pub struct VoiceSpec {
 
 #[derive(Debug, Clone)]
 pub enum SoundBodyConfig {
-    Sine {
-        phase: Option<f32>,
-    },
-    Harmonic {
-        genotype: TimbreGenotype,
-        partials: Option<usize>,
-    },
+    Sine { phase: Option<f32> },
 }
 
 impl Default for SoundBodyConfig {

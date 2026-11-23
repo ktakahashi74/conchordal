@@ -1,4 +1,5 @@
 use super::pitch_motion::{MotionClock, PERIOD};
+use crate::core::float::splitmix64_next;
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
 use crate::life::sound::control::ToneControlBlock;
@@ -1012,14 +1013,6 @@ fn padded_unit_x(len: usize) -> Vec<f32> {
 
 fn round_up_to_8(len: usize) -> usize {
     (len + 7) & !7
-}
-
-pub(super) fn splitmix64_next(state: &mut u64) -> u64 {
-    *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    let mut z = *state;
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
 }
 
 pub(super) fn seeded_phase_state(state: &mut u64) -> [f32; 2] {

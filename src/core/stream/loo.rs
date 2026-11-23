@@ -151,7 +151,9 @@ impl RainObservation {
             *out = kernel.score(h, r);
         }
         crate::core::landscape::consonance_density_mass_scan(
-            params,
+            space,
+            params.consonance_density_kernel(),
+            params.harmonicity_preference,
             &self.h_scan,
             &self.r_scan,
             &mut self.mass_scan,

@@ -1,13 +1,10 @@
 use super::*;
+use crate::core::float::splitmix64_next;
 use fearless_simd::{Level, Simd, dispatch, f32x8, prelude::*};
 use std::f32::consts::TAU;
 
 pub(super) fn random_unit(state: &mut u64) -> f32 {
-    *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    let mut z = *state;
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^= z >> 31;
+    let z = splitmix64_next(state);
     ((z >> 11) as f64 * (1.0 / (1u64 << 53) as f64)) as f32
 }
 

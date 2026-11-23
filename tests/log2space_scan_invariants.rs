@@ -6,7 +6,7 @@
 use conchordal::core::consonance_kernel::{
     ConsonanceKernel, ConsonanceRepresentationParams, compose_consonance_field_level_scan,
 };
-use conchordal::core::landscape::Landscape;
+use conchordal::core::landscape::{Landscape, consonance_density_mass_scan};
 use conchordal::core::log2space::{Log2Space, sample_scan_linear_log2};
 use conchordal::core::psycho_state::{h_pot_scan_to_h_state01_scan, r_pot_scan_to_r_state01_scan};
 
@@ -172,6 +172,35 @@ fn compose_panics_on_output_len_mismatch() {
     let kernel = ConsonanceKernel::default();
     let repr = ConsonanceRepresentationParams::default();
     compose_consonance_field_level_scan(&h_state, &r_state, &kernel, &repr, &mut c_level);
+}
+
+#[test]
+fn consonance_density_mass_rejects_scans_outside_the_space() {
+    let space = Log2Space::new(55.0, 4000.0, 24);
+    let n = space.n_bins();
+    for (h_len, r_len, mass_len, name) in [
+        (n - 1, n - 1, n - 1, "h01_scan"),
+        (n, n + 1, n, "r01_scan"),
+        (n, n, n - 1, "mass_scan"),
+    ] {
+        let panic = std::panic::catch_unwind(|| {
+            consonance_density_mass_scan(
+                &space,
+                ConsonanceKernel::density_with_rho(1.0),
+                1.0,
+                &vec![0.1; h_len],
+                &vec![0.2; r_len],
+                &mut vec![0.0; mass_len],
+            );
+        })
+        .expect_err("misaligned density mass scans must panic");
+        assert!(
+            panic
+                .downcast_ref::<String>()
+                .is_some_and(|message| message.contains(&format!("scan length mismatch: {name}"))),
+            "panic must identify {name}"
+        );
+    }
 }
 
 /// F2: the r/h state helpers also reject mismatched output buffers.

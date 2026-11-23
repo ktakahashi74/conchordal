@@ -1,4 +1,4 @@
-use super::oscillator_bank::splitmix64_next;
+use crate::core::float::splitmix64_next;
 pub(crate) const NOISE_LANES: usize = 8;
 pub(crate) const ATTACK_TAU: f32 = 0.015;
 

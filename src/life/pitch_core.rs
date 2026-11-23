@@ -20,9 +20,6 @@ pub use hill_climb::PitchHillClimbPitchCore;
 pub(crate) use hill_climb::aud_m1_hill_choice;
 pub use peak_sampler::PitchPeakSamplerCore;
 pub(super) use scoring::RearticulationView;
-// Keep the crate-visible occupancy kernel available through this module.
-#[allow(unused_imports)]
-pub(crate) use scoring::occupancy_contribution;
 pub(crate) use scoring::{LooInput, fill_occupancy_scan};
 
 use candidates::{

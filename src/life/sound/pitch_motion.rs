@@ -1,7 +1,7 @@
 //! A Voice generation's synthesis clock. Indexing its LFO and octave noise by
 //! age lets overlapping tones, silent gaps and read-only forecasts share one
 //! trajectory without locking, advancing a reader, or replaying the gap.
-use super::oscillator_bank::splitmix64_next;
+use crate::core::float::splitmix64_next;
 
 pub(crate) const PERIOD: u64 = 8;
 const OCTAVES: u32 = 10;

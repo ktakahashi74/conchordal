@@ -596,7 +596,9 @@ impl Landscape {
 
     fn recompute_consonance_density_mass(&mut self, params: &LandscapeParams) {
         consonance_density_mass_scan(
-            params,
+            &self.space,
+            params.consonance_density_kernel(),
+            params.harmonicity_preference,
             &self.harmonicity01,
             &self.roughness01,
             &mut self.consonance_density_mass,
@@ -702,23 +704,25 @@ impl Default for Landscape {
 
 /// Density mass from H01 and R01 scans. Shared by the mixed Landscape and Rain
 /// observations so both use one formula.
-pub(crate) fn consonance_density_mass_scan(
-    params: &LandscapeParams,
+pub fn consonance_density_mass_scan(
+    space: &Log2Space,
+    density_kernel: ConsonanceKernel,
+    harmonicity_preference: f32,
     h01_scan: &[f32],
     r01_scan: &[f32],
     mass_scan: &mut [f32],
 ) {
-    assert_eq!(h01_scan.len(), mass_scan.len(), "density mass H01 length");
-    assert_eq!(r01_scan.len(), mass_scan.len(), "density mass R01 length");
-    let density_kernel = params.consonance_density_kernel();
+    space.assert_scan_len_named(h01_scan, "h01_scan");
+    space.assert_scan_len_named(r01_scan, "r01_scan");
+    space.assert_scan_len_named(mass_scan, "mass_scan");
     for ((mass, &h), &r) in mass_scan.iter_mut().zip(h01_scan).zip(r01_scan) {
         let h01 = sanitize01(h);
         let r01 = sanitize01(r);
         // Preserve the original arithmetic at the neutral weight, including H01=0.
-        let weighted_h = if params.harmonicity_preference == 1.0 {
+        let weighted_h = if harmonicity_preference == 1.0 {
             h01
         } else {
-            h01.powf(params.harmonicity_preference)
+            h01.powf(harmonicity_preference)
         };
         *mass = sanitize_nonnegative_finite(density_kernel.score(weighted_h, r01));
     }

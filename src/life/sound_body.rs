@@ -57,7 +57,6 @@ impl BodySnapshot {
         }
     }
 
-    #[cfg(any(test, feature = "research"))]
     #[cfg(feature = "research")]
     pub(crate) fn supports_body_models(&self, renderer_phase3: bool) -> bool {
         self.kind.supports_body_models(renderer_phase3)
@@ -100,7 +99,6 @@ pub trait SoundBody: Send {
     }
 
     fn base_freq_hz(&self) -> f32;
-    fn set_freq(&mut self, freq: f32);
     fn set_pitch_log2(&mut self, log_freq: f32);
     fn set_amp(&mut self, amp: f32);
     fn amp(&self) -> f32;
@@ -130,10 +128,6 @@ pub struct SineBody {
 impl SoundBody for SineBody {
     fn base_freq_hz(&self) -> f32 {
         self.freq_hz
-    }
-
-    fn set_freq(&mut self, freq: f32) {
-        self.freq_hz = freq;
     }
 
     fn set_pitch_log2(&mut self, log_freq: f32) {
@@ -248,10 +242,6 @@ impl SoundBody for HarmonicBody {
         self.base_freq_hz
     }
 
-    fn set_freq(&mut self, freq: f32) {
-        self.base_freq_hz = freq;
-    }
-
     fn set_pitch_log2(&mut self, log_freq: f32) {
         self.base_freq_hz = 2.0f32.powf(log_freq);
     }
@@ -347,37 +337,12 @@ impl AnySoundBody {
         amp: f32,
         rng: &mut R,
     ) -> Self {
-        match config {
-            SoundBodyConfig::Sine { phase } => {
-                // Keep the original phase draw in the caller's RNG stream.
-                if phase.is_none() {
-                    let _ = rng.random_range(0.0f32..std::f32::consts::TAU);
-                }
-                AnySoundBody::Sine(SineBody { freq_hz, amp })
-            }
-            SoundBodyConfig::Harmonic { genotype, partials } => {
-                let partials = partials.unwrap_or(DEFAULT_MODE_COUNT).max(1);
-                // Keep the original phase and jitter draws in the caller's RNG stream.
-                for _ in 0..(partials * DEFAULT_TIMBRE_UNISON) {
-                    let _ = rng.random_range(0.0f32..std::f32::consts::TAU);
-                }
-                let motion_clock = MotionClock {
-                    seed: rng.next_u64(),
-                    birth: 0,
-                };
-                AnySoundBody::Harmonic(HarmonicBody {
-                    motion_clock,
-                    attack_noise: 0.,
-                    base_freq_hz: freq_hz,
-                    amp,
-                    partials,
-                    genotype: genotype.clone(),
-                    cluster_spread_cents: 0.0,
-                    cluster_unison: DEFAULT_TIMBRE_UNISON,
-                    custom_ratios: None,
-                })
-            }
+        let SoundBodyConfig::Sine { phase } = config;
+        // Keep the original phase draw in the caller's RNG stream.
+        if phase.is_none() {
+            let _ = rng.random_range(0.0f32..std::f32::consts::TAU);
         }
+        AnySoundBody::Sine(SineBody { freq_hz, amp })
     }
 
     pub fn from_dyn(body: Box<dyn SoundBody + Send>) -> Self {
@@ -409,14 +374,6 @@ impl SoundBody for AnySoundBody {
             AnySoundBody::Sine(body) => body.base_freq_hz(),
             AnySoundBody::Harmonic(body) => body.base_freq_hz(),
             AnySoundBody::Dyn(body) => body.base_freq_hz(),
-        }
-    }
-
-    fn set_freq(&mut self, freq: f32) {
-        match self {
-            AnySoundBody::Sine(body) => body.set_freq(freq),
-            AnySoundBody::Harmonic(body) => body.set_freq(freq),
-            AnySoundBody::Dyn(body) => body.set_freq(freq),
         }
     }
 

@@ -308,8 +308,9 @@ of each lane, including its unison detune.
 registry describe the Voice-side body. Scheduled audio is rendered through `BodySnapshot` (a closed record:
 kind, fixed vocabulary, ratios), `Tone` and `AnyBackend` (a closed enum); the
 modal body enters through the registry but renders through the resonator variant.
-Ecology code reads body internals directly: kind branches in
-`action_candidates/footprint.rs` and `action_candidates/energy.rs`, lanes and
+Ecology code reads body internals directly: kind branches in the former
+onset-footprint and candidate-energy modules (the remaining code is in
+`onset_footprint.rs`, `energy_window.rs` and `tone_energy.rs`), lanes and
 ratios in `temporal_cognition/body.rs`, bank/sine/control forecasts in
 `self_prediction`, `project_spectral_body` in `voice_render.rs` and `modal.rs`. Adding a
 synthesis method today touches about ten files outside the body. The

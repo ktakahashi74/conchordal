@@ -37,3 +37,9 @@ pub struct BodySnapshot {
     pub attack_noise: f32,
     pub ratios: Option<Arc<[f32]>>,
 }
+
+impl BodySnapshot {
+    pub(crate) fn needs_onset_motion_clock(&self) -> bool {
+        self.kind == BodyKind::Harmonic && self.motion > 0.
+    }
+}

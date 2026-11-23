@@ -386,9 +386,7 @@ impl Voice {
             &mut rng,
         );
 
-        if let AnySoundBody::Harmonic(harmonic) = &mut body {
-            harmonic.motion_clock.seed ^= u64::from(metadata.generation).rotate_left(39);
-        }
+        body.seed_motion_for_generation(metadata.generation);
 
         // Perceive with your own body: the LOO pitch search subtracts the voice's
         // own partials. Ratios are fixed at spawn (timbre patches never change the

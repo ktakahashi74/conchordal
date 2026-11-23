@@ -34,7 +34,7 @@ impl VoiceControl {
     }
 
     pub(crate) fn supports_phrase_boundary(&self) -> bool {
-        self.body.method == BodyMethod::Sine
+        self.body.method.reports_phrase_pitch()
             && self.phonation.spec.is_sustained_participation()
             && matches!(
                 self.pitch.pitch_apply_mode,
@@ -155,6 +155,13 @@ pub enum BodyMethod {
     Sine,
     Harmonic,
     Modal,
+}
+
+impl BodyMethod {
+    pub(crate) fn reports_phrase_pitch(self) -> bool {
+        // Tone::phrase_pitch reports the executed pitch of a single sine carrier.
+        self == Self::Sine
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

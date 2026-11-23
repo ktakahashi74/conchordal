@@ -154,10 +154,8 @@ impl Voice {
         let runtime = BodyRuntime::from_control(&self.effective_control.body);
         self.amp_update_pending |= runtime.amp != self.body.amp();
         self.body.set_amp(runtime.amp);
-        if let AnySoundBody::Harmonic(body) = &self.body
-            && body.genotype.jitter != runtime.motion
-        {
-            self.pending_motion_amount = Some(runtime.motion);
+        if let Some(amount) = self.body.motion_amount_update(runtime.motion) {
+            self.pending_motion_amount = Some(amount);
         }
         self.body.apply_timbre_controls(
             runtime.brightness,
@@ -313,17 +311,8 @@ impl Voice {
     pub(crate) fn generation_motion_clock(
         &self,
     ) -> Option<crate::life::sound::pitch_motion::MotionClock> {
-        match &self.body {
-            AnySoundBody::Harmonic(body)
-                if body.genotype.jitter > 0. || body.genotype.vibrato_depth > 0. =>
-            {
-                Some(crate::life::sound::pitch_motion::MotionClock {
-                    birth: self.birth_tick.unwrap_or(0),
-                    ..body.motion_clock
-                })
-            }
-            _ => None,
-        }
+        self.body
+            .generation_motion_clock(self.birth_tick.unwrap_or(0))
     }
 
     pub(crate) fn body_snapshot(&self) -> BodySnapshot {

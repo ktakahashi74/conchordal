@@ -2,6 +2,7 @@ use super::articulation_core::ArticulationSignal;
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::mode_pattern::DEFAULT_MODE_COUNT;
+use crate::core::timebase::Tick;
 use crate::life::sound::mode_utils::{
     active_cluster_unison, cluster_detune_mul, cluster_spread_cents_from_public, cluster_weights,
     public_spread_from_cluster_spread_cents, sanitize_cluster_unison,
@@ -116,6 +117,13 @@ pub trait SoundBody: Send {
         spread: f32,
         unison: usize,
     );
+    fn seed_motion_for_generation(&mut self, _generation: u32) {}
+    fn motion_amount_update(&self, _amount: f32) -> Option<f32> {
+        None
+    }
+    fn generation_motion_clock(&self, _birth: Tick) -> Option<MotionClock> {
+        None
+    }
     fn snapshot(&self) -> BodySnapshot;
 }
 
@@ -182,7 +190,7 @@ impl SoundBody for SineBody {
 
 #[derive(Debug, Clone)]
 pub struct HarmonicBody {
-    pub(crate) motion_clock: MotionClock,
+    motion_clock: MotionClock,
     pub(crate) attack_noise: f32,
     pub base_freq_hz: f32,
     pub amp: f32,
@@ -297,6 +305,21 @@ impl SoundBody for HarmonicBody {
         self.genotype.vibrato_depth = self.genotype.jitter * 0.02;
         self.cluster_spread_cents = cluster_spread_cents_from_public(spread);
         self.cluster_unison = sanitize_cluster_unison(unison);
+    }
+
+    fn seed_motion_for_generation(&mut self, generation: u32) {
+        self.motion_clock.seed ^= u64::from(generation).rotate_left(39);
+    }
+
+    fn motion_amount_update(&self, amount: f32) -> Option<f32> {
+        (self.genotype.jitter != amount).then_some(amount)
+    }
+
+    fn generation_motion_clock(&self, birth: Tick) -> Option<MotionClock> {
+        (self.genotype.jitter > 0. || self.genotype.vibrato_depth > 0.).then_some(MotionClock {
+            birth,
+            ..self.motion_clock
+        })
     }
 
     fn snapshot(&self) -> BodySnapshot {
@@ -432,6 +455,30 @@ impl SoundBody for AnySoundBody {
             AnySoundBody::Dyn(body) => {
                 body.apply_timbre_controls(brightness, inharmonic, motion, spread, unison)
             }
+        }
+    }
+
+    fn seed_motion_for_generation(&mut self, generation: u32) {
+        match self {
+            Self::Sine(body) => body.seed_motion_for_generation(generation),
+            Self::Harmonic(body) => body.seed_motion_for_generation(generation),
+            Self::Dyn(body) => body.seed_motion_for_generation(generation),
+        }
+    }
+
+    fn motion_amount_update(&self, amount: f32) -> Option<f32> {
+        match self {
+            Self::Sine(body) => body.motion_amount_update(amount),
+            Self::Harmonic(body) => body.motion_amount_update(amount),
+            Self::Dyn(body) => body.motion_amount_update(amount),
+        }
+    }
+
+    fn generation_motion_clock(&self, birth: Tick) -> Option<MotionClock> {
+        match self {
+            Self::Sine(body) => body.generation_motion_clock(birth),
+            Self::Harmonic(body) => body.generation_motion_clock(birth),
+            Self::Dyn(body) => body.generation_motion_clock(birth),
         }
     }
 

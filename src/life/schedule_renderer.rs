@@ -1451,9 +1451,7 @@ impl ScheduleRenderer {
                             ));
                             #[cfg(test)]
                             tone.set_render_cost_oracle(self.sample_major_oracle);
-                            if spec.body.kind == crate::life::sound::BodyKind::Harmonic
-                                && spec.body.motion > 0.
-                            {
+                            if spec.body.needs_onset_motion_clock() {
                                 // Standalone batches without a Voice use the score's clock.
                                 tone.set_motion_clock(batch.motion_clock.unwrap_or_else(|| {
                                     crate::life::sound::pitch_motion::MotionClock {

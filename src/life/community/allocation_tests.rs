@@ -28,12 +28,7 @@ fn community_steady_hops_reuse_respawn_social_and_sequential_storage() {
             &mut model,
             &landscape,
             frame * 64,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            &Default::default(),
             &mut batches,
         );
         community.cleanup_dead(frame, dt, false, &landscape);
@@ -45,12 +40,7 @@ fn community_steady_hops_reuse_respawn_social_and_sequential_storage() {
             &mut model,
             &landscape,
             frame * 64,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            &Default::default(),
             &mut batches,
         );
         community.cleanup_dead(frame, dt, false, &landscape);

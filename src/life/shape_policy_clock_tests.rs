@@ -14,7 +14,6 @@ fn articulation_persistence_intent_resolve_does_not_update_memory_last_onset_or_
             48000,
             true,
             Some(&forecast),
-            #[cfg(feature = "research")]
             None,
             None,
             Some(&mut shape),
@@ -39,16 +38,7 @@ fn articulation_persistence_future_plan_is_reused_without_new_shape_decisions() 
     shape.reserve(16, 512);
     assert!(
         clock
-            .candidate_with_shape(
-                22000,
-                22500,
-                true,
-                None,
-                #[cfg(feature = "research")]
-                None,
-                None,
-                Some(&mut shape)
-            )
+            .candidate_with_shape(22000, 22500, true, None, None, None, Some(&mut shape))
             .is_none()
     );
     assert!(clock.planned.is_some());
@@ -57,32 +47,14 @@ fn articulation_persistence_future_plan_is_reused_without_new_shape_decisions() 
     for now in 22500..23999 {
         assert!(
             clock
-                .candidate_with_shape(
-                    now,
-                    now + 1,
-                    true,
-                    None,
-                    #[cfg(feature = "research")]
-                    None,
-                    None,
-                    Some(&mut shape)
-                )
+                .candidate_with_shape(now, now + 1, true, None, None, None, Some(&mut shape))
                 .is_none()
         );
         assert_eq!(shape.state, state);
         assert_eq!(clock.planned, pending);
     }
     assert_eq!(
-        clock.candidate_with_shape(
-            24000,
-            24001,
-            true,
-            None,
-            #[cfg(feature = "research")]
-            None,
-            None,
-            Some(&mut shape)
-        ),
+        clock.candidate_with_shape(24000, 24001, true, None, None, None, Some(&mut shape)),
         Some(24000)
     );
     clock.resolve(24000, true);

@@ -121,10 +121,10 @@ wait(0.08);
                     .all(|frame| frame.received_frames == 0)
             );
             assert_eq!(
-                state.temporal.footprint_worker.is_some(),
+                state.temporal.onset.footprint_worker().is_some(),
                 comparison.is_some()
             );
-            if let Some(worker) = &state.temporal.footprint_worker
+            if let Some(worker) = state.temporal.onset.footprint_worker()
                 && worker.stats.footprint_requested > 0
             {
                 observed.store(true, Ordering::Relaxed);
@@ -152,7 +152,6 @@ wait(0.08);
                 wav_tx: None,
                 reporter: None,
                 deterministic_analysis: true,
-                #[cfg(feature = "research")]
                 deterministic_footprints: true,
                 guard_meter: None,
                 underrun_frames: None,
@@ -268,7 +267,6 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                         wav_tx: None,
                         reporter: None,
                         deterministic_analysis: true,
-                        #[cfg(feature = "research")]
                         deterministic_footprints: false,
                         guard_meter: None,
                         underrun_frames: None,
@@ -372,8 +370,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         habitat_meter: false,
         render_prototype: Default::default(),
         temporal_config: Default::default(),
-        #[cfg(feature = "research")]
-        onset_comparison: None,
+        onset: Default::default(),
         scenario_name: "clock regression".into(),
         wait_user_exit: false,
         start_flag: Arc::new(AtomicBool::new(true)),
@@ -390,8 +387,6 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
         fs,
         deterministic_analysis: true,
-        #[cfg(feature = "research")]
-        deterministic_footprints: true,
     };
     let scenario = crate::scenario::Scenario {
         observe_tonal_context: false,
@@ -948,7 +943,6 @@ wait(0.03);
             wav_tx: None,
             reporter: None,
             deterministic_analysis: true,
-            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,
@@ -989,8 +983,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             habitat_meter: true,
             render_prototype: Default::default(),
             temporal_config: super::temporal_ports::TemporalConfig::from_enabled(_continuous),
-            #[cfg(feature = "research")]
-            onset_comparison: None,
+            onset: Default::default(),
             scenario_name: "clock regression".into(),
             wait_user_exit: false,
             start_flag: Arc::new(AtomicBool::new(true)),
@@ -1007,8 +1000,6 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
             fs,
             deterministic_analysis: true,
-            #[cfg(feature = "research")]
-            deterministic_footprints: true,
         };
         let scenario = crate::scenario::Scenario {
             observe_tonal_context: false,
@@ -1186,8 +1177,7 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
             habitat_meter: false,
             render_prototype: Default::default(),
             temporal_config: Default::default(),
-            #[cfg(feature = "research")]
-            onset_comparison: None,
+            onset: Default::default(),
             scenario_name: "listener update".into(),
             wait_user_exit: false,
             start_flag: Arc::new(AtomicBool::new(true)),
@@ -1204,8 +1194,6 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
             hop_duration: Duration::from_secs_f64(hop as f64 / fs as f64),
             fs,
             deterministic_analysis: false,
-            #[cfg(feature = "research")]
-            deterministic_footprints: true,
         };
         let scenario = crate::scenario::Scenario {
             observe_tonal_context: false,

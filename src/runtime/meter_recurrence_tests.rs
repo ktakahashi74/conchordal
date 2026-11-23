@@ -121,7 +121,6 @@ fn check_metric_population(
             wav_tx: None,
             reporter: None,
             deterministic_analysis: true,
-            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,

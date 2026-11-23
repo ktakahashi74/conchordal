@@ -200,7 +200,6 @@ fn indefinite_estimator_precision_v7() {
         wav_tx: None,
         reporter: None,
         deterministic_analysis: true,
-        #[cfg(feature = "research")]
         deterministic_footprints: false,
         guard_meter: None,
         underrun_frames: None,

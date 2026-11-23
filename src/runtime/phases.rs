@@ -214,17 +214,16 @@ pub(super) fn advance_population(
         .schedule_renderer
         .body_capture
         .prepare(&state.pop.voices, now_tick);
-    #[cfg(feature = "research")]
-    if cfg.onset_comparison.is_some() {
-        for voice in &mut state.pop.voices {
-            voice
-                .phonation_engine
-                .set_onset_comparison(cfg.onset_comparison);
-            voice
-                .phonation_engine
-                .set_decision_trace(state.reporter.is_some());
-        }
-        request_body_footprints(state, cfg.fs, now_tick);
+    if cfg
+        .onset
+        .configure(&mut state.pop.voices, state.reporter.is_some())
+    {
+        state.temporal.onset.request(
+            &mut state.pop.voices,
+            cfg.fs,
+            now_tick,
+            state.schedule_renderer.prototype.enabled(),
+        );
     }
     if let Some(observer) = state.temporal.temporal_expectation.as_mut() {
         if let Some(sites) = &mut state.schedule_renderer.sites {
@@ -318,14 +317,10 @@ pub(super) fn advance_population(
             &mut state.generator_model,
             &state.current_landscape,
             now_tick,
-            #[cfg(feature = "research")]
-            cfg.onset_comparison
-                .filter(|c| c.arrival)
-                .map(|_| &state.temporal.observation.temporal_frames[0]),
-            #[cfg(feature = "research")]
-            state.temporal.observation.body_snapshot.as_deref(),
-            #[cfg(feature = "research")]
-            state.schedule_renderer.body_capture.as_ref(),
+            &cfg.onset.arrival(
+                &state.temporal.observation,
+                &state.schedule_renderer.body_capture,
+            ),
             &mut state.phonation_batches_buf,
         )
     } else {
@@ -410,13 +405,7 @@ pub(super) fn advance_population(
                     .drain_participation_predictions()
                     .map(|prediction| (id, voice.metadata.generation, prediction)),
             );
-            #[cfg(feature = "research")]
-            state.temporal.participation_decisions.extend(
-                voice
-                    .phonation_engine
-                    .drain_participation_decisions()
-                    .map(|decision| (id, decision)),
-            );
+            state.temporal.onset.collect(id, voice);
         }
     }
 
@@ -460,81 +449,6 @@ pub(super) fn advance_population(
     phonation_count
 }
 
-/// I11-1 §4.2: at most one representative-onset footprint request per Voice per hop.
-/// The hop path carries the identity, the request and the reply; the projection
-/// itself runs on its independent worker.
-#[cfg(feature = "research")]
-pub(super) fn request_body_footprints(state: &mut WorkerState, fs: f32, now: Tick) {
-    let phase3 = state.schedule_renderer.phase3_enabled();
-    let voices = &mut state.pop.voices;
-    let Some(worker) = state.temporal.footprint_worker.as_mut() else {
-        return;
-    };
-    worker.prepare(
-        voices
-            .iter()
-            .map(|voice| (voice.id(), voice.metadata.generation, voice.body_snapshot())),
-    );
-    for voice in voices {
-        if !voice.is_alive() {
-            continue;
-        }
-        let Some(mut recipe) = voice.footprint_recipe(fs) else {
-            continue;
-        };
-        recipe.renderer_phase3 = phase3;
-        let Some(body_generation) = worker.body_generation((voice.id(), voice.metadata.generation))
-        else {
-            continue;
-        };
-        let identity =
-            crate::life::onset_footprint::Identity::new(voice.id(), body_generation, &recipe);
-        let resent = voice
-            .phonation_engine
-            .footprint_hop(identity, now, &recipe, |request| {
-                worker.request_footprint(request)
-            });
-        if resent {
-            worker.stats.footprint_resent += 1;
-        }
-    }
-}
-
-/// Route returned footprints to the Voice that asked for them (I11-1 §4.2).
-/// A reply the full queue dropped releases the request, and the Voice resends it next hop.
-#[cfg(feature = "native")]
-#[cfg(feature = "research")]
-pub(super) fn route_body_footprints(
-    voices: &mut [crate::life::voice::Voice],
-    worker: &mut crate::life::onset_footprint::Worker,
-    reporter: &mut Option<JsonlReporter>,
-    now: Tick,
-) {
-    let mut superseded = 0;
-    for record in worker.drain_footprints(now) {
-        let discarded = voices
-            .iter_mut()
-            .find(|voice| voice.id() == record.identity.source_id)
-            .is_some_and(|voice| voice.phonation_engine.footprint_receive(&record));
-        superseded += u64::from(discarded);
-        report_try(reporter, "body footprint", |writer| {
-            writer.write_body_footprint(&record, discarded)
-        });
-    }
-    worker.stats.footprint_superseded += superseded;
-    let mut released = 0;
-    for identity in worker.drain_released_footprints() {
-        if let Some(voice) = voices
-            .iter_mut()
-            .find(|voice| voice.id() == identity.source_id)
-            && voice.phonation_engine.footprint_release(identity)
-        {
-            released += 1;
-        }
-    }
-    worker.stats.footprint_released += released;
-}
-
 /// Emit per-hop JSONL report records. No-op without a reporter.
 pub(super) fn emit_hop_reports(
     state: &mut WorkerState,
@@ -547,12 +461,10 @@ pub(super) fn emit_hop_reports(
     if state.reporter.is_none() {
         return;
     }
-    #[cfg(feature = "research")]
-    for (voice_id, decision) in state.temporal.participation_decisions.drain(..) {
-        report_try(&mut state.reporter, "participation decision", |writer| {
-            writer.write_participation_decision(voice_id, cfg.fs as u32, &decision)
-        });
-    }
+    state
+        .temporal
+        .onset
+        .emit(&mut state.reporter, cfg.fs as u32);
     // Only reporting is decimated; each analysis hop has already advanced history.
     let report_hops = (0.1 * cfg.fs / cfg.hop as f32).ceil().max(1.0) as u64;
     if state.frame_idx.is_multiple_of(report_hops) {
@@ -973,10 +885,10 @@ pub(super) fn render_and_route_audio(
     temporal_ports::refresh_body(state);
 
     #[cfg(feature = "native")]
-    #[cfg(feature = "research")]
-    if let Some(worker) = state.temporal.footprint_worker.as_mut() {
-        route_body_footprints(&mut state.pop.voices, worker, &mut state.reporter, now_tick);
-    }
+    state
+        .temporal
+        .onset
+        .route(&mut state.pop.voices, &mut state.reporter, now_tick);
 
     if state.reporter.is_some() {
         // Drain after actual rendering, before a later hop can retire a Voice.

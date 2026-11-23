@@ -122,7 +122,6 @@ fn n3_offline_body_equivalence() {
             wav_tx: None,
             reporter: Some(reporter),
             deterministic_analysis: true,
-            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,
@@ -229,7 +228,6 @@ fn render_metabolism_flags(metabolism: Option<bool>, prototype: bool) -> Vec<Fla
             wav_tx: prototype.then_some(wav_tx),
             reporter: None,
             deterministic_analysis: true,
-            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,
@@ -443,7 +441,6 @@ fn b7_dynamic_etude_render() {
             wav_tx: None,
             reporter: Some(reporter),
             deterministic_analysis: true,
-            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,

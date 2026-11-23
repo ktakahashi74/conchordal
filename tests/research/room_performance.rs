@@ -314,7 +314,6 @@ fn render_reservation() {
             wav_tx: Some(wav),
             reporter: Some(reporter),
             deterministic_analysis: true,
-            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter: None,
             underrun_frames: None,

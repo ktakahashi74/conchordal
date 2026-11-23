@@ -136,7 +136,6 @@ impl StepEngine {
                 wav_tx: Some(output),
                 reporter: None,
                 deterministic_analysis: true,
-                #[cfg(feature = "research")]
                 deterministic_footprints: true,
                 guard_meter: None,
                 underrun_frames: None,
@@ -426,7 +425,6 @@ mod tests {
                 wav_tx: Some(tx),
                 reporter: None,
                 deterministic_analysis: true,
-                #[cfg(feature = "research")]
                 deterministic_footprints: true,
                 guard_meter: None,
                 underrun_frames: None,

@@ -1,5 +1,9 @@
 //! Causal recurrence inference. Period candidates are not a common onset clock.
 
+#[cfg(feature = "research")]
+#[path = "temporal_expectation/onset_window.rs"]
+mod onset_window;
+
 use crate::core::compensated::Sum;
 use crate::core::history_prediction::HistoryEnergyPrediction;
 use crate::core::onset::OnsetDetector;
@@ -794,12 +798,6 @@ impl TemporalForecast {
 
     pub(crate) fn observed_frame(&self) -> u64 {
         self.start_frame
-    }
-
-    /// No window before this frame may inform a prediction.
-    #[cfg(feature = "research")]
-    pub(crate) fn available_through_frame(&self) -> u64 {
-        self.available_through_frame
     }
 
     /// First complete observation window at or after an action, on this observer's grid.

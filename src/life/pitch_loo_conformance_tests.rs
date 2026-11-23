@@ -147,7 +147,6 @@ fn recipe(family: &str, hz: f32, environment: &Landscape) -> Recipe {
         return voice.representative_body_recipe(FS, 48_000);
     }
     Recipe {
-        #[cfg(feature = "research")]
         renderer_phase3: false,
         body,
         freq_hz: hz,

@@ -53,7 +53,6 @@ fn participation_context_capacity_uses_whole_hop_for_one_sample_segments() {
                         0.0,
                         1.0,
                         None,
-                        #[cfg(feature = "research")]
                         None,
                         &mut cmds,
                         &mut events,

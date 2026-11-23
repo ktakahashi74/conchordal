@@ -93,7 +93,6 @@ fn render(directory: &Path, script: &str, config: AppConfig, native: bool) {
             wav_tx: Some(wav_tx),
             reporter: Some(reporter),
             deterministic_analysis: true,
-            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter,
             underrun_frames: None,

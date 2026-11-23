@@ -1,6 +1,5 @@
 pub(crate) const MAX_EXTRA_GATES: u64 = 4096;
 
-#[cfg(feature = "research")]
 use crate::life::arrival_cost::ArrivalContext;
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::cmp::{Ordering, Reverse};
@@ -37,6 +36,13 @@ mod timing;
 #[cfg(feature = "research")]
 pub(crate) use felt::FeltRhythmRecord;
 pub(crate) use felt::FeltVoice;
+
+#[cfg(feature = "research")]
+#[path = "phonation_engine/clock_onset/active.rs"]
+mod clock_onset;
+#[cfg(not(feature = "research"))]
+#[path = "phonation_engine/clock_onset/inactive.rs"]
+mod clock_onset;
 
 use clock::COUPLING_PULL_K;
 pub use clock::{CouplingClock, ParticipationClock, PhonationClock, ThetaGateClock};
@@ -435,85 +441,6 @@ impl PhonationEngine {
     pub(crate) fn set_sound_adsr(&mut self, adsr: Option<crate::life::sound::ToneAdsr>) {
         if let PhonationClock::Participation(clock) = &mut self.clock {
             clock.adsr = adsr;
-        }
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn set_onset_comparison(
-        &mut self,
-        config: Option<crate::config::TemporalOnsetComparisonConfig>,
-    ) {
-        if let PhonationClock::Participation(clock) = &mut self.clock {
-            clock.onset_comparison = config;
-        }
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn set_decision_trace(&mut self, enabled: bool) {
-        if let PhonationClock::Participation(clock) = &mut self.clock {
-            clock.decision_trace = enabled;
-        }
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn drain_participation_decisions(
-        &mut self,
-    ) -> impl Iterator<Item = crate::life::temporal_participation::ParticipationDecision> + '_ {
-        match &mut self.clock {
-            PhonationClock::Participation(clock) => clock.policy.as_mut(),
-            _ => None,
-        }
-        .into_iter()
-        .flat_map(|policy| policy.drain_decisions())
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn footprint_hold(&self) -> Option<(f32, Option<crate::life::sound::ToneAdsr>)> {
-        match &self.clock {
-            PhonationClock::Participation(clock) => clock.footprint_hold(),
-            _ => None,
-        }
-    }
-
-    /// I11-1 §4.2 hop step: adopt the identity and send at most one request.
-    /// Returns true when the supplier had already been asked for this identity.
-    #[cfg(feature = "research")]
-    pub(crate) fn footprint_hop(
-        &mut self,
-        identity: crate::life::onset_footprint::Identity,
-        now: Tick,
-        recipe: &crate::life::onset_footprint::Recipe,
-        send: impl FnOnce(crate::life::onset_footprint::Request) -> bool,
-    ) -> bool {
-        match &mut self.clock {
-            PhonationClock::Participation(clock) => {
-                clock.footprint.hop(identity, now, recipe, send)
-            }
-            _ => false,
-        }
-    }
-
-    /// Returns true when this Voice was waiting for the dropped reply.
-    #[cfg(feature = "research")]
-    pub(crate) fn footprint_release(
-        &mut self,
-        identity: crate::life::onset_footprint::Identity,
-    ) -> bool {
-        match &mut self.clock {
-            PhonationClock::Participation(clock) => clock.footprint.release(identity),
-            _ => false,
-        }
-    }
-
-    /// Returns true when the record was discarded because its request was superseded.
-    #[cfg(feature = "research")]
-    pub(crate) fn footprint_receive(
-        &mut self,
-        record: &crate::life::onset_footprint::Record,
-    ) -> bool {
-        match &mut self.clock {
-            PhonationClock::Participation(clock) => clock.footprint.receive(record),
-            _ => false,
         }
     }
 
@@ -921,7 +848,6 @@ impl PhonationEngine {
             social_coupling,
             extra_gate_gain,
             min_allowed_onset_tick,
-            #[cfg(feature = "research")]
             None,
             out_cmds,
             out_events,
@@ -938,7 +864,7 @@ impl PhonationEngine {
         social_coupling: f32,
         extra_gate_gain: f32,
         min_allowed_onset_tick: Option<Tick>,
-        #[cfg(feature = "research")] arrival: Option<&ArrivalContext<'_>>,
+        arrival: Option<&ArrivalContext<'_>>,
         out_cmds: &mut Vec<ToneCmd>,
         out_events: &mut Vec<ToneOnEvent>,
         out_onsets: &mut Vec<OnsetEvent>,
@@ -1025,7 +951,6 @@ impl PhonationEngine {
                     &segment_ctx,
                     cursor,
                     effective_state.is_alive && effective_state.onset_allowed,
-                    #[cfg(feature = "research")]
                     arrival,
                 ) else {
                     if boundary == ctx.frame_end {

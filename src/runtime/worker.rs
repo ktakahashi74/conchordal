@@ -9,8 +9,7 @@ pub(super) struct WorkerConfig {
     pub(super) habitat_meter: bool,
     pub(super) render_prototype: crate::life::sound::render_prototype::RenderPrototype,
     pub(super) temporal_config: TemporalConfig,
-    #[cfg(feature = "research")]
-    pub(super) onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
+    pub(super) onset: super::onset_ports::OnsetConfig,
     pub(super) scenario_name: String,
     pub(super) wait_user_exit: bool,
     pub(super) start_flag: Arc<AtomicBool>,
@@ -31,8 +30,6 @@ pub(super) struct WorkerConfig {
     /// Offline/report paths consume analysis with a fixed lag so results do not
     /// depend on worker scheduling. Real-time leaves the listener best-effort.
     pub(super) deterministic_analysis: bool,
-    #[cfg(feature = "research")]
-    pub(super) deterministic_footprints: bool,
 }
 
 /// Channel endpoints and the audio ring-buffer producer owned by the worker.
@@ -128,15 +125,8 @@ pub(super) struct TemporalState {
     pub(super) flora_rhythm: crate::life::flora::TemporalObservation,
     pub(super) temporal_expectation:
         Option<crate::core::temporal_expectation::AcousticTemporalExpectation>,
-    #[cfg(feature = "research")]
-    pub(super) footprint_worker: Option<crate::life::onset_footprint::Worker>,
+    pub(super) onset: super::onset_ports::OnsetRuntime,
     pub(super) participation_predictions: Vec<(u64, u32, ParticipationPrediction)>,
-    /// Traced decisions wait here so their encoding is charged to the report phase.
-    #[cfg(feature = "research")]
-    pub(super) participation_decisions: Vec<(
-        u64,
-        crate::life::temporal_participation::ParticipationDecision,
-    )>,
 }
 
 pub(super) struct EndSequence {
@@ -359,21 +349,8 @@ impl WorkerState {
                 flora_meter,
                 flora_rhythm: Default::default(),
                 temporal_expectation,
-                #[cfg(feature = "native")]
-                #[cfg(feature = "research")]
-                footprint_worker: cfg.onset_comparison.map(|_| {
-                    let mut worker = crate::life::onset_footprint::Worker::new();
-                    if cfg.deterministic_footprints {
-                        worker.deliver_footprints_deterministically();
-                    }
-                    worker
-                }),
-                #[cfg(not(feature = "native"))]
-                #[cfg(feature = "research")]
-                footprint_worker: None,
+                onset: cfg.onset.prepare(),
                 participation_predictions: Vec::new(),
-                #[cfg(feature = "research")]
-                participation_decisions: Vec::new(),
             },
         }
     }
@@ -585,21 +562,12 @@ pub(super) fn finish_run(
             }
         }
     }
-    #[cfg(feature = "research")]
-    if let Some(worker) = state.temporal.footprint_worker.as_mut() {
-        worker.finish();
-        route_body_footprints(
-            &mut state.pop.voices,
-            worker,
-            &mut state.reporter,
-            state.timebase.frame_start_tick(state.frame_idx),
-        );
-        report_try(
-            &mut state.reporter,
-            "final body footprint worker",
-            |writer| writer.write_body_footprint_worker(&worker.stats),
-        );
-    }
+    state.temporal.onset.finish(
+        &mut state.pop.voices,
+        &mut state.reporter,
+        state.timebase.frame_start_tick(state.frame_idx),
+    );
+
     temporal_ports::finish_capture(state);
 
     temporal_ports::finish_analysis(state, channels, cfg);

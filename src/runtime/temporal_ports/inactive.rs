@@ -2,7 +2,9 @@ use super::wiring::AnalysisRuntimeCore;
 use super::*;
 use crate::core::analysis_worker::AnalysisTemporalInput;
 use crate::core::stream::loo::PcmPacket;
-use crate::runtime_profile::{BackgroundTemporalProfile, TemporalMeterProfile};
+#[cfg(feature = "native")]
+use crate::runtime_profile::BackgroundTemporalProfile;
+use crate::runtime_profile::TemporalMeterProfile;
 use crate::temporal_cognition::{capture::BodyCapture, ui_observation::TemporalUi};
 
 #[derive(Default)]

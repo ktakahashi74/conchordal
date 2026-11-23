@@ -155,7 +155,6 @@ pub(super) struct WiringOptions {
     pub(super) deterministic_analysis: bool,
     /// Offline render only: footprints return at the hop that asked, whatever the worker's
     /// pace. The instrument keeps wall-clock delivery, even with `--play=false`.
-    #[cfg(feature = "research")]
     pub(super) deterministic_footprints: bool,
     pub(super) guard_meter: Option<Arc<LimiterMeter>>,
     pub(super) underrun_frames: Option<Arc<AtomicU64>>,
@@ -364,7 +363,6 @@ pub(super) fn prepare_runtime(
         wav_tx,
         mut reporter,
         deterministic_analysis,
-        #[cfg(feature = "research")]
         deterministic_footprints,
         guard_meter,
         underrun_frames,
@@ -737,8 +735,7 @@ pub(super) fn prepare_runtime(
             config,
         ),
         temporal_config: TemporalConfig::from_config(config),
-        #[cfg(feature = "research")]
-        onset_comparison: config.temporal_onset_comparison,
+        onset: super::onset_ports::OnsetConfig::from_config(config, deterministic_footprints),
         scenario_name: scenario_label,
         wait_user_exit,
         start_flag: start_flag.clone(),
@@ -758,8 +755,6 @@ pub(super) fn prepare_runtime(
         hop_duration,
         fs,
         deterministic_analysis,
-        #[cfg(feature = "research")]
-        deterministic_footprints,
     };
     let channels = WorkerChannels {
         observation: temporal_channels,
@@ -1035,7 +1030,6 @@ pub(crate) fn init_runtime(
             wav_tx: None,
             reporter,
             deterministic_analysis,
-            #[cfg(feature = "research")]
             deterministic_footprints: false,
             guard_meter,
             underrun_frames: audio_out.as_ref().map(AudioOutput::underrun_frames),
@@ -1183,7 +1177,6 @@ pub fn run_render(
             wav_tx: Some(wav_tx),
             reporter,
             deterministic_analysis: true,
-            #[cfg(feature = "research")]
             deterministic_footprints: true,
             guard_meter,
             underrun_frames: None,

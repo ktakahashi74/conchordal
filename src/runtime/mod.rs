@@ -67,6 +67,12 @@ const UI_MIN_INTERVAL: Duration = Duration::from_millis(33);
 
 mod analysis_sync;
 mod monitor;
+#[cfg(feature = "research")]
+#[path = "onset_ports/active.rs"]
+mod onset_ports;
+#[cfg(not(feature = "research"))]
+#[path = "onset_ports/inactive.rs"]
+mod onset_ports;
 mod phases;
 mod scenario_load;
 pub mod step;

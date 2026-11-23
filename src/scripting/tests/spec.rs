@@ -2773,7 +2773,6 @@ fn synchronized_tie_default_sound_and_live_modes_use_existing_policy() {
                 0.,
                 1.,
                 0.8,
-                #[cfg(feature = "research")]
                 None,
                 Some(&space),
                 &mut out,
@@ -2815,7 +2814,6 @@ fn synchronized_tie_default_sound_and_live_modes_use_existing_policy() {
                     0.,
                     1.,
                     0.8,
-                    #[cfg(feature = "research")]
                     None,
                     Some(&space),
                     &mut out,

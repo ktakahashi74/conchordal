@@ -4,8 +4,7 @@ use crate::core::landscape::{Landscape, LandscapeUpdate};
 use crate::core::modulation::NeuralRhythms;
 use crate::core::timebase::{Tick, Timebase};
 use crate::dcc_coupler::ListenerPressure;
-#[cfg(feature = "research")]
-use crate::life::arrival_cost::{self, ArrivalContext};
+use crate::life::arrival_cost::ArrivalSources;
 use crate::life::generator_model::GeneratorModel;
 use crate::life::social_density::SocialDensityTrace;
 use crate::scenario::control::{MAX_FREQ_HZ, MIN_FREQ_HZ};
@@ -505,12 +504,7 @@ impl Community {
             generator_model,
             landscape,
             now,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            &Default::default(),
             &mut batches,
         );
         batches.truncate(count);
@@ -523,11 +517,7 @@ impl Community {
         generator_model: &mut GeneratorModel,
         landscape: &Landscape,
         now: Tick,
-        #[cfg(feature = "research")] arrival: Option<
-            &crate::temporal_cognition::observation::Snapshot,
-        >,
-        #[cfg(feature = "research")] body: Option<&crate::temporal_cognition::body::Snapshot>,
-        #[cfg(feature = "research")] capture: Option<&crate::temporal_cognition::body::Capture>,
+        arrival: &ArrivalSources<'_>,
         out: &mut Vec<PhonationBatch>,
     ) -> usize {
         let tb = generator_model.time;
@@ -622,46 +612,7 @@ impl Community {
                 }
                 None => 1.0,
             };
-            #[cfg(feature = "research")]
-            let arrival_context = arrival.map(|snapshot| {
-                let binding = body.and_then(|body| {
-                    crate::temporal_cognition::body_model::bindings(body).find(|binding| {
-                        binding.source_id == voice.id()
-                            && binding.source_generation == voice.metadata.generation
-                            && binding.bus == 0
-                    })
-                });
-                let body_generation = capture
-                    .and_then(|capture| capture.token(voice.id(), voice.metadata.generation))
-                    .map(|(_, generation)| generation);
-                let body_record = body.and_then(|body| {
-                    body.records.iter().copied().find(|record| {
-                        record.source_id == voice.id()
-                            && record.source_generation == voice.metadata.generation
-                            && record.bus == 0
-                    })
-                });
-                let habitat_routed = voice.effective_control.body.routing.to_habitat;
-                let self_group = arrival_cost::self_group(
-                    snapshot,
-                    binding,
-                    habitat_routed,
-                    body_record,
-                    (voice.id(), voice.metadata.generation, body_generation),
-                    now,
-                );
-                ArrivalContext {
-                    snapshot,
-                    self_group_state: self_group
-                        .as_ref()
-                        .map_or_else(|reason| *reason, |_| "known"),
-                    self_group: self_group.ok(),
-                    binding,
-                    habitat_routed,
-                    body_record,
-                    owner: (voice.id(), voice.metadata.generation, body_generation),
-                }
-            });
+            let arrival_context = arrival.for_voice(voice, now);
             let depth = voice.effective_control.phonation.sway;
             voice.phonation_engine.participation_activity = if depth > 0.0 {
                 population_sway
@@ -702,7 +653,6 @@ impl Community {
                     social_coupling,
                     extra_gate_gain,
                     consonance,
-                    #[cfg(feature = "research")]
                     arrival_context.as_ref(),
                     Some(&landscape.space),
                     batch,
@@ -2158,12 +2108,7 @@ mod tests {
             &mut world,
             &landscape,
             0,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            &Default::default(),
             &mut batches,
         );
         // Voice with default Sustain produces output, stale data is replaced
@@ -2177,12 +2122,7 @@ mod tests {
             &mut world,
             &landscape,
             64,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            &Default::default(),
             &mut batches,
         );
         assert_eq!(used, 1);
@@ -2224,12 +2164,7 @@ mod tests {
             &mut world,
             &landscape_low,
             0,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            &Default::default(),
             &mut batches,
         );
         assert!(
@@ -2241,12 +2176,7 @@ mod tests {
             &mut world,
             &landscape_high,
             64,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            &Default::default(),
             &mut batches,
         );
         let events = pop.drain_phonation_gate_open_events();
@@ -2258,12 +2188,7 @@ mod tests {
             &mut world,
             &landscape_high,
             128,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            &Default::default(),
             &mut batches,
         );
         assert!(
@@ -2303,24 +2228,14 @@ mod tests {
             &mut world,
             &landscape_high,
             0,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            &Default::default(),
             &mut batches,
         );
         pop.collect_phonation_batches_into(
             &mut world,
             &landscape_high,
             64,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            &Default::default(),
             &mut batches,
         );
         assert!(

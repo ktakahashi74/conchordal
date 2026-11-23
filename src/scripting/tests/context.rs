@@ -1293,7 +1293,6 @@ fn articulation_persistence_respawn_during_suspension_can_reenter_scope() {
                 0.,
                 1.,
                 0.8,
-                #[cfg(feature = "research")]
                 None,
                 None,
                 &mut out,

@@ -1,5 +1,4 @@
 pub(crate) mod action_candidates;
-#[cfg(feature = "research")]
 pub(crate) mod arrival_cost;
 pub(crate) mod articulation_envelope;
 pub(crate) mod conductor;

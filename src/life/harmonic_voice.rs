@@ -72,7 +72,6 @@ impl Voice {
                 0.0,
                 1.0,
                 None,
-                #[cfg(feature = "research")]
                 None,
                 &mut out.cmds,
                 &mut self.phonation_scratch.events,
@@ -169,7 +168,6 @@ impl Voice {
                     0.0,
                     1.0,
                     None,
-                    #[cfg(feature = "research")]
                     None,
                     &mut out.cmds,
                     &mut self.phonation_scratch.events,

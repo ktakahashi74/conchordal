@@ -17,7 +17,6 @@ fn options(ui_tx: Option<Sender<UiFrame>>) -> WiringOptions {
         wav_tx: None,
         reporter: None,
         deterministic_analysis: true,
-        #[cfg(feature = "research")]
         deterministic_footprints: false,
         guard_meter: None,
         underrun_frames: None,

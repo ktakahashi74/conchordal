@@ -1,4 +1,8 @@
 #[cfg(feature = "research")]
+#[path = "report/onset_comparison.rs"]
+mod onset_comparison;
+
+#[cfg(feature = "research")]
 #[path = "report/temporal.rs"]
 mod temporal;
 #[cfg(feature = "research")]
@@ -393,22 +397,6 @@ enum ReportRecord<'a> {
         bins_per_octave: u32,
         state_scan: &'a [f32],
     },
-    #[cfg(feature = "research")]
-    ParticipationDecision {
-        voice_id: u64,
-        sample_rate: u32,
-        #[serde(flatten)]
-        decision: &'a crate::life::temporal_participation::ParticipationDecision,
-    },
-    #[cfg(feature = "research")]
-    BodyFootprintWorker(&'a crate::life::onset_footprint::Stats),
-    #[cfg(feature = "research")]
-    BodyFootprint {
-        /// The Voice discarded the record because its request was superseded.
-        superseded: bool,
-        #[serde(flatten)]
-        record: &'a crate::life::onset_footprint::Record,
-    },
     EstimatorStatus {
         freeze_count: u64,
         frozen_at_issue: u64,
@@ -602,37 +590,6 @@ impl JsonlReporter {
             sample_rate,
             update,
         })
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn write_participation_decision(
-        &mut self,
-        voice_id: u64,
-        sample_rate: u32,
-        decision: &crate::life::temporal_participation::ParticipationDecision,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::ParticipationDecision {
-            voice_id,
-            sample_rate,
-            decision,
-        })
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn write_body_footprint_worker(
-        &mut self,
-        stats: &crate::life::onset_footprint::Stats,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::BodyFootprintWorker(stats))
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn write_body_footprint(
-        &mut self,
-        record: &crate::life::onset_footprint::Record,
-        superseded: bool,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::BodyFootprint { superseded, record })
     }
 
     pub(crate) fn write_local_prediction_match(

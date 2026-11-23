@@ -1,3 +1,7 @@
+#[cfg(any(test, feature = "research"))]
+#[path = "voice_render/onset_window.rs"]
+mod onset_window;
+
 use super::*;
 use crate::scenario::control::BodyControl;
 
@@ -32,6 +36,10 @@ impl BodyRuntime {
         }
     }
 }
+
+#[cfg(feature = "research")]
+#[path = "voice_render/footprint.rs"]
+mod footprint;
 
 impl Voice {
     const PHONATION_AMP_UPDATE_EPS: f32 = 0.01;
@@ -316,63 +324,6 @@ impl Voice {
 
     pub(crate) fn body_snapshot(&self) -> BodySnapshot {
         self.body.snapshot()
-    }
-
-    #[cfg(any(test, feature = "research"))]
-    pub(crate) fn representative_body_recipe(
-        &self,
-        fs: f32,
-        hold: Tick,
-    ) -> crate::life::onset_footprint::Recipe {
-        let modulator = crate::life::onset_footprint::representative_modulator(
-            self.articulation
-                .render_modulator_spec(self.phonation_engine.mode),
-        );
-        let modulator = match modulator {
-            crate::life::sound::RenderModulatorSpec::DroneSway { sway_rate, .. } => {
-                crate::life::sound::RenderModulatorSpec::DroneSway {
-                    phase: 0.0,
-                    sway_rate,
-                }
-            }
-            other => other,
-        };
-        crate::life::onset_footprint::Recipe {
-            #[cfg(feature = "research")]
-            renderer_phase3: false,
-            body: self.body_snapshot(),
-            freq_hz: self.body.base_freq_hz(),
-            hold,
-            adsr: self.voice_adsr,
-            modulator,
-            smoothing_tau_sec: Self::PHONATION_UPDATE_SMOOTH_TAU_SEC,
-            fs,
-        }
-    }
-
-    /// The representative recipe of I11-1 §4.2, frozen from what this Voice would
-    /// emit now. `None` unless a participation clock configures onset comparison.
-    #[cfg(feature = "research")]
-    pub(crate) fn footprint_recipe(&self, fs: f32) -> Option<crate::life::onset_footprint::Recipe> {
-        let (hold_sec, adsr) = self.phonation_engine.footprint_hold()?;
-        let phonation_mode = self.phonation_engine.mode;
-        Some(crate::life::onset_footprint::Recipe {
-            #[cfg(feature = "research")]
-            renderer_phase3: false,
-            body: self.body_snapshot(),
-            freq_hz: self.body.base_freq_hz(),
-            hold: if matches!(phonation_mode, PhonationMode::Hold) {
-                Tick::MAX
-            } else {
-                (f64::from(hold_sec) * f64::from(fs)).round() as Tick
-            },
-            adsr,
-            modulator: crate::life::onset_footprint::representative_modulator(
-                self.articulation.render_modulator_spec(phonation_mode),
-            ),
-            smoothing_tau_sec: Self::PHONATION_UPDATE_SMOOTH_TAU_SEC,
-            fs,
-        })
     }
 
     #[cfg(test)]

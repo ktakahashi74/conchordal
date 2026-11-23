@@ -318,15 +318,6 @@ impl Voice {
         self.body.snapshot()
     }
 
-    #[cfg(feature = "research")]
-    pub(crate) fn supports_body_metabolism(&self, renderer_phase3: bool) -> bool {
-        sound_body::supports_body_model(
-            &self.effective_control,
-            &self.body.snapshot(),
-            renderer_phase3,
-        )
-    }
-
     #[cfg(any(test, feature = "research"))]
     pub(crate) fn representative_body_recipe(
         &self,

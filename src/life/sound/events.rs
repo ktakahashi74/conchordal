@@ -15,14 +15,6 @@ pub enum BodyKind {
     Modal,
 }
 
-impl BodyKind {
-    #[cfg(feature = "research")]
-    pub(crate) fn supports_body_models(self, renderer_phase3: bool) -> bool {
-        // Native Modal has no output ADSR and keeps free radiation after Off.
-        !renderer_phase3 || matches!(self, Self::Sine | Self::Harmonic)
-    }
-}
-
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(test, derive(serde::Serialize, serde::Deserialize))]
 pub struct BodySnapshot {

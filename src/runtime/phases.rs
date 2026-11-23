@@ -201,10 +201,10 @@ pub(super) fn advance_population(
                 .map(|voice| (voice.id(), voice.metadata.generation)),
         );
     }
-    #[cfg(feature = "research")]
-    if let Some(runtime) = state.pop.body_metabolism.as_mut() {
-        runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
-    }
+    state
+        .pop
+        .body_metabolism
+        .prepare(&state.pop.voices, now_tick, &state.lparams);
     #[cfg(feature = "research")]
     if let Some(capture) = state.schedule_renderer.body_capture.as_mut() {
         capture.prepare(
@@ -777,10 +777,10 @@ pub(super) fn render_and_route_audio(
                     && v.phonation_engine.phrase_boundary.is_some()
             })
         });
-    #[cfg(feature = "research")]
-    if let Some(runtime) = state.pop.body_metabolism.as_mut() {
-        runtime.prepare(&state.pop.voices, now_tick, &state.lparams);
-    }
+    state
+        .pop
+        .body_metabolism
+        .prepare(&state.pop.voices, now_tick, &state.lparams);
     let synthesis_start = state.profile.as_ref().map(|_| Instant::now());
     if state.schedule_renderer.sites.is_some()
         || !state.loo_populations.is_empty()
@@ -900,20 +900,11 @@ pub(super) fn render_and_route_audio(
             }
         }
     }
-    #[cfg(feature = "research")]
-    let sources = state
-        .pop
-        .body_metabolism
-        .as_mut()
-        .map_or(&mut [][..], |runtime| runtime.pcm.as_mut_slice());
     let frame = state.schedule_renderer.render_with_source_pcm(
         &state.phonation_batches_buf[..phonation_count],
         now_tick,
         &state.current_landscape.rhythm,
-        #[cfg(feature = "research")]
-        sources,
-        #[cfg(not(feature = "research"))]
-        &mut [],
+        state.pop.body_metabolism.source_pcm(),
         &mut state.pop.flora,
         &mut state.pop.rain,
         |id, start, window, matched| {
@@ -944,10 +935,12 @@ pub(super) fn render_and_route_audio(
             });
         }
     }
-    #[cfg(feature = "research")]
-    if let Some(runtime) = state.pop.body_metabolism.as_mut() {
-        runtime.observe_at_sites(now_tick, frame.habitat, frame.sites, &state.lparams);
-    }
+    state.pop.body_metabolism.observe_at_sites(
+        now_tick,
+        frame.habitat,
+        frame.sites,
+        &state.lparams,
+    );
     let synthesis_elapsed = synthesis_start
         .map(|start| start.elapsed())
         .unwrap_or_default();

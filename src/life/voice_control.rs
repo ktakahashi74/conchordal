@@ -229,29 +229,6 @@ impl Voice {
         self.commit_decided_control(dt_sec, rhythms, landscape, global_coupling)
     }
 
-    #[cfg(feature = "research")]
-    pub(crate) fn commit_with_body_metabolism(
-        &mut self,
-        dt_sec: f32,
-        rhythms: &NeuralRhythms,
-        landscape: &Landscape,
-        global_coupling: f32,
-        evaluator: &mut crate::life::body_metabolism::Evaluator,
-        params: &crate::core::landscape::LandscapeParams,
-    ) -> ArticulationSignal {
-        self.update_articulation_autonomous(dt_sec, rhythms);
-        let body = evaluator
-            .score(self.body.base_freq_hz().max(1.).log2(), params, landscape)
-            .ok();
-        self.tick_articulation_lifecycle_with_body(
-            dt_sec,
-            rhythms,
-            landscape,
-            global_coupling,
-            body,
-        )
-    }
-
     /// Commit phase: applies articulation/body/lifecycle using already-decided targets.
     pub fn commit_decided_control(
         &mut self,
@@ -399,18 +376,17 @@ impl Voice {
             rhythms,
             landscape,
             global_coupling,
-            #[cfg(feature = "research")]
             None,
         )
     }
 
-    fn tick_articulation_lifecycle_with_body(
+    pub(in crate::life) fn tick_articulation_lifecycle_with_body(
         &mut self,
         dt_sec: f32,
         rhythms: &NeuralRhythms,
         landscape: &Landscape,
         global_coupling: f32,
-        #[cfg(feature = "research")] body: Option<crate::life::body_fitness::BodyFitness>,
+        body: Option<(f32, f32)>,
     ) -> ArticulationSignal {
         let consonance_level = landscape.evaluate_pitch_level(self.body.base_freq_hz());
         let selection_score = if self.selection_environment {
@@ -419,12 +395,7 @@ impl Voice {
         } else {
             landscape.evaluate_pitch_score(self.body.base_freq_hz())
         };
-        #[cfg(feature = "research")]
-        let (level, score) = body.map_or((consonance_level, selection_score), |value| {
-            (value.level, value.score)
-        });
-        #[cfg(not(feature = "research"))]
-        let (level, score) = (consonance_level, selection_score);
+        let (level, score) = body.unwrap_or((consonance_level, selection_score));
         let mut signal = self
             .articulation
             .process(level, score, rhythms, dt_sec, global_coupling);

@@ -58,11 +58,6 @@ impl BodySnapshot {
         }
     }
 
-    #[cfg(feature = "research")]
-    pub(crate) fn supports_body_models(&self, renderer_phase3: bool) -> bool {
-        self.kind.supports_body_models(renderer_phase3)
-    }
-
     #[cfg(any(test, feature = "research"))]
     pub(crate) fn has_same_structure(&self, other: &Self) -> bool {
         self.kind == other.kind && self.unison == other.unison && self.ratios == other.ratios
@@ -502,32 +497,20 @@ pub trait SoundBodyFactory: Send + Sync {
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody;
 
     /// Declare conformance of birth and PCM body models to the selected renderer.
-    #[cfg(feature = "research")]
+    #[allow(
+        dead_code,
+        reason = "Only the research body model queries factory conformance"
+    )]
     fn model_kind(&self, _renderer_phase3: bool) -> Option<BodyKind> {
         None
     }
 }
 
 #[cfg(feature = "research")]
-pub(crate) fn supports_body_model(
-    control: &VoiceControl,
-    snapshot: &BodySnapshot,
-    renderer_phase3: bool,
-) -> bool {
-    model_kind(control, renderer_phase3) == Some(snapshot.kind)
-}
-
+#[path = "sound_body/models.rs"]
+mod models;
 #[cfg(feature = "research")]
-pub(crate) fn model_kind(control: &VoiceControl, renderer_phase3: bool) -> Option<BodyKind> {
-    let registry = global_factory_registry()
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
-    let method = body_method_id(control.body.method);
-    registry.factories.get(method).map_or_else(
-        || HarmonicBodyFactory.model_kind(renderer_phase3),
-        |factory| factory.model_kind(renderer_phase3),
-    )
-}
+pub(crate) use models::supports_body_model;
 
 #[derive(Default)]
 pub struct SoundBodyFactoryRegistry {
@@ -616,11 +599,11 @@ pub fn build_sound_body_from_control(
 struct SineBodyFactory;
 
 impl SoundBodyFactory for SineBodyFactory {
-    #[cfg(feature = "research")]
     fn model_kind(&self, renderer_phase3: bool) -> Option<BodyKind> {
-        BodyKind::Sine
-            .supports_body_models(renderer_phase3)
-            .then_some(BodyKind::Sine)
+        crate::life::body_metabolism::BodyMetabolismPort::model_kind(
+            BodyKind::Sine,
+            renderer_phase3,
+        )
     }
 
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {
@@ -636,11 +619,11 @@ impl SoundBodyFactory for SineBodyFactory {
 struct HarmonicBodyFactory;
 
 impl SoundBodyFactory for HarmonicBodyFactory {
-    #[cfg(feature = "research")]
     fn model_kind(&self, renderer_phase3: bool) -> Option<BodyKind> {
-        BodyKind::Harmonic
-            .supports_body_models(renderer_phase3)
-            .then_some(BodyKind::Harmonic)
+        crate::life::body_metabolism::BodyMetabolismPort::model_kind(
+            BodyKind::Harmonic,
+            renderer_phase3,
+        )
     }
 
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {

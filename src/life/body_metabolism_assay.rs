@@ -209,7 +209,7 @@ fn b7_static_current_scores() {
         .with_renderer_phase3(native);
         runtime.prepare(&[voice(2, 0, BodyMethod::Sine)], 0, &params);
         runtime.sources[0].prepare_body(&own);
-        let mut renderer = super::super::schedule_renderer::ScheduleRenderer::new(runtime.time)
+        let mut renderer = crate::life::schedule_renderer::ScheduleRenderer::new(runtime.time)
             .with_prototype(native);
         let mut batches = vec![batch(2, &own)];
         if !row["other_hz"].is_null() {

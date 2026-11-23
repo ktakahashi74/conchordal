@@ -1,5 +1,9 @@
 //! Causal auditory filterbank, hop statistics, reassignment and loudness density.
 
+#[cfg(any(test, feature = "research"))]
+#[path = "auditory_frontend/body_probe.rs"]
+mod body_probe;
+
 use crate::core::landscape::LandscapeParams;
 use crate::core::log2space::Log2Space;
 use crate::core::roughness_kernel::erb_grid;
@@ -9,9 +13,7 @@ use rustfft::num_complex::Complex32;
 use std::f32::consts::TAU;
 
 #[cfg(any(test, feature = "research"))]
-pub(crate) struct SpectralFrameView<'a> {
-    pub subjective_intensity: &'a [f32],
-}
+pub(crate) use body_probe::SpectralFrameView;
 
 #[cfg(test)]
 #[path = "auditory_frontend_test_support.rs"]
@@ -413,14 +415,6 @@ impl AuditoryFrontEnd {
         self.density_scan.fill(0.0);
         self.reassignment.deposit_power.fill(0.0);
         self.missing_samples = self.warmup_samples;
-    }
-
-    // Unselected bodies still advance the filter and hop-statistic history.
-    #[cfg(any(test, feature = "research"))]
-    pub(crate) fn skip(&mut self, pcm: &[f32]) {
-        self.bank
-            .read_complex_hop(pcm.iter().map(|&x| Complex32::new(x, 0.0)));
-        self.missing_samples = self.missing_samples.saturating_sub(pcm.len());
     }
 
     pub(crate) fn process(&mut self, pcm: &[f32], params: &LandscapeParams) -> bool {

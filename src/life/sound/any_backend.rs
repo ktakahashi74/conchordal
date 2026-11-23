@@ -1,3 +1,7 @@
+#[cfg(any(test, feature = "research"))]
+#[path = "any_backend/body_probe.rs"]
+mod body_probe;
+
 use crate::core::log2space::Log2Space;
 use crate::life::sound::control::ToneControlBlock;
 use crate::life::sound::modal_engine::{ModalEngine, ModeShape};
@@ -23,14 +27,6 @@ pub enum AnyBackend {
 }
 
 impl AnyBackend {
-    #[cfg(any(test, feature = "research"))]
-    pub(super) fn reset_representative(&mut self) {
-        match self {
-            Self::Oscillator(bank) => bank.reset_representative(),
-            Self::Resonator(engine) => engine.reset_representative(),
-        }
-    }
-
     pub fn from_snapshot(fs: f32, snapshot: &BodySnapshot) -> Result<Self, SynthError> {
         match snapshot.kind {
             BodyKind::Sine | BodyKind::Harmonic => Ok(Self::Oscillator(

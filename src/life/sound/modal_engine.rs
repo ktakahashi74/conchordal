@@ -1,3 +1,7 @@
+#[cfg(any(test, feature = "research"))]
+#[path = "modal_engine/body_probe.rs"]
+mod body_probe;
+
 #[cfg(feature = "research")]
 #[path = "modal_engine/prototype.rs"]
 mod prototype;
@@ -62,17 +66,6 @@ pub struct ModalEngine {
 }
 
 impl ModalEngine {
-    #[cfg(any(test, feature = "research"))]
-    pub(super) fn reset_representative(&mut self) {
-        self.bank.reset_representative();
-        self.coefficients_seeded = false;
-        self.scratch.clear();
-        self.last_built_pitch_hz = 0.0;
-        self.counter = 0;
-        self.last_modes_len = 0;
-        self.pending_modal_phase_seed = None;
-    }
-
     pub fn new(fs: f32, shape: ModeShape) -> Result<Self, SynthError> {
         let max_modes = shape.max_modes().max(1);
         let bank = ResonatorBank::new(fs, max_modes)?;

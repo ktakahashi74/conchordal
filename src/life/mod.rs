@@ -33,7 +33,6 @@ pub(crate) mod temporal_participation;
 
 #[cfg(any(test, feature = "research"))]
 pub(crate) mod body_fitness;
-#[cfg(feature = "research")]
 pub(crate) mod body_metabolism;
 pub mod sound;
 #[cfg(test)]

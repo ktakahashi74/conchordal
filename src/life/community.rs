@@ -85,8 +85,7 @@ pub struct Community {
     pub(crate) expression: Option<crate::scenario::expression::Expression>,
     pub(crate) rest_enabled: bool,
     pub(crate) onset_habituation_config: Option<(crate::core::habituation::HabituationParams, f64)>,
-    #[cfg(feature = "research")]
-    pub(crate) body_metabolism: Option<super::body_metabolism::BodyMetabolism>,
+    pub(crate) body_metabolism: super::body_metabolism::BodyMetabolismPort,
     spawn_support: SpawnSupportScratch,
     pub voices: Vec<Voice>,
     pub(crate) flora: Vec<super::flora::Flora>,
@@ -256,8 +255,7 @@ impl Community {
             harmonic_rhythm: false,
             harmonic_ticks: Vec::new(),
             expression: None,
-            #[cfg(feature = "research")]
-            body_metabolism: None,
+            body_metabolism: Default::default(),
             spawn_support: SpawnSupportScratch::default(),
             rest_enabled: false,
             onset_habituation_config: None,
@@ -1301,23 +1299,15 @@ impl Community {
                 && voice.is_alive()
             {
                 let landscape = landscape.at_site(voice.effective_control.body.site_id);
-                #[cfg(feature = "research")]
-                if let Some((source, params)) = self
-                    .body_metabolism
-                    .as_mut()
-                    .and_then(|runtime| runtime.source(voice.id(), voice.metadata.generation))
-                {
-                    voice.commit_with_body_metabolism(
-                        dt_step_sec,
-                        rhythms,
-                        landscape,
-                        global_coupling,
-                        source,
-                        params,
-                    );
-                    continue;
+                if !self.body_metabolism.try_commit(
+                    voice,
+                    dt_step_sec,
+                    rhythms,
+                    landscape,
+                    global_coupling,
+                ) {
+                    voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
                 }
-                voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
             }
         }
     }
@@ -1373,23 +1363,15 @@ impl Community {
                     neighbor_weights,
                     listener_pressure,
                 );
-                #[cfg(feature = "research")]
-                if let Some((source, params)) = self
-                    .body_metabolism
-                    .as_mut()
-                    .and_then(|runtime| runtime.source(voice.id(), voice.metadata.generation))
-                {
-                    voice.commit_with_body_metabolism(
-                        dt_step_sec,
-                        rhythms,
-                        landscape,
-                        global_coupling,
-                        source,
-                        params,
-                    );
-                    continue;
+                if !self.body_metabolism.try_commit(
+                    voice,
+                    dt_step_sec,
+                    rhythms,
+                    landscape,
+                    global_coupling,
+                ) {
+                    voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
                 }
-                voice.commit_decided_control(dt_step_sec, rhythms, landscape, global_coupling);
             }
         }
     }

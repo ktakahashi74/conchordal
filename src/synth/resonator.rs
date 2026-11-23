@@ -1,6 +1,10 @@
 //! Resonator bank using a damped Modified Coupled Form (Hz, sec).
 //! x = r*(x - e*y) + b1*u, y = r*(e*x + y) + b2*u
 
+#[cfg(any(test, feature = "research"))]
+#[path = "resonator/body_probe.rs"]
+mod body_probe;
+
 use crate::core::float::splitmix64_next;
 use crate::synth::SynthError;
 use crate::synth::modes::{ModeParams, compile_mode};
@@ -44,22 +48,6 @@ pub struct ResonatorBank {
 }
 
 impl ResonatorBank {
-    #[cfg(any(test, feature = "research"))]
-    pub(crate) fn reset_representative(&mut self) {
-        self.active_len = 0;
-        for buffer in [
-            &mut self.x,
-            &mut self.y,
-            &mut self.e,
-            &mut self.r,
-            &mut self.b1,
-            &mut self.b2,
-            &mut self.gain,
-        ] {
-            buffer.fill(0.0);
-        }
-    }
-
     /// Create a new bank with a fixed capacity.
     pub fn new(fs: f32, max_modes: usize) -> Result<Self, SynthError> {
         if !fs.is_finite() || fs <= 0.0 {

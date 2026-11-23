@@ -158,7 +158,6 @@ struct SelfSound {
 }
 
 pub struct RenderFrame<'a> {
-    #[cfg(any(test, feature = "research"))]
     pub(crate) sites: Option<&'a SiteBuses>,
     pub presentation: &'a [f32],
     pub habitat: &'a [f32],
@@ -643,7 +642,6 @@ impl ScheduleRenderer {
         let fs = self.time.fs;
         if fs <= 0.0 {
             return Ok(RenderFrame {
-                #[cfg(any(test, feature = "research"))]
                 sites: self.sites.as_ref(),
                 presentation: &self.buf_presentation,
                 stereo: None,
@@ -1014,7 +1012,6 @@ impl ScheduleRenderer {
             };
         }
         Ok(RenderFrame {
-            #[cfg(any(test, feature = "research"))]
             sites: self.sites.as_ref(),
             stereo: self.room.as_ref().map(|r| r.interleaved.as_slice()),
             presentation: &self.buf_presentation,

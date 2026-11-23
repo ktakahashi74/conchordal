@@ -1,3 +1,7 @@
+#[cfg(any(test, feature = "research"))]
+#[path = "oscillator_bank/body_probe.rs"]
+mod body_probe;
+
 #[cfg(feature = "research")]
 #[path = "oscillator_bank/prototype.rs"]
 mod prototype;
@@ -84,35 +88,6 @@ pub struct OscillatorBank {
 }
 
 impl OscillatorBank {
-    #[cfg(any(test, feature = "research"))]
-    pub(super) fn reset_representative(&mut self) {
-        self.x.fill(1.0);
-        self.y.fill(0.0);
-        self.rot_c.fill(1.0);
-        self.rot_s.fill(0.0);
-        self.gain_mask.fill(0.0);
-        self.active_lane_len = 0;
-        self.last_modes_len = 0;
-        self.last_built_pitch_hz = 0.0;
-        self.pending_phase_seed = None;
-        if let Some(r) = self.attack.as_mut() {
-            r.seed = 0;
-            r.noise = Default::default();
-        }
-        self.clock = MotionClock::default();
-        self.motion_tick = 0;
-        self.motion_block = None;
-        self.drive_env = 0.0;
-        self.spectral_env = 0.0;
-        self.pitch_counter = 0;
-        self.norm_counter = 0;
-        #[cfg(test)]
-        {
-            self.rebuild_count = 0;
-            self.motion_refresh_count = 0;
-        }
-    }
-
     pub fn from_snapshot(fs: f32, snapshot: &BodySnapshot) -> Result<Self, SynthError> {
         if !fs.is_finite() || fs <= 0.0 {
             return Err(SynthError::InvalidSampleRate);

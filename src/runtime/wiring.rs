@@ -713,17 +713,11 @@ pub(super) fn prepare_runtime(
     if support_enabled {
         pop.prepare_support(core.nsgt.space().n_bins());
     }
-    #[cfg(feature = "research")]
-    if let Some(settings) = config.body_metabolism.filter(|settings| settings.enabled) {
-        pop.body_metabolism = Some(
-            crate::life::body_metabolism::BodyMetabolism::new(
-                core.nsgt.clone(),
-                &core.lparams,
-                settings,
-            )
-            .with_renderer_phase3(config.render_prototype),
-        );
-    }
+    pop.body_metabolism = crate::life::body_metabolism::BodyMetabolismPort::from_config(
+        config,
+        &core.nsgt,
+        &core.lparams,
+    );
     let scenario_max_id = scenario
         .events
         .iter()
@@ -906,10 +900,7 @@ pub(super) fn prepare_runtime(
             state.schedule_renderer.body_capture = body_capture;
         }
         state.schedule_renderer.room = room;
-        #[cfg(feature = "research")]
-        if let (Some(buses), Some(body)) = (&sites, &mut state.pop.body_metabolism) {
-            body.prepare_sites(&buses.full);
-        }
+        state.pop.body_metabolism.prepare_sites(sites.as_ref());
         if let Some(sites) = &sites {
             state.current_landscape.ecology.sites = sites
                 .full

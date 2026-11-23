@@ -1,6 +1,6 @@
 # Conchordal 現行アーキテクチャ正本
 
-基準 revision は `origin/main` の `acc45bb1`（2026-11-21、S4-a 統合時点）。以下は同 revision に S4-b の差分を適用した作業木の実測で、`src/` は計 178,311 行 / 304 `.rs` ファイル。
+基準 revision は `561957ee`（2026-11-23、設計レビュー後の整理 SIMP-R1〜R4 の時点）。`src/` は計 182,054 行 / 376 `.rs` ファイル。
 
 本書は「いま動いている楽器」の構造を示す。設計経緯・陰性結果・詳細検証の記録は歴史アーカイブ（`docs/design-notes/technote-ledger.ja.md`、`docs/design-notes/dcc-neurocognitive-hierarchy.md`）に収録する。
 
@@ -58,6 +58,8 @@ Rhai 台本 (finite: 一括評価 / endless: 逐次スレッド)
 
 Voice の身体は `SoundBodyFactory` が構築し、`SoundBody` が自己モデルを提供する。PCM 合成は `sound/` のバックエンドが担う。`BodySnapshot` は代表オンセットのハッシュに身体情報を書き込み、自己モデルの適合判定と身体構造の比較を担う。
 
+身体の module の外のコードは、具体の身体で分岐しない。揺れの時計が要るか、実行音高を一つ報告できるかは、身体に問う。身体のモデルは、Voice の側（`SoundBody`）と描画の側（`BodySnapshot` から `AnyBackend`）の二つがあり、統一していない。
+
 ---
 
 ## 4. モジュール責務と規模
@@ -66,18 +68,18 @@ Voice の身体は `SoundBodyFactory` が構築し、`SoundBody` が自己モデ
 
 | モジュール | 総行数 | 責務 | 現在の主な課題 |
 |---|---:|---|---|
-| `src/life/` | 73,581 | Voice・Flora・Rain・Community・発音・レンダラ | 群管理の `community.rs`（2,320 行）と、ルーティング・捕捉の `schedule_renderer.rs`（3,580 行）の規模 |
-| `src/core/` | 34,754 | 聴覚前段・R/H/C・NSGT・慣れ・拍・LOO・部屋 | `Landscape` は観測と和声拡張をサブ構造体化。音響場と更新処理は同じモジュールにある |
-| `src/temporal_cognition/` | 23,167 | 筋・群・身体観測・到着・和声時間関係・opt-in T2 | 研究専用16サブモジュール（43ファイル）を `research` feature へ隔離済み（既定は `harmonic_relations` のみ） |
-| `src/scripting/` | 19,175 | Rhai エンジン・172 文書エントリ・型定義/ドキュメント自動生成 | 既定 0 の候補層（分類 D）は 12/25 改訂後に再判定 |
-| `src/runtime/` | 13,924 | スレッド配線・worker loop・`StepEngine`・予約・監視 | `WorkerState` は責務別集約済み、研究経路は `research` feature へ隔離済み |
+| `src/life/` | 75,790 | Voice・Flora・Rain・Community・発音・レンダラ | 群管理の `community.rs`（2,249 行）と、ルーティング・捕捉の `schedule_renderer.rs`（3,666 行）の規模。テスト専用のコードが本番の構造体と関数に残る |
+| `src/core/` | 35,156 | 聴覚前段・R/H/C・NSGT・慣れ・拍・LOO・部屋 | `Landscape` は観測と和声拡張をサブ構造体化。音響場のフィールドは `Landscape` に平らなまま残る。`landscape.rs` と `temporal_cognition::harmonic_relations` が互いに依存する |
+| `src/temporal_cognition/` | 23,490 | 筋・群・身体観測・到着・和声時間関係・opt-in T2 | 研究専用16サブモジュール（43ファイル）を `research` feature へ隔離済み（既定は `harmonic_relations` のみ） |
+| `src/scripting/` | 19,374 | Rhai エンジン・172 文書エントリ・型定義/ドキュメント自動生成 | 関数の登録は持ち主ごとに分割済み（`scripting/engine/`）。既定 0 の候補層（分類 D）は 12/25 改訂後に再判定 |
+| `src/runtime/` | 14,560 | スレッド配線・worker loop・`StepEngine`・予約・監視 | `WorkerState` はサブ構造体に集約済み。段の関数と research の port は、いまも `WorkerState` の全体を受け取る |
 | `src/ui/` | 2,751 | egui 描画・UI モデル | — |
 | `src/listener_twin/` | 2,300 | 提示専用聴き手モデル・E0 予測 | — |
 | `src/audio/` | 1,636 | cpal 出力・Limiter・WAV ライタ・復旧 | — |
-| `src/scenario/` + `src/scenario.rs` | 2,318 | シナリオ IR・制御設定・ライフサイクル設定 | — |
-| `src/synth/` | 949 | モーダル共振器バンク・モード表 | — |
+| `src/scenario/` + `src/scenario.rs` | 2,324 | シナリオ IR・制御設定・ライフサイクル設定 | — |
+| `src/synth/` | 948 | モーダル共振器バンク・モード表 | — |
 | `src/bin/` | 130 | オフライン WAV レンダラ・Rhai 定義生成の入口 | — |
-| `src/` 直下の残り | 3,626 | 楽器の入口・UI 契約・TOML 設定・クロック・handoff | `config.rs` の研究 opt-in 11項目は `research` feature へ隔離済み |
+| `src/` 直下の残り | 3,595 | 楽器の入口・UI 契約・TOML 設定・クロック・handoff | `config.rs` の研究 opt-in 11項目は `research` feature へ隔離済み |
 
 ---
 
@@ -94,6 +96,9 @@ Voice の身体は `SoundBodyFactory` が構築し、`SoundBody` が自己モデ
   - 和声拡張（`support_*`・`harmonic_relations`・`harmonic_rhythm`・`tail_roughness_aversion`）
 - **`research` feature 隔離済み（`--features research` 指定時のみコンパイル）**：
   - `temporal_meter_t2`、7種の `temporal_*` 診断設定（`temporal_cognition` 16サブモジュール）、`body_metabolism`、`render_prototype`、`analysis.felt_beat`（`observe_felt_beat` / `syncopate` 実行経路）
+  - research の入口は、機構ごとの port 型にまとめてある。port は research ビルドの定義（`active.rs`）と既定ビルドの定義（`inactive.rs`）を対で持つ。既定の側は大きさ0の型で、何もしない。port の形を変えるときは、両方の定義を直す。
+  - `feature = "research"` の指定は `src/` に 329 箇所ある。本番コードの中は 147 箇所で、設定のキー、Rhai の語彙、module と import の境界にある。
+  - 既定ビルドと research ビルドは、research の設定を使わないかぎり同じ PCM を出す（検査曲 21 曲で照合）。
 
 ---
 

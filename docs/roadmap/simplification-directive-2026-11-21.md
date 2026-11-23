@@ -105,6 +105,11 @@ Conchordal は `origin/main`（`dee5a91d`）時点で `src/` **181,191 行**・R
 
 **2026-11-21 完了（SIMP-S3A / S3B / S3C）**。`Landscape` の観測・和声拡張の分離は `8cd156e3ea025170c59226719a1cef9561555c38`、Voice・Flora・Community と `WorkerState` の整理は `1046989ade872b22b35d08c95cd051a2ac628d58`。
 
+**2026-11-23 の訂正（SIMP-REVIEW）**。上の記録と下の手順は、実装より進んで読める。実装は次のとおりである。
+- S3-a：`EcologyViews` と `HarmonicExtensions` は分けた。`AcousticField` は作っていない。音響場のフィールドは `Landscape` に平らなまま残る。分けた二つの束はメソッドを持たず、全フィールドが `pub(crate)` である。
+- S3-b：`VoiceSupportState` と `VoiceHarmonicState` は `Option` にしていない。有無は構造体の中の旗（`harmonic.member` など）で持つ。`Community` と `Flora` の `RefCell` の作業領域は、`&mut` で渡す形に替えた。
+- S3-c：`WorkerState` のサブ構造体は作った。`src/runtime/phases.rs` の段の関数の多くは、いまも `&mut WorkerState` の全体を受け取る。
+
 **前提**：Unit S2 完了。**機能変更・パラメータ変更は一切禁止。**
 
 **手順**（1 構造体＝1 commit で細かく検証）：
@@ -136,6 +141,8 @@ Conchordal は `origin/main`（`dee5a91d`）時点で `src/` **181,191 行**・R
 - 条件は各単位と同じ。debug 版 `conchordal-render`、`--seed 21`、コメントだけの明示 TOML で終端まで描画した（出力はモノラル 16 bit）。
 - 20曲すべてで WAV の `sha256sum` と `cmp` が一致した。一覧は `.orchestration/units/SIMP-PCM-SWEEP/compare.tsv`。
 
+**2026-11-23 の訂正（SIMP-REVIEW、SIMP-R3）**。S4-b の時点で、身体の module の外で具体の身体を名指す分岐は、`BodyMethod::Sine` の1か所（`src/scenario/control.rs`）が残っていた。翌日の `33060257`（音高の揺れの修理と `attack_noise`）が、同じ種類の分岐を4か所足した。SIMP-R3（`14e8d348`）がこの5か所を身体への問いに替え、分岐は0になった。Voice の側（`SoundBody`）と描画の側（`BodySnapshot` から `AnyBackend`）に身体のモデルが二つある点は、そのまま残る。
+
 **前提**：Unit S3 完了。**音・挙動を変えない純粋な構造整理のみ**を実施する（励起契約変更や音色遺伝は混ぜない）。
 
 **手順**：
@@ -152,6 +159,37 @@ Conchordal は `origin/main`（`dee5a91d`）時点で `src/` **181,191 行**・R
 - 全サンプル＋デモ曲の native PCM が S3 完了時点と **完全 bit 一致**。
 - `cargo clippy --all-targets -- -D warnings`、`web` feature check、`just test`（exit=0）。
 - [現行アーキテクチャ正本](../architecture-current.md) のモジュール規模表と課題欄を更新。
+
+---
+
+### 追補：設計レビューと整理 R1〜R4（2026-11-23）
+
+**2026-11-23 完了（SIMP-REVIEW、SIMP-R1〜R4）**。S1〜S4 の後の `6137ae87` を読み直した。記録は `.orchestration/units/SIMP-REVIEW/review.md`。
+
+レビューの結論は次の二つである。
+- S1〜S4 は、音を変えずにフィールドをまとめ直し、ファイルを分けた。誰がどこを書けるかは狭まっていない。
+- `src/` の行数は、S1〜S4 とその後の機能追加を通して 136 行しか減っていない（19,433 行を削除し 19,297 行を追加）。
+
+指摘のうち、音を変えずに直せる4件を直した。commit は `work/simp-r-20261123` にある。
+- **R1**（`3478432f`）：使い手のない再輸出、`SoundBody::set_freq`、作られない `SoundBodyConfig::Harmonic` を消した。5か所にあった splitmix64 の一歩を `core::float::splitmix64_next` にまとめた。`consonance_density_mass_scan` に `Log2Space` を渡し、各 scan の長さを表明した。
+- **R3**（`14e8d348`）：身体の module の外の分岐5か所を、身体への問い（揺れの時計、実行音高を一つ報告できるか）に替えた。
+- **R4**（`80193ba8`）：約 2,660 行あった `create_engine` を、持ち主ごとの登録関数5ファイル（`src/scripting/engine/`）に分けた。登録の順序は保った。
+- **R2**（`9bb4b318`、`c59671a3`、`d4c5664f`、`ef7949ff`、`561957ee`）：research の入口を、機構ごとの port 型にまとめた。対象は描画の試作、身体の代謝、感じられた拍、T2 と時間の観測、発音の比較と追跡である。port は research ビルドの定義と既定ビルドの定義を対で持ち、既定の側は大きさ0の型で何もしない。
+  - `feature = "research"` の指定は、`src/` の全体で 958 から 329 に、本番コードで 590 から 147 に減った。残る 147 は、設定 32、Rhai の語彙 13、その格納フィールド 2、到着の束 1、module と import の境界 99 である。
+  - 行数は 970 行増えた（181,084 から 182,054）。対の定義と何もしない実装を足したためである。ファイルは 65 増えた。
+  - research の側の処理は、いまも `WorkerState` の全体を受け取る。port は指定を境界へ寄せただけで、research のコードが書ける範囲は狭めていない。
+
+**受入の記録**。
+- 検査曲は 21 曲である。`samples/` の18曲とデモ2曲に、音高の揺れを持つ身体（`noise()`、`saw()`、`square()`、`modal()`）を鳴らす検査曲を1つ足した。20曲のどれも揺れの経路を通らないためである。検査曲は `.orchestration/units/SIMP-REVIEW/extra/motion-bodies.rhai` にある。
+- 基準は `6137ae87` の WAV である。この版では、既定ビルドと research ビルドの WAV も 21 曲すべて一致する。
+- `561957ee` で、既定ビルドと research ビルドの両方が 21 曲すべて基準と一致した（`sha256sum`）。R2 は5段のそれぞれでも同じ照合を通した。
+- `561957ee` で `just test` は終了0（1,662 件通過、整理の前と同数）、`cargo test --features research` は 1,906 件通過。`cargo clippy --all-targets -- -D warnings` は両方のビルドで通過。`profile-alloc` の定常 hop の確保0の検査も通過。
+
+**残したもの（レビューの候補 R5〜R7 は実施しない）**。R2 は指定を減らしたが、行数とファイルを増やした。境界を作る整理は、同じように行を足す。残りの候補は、足す量に見合う効き目が無いと統括が判断した。
+- テスト専用のコードが本番の構造体と関数に残る（S2-c の残り。`pitch_core/scoring.rs`、`schedule_renderer.rs`、`sound/oscillator_bank.rs` など）。残っているのは、テストが内部の値を読むためのフィールドと分岐である。外へ出すには trait などの継ぎ目を足すか、テストを捨てることになる。ファイルに次に手を入れるときに、個別に見る。
+- 段の関数が `WorkerState` の全体を受け取る点と、束ごとに代入できる所を1フィールドずつ移している点（S3 の残り）。全体を受け取る関数は 20 あり、うち 9 が research の port である。research のコードを `main` に置き続けるかを決めた後に見直す。
+- `src/core/landscape.rs` と `temporal_cognition::harmonic_relations` が互いに依存する点。`harmonic_relations` は分類 D（12/25 の後に再判定）なので、再判定の後に扱う。
+- 身体の二つのモデルの統一。これは設計が要るので、簡素化の期間の整理には入れない。
 
 ---
 

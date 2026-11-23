@@ -364,10 +364,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
     let hop = 512;
     let timebase = Timebase { fs, hop };
     let cfg = WorkerConfig {
-        #[cfg(feature = "research")]
-        felt_beat: None,
-        #[cfg(feature = "research")]
-        felt_period_guard: false,
+        felt: Default::default(),
         end_request: Arc::new(AtomicBool::new(false)),
         duration_tick: None,
         harmonic_relations: None,
@@ -985,10 +982,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         let hop = 512;
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
-            #[cfg(feature = "research")]
-            felt_beat: None,
-            #[cfg(feature = "research")]
-            felt_period_guard: false,
+            felt: Default::default(),
             end_request: Arc::new(AtomicBool::new(false)),
             duration_tick: None,
             harmonic_relations: None,
@@ -1205,10 +1199,7 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
         let hop = 512;
         let timebase = Timebase { fs, hop };
         let cfg = WorkerConfig {
-            #[cfg(feature = "research")]
-            felt_beat: None,
-            #[cfg(feature = "research")]
-            felt_period_guard: false,
+            felt: Default::default(),
             end_request: Arc::new(AtomicBool::new(false)),
             duration_tick: None,
             harmonic_relations: None,

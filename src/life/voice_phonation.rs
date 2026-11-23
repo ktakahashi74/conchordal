@@ -194,7 +194,6 @@ impl Voice {
     }
 
     pub(crate) fn configure_control_hop(&mut self, hop: usize, control_step: usize, fs: f32) {
-        #[cfg(feature = "research")]
         self.phonation_engine.reserve_felt_hop(hop, fs);
         self.support.clock_fs = fs;
         self.support.clock_step = control_step.max(1) as u64;
@@ -617,14 +616,7 @@ impl Voice {
             now_tick: now,
             frame_end,
             fs: tb.fs,
-            #[cfg(feature = "research")]
-            rhythms: self
-                .phonation_engine
-                .felt
-                .as_ref()
-                .map_or(*rhythms, |felt| felt.rhythms(*rhythms, now, tb.fs)),
-            #[cfg(not(feature = "research"))]
-            rhythms: *rhythms,
+            rhythms: self.phonation_engine.felt.rhythms(*rhythms, now, tb.fs),
         };
         // Target amp and the phonation gate are both evaluated up front and fed
         // into `onset_allowed`, which the engine uses to gate onset *emission*.

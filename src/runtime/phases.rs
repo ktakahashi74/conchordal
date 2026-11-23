@@ -1,3 +1,10 @@
+#[cfg(feature = "research")]
+#[path = "phases/felt_reports/active.rs"]
+mod felt_reports;
+#[cfg(not(feature = "research"))]
+#[path = "phases/felt_reports/inactive.rs"]
+mod felt_reports;
+
 use super::*;
 
 /// Dispatch scenario events, collect phonation batches, and step the ecology.
@@ -69,13 +76,10 @@ pub(super) fn advance_population(
                         {
                             state.loo_populations.push(*population_id);
                         }
-                        #[cfg(feature = "research")]
-                        if let Action::Spawn { spec, .. } = &action
-                            && spec.control.phonation.syncopate > 0.0
-                            && let Some(meter) = state.temporal.flora_meter.as_mut()
-                        {
-                            meter.enable_felt_period_guard();
-                        }
+                        crate::core::felt_config::FeltConfig::before_action(
+                            &action,
+                            state.temporal.flora_meter.as_mut(),
+                        );
                         state.pop.apply_action(action, &state.current_landscape);
                     }
                 }
@@ -308,36 +312,13 @@ pub(super) fn advance_population(
             }
         }
     }
-    #[cfg(feature = "research")]
-    let felt_input = state
-        .pop
-        .voices
-        .iter()
-        .any(|v| v.phonation_engine.felt.is_some())
-        .then(|| {
-            state
-                .temporal
-                .flora_meter
-                .as_ref()
-                .and_then(|m| m.felt_beat())
-                .and_then(|snapshot| {
-                    let end = state.temporal.flora_rhythm.observed_end?;
-                    (state.temporal.flora_rhythm.known && end == now_tick).then_some(
-                        crate::life::phonation_engine::FeltRhythmInput {
-                            snapshot,
-                            observed_end: end,
-                        },
-                    )
-                })
-        })
-        .flatten();
-    #[cfg(feature = "research")]
-    for voice in &mut state.pop.voices {
-        if let Some(felt) = &mut voice.phonation_engine.felt {
-            felt.set_input(felt_input);
-            felt.enable_trace(state.reporter.is_some());
-        }
-    }
+    crate::life::phonation_engine::FeltVoice::set_hop_input(
+        &mut state.pop.voices,
+        state.temporal.flora_meter.as_ref(),
+        &state.temporal.flora_rhythm,
+        now_tick,
+        state.reporter.is_some(),
+    );
     let phonation_count = if !state.lifecycle.finish_begun && !wet_finish {
         state.pop.collect_phonation_batches_into(
             &mut state.generator_model,
@@ -360,14 +341,7 @@ pub(super) fn advance_population(
     if state.reporter.is_some() {
         for voice in &mut state.pop.voices {
             let id = voice.id();
-            #[cfg(feature = "research")]
-            if let Some(felt) = &mut voice.phonation_engine.felt {
-                for record in felt.trace.drain(..) {
-                    report_try(&mut state.reporter, "felt rhythm", |writer| {
-                        writer.write_felt_rhythm(id, voice.metadata.generation, &record)
-                    });
-                }
-            }
+            felt_reports::write_rhythm(&mut state.reporter, voice);
             for event in voice.harmonic.events.drain(..) {
                 report_try(&mut state.reporter, "harmonic voice", |writer| {
                     writer.write_harmonic_voice(id, voice.metadata.generation, &event)
@@ -1207,7 +1181,6 @@ pub(super) fn drive_production_meter(
             let start = state.timebase.frame_start_tick(state.frame_idx);
             let end = state.timebase.frame_end_tick(state.frame_idx);
             if let Some(meter) = state.temporal.flora_meter.as_mut() {
-                #[cfg(feature = "research")]
                 if meter.needs_felt_bands() {
                     let m = state.dorsal.last_metrics();
                     meter.set_felt_bands(end, fast_known.then_some([m.e_low, m.e_mid, m.e_high]));
@@ -1302,7 +1275,6 @@ pub(super) fn drive_production_meter(
         }
         if let Some(meter) = state.temporal.flora_meter.as_mut() {
             let known = habitat_chunk.iter().all(|v| v.is_finite());
-            #[cfg(feature = "research")]
             if meter.needs_felt_bands() {
                 let m = state.dorsal.last_metrics();
                 meter.set_felt_bands(
@@ -1329,19 +1301,7 @@ pub(super) fn drive_production_meter(
             Some(drive),
         )
     };
-    #[cfg(feature = "research")]
-    if state.reporter.is_some()
-        && let Some(felt) = state
-            .temporal
-            .flora_meter
-            .as_ref()
-            .and_then(|m| m.felt_beat())
-    {
-        let end = state.timebase.frame_end_tick(state.frame_idx);
-        report_try(&mut state.reporter, "felt beat", |writer| {
-            writer.write_felt_beat(end, cfg.fs as u32, felt)
-        });
-    }
+    felt_reports::write_beat(state, cfg);
 
     state.current_landscape.rhythm = NeuralRhythms::from_meter_state(&meter_state);
 }

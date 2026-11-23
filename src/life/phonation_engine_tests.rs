@@ -637,8 +637,7 @@ fn a_footprint_is_representative_only_while_the_comparison_configures_it() {
 
 fn test_engine(onset_rule: OnsetRule, duration_rule: DurationRule) -> PhonationEngine {
     PhonationEngine {
-        #[cfg(feature = "research")]
-        felt: None,
+        felt: Default::default(),
         support_action: None,
         support_held_enabled: false,
         held_window: None,

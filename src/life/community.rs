@@ -708,12 +708,7 @@ impl Community {
                     batch,
                 );
             }
-            #[cfg(feature = "research")]
-            if let Some(felt) = &mut voice.phonation_engine.felt {
-                for tone in &batch.tones {
-                    felt.executed(tone.onset, tone.freq_hz);
-                }
-            }
+            voice.phonation_engine.felt.executed(batch);
             voice.finish_sequence_execution(batch, frame_end);
             if let Some(phrase) = &mut voice.phonation_engine.phrase_boundary {
                 for tone in &mut batch.tones {

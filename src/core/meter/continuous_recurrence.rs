@@ -736,19 +736,19 @@ impl MeterNetwork {
     pub(crate) fn enable_continuous(&mut self, fs: u32, hop: u64, suppressed: bool) {
         if self.continuous().is_some() {
             let shaping = self.shaping;
-            let mut felt_beat = self.felt_beat.take();
-            let mut felt_input = self.felt_input.take();
+            let mut felt_beat = self.felt.felt_beat.take();
+            let mut felt_input = self.felt.felt_input.take();
             if let Some(input) = felt_input.as_mut() {
                 input.reset();
             }
-            let felt_period_guard = self.felt_period_guard;
+            let felt_period_guard = self.felt.felt_period_guard;
             if let Some(felt) = felt_beat.as_mut() {
                 felt.invalidate();
             }
             *self = Self::new();
-            self.felt_beat = felt_beat;
-            self.felt_input = felt_input;
-            self.felt_period_guard = felt_period_guard;
+            self.felt.felt_beat = felt_beat;
+            self.felt.felt_input = felt_input;
+            self.felt.felt_period_guard = felt_period_guard;
             self.set_shaping(shaping);
         }
         self.recurrence = RecurrenceInput::Continuous(Box::new(State::new(fs, hop, suppressed)));
@@ -794,10 +794,10 @@ impl MeterNetwork {
             self.onset_age = None;
             self.pending_period = None;
             self.seeded = false;
-            if let Some(felt) = self.felt_beat.as_mut() {
+            if let Some(felt) = self.felt.felt_beat.as_mut() {
                 felt.invalidate();
             }
-            if let Some(input) = self.felt_input.as_mut() {
+            if let Some(input) = self.felt.felt_input.as_mut() {
                 input.reset();
             }
             self.previous_phase_error = None;

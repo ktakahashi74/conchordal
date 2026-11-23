@@ -1,3 +1,7 @@
+#[cfg(feature = "research")]
+#[path = "report/felt.rs"]
+mod felt;
+
 use std::collections::{BTreeMap, BTreeSet};
 #[cfg(feature = "native")]
 use std::fs::File;
@@ -246,20 +250,6 @@ enum ReportRecord<'a> {
     Flora(crate::life::flora::FloraReport<'a>),
     #[cfg(feature = "research")]
     TemporalMeter(&'a TemporalMeterSample),
-    #[cfg(feature = "research")]
-    FeltRhythm {
-        voice_id: u64,
-        generation: u32,
-        #[serde(flatten)]
-        record: &'a crate::life::phonation_engine::FeltRhythmRecord,
-    },
-    #[cfg(feature = "research")]
-    FeltBeat {
-        observed_end: u64,
-        sample_rate: u32,
-        #[serde(flatten)]
-        state: crate::core::felt_beat::FeltBeatState,
-    },
     #[cfg(feature = "research")]
     BodyObservation(&'a crate::temporal_cognition::body::Snapshot),
     #[cfg(feature = "research")]
@@ -625,33 +615,6 @@ impl JsonlReporter {
         sample: &TemporalMeterSample,
     ) -> Result<(), String> {
         self.write_record(&ReportRecord::TemporalMeter(sample))
-    }
-    #[cfg(feature = "research")]
-    pub(crate) fn write_felt_rhythm(
-        &mut self,
-        voice_id: u64,
-        generation: u32,
-        record: &crate::life::phonation_engine::FeltRhythmRecord,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::FeltRhythm {
-            voice_id,
-            generation,
-            record,
-        })
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn write_felt_beat(
-        &mut self,
-        observed_end: u64,
-        sample_rate: u32,
-        state: crate::core::felt_beat::FeltBeatState,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::FeltBeat {
-            observed_end,
-            sample_rate,
-            state,
-        })
     }
 
     pub(crate) fn write_hop_timing(&mut self, sample: &HopTimingSample) -> Result<(), String> {

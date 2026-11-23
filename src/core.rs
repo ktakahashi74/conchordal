@@ -78,5 +78,6 @@ pub(crate) mod tonal_context;
 
 #[cfg(feature = "research")]
 pub(crate) mod felt_beat;
+pub(crate) mod felt_config;
 #[cfg(feature = "research")]
 pub(crate) mod felt_input;

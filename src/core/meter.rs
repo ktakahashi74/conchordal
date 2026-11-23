@@ -11,6 +11,13 @@
 //! retain separate subdivision and accent evidence; they are not independent
 //! noninteger tempi or a learned coupling network.
 
+#[cfg(feature = "research")]
+#[path = "meter/felt/active.rs"]
+mod felt;
+#[cfg(not(feature = "research"))]
+#[path = "meter/felt/inactive.rs"]
+mod felt;
+
 use std::f32::consts::TAU;
 
 use crate::core::float::{sanitize01, smoothstep};
@@ -392,12 +399,7 @@ impl Recurrence {
 /// detection). One instance per listener.
 #[derive(Debug)]
 pub struct MeterNetwork {
-    #[cfg(feature = "research")]
-    felt_beat: Option<Box<crate::core::felt_beat::FeltBeat>>,
-    #[cfg(feature = "research")]
-    felt_period_guard: bool,
-    #[cfg(feature = "research")]
-    felt_input: Option<Box<crate::core::felt_input::FeltInput>>,
+    felt: felt::FeltMeter,
     recurrence: RecurrenceInput,
     // Beat oscillator state.
     beat_phi: f32,
@@ -440,12 +442,7 @@ impl Default for MeterNetwork {
 impl MeterNetwork {
     fn with_input(recurrence: RecurrenceInput) -> Self {
         Self {
-            #[cfg(feature = "research")]
-            felt_beat: None,
-            #[cfg(feature = "research")]
-            felt_period_guard: false,
-            #[cfg(feature = "research")]
-            felt_input: None,
+            felt: Default::default(),
             recurrence,
             beat_phi: 0.0,
             beat_omega: TAU * F_BEAT_INIT,
@@ -475,48 +472,6 @@ impl MeterNetwork {
 impl MeterNetwork {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn enable_felt_beat(&mut self, params: crate::config::FeltBeatParams) {
-        self.felt_beat = Some(Box::new(crate::core::felt_beat::FeltBeat::new(params)));
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn enable_felt_input(&mut self, fs: f32, hop: usize) {
-        if self.felt_beat.is_some() {
-            self.felt_input = Some(Box::new(crate::core::felt_input::FeltInput::new(fs, hop)));
-        }
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn needs_felt_bands(&self) -> bool {
-        self.felt_input.is_some()
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn set_felt_bands(&mut self, end: u64, bands: Option<[f32; 3]>) {
-        if let Some(input) = self.felt_input.as_mut() {
-            input.set_bands(end, bands);
-        }
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn enable_felt_period_guard(&mut self) {
-        self.felt_period_guard = true;
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn felt_beat(&self) -> Option<crate::core::felt_beat::FeltBeatState> {
-        self.felt_beat.as_ref().map(|f| {
-            let mut state = f.state();
-            if let Some(input) = self.felt_input.as_ref() {
-                input.project(&mut state, self.beat_phi);
-            }
-            state.meter_frequency_hz = self.last.beat.freq_hz;
-            state.meter_confidence = self.last.beat.confidence;
-            state
-        })
     }
 
     /// Install composer-set terrain shaping. A basin seeds the beat frequency at
@@ -595,7 +550,6 @@ impl MeterNetwork {
         fs: f32,
     ) -> MeterState {
         let preference_weight = self.shaping.stability;
-        #[cfg(feature = "research")]
         let drive_known = drive.is_some();
         let drive = drive.unwrap_or(0.0);
         let confirmed_period = self.confirm_period(dt, onset, start, hop, fs);
@@ -648,54 +602,15 @@ impl MeterNetwork {
         let att_a = (-dt / 0.3).exp();
         self.attention_ema = att_a * self.attention_ema + (1.0 - att_a) * drive;
         self.last = self.build_state();
-        #[cfg(feature = "research")]
-        if let Some(felt) = self.felt_beat.as_mut() {
-            if !drive_known {
-                felt.invalidate();
-            }
-            if let Some(input) = self.felt_input.as_mut() {
-                let frame = crate::core::felt_input::Frame {
-                    dt,
-                    frequency: self.beat_omega / TAU,
-                    fired: onset.fired,
-                    frac: onset.frac,
-                    seeded: seeded_now,
-                    stability: self.shaping.stability,
-                    hopf: self.beat_phi,
-                    ..Default::default()
-                };
-                let released = if drive_known {
-                    input.push(frame)
-                } else {
-                    input.reset();
-                    None
-                };
-                if let Some(frame) = released {
-                    felt.process(
-                        frame.dt,
-                        frame.frequency,
-                        Onset {
-                            fired: frame.fired,
-                            frac: frame.frac,
-                        },
-                        frame.seeded,
-                        frame.stability,
-                        frame.hopf,
-                    );
-                } else if input.missing {
-                    felt.invalidate();
-                }
-            } else {
-                felt.process(
-                    dt,
-                    self.beat_omega / TAU,
-                    onset,
-                    seeded_now,
-                    self.shaping.stability,
-                    self.beat_phi,
-                );
-            }
-        }
+        self.felt.observe_onset(
+            dt,
+            self.beat_omega / TAU,
+            onset,
+            seeded_now,
+            self.shaping.stability,
+            self.beat_phi,
+            drive_known,
+        );
         self.last
     }
 
@@ -838,22 +753,8 @@ impl MeterNetwork {
                             }
                         }
                     }
-                    // Author rule: the felt half-peak explains odd half-cycle multiples.
-                    // Observation alone must never change the acoustic meter.
-                    #[cfg(feature = "research")]
-                    if self.felt_period_guard
-                        && self.felt_beat.as_ref().is_some_and(|felt| {
-                            let state = felt.state();
-                            !state.unknown && state.p_beat >= 0.5
-                        })
-                    {
-                        let current_period = TAU / self.beat_omega;
-                        if (1..=8).step_by(2).any(|k| {
-                            let expected = 0.5 * k as f32 * current_period;
-                            (period - expected).abs() <= ioi_window(expected)
-                        }) {
-                            proposal = None;
-                        }
+                    if self.felt.blocks_period_update(period, self.beat_omega) {
+                        proposal = None;
                     }
                 }
             }

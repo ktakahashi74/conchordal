@@ -2,10 +2,7 @@ use super::*;
 
 /// Immutable per-run settings and shared control flags for the worker thread.
 pub(super) struct WorkerConfig {
-    #[cfg(feature = "research")]
-    pub(super) felt_beat: Option<crate::config::FeltBeatParams>,
-    #[cfg(feature = "research")]
-    pub(super) felt_period_guard: bool,
+    pub(super) felt: crate::core::felt_config::FeltConfig,
     pub(super) harmonic_relations: Option<(Arc<crate::core::harmonic_support::Geometry>, usize)>,
     /// Reserve the habitat audio-only meter (Flora, harmonic rhythm, Rain follow_meter).
     pub(super) habitat_meter: bool,
@@ -269,20 +266,12 @@ impl WorkerState {
         };
         let mut prod_meter = new_meter();
         prod_meter.set_shaping(cfg.meter_shaping);
-        let needs_flora_meter = cfg.habitat_meter || cfg.harmonic_rhythm > 0;
-        #[cfg(feature = "research")]
-        let needs_flora_meter = needs_flora_meter || cfg.felt_beat.is_some();
+        let needs_flora_meter =
+            cfg.habitat_meter || cfg.harmonic_rhythm > 0 || cfg.felt.requested();
         let flora_meter = needs_flora_meter.then(|| {
             let mut meter = new_meter();
             meter.set_shaping(cfg.meter_shaping);
-            #[cfg(feature = "research")]
-            if let Some(params) = cfg.felt_beat {
-                meter.enable_felt_beat(params);
-                meter.enable_felt_input(cfg.fs, cfg.hop);
-                if cfg.felt_period_guard {
-                    meter.enable_felt_period_guard();
-                }
-            }
+            cfg.felt.setup_meter(&mut meter, cfg.fs, cfg.hop);
             meter
         });
         let mut generator_model =

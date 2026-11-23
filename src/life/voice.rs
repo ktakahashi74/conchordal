@@ -273,16 +273,12 @@ impl Voice {
 
         let mut phonation_engine =
             PhonationEngine::from_spec(&effective_control.phonation.spec, seed);
-        #[cfg(feature = "research")]
-        if effective_control.phonation.syncopate > 0.0 {
-            phonation_engine.felt = Some(Box::new(super::phonation_engine::FeltRhythm::new(
-                effective_control.phonation.syncopate,
-                seed_offset
-                    ^ assigned_id.rotate_left(17)
-                    ^ u64::from(metadata.generation).rotate_left(39)
-                    ^ 0x4645_4c54_5f42_4541,
-            )));
-        }
+        phonation_engine.configure_felt_voice(
+            &effective_control.phonation,
+            seed_offset,
+            assigned_id,
+            metadata.generation,
+        );
         if effective_control.phonation.phrase_boundary > 0.0
             && effective_control.supports_phrase_boundary()
             && let Some(period) = phonation_engine.clock.intrinsic_period_sec()

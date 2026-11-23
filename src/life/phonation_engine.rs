@@ -25,14 +25,18 @@ use crate::scenario::{
 #[path = "phonation_clock.rs"]
 mod clock;
 #[cfg(feature = "research")]
-#[path = "felt_rhythm.rs"]
+#[path = "phonation_engine/felt/active.rs"]
+mod felt;
+#[cfg(not(feature = "research"))]
+#[path = "phonation_engine/felt/inactive.rs"]
 mod felt;
 #[path = "phonation_rules.rs"]
 mod rules;
 #[path = "phonation_timing.rs"]
 mod timing;
 #[cfg(feature = "research")]
-pub(crate) use felt::{FeltRhythm, FeltRhythmInput, FeltRhythmRecord};
+pub(crate) use felt::FeltRhythmRecord;
+pub(crate) use felt::FeltVoice;
 
 use clock::COUPLING_PULL_K;
 pub use clock::{CouplingClock, ParticipationClock, PhonationClock, ThetaGateClock};
@@ -183,8 +187,7 @@ pub(crate) struct RestState {
 }
 
 pub struct PhonationEngine {
-    #[cfg(feature = "research")]
-    pub(crate) felt: Option<Box<FeltRhythm>>,
+    pub(crate) felt: FeltVoice,
     pub(crate) phrase_boundary: Option<crate::life::phrase_boundary::PhraseBoundary>,
     pub(crate) expression_active: bool,
     pub(crate) rest: Option<RestState>,
@@ -327,48 +330,23 @@ impl PhonationEngine {
         count
     }
 
-    #[cfg(feature = "research")]
-    pub(crate) fn reserve_felt_hop(&mut self, hop: usize, fs: f32) {
-        if self.felt.is_none() {
-            return;
-        }
-        let count = self.reserve_synchronized_hop(hop, fs);
-        let hold = self
-            .duration_rule
-            .estimate_hold(1.0, 0.0)
-            .unwrap_or(0.0)
-            .ceil()
-            .clamp(0.0, MAX_EXTRA_GATES as f32) as usize;
-        let felt = self.felt.as_mut().unwrap();
-        felt.points.reserve(2 * count);
-        felt.delivery_grid.boundaries.reserve(hold + 2);
-    }
-
-    #[cfg(feature = "research")]
-    fn gather_felt_candidates(&mut self, ctx: &CoreTickCtx) {
-        if let (Some(felt), PhonationClock::Coupling(clock)) = (&mut self.felt, &mut self.clock) {
-            felt.points.clear();
-            clock.gather_rhythm_subdivided(
-                ctx.fs,
-                ctx.now_tick..ctx.frame_end,
-                &ctx.rhythms,
-                &mut self.scratch_candidates,
-                Some((2, &mut felt.points)),
-            );
-        } else {
-            self.clock
-                .gather_candidates(ctx, &mut self.scratch_candidates);
-        }
+    pub(crate) fn configure_felt_voice(
+        &mut self,
+        control: &crate::scenario::control::PhonationControl,
+        seed: u64,
+        id: u64,
+        generation: u32,
+    ) {
+        self.felt = FeltVoice::new(control, seed, id, generation);
     }
 
     pub(crate) fn prepare_synchronized_hop(&mut self, ctx: &CoreTickCtx) {
         if self.sustain_participation && matches!(self.clock, PhonationClock::Coupling(_)) {
             self.scratch_candidates.clear();
-            #[cfg(feature = "research")]
-            self.gather_felt_candidates(ctx);
-            #[cfg(not(feature = "research"))]
-            self.clock
-                .gather_candidates(ctx, &mut self.scratch_candidates);
+            if !self.try_gather_felt_candidates(ctx) {
+                self.clock
+                    .gather_candidates(ctx, &mut self.scratch_candidates);
+            }
             Self::merge_candidates_into(&mut self.scratch_merged, &mut self.scratch_candidates);
         }
     }
@@ -573,8 +551,7 @@ impl PhonationEngine {
                     PhonationClockConfig::Participation { .. }
                         | PhonationClockConfig::Coupling { .. }
                 ),
-            #[cfg(feature = "research")]
-            felt: None,
+            felt: Default::default(),
             clock: PhonationClock::from_config(&config.clock, seed),
             onset_rule,
             duration_rule,
@@ -881,14 +858,7 @@ impl PhonationEngine {
                     onset.tick >= (e.start * f64::from(ctx.fs)).round() as Tick
                 }) =>
             {
-                #[cfg(feature = "research")]
-                let off_pos = off_pos
-                    + if self.felt.as_ref().is_some_and(|f| f.delivering_half) {
-                        0.5
-                    } else {
-                        0.0
-                    };
-                clock.expression_gate_tick(off_pos, ctx.fs)
+                clock.expression_gate_tick(self.felt.hold_position(off_pos), ctx.fs)
             }
             _ => None,
         };
@@ -1101,11 +1071,10 @@ impl PhonationEngine {
             return;
         }
         self.scratch_candidates.clear();
-        #[cfg(feature = "research")]
-        self.gather_felt_candidates(ctx);
-        #[cfg(not(feature = "research"))]
-        self.clock
-            .gather_candidates(ctx, &mut self.scratch_candidates);
+        if !self.try_gather_felt_candidates(ctx) {
+            self.clock
+                .gather_candidates(ctx, &mut self.scratch_candidates);
+        }
         Self::merge_candidates_into(&mut self.scratch_merged, &mut self.scratch_candidates);
         let merged = std::mem::take(&mut self.scratch_merged);
         let mut timing_grid = std::mem::take(&mut self.scratch_grid);
@@ -1356,50 +1325,25 @@ impl PhonationEngine {
         let mut prev_gate_exc: Option<f32> = None;
         let fixed_period = self.clock.fixed_period_ticks(ctx.fs);
         self.drain_note_offs(ctx.now_tick, out_cmds);
-        #[cfg(feature = "research")]
-        let points = self.felt.as_mut().map(|f| std::mem::take(&mut f.points));
-        #[cfg(feature = "research")]
+        let points = self.felt.take_points();
         let work = points.as_deref().unwrap_or(candidates);
-        #[cfg(not(feature = "research"))]
-        let work = candidates;
         for c in work
             .iter()
             .filter(|c| c.tick >= ctx.now_tick && c.tick < ctx.frame_end)
         {
-            #[cfg(feature = "research")]
-            {
-                let half = !candidates
-                    .iter()
-                    .any(|n| n.tick == c.tick && n.gate == c.gate);
-                if let Some(kick) = self.felt.as_mut().and_then(|f| f.take_due(c, half))
-                    && state.is_alive
-                    && state.onset_allowed
-                {
-                    self.drain_note_offs(c.tick, out_cmds);
-                    let step = self.step_for_candidate(c, timing_field, prev_gate_exc, ctx.fs);
-                    let felt = self.felt.as_mut().unwrap();
-                    felt.delivering_half = half;
-                    let mut grid = std::mem::take(&mut felt.delivery_grid);
-                    grid.rebuild_from_candidates(std::slice::from_ref(c));
-                    self.emit_candidate(
-                        ctx,
-                        c,
-                        kick,
-                        &step,
-                        None,
-                        &mut grid,
-                        fixed_period,
-                        out_cmds,
-                        out_events,
-                        out_onsets,
-                    );
-                    let felt = self.felt.as_mut().unwrap();
-                    felt.delivery_grid = grid;
-                    felt.delivering_half = false;
-                }
-                if half {
-                    continue;
-                }
+            if self.deliver_felt_candidate(
+                ctx,
+                candidates,
+                c,
+                timing_field,
+                prev_gate_exc,
+                state,
+                fixed_period,
+                out_cmds,
+                out_events,
+                out_onsets,
+            ) {
+                continue;
             }
             let phrase = self
                 .phrase_boundary
@@ -1460,8 +1404,7 @@ impl PhonationEngine {
                     }
                     _ => false,
                 };
-            #[cfg(feature = "research")]
-            let trace_before = self.felt.as_ref().map_or(0, |f| f.trace.len());
+            let trace_before = self.felt.trace_len();
             if allow_onset
                 && rest_allowed
                 && !intentional
@@ -1469,33 +1412,22 @@ impl PhonationEngine {
                 && !self.sway_skips()
                 && let Some(kick) = self.onset_rule.on_candidate(&input, state)
                 && self.support_allows_candidate(ctx, c, &step, timing_grid, fixed_period)
+                && self.felt.allow_candidate(c, kick, ctx)
             {
-                #[cfg(feature = "research")]
-                let allow = self.felt.as_mut().is_none_or(|f| f.decide(c, kick, ctx));
-                #[cfg(not(feature = "research"))]
-                let allow = true;
-                if allow {
-                    self.emit_candidate(
-                        ctx,
-                        c,
-                        kick,
-                        &step,
-                        phrase,
-                        timing_grid,
-                        fixed_period,
-                        out_cmds,
-                        out_events,
-                        out_onsets,
-                    );
-                }
+                self.emit_candidate(
+                    ctx,
+                    c,
+                    kick,
+                    &step,
+                    phrase,
+                    timing_grid,
+                    fixed_period,
+                    out_cmds,
+                    out_events,
+                    out_onsets,
+                );
             }
-            #[cfg(feature = "research")]
-            if let Some(felt) = &mut self.felt
-                && felt.trace_enabled
-                && felt.trace.len() == trace_before
-            {
-                felt.veto(c, ctx);
-            }
+            self.felt.record_veto(c, ctx, trace_before);
             if synchronized {
                 let sounded = out_onsets.len() > onset_before;
                 #[cfg(test)]
@@ -1515,10 +1447,7 @@ impl PhonationEngine {
             self.last_tick = Some(c.tick);
             prev_gate_exc = Some(step.exc_gate);
         }
-        #[cfg(feature = "research")]
-        if let Some(points) = points {
-            self.felt.as_mut().unwrap().points = points;
-        }
+        self.felt.restore_points(points);
         self.drain_note_offs(ctx.frame_end.saturating_sub(1), out_cmds);
     }
 

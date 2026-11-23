@@ -263,7 +263,7 @@ mod tests {
         ));
         assert_eq!(before.random::<u64>(), f.rng.random::<u64>());
         let e = PhonationEngine::from_spec(&PhonationSpec::default(), 7);
-        assert!(e.felt.is_none());
+        assert!(e.felt.0.is_none());
     }
     #[test]
     fn confirmation_half_and_omission_follow_the_equations() {
@@ -353,7 +353,7 @@ mod tests {
             sustain_participation: false,
         };
         let mut e = PhonationEngine::from_spec(&spec, 7);
-        e.felt = Some(Box::new(FeltRhythm::new(1.0, 7)));
+        e.felt.0 = Some(Box::new(FeltRhythm::new(1.0, 7)));
         let mut cmds = Vec::with_capacity(64);
         let mut events = Vec::with_capacity(64);
         let mut onsets = Vec::with_capacity(64);
@@ -369,7 +369,7 @@ mod tests {
             let mut i = input(1.0, 1.0);
             i.observed_end = j * 512;
             i.snapshot.phase = TAU * (j as f32 * 512.0 / 24000.0).rem_euclid(1.0);
-            let f = e.felt.as_mut().unwrap();
+            let f = e.felt.0.as_mut().unwrap();
             f.set_input(Some(i));
             let mut ctx = ctx();
             ctx.now_tick = j * 512;

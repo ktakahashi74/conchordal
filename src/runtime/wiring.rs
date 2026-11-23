@@ -811,16 +811,7 @@ pub(super) fn prepare_runtime(
             sources,
         )
     });
-    #[cfg(feature = "research")]
-    let felt_period_guard =
-        scenario.events.iter().flat_map(|e| &e.actions).any(
-            |a| matches!(a, Action::Spawn { spec, .. } if spec.control.phonation.syncopate > 0.0),
-        );
-    #[cfg(feature = "research")]
-    let felt_beat = config.analysis.felt_beat.or_else(|| {
-        (scenario.observe_felt_beat || felt_period_guard)
-            .then(crate::config::FeltBeatParams::default)
-    });
+    let felt = crate::core::felt_config::FeltConfig::from_scene(config, &scenario);
     let mut conductor =
         Conductor::from_scenario(scenario, crate::core::timebase::Timebase { fs, hop });
 
@@ -831,10 +822,7 @@ pub(super) fn prepare_runtime(
     let start_flag = Arc::new(AtomicBool::new(start_playing));
 
     let cfg = WorkerConfig {
-        #[cfg(feature = "research")]
-        felt_beat,
-        #[cfg(feature = "research")]
-        felt_period_guard,
+        felt,
         harmonic_relations,
         habitat_meter,
         render_prototype: crate::life::sound::render_prototype::RenderPrototype::from_config(

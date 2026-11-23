@@ -59,8 +59,7 @@ fn retiring_cohorts(
     let DurationSpec::Gates(gates) = control.spec.duration else {
         return None;
     };
-    #[cfg(feature = "research")]
-    if control.syncopate != 0. {
+    if crate::core::felt_config::FeltConfig::weight(control) != 0. {
         return None;
     }
     if !normal_meter

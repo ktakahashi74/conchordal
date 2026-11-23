@@ -83,7 +83,7 @@ fn render(directory: &Path, script: &str, config: AppConfig, native: bool) {
             end_request,
             duration_sec: None,
             offline_body_probe: Some(probe),
-            #[cfg(feature = "research")]
+            #[cfg(test)]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: true,

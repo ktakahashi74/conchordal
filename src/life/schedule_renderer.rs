@@ -1,3 +1,4 @@
+use crate::temporal_cognition::capture::{BodyCapture, BodyCaptureSlot};
 #[cfg(feature = "research")]
 #[path = "schedule_renderer/prototype/active.rs"]
 mod prototype;
@@ -101,8 +102,7 @@ struct RoutedTone {
     tone: Tone,
     routing: Routing,
     self_slot: Option<usize>,
-    #[cfg(feature = "research")]
-    body_slot: Option<(usize, u32)>,
+    body_slot: BodyCaptureSlot,
     source_pcm_slot: Option<usize>,
     loo_slot: Option<usize>,
 }
@@ -224,8 +224,7 @@ pub struct ScheduleRenderer {
     tones: BTreeMap<ToneKey, RoutedTone>,
     cutoff_tick: Option<Tick>,
     self_sound: Vec<Option<Box<SelfSound>>>,
-    #[cfg(feature = "research")]
-    pub(crate) body_capture: Option<crate::temporal_cognition::body::Capture>,
+    pub(crate) body_capture: BodyCapture,
     pub(crate) profile: Option<RenderProfile>,
 }
 
@@ -342,8 +341,7 @@ impl ScheduleRenderer {
             tones: BTreeMap::new(),
             cutoff_tick: None,
             self_sound: Vec::new(),
-            #[cfg(feature = "research")]
-            body_capture: None,
+            body_capture: Default::default(),
             profile: None,
         }
     }
@@ -394,8 +392,7 @@ impl ScheduleRenderer {
                         routing: routed.routing,
                         site_id: routed.site_id,
                         self_slot: None,
-                        #[cfg(feature = "research")]
-                        body_slot: None,
+                        body_slot: Default::default(),
                         source_pcm_slot: None,
                         loo_slot: None,
                     },
@@ -618,10 +615,7 @@ impl ScheduleRenderer {
         self.profile = self.profile.map(|_| RenderProfile::default());
         let hop = self.time.hop;
         #[cfg(feature = "native")]
-        #[cfg(feature = "research")]
-        if let Some(capture) = self.body_capture.as_mut() {
-            capture.begin(now);
-        }
+        self.body_capture.begin(now);
 
         if self.buf_presentation.len() != hop {
             self.buf_presentation.resize(hop, 0.0);
@@ -847,12 +841,8 @@ impl ScheduleRenderer {
                         pcm,
                     );
                 }
-                #[cfg(feature = "research")]
-                if let (Some(capture), Some(slot)) = (self.body_capture.as_mut(), rt.body_slot) {
-                    for (idx, &sample) in pcm.iter().enumerate() {
-                        capture.sample(slot, idx, sample, rt.routing);
-                    }
-                }
+                self.body_capture
+                    .record_block(&rt.body_slot, pcm, rt.routing);
                 if let Some(slot) = rt.self_slot {
                     let sound = self.self_sound[slot]
                         .as_mut()
@@ -997,10 +987,7 @@ impl ScheduleRenderer {
         let history_us = profile_lap(&mut checkpoint);
 
         #[cfg(feature = "native")]
-        #[cfg(feature = "research")]
-        if let Some(capture) = self.body_capture.as_mut() {
-            capture.end();
-        }
+        self.body_capture.end();
         let capture_delivery_us = profile_lap(&mut checkpoint);
         if let Some(profile) = self.profile.as_mut() {
             *profile = RenderProfile {
@@ -1069,10 +1056,8 @@ impl ScheduleRenderer {
                     sample *= self.expression_gain[(tick - now) as usize];
                 }
 
-                #[cfg(feature = "research")]
-                if let (Some(capture), Some(slot)) = (self.body_capture.as_mut(), rt.body_slot) {
-                    capture.sample(slot, idx, sample, rt.routing);
-                }
+                self.body_capture
+                    .record_sample(&rt.body_slot, idx, sample, rt.routing);
                 if let Some(slot) = rt.self_slot {
                     let sound = self.self_sound[slot]
                         .as_mut()
@@ -1378,10 +1363,9 @@ impl ScheduleRenderer {
                                                 && sound.generation == batch.source_generation
                                         })
                                     }),
-                                    #[cfg(feature = "research")]
-                                    body_slot: self.body_capture.as_ref().and_then(|c| {
-                                        c.token(batch.source_id, batch.source_generation)
-                                    }),
+                                    body_slot: self
+                                        .body_capture
+                                        .slot(key.source_id, key.generation),
                                 },
                             );
                         }
@@ -2123,8 +2107,7 @@ mod tests {
                     tone: tone.clone(),
                     routing: Routing::default(),
                     self_slot: None,
-                    #[cfg(feature = "research")]
-                    body_slot: None,
+                    body_slot: Default::default(),
                     source_pcm_slot: None,
                     loo_slot: None,
                 },

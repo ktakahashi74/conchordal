@@ -110,11 +110,12 @@ wait(0.08);
         let saw_request = Arc::new(AtomicBool::new(false));
         let observed = Arc::clone(&saw_request);
         let probe: OfflineBodyProbe = Box::new(move |state, _, _, _| {
-            assert!(state.schedule_renderer.body_capture.is_none());
-            assert!(state.temporal.body_snapshot.is_none());
+            assert!(state.schedule_renderer.body_capture.as_ref().is_none());
+            assert!(state.temporal.observation.body_snapshot.is_none());
             assert!(
                 state
                     .temporal
+                    .observation
                     .temporal_frames
                     .iter()
                     .all(|frame| frame.received_frames == 0)
@@ -141,7 +142,7 @@ wait(0.08);
                 duration_sec: None,
                 offline_body_probe: Some(probe),
                 #[cfg(test)]
-                #[cfg(feature = "research")]
+                #[cfg(test)]
                 raw_t2_delay: Duration::ZERO,
                 ui_tx: None,
                 listener_forced: false,
@@ -257,7 +258,7 @@ fn instrument_ring_wiring_retains_tails_and_gui_waits_after_finish() {
                         duration_sec: None,
                         offline_body_probe: Some(probe),
                         #[cfg(test)]
-                        #[cfg(feature = "research")]
+                        #[cfg(test)]
                         raw_t2_delay: Duration::ZERO,
                         ui_tx: Some(ui_tx),
                         listener_forced: wait_user_exit,
@@ -370,8 +371,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         harmonic_relations: None,
         habitat_meter: false,
         render_prototype: Default::default(),
-        #[cfg(feature = "research")]
-        temporal_meter_t2: false,
+        temporal_config: Default::default(),
         #[cfg(feature = "research")]
         onset_comparison: None,
         scenario_name: "clock regression".into(),
@@ -938,7 +938,7 @@ wait(0.03);
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
-            #[cfg(feature = "research")]
+            #[cfg(test)]
             raw_t2_delay: Duration::ZERO,
             ui_tx: None,
             listener_forced: false,
@@ -988,8 +988,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             harmonic_relations: None,
             habitat_meter: true,
             render_prototype: Default::default(),
-            #[cfg(feature = "research")]
-            temporal_meter_t2: _continuous,
+            temporal_config: super::temporal_ports::TemporalConfig::from_enabled(_continuous),
             #[cfg(feature = "research")]
             onset_comparison: None,
             scenario_name: "clock regression".into(),
@@ -1052,20 +1051,9 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         );
 
         #[cfg(feature = "research")]
-        let make_channels = |inbox| WorkerChannels {
-            #[cfg(feature = "research")]
+        let make_channels = |inbox| super::temporal_ports::TemporalChannels {
             t2_inbox: inbox,
-            #[cfg(feature = "research")]
             temporal_snapshots: [None, None],
-            ui_tx: None,
-            audio_prod: None,
-            wav_tx: None,
-            audio_to_analysis_tx: None,
-            analysis_result_rx: bounded(1).1,
-            analysis_update_tx: bounded(1).0,
-            presentation_to_listener_tx: None,
-            listener_result_rx: None,
-            listener_analysis_update_tx: None,
         };
         let scenario = crate::scenario::Scenario {
             observe_tonal_context: false,
@@ -1126,8 +1114,12 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
         .unwrap();
         #[cfg(feature = "research")]
         let mut a = make_channels(_continuous.then_some(inbox_a));
+        #[cfg(not(feature = "research"))]
+        let mut a = Default::default();
         #[cfg(feature = "research")]
         let mut b = make_channels(_continuous.then_some(inbox_b));
+        #[cfg(not(feature = "research"))]
+        let mut b = Default::default();
         let mut pcm = [0.; 512];
         let mut production_differs = false;
         let mut confirmed = false;
@@ -1153,20 +1145,8 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             changed
                 .pop
                 .set_test_habitat_onset_strength(if frame % 17 == 0 { 4. } else { 0. });
-            drive_production_meter(
-                &mut control,
-                &cfg,
-                #[cfg(feature = "research")]
-                &mut a,
-                &pcm,
-            );
-            drive_production_meter(
-                &mut changed,
-                &cfg,
-                #[cfg(feature = "research")]
-                &mut b,
-                &pcm,
-            );
+            drive_production_meter(&mut control, &cfg, &mut a, &pcm);
+            drive_production_meter(&mut changed, &cfg, &mut b, &pcm);
             assert_eq!(
                 serde_json::to_value(control.temporal.flora_rhythm).unwrap(),
                 serde_json::to_value(changed.temporal.flora_rhythm).unwrap()
@@ -1205,8 +1185,7 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
             harmonic_relations: None,
             habitat_meter: false,
             render_prototype: Default::default(),
-            #[cfg(feature = "research")]
-            temporal_meter_t2: false,
+            temporal_config: Default::default(),
             #[cfg(feature = "research")]
             onset_comparison: None,
             scenario_name: "listener update".into(),
@@ -1264,10 +1243,7 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
         let (listener_tx, listener_rx) = bounded::<LandscapeUpdate>(1);
         listener_tx.send(LandscapeUpdate::default()).unwrap();
         let channels = WorkerChannels {
-            #[cfg(feature = "research")]
-            t2_inbox: None,
-            #[cfg(feature = "research")]
-            temporal_snapshots: [None, None],
+            observation: Default::default(),
             ui_tx: None,
             audio_prod: None,
             wav_tx: None,

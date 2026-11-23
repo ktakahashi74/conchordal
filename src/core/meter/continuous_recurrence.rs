@@ -732,6 +732,19 @@ impl State {
 }
 
 impl MeterNetwork {
+    fn continuous(&self) -> Option<&continuous::State> {
+        match &self.recurrence {
+            RecurrenceInput::Continuous(s) => Some(s),
+            _ => None,
+        }
+    }
+    fn continuous_mut(&mut self) -> Option<&mut continuous::State> {
+        match &mut self.recurrence {
+            RecurrenceInput::Continuous(s) => Some(s),
+            _ => None,
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn enable_continuous(&mut self, fs: u32, hop: u64, suppressed: bool) {
         if self.continuous().is_some() {

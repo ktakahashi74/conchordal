@@ -43,8 +43,9 @@ pub fn compile_scenario_from_script(
 }
 
 pub(crate) fn validate_scenario(scenario: &Scenario) -> Result<(), String> {
-    #[cfg(not(feature = "research"))]
-    if scenario.temporal_mode == crate::scenario::TemporalMode::Observe {
+    if !super::temporal_ports::TemporalConfig::supports_observe()
+        && scenario.temporal_mode == crate::scenario::TemporalMode::Observe
+    {
         return Err("temporal_mode observe requires the research feature".into());
     }
     if scenario.events.is_empty() {

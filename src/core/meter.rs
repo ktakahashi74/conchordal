@@ -31,21 +31,13 @@ mod continuous;
 #[cfg(feature = "research")]
 pub(crate) use continuous::{Diagnostics as ContinuousDiagnostics, Packet as TemporalPacket};
 
-#[derive(Debug)]
-enum RecurrenceInput {
-    Events(Recurrence),
-    #[cfg(feature = "research")]
-    Continuous(Box<continuous::State>),
-}
-impl RecurrenceInput {
-    fn events(&self) -> Option<&Recurrence> {
-        match self {
-            Self::Events(s) => Some(s),
-            #[cfg(feature = "research")]
-            Self::Continuous(_) => None,
-        }
-    }
-}
+#[cfg(feature = "research")]
+#[path = "meter/recurrence/active.rs"]
+mod recurrence;
+#[cfg(not(feature = "research"))]
+#[path = "meter/recurrence/inactive.rs"]
+mod recurrence;
+use recurrence::RecurrenceInput;
 
 #[cfg(test)]
 #[path = "meter_assay.rs"]
@@ -436,7 +428,7 @@ pub struct MeterNetwork {
 
 impl Default for MeterNetwork {
     fn default() -> Self {
-        Self::with_input(RecurrenceInput::Events(Recurrence::new()))
+        Self::with_input(RecurrenceInput::new())
     }
 }
 impl MeterNetwork {
@@ -509,22 +501,6 @@ impl MeterNetwork {
             .map_or(0, |s| s.origin_tick + (s.time * 1e9).round() as u64);
         self.process_at(start, (dt as f64 * 1e9).round() as usize, 1e9, Some(drive))
     }
-    #[cfg(feature = "research")]
-    fn continuous(&self) -> Option<&continuous::State> {
-        match &self.recurrence {
-            #[cfg(feature = "research")]
-            RecurrenceInput::Continuous(s) => Some(s),
-            _ => None,
-        }
-    }
-    #[cfg(feature = "research")]
-    fn continuous_mut(&mut self) -> Option<&mut continuous::State> {
-        match &mut self.recurrence {
-            #[cfg(feature = "research")]
-            RecurrenceInput::Continuous(s) => Some(s),
-            _ => None,
-        }
-    }
     pub(crate) fn process_evidence(
         &mut self,
         dt: f32,
@@ -593,11 +569,7 @@ impl MeterNetwork {
         }
         self.accumulate_evidence(dt, onset.fired, seeded_now, observed_phi, drive);
         if onset.fired && self.seeded && !seeded_now {
-            match &mut self.recurrence {
-                RecurrenceInput::Events(state) => state.issue(),
-                #[cfg(feature = "research")]
-                RecurrenceInput::Continuous(_) => {}
-            }
+            self.recurrence.issue();
         }
         let att_a = (-dt / 0.3).exp();
         self.attention_ema = att_a * self.attention_ema + (1.0 - att_a) * drive;
@@ -631,25 +603,7 @@ impl MeterNetwork {
         hop: usize,
         fs: f32,
     ) -> Option<f32> {
-        let confirmed_period = match &mut self.recurrence {
-            #[cfg(feature = "research")]
-            RecurrenceInput::Continuous(state) => {
-                let onset_tick = state.fast_start as f64
-                    + dt as f64 * onset.frac as f64 * state.sample_rate() as f64;
-                state
-                    .pending
-                    .filter(|p| {
-                        !state.suppressed
-                            && onset.fired
-                            && onset_tick > p.received as f64
-                            && onset_tick > p.use_cut as f64
-                    })
-                    .map(|p| p.lag_sec as f32)
-            }
-            RecurrenceInput::Events(state) => {
-                state.observe(start, hop, fs, onset.fired, onset.frac)
-            }
-        };
+        let confirmed_period = self.recurrence.confirm(dt, onset, start, hop, fs);
         if self.recurrence.events().is_some_and(|s| s.uniform) {
             self.onset_age
                 .zip(self.pending_period)
@@ -766,11 +720,7 @@ impl MeterNetwork {
         }
         if let (Some(period), Some(frequency)) = (confirmed_period, proposal) {
             let ratio = frequency * period;
-            match &mut self.recurrence {
-                #[cfg(feature = "research")]
-                RecurrenceInput::Continuous(state) => state.accept(ratio.min(1.0 / ratio)),
-                RecurrenceInput::Events(state) => state.accept(period, ratio.min(1.0 / ratio)),
-            }
+            self.recurrence.accept(period, ratio.min(1.0 / ratio));
         }
         proposal
     }
@@ -780,11 +730,7 @@ impl MeterNetwork {
         self.beat_phi = wrap_pm_pi(self.beat_omega * dt * (1.0 - onset_frac));
         self.beat_cycles = wrap_beat_cycles(self.beat_omega * dt * (1.0 - onset_frac) / TAU);
         // A new coordinate discards old evidence; this onset cannot certify itself.
-        match &mut self.recurrence {
-            #[cfg(feature = "research")]
-            RecurrenceInput::Continuous(state) => state.seed(),
-            RecurrenceInput::Events(state) => state.reset_evidence(),
-        }
+        self.recurrence.seed();
         self.plv_count = 0.0;
         self.beat_re = 0.0;
         self.beat_im = 0.0;
@@ -900,18 +846,7 @@ impl MeterNetwork {
         let presence = smoothstep(1.0 - 0.5 * stab, 4.0 - 2.0 * stab, self.plv_count);
 
         let beat_plv = (self.beat_re * self.beat_re + self.beat_im * self.beat_im).sqrt() / count;
-        let beat_conf = match &self.recurrence {
-            #[cfg(feature = "research")]
-            RecurrenceInput::Continuous(state) => state.confidence(beat_plv, presence),
-            RecurrenceInput::Events(state) => {
-                let support = if state.multi {
-                    beat_plv.max(state.support())
-                } else {
-                    beat_plv
-                };
-                (support * presence).clamp(0.0, 1.0)
-            }
-        };
+        let beat_conf = self.recurrence.confidence(beat_plv, presence);
         let beat_freq = self.beat_omega / TAU;
 
         let beat = MeterBand {

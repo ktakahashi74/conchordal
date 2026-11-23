@@ -111,7 +111,7 @@ fn check_metric_population(
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
-            #[cfg(feature = "research")]
+            #[cfg(test)]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: false,

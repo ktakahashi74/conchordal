@@ -1,4 +1,7 @@
+use super::temporal_ports::{TemporalConfig, TemporalWiring};
 use super::*;
+#[cfg(feature = "native")]
+use crate::core::analysis_worker::AnalysisTemporalInput;
 
 #[cfg(feature = "native")]
 pub(crate) struct RuntimeInit {
@@ -100,26 +103,18 @@ pub(super) fn spawn_analysis_worker(
     analysis_result_tx: Sender<analysis_worker::AnalysisResult>,
     analysis_update_rx: Receiver<LandscapeUpdate>,
     delivery: analysis_worker::AnalysisDelivery,
-    #[cfg(feature = "research")] temporal_inputs: (
-        Option<crate::temporal_cognition::observation::Tap>,
-        Option<crate::temporal_cognition::t2::runtime_input::Output>,
-    ),
+    temporal: AnalysisTemporalInput,
 ) -> thread::JoinHandle<()> {
     thread::Builder::new()
         .name(name.into())
         .spawn(move || {
-            #[cfg(feature = "research")]
-            let (temporal_tap, raw_output) = temporal_inputs;
             analysis_worker::run(
                 analysis_stream,
                 audio_to_analysis_rx,
                 analysis_result_tx,
                 analysis_update_rx,
                 delivery,
-                #[cfg(feature = "research")]
-                temporal_tap,
-                #[cfg(feature = "research")]
-                raw_output,
+                temporal,
             )
         })
         .expect("spawn analysis worker")
@@ -146,7 +141,7 @@ pub(super) struct WiringOptions {
     pub(super) duration_sec: Option<f64>,
     #[cfg(test)]
     pub(super) offline_body_probe: Option<OfflineBodyProbe>,
-    #[cfg(all(test, feature = "research"))]
+    #[cfg(test)]
     pub(super) raw_t2_delay: Duration,
     pub(super) ui_tx: Option<Sender<UiFrame>>,
     /// Enables listener analysis even without DCC coupling (GUI display / report).
@@ -309,10 +304,7 @@ pub(super) fn prepare_score(
         if streaming {
             return Err("strict room needs a pre-scannable score to bound Voice, Flora and Rain generations".into());
         }
-        #[cfg(feature = "research")]
-        let inject_tick_zero = !config.temporal_meter_t2;
-        #[cfg(not(feature = "research"))]
-        let inject_tick_zero = true;
+        let inject_tick_zero = !TemporalConfig::from_config(config).t2_enabled();
         room_reservation::source_bound(&scenario, fs, hop, inject_tick_zero)?
     } else {
         0
@@ -361,7 +353,7 @@ pub(super) fn prepare_runtime(
         duration_sec,
         #[cfg(test)]
         offline_body_probe,
-        #[cfg(all(test, feature = "research"))]
+        #[cfg(test)]
         raw_t2_delay,
         ui_tx,
         listener_forced,
@@ -421,97 +413,28 @@ pub(super) fn prepare_runtime(
     #[cfg(not(feature = "native"))]
     let analysis_result_rx = crate::handoff::Slot::new(4);
 
-    #[cfg(feature = "native")]
-    #[cfg(feature = "research")]
-    let (raw_output, t2_inbox) = if config.temporal_meter_t2 {
-        let (output, inbox) =
-            crate::temporal_cognition::t2::runtime_input::channel(runtime_sample_rate, hop as u64);
-        #[cfg(test)]
-        let output = {
-            let mut output = output;
-            output.delay = raw_t2_delay;
-            output
-        };
-        (Some(output), Some(inbox))
-    } else {
-        (None, None)
-    };
-    #[cfg(not(feature = "native"))]
-    #[cfg(feature = "research")]
-    let t2_inbox = None;
-    #[cfg(feature = "research")]
-    let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
-    #[cfg(not(feature = "research"))]
-    let observing = false;
-    #[cfg(feature = "research")]
-    let arrival_enabled = config.temporal_onset_comparison.is_some_and(|c| c.arrival);
-    #[cfg(feature = "research")]
-    let mut temporal_snapshots = [None, None];
-    #[cfg(feature = "native")]
-    #[cfg(feature = "research")]
-    let mut taps = std::array::from_fn::<_, 2, _>(|bus| {
-        (observing || ((arrival_enabled || config.temporal_t2.is_some()) && bus == 0)).then(|| {
-            let tap = crate::temporal_cognition::observation::Tap::spawn(
-                bus as u8,
-                runtime_sample_rate,
-                hop,
-                core.nsgt.nfft(),
-                core.landscape.space.clone(),
-                crate::temporal_cognition::observation::Options {
-                    body_prototypes: config.temporal_body_prototypes.as_ref().map(|model| {
-                        let scales = config
-                            .temporal_body
-                            .expect("prototype model requires scales");
-                        (
-                            scales,
-                            crate::temporal_cognition::body_model::Prototypes::new(model, scales),
-                        )
-                    }),
-                    deterministic: deterministic_analysis,
-                    ridge: config.temporal_ridge,
-                    acoustic: config.temporal_acoustic,
-                    period: config.temporal_period,
-                    arrival_payload: config.temporal_onset_comparison.is_some_and(|c| c.arrival),
-                    t2: config.temporal_t2,
-                },
-            );
-            temporal_snapshots[bus] = Some(Arc::clone(&tap.snapshot));
-
-            tap
-        })
-    });
-    #[cfg(feature = "native")]
-    #[cfg(feature = "research")]
-    let body_capture = if observing || arrival_enabled {
-        config.temporal_body.map(|body| {
-            crate::temporal_cognition::body::Capture::spawn(
-                core.nsgt.clone(),
-                body,
-                deterministic_analysis,
-                config.temporal_body_prototypes.as_ref().map(|model| {
-                    crate::temporal_cognition::body_model::Prototypes::new(model, body)
-                }),
-            )
-        })
-    } else {
-        None
-    };
-    #[cfg(not(feature = "native"))]
-    #[cfg(feature = "research")]
-    let taps: [Option<crate::temporal_cognition::observation::Tap>; 2] = [None, None];
-    #[cfg(not(feature = "native"))]
-    #[cfg(feature = "research")]
-    let body_capture: Option<crate::temporal_cognition::body::Capture> = None;
+    #[cfg(not(test))]
+    let raw_t2_delay = Duration::ZERO;
+    let TemporalWiring {
+        habitat: (habitat_tap, habitat_temporal),
+        presentation: (presentation_tap, presentation_temporal),
+        channels: temporal_channels,
+        capture: body_capture,
+    } = TemporalWiring::prepare(
+        config,
+        &scenario,
+        &core,
+        runtime_sample_rate,
+        deterministic_analysis,
+        raw_t2_delay,
+    );
+    let observing = TemporalConfig::observing(&scenario);
     let resource_power = scenario.end == crate::scenario::ScenarioEnd::Open
         || scenario
             .events
             .iter()
             .flat_map(|event| &event.actions)
             .any(|action| matches!(action, crate::scenario::Action::PlaceFlora { .. }));
-    #[cfg(feature = "research")]
-    let habitat_tap = taps[0].is_some();
-    #[cfg(not(feature = "research"))]
-    let habitat_tap = false;
     let display_or_report = ui_tx.is_some() || reporter.is_some();
     let mut analysis_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
         .with_nsgt_power(display_or_report || habitat_tap || resource_power)
@@ -617,17 +540,13 @@ pub(super) fn prepare_runtime(
         analysis_result_tx,
         analysis_update_rx,
         analysis_worker::AnalysisDelivery::Latest(analysis_result_rx.clone()),
-        #[cfg(feature = "research")]
-        (taps[0].take(), raw_output),
+        habitat_temporal,
     );
 
     #[cfg(not(feature = "native"))]
     let analysis_handle = AnalysisExecution::Inline(Box::new(analysis_worker::AnalysisState::new(
         analysis_stream,
-        #[cfg(feature = "research")]
-        None,
-        #[cfg(feature = "research")]
-        None,
+        habitat_temporal,
     )));
 
     let dcc_coupler = DccCoupler::new(config.dcc);
@@ -642,10 +561,6 @@ pub(super) fn prepare_runtime(
         listener_analysis_update_tx,
         listener_analysis_handle,
     ) = if listener_analysis_enabled {
-        #[cfg(feature = "research")]
-        let presentation_tap = taps[1].is_some();
-        #[cfg(not(feature = "research"))]
-        let presentation_tap = false;
         // The GUI shows only habitat power; the presentation bus's NSGT power feeds
         // its report history and the listener-side research tap.
         let mut listener_stream = AnalysisStream::new(core.lparams.clone(), core.nsgt.clone())
@@ -667,8 +582,7 @@ pub(super) fn prepare_runtime(
                 result_tx,
                 update_rx,
                 analysis_worker::AnalysisDelivery::Ordered,
-                #[cfg(feature = "research")]
-                (taps[1].take(), None),
+                presentation_temporal,
             );
             (
                 Some(presentation_tx),
@@ -684,13 +598,7 @@ pub(super) fn prepare_runtime(
                 Some(crate::handoff::Slot::new(4)),
                 Some(crate::handoff::Slot::new(8)),
                 Some(AnalysisExecution::Inline(Box::new(
-                    analysis_worker::AnalysisState::new(
-                        listener_stream,
-                        #[cfg(feature = "research")]
-                        None,
-                        #[cfg(feature = "research")]
-                        None,
-                    ),
+                    analysis_worker::AnalysisState::new(listener_stream, presentation_temporal),
                 ))),
             )
         }
@@ -828,8 +736,7 @@ pub(super) fn prepare_runtime(
         render_prototype: crate::life::sound::render_prototype::RenderPrototype::from_config(
             config,
         ),
-        #[cfg(feature = "research")]
-        temporal_meter_t2: config.temporal_meter_t2,
+        temporal_config: TemporalConfig::from_config(config),
         #[cfg(feature = "research")]
         onset_comparison: config.temporal_onset_comparison,
         scenario_name: scenario_label,
@@ -855,10 +762,7 @@ pub(super) fn prepare_runtime(
         deterministic_footprints,
     };
     let channels = WorkerChannels {
-        #[cfg(feature = "research")]
-        t2_inbox,
-        #[cfg(feature = "research")]
-        temporal_snapshots,
+        observation: temporal_channels,
         ui_tx,
         #[cfg(feature = "native")]
         audio_prod,
@@ -882,11 +786,8 @@ pub(super) fn prepare_runtime(
             cfg,
         );
         state.loo_populations = loo_populations;
-        #[cfg(feature = "research")]
-        {
-            state.temporal.body_snapshot = body_capture.as_ref().map(|c| Box::new(c.snapshot()));
-            state.schedule_renderer.body_capture = body_capture;
-        }
+        state.temporal.observation.initialize_capture(&body_capture);
+        state.schedule_renderer.body_capture = body_capture;
         state.schedule_renderer.room = room;
         state.pop.body_metabolism.prepare_sites(sites.as_ref());
         if let Some(sites) = &sites {
@@ -927,22 +828,12 @@ fn start_analysis(
     output: Sender<analysis_worker::AnalysisResult>,
     updates: Receiver<LandscapeUpdate>,
     delivery: analysis_worker::AnalysisDelivery,
-    #[cfg(feature = "research")] temporal: (
-        Option<crate::temporal_cognition::observation::Tap>,
-        Option<crate::temporal_cognition::t2::runtime_input::Output>,
-    ),
+    temporal: AnalysisTemporalInput,
 ) -> AnalysisExecution {
     #[cfg(feature = "native")]
     if !inline {
         return AnalysisExecution::Thread(spawn_analysis_worker(
-            name,
-            stream,
-            input,
-            output,
-            updates,
-            delivery,
-            #[cfg(feature = "research")]
-            temporal,
+            name, stream, input, output, updates, delivery, temporal,
         ));
     }
     {
@@ -952,10 +843,7 @@ fn start_analysis(
             output,
             updates,
             analysis_worker::AnalysisDelivery::Ordered,
-            #[cfg(feature = "research")]
-            temporal.0,
-            #[cfg(feature = "research")]
-            temporal.1,
+            temporal,
         );
         AnalysisExecution::Inline(Box::new(move || input.try_recv().is_ok_and(&mut step)))
     }
@@ -1070,10 +958,7 @@ pub(crate) fn init_runtime(
         std::process::exit(1);
     }
     let seed = scenario.seed;
-    #[cfg(feature = "research")]
-    let observing = scenario.temporal_mode == crate::scenario::TemporalMode::Observe;
-    #[cfg(not(feature = "research"))]
-    let observing = false;
+    let observing = TemporalConfig::observing(&scenario);
     let prepared = prepare_score(&config, runtime_sample_rate, scenario, score.is_some())
         .unwrap_or_else(|err| {
             eprintln!("{err}");
@@ -1139,7 +1024,7 @@ pub(crate) fn init_runtime(
             duration_sec: args.duration,
             #[cfg(test)]
             offline_body_probe: None,
-            #[cfg(all(test, feature = "research"))]
+            #[cfg(test)]
             raw_t2_delay: Duration::ZERO,
             ui_tx,
             listener_forced: !args.nogui || args.report.is_some(),
@@ -1288,7 +1173,7 @@ pub fn run_render(
             duration_sec,
             #[cfg(test)]
             offline_body_probe: None,
-            #[cfg(all(test, feature = "research"))]
+            #[cfg(test)]
             raw_t2_delay: Duration::ZERO,
             ui_tx: None,
             listener_forced: reporter.is_some(),

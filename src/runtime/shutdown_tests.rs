@@ -6,7 +6,7 @@ fn options() -> WiringOptions {
         end_request: Arc::new(AtomicBool::new(false)),
         duration_sec: None,
         offline_body_probe: None,
-        #[cfg(feature = "research")]
+        #[cfg(test)]
         raw_t2_delay: Duration::ZERO,
         ui_tx: None,
         listener_forced: false,
@@ -698,8 +698,9 @@ fn private_body_worker_panic_fails_the_run_after_final_report_flush() {
             None,
         );
         capture.inject_worker_panic();
-        state.temporal.body_snapshot = Some(Box::new(capture.snapshot()));
-        state.schedule_renderer.body_capture = Some(capture);
+        state.temporal.observation.body_snapshot = Some(Box::new(capture.snapshot()));
+        state.schedule_renderer.body_capture =
+            crate::temporal_cognition::capture::BodyCapture::new(Some(capture));
     }));
     let (wiring, _, dir, _output) = fixture(opts, "seed(21); wait(0.03);");
     let result = join(wiring).unwrap_err();
@@ -841,7 +842,7 @@ fn final_ui_snapshot_is_retried_after_a_full_channel_becomes_available() {
     }
     let frame = rx.recv_timeout(Duration::from_secs(5)).unwrap();
     assert_eq!(frame.meta.playback_state, PlaybackState::Finished);
-    for observer in frame.temporal.iter() {
+    for observer in frame.observation.temporal.iter() {
         assert_eq!(observer.state, ObservationState::Finished);
         assert!(observer.received_frames > 0);
     }

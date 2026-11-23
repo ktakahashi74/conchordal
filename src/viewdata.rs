@@ -1,6 +1,3 @@
-#[cfg(feature = "research")]
-use std::sync::Arc;
-
 use crate::core::landscape::Landscape;
 
 pub use conchordal_web_ui::frame::WaveFrame;
@@ -72,10 +69,7 @@ pub use conchordal_web_ui::frame::PredictionFrame;
 
 #[derive(Clone, Debug, Default)]
 pub struct UiFrame {
-    #[cfg(feature = "research")]
-    pub(crate) body: Option<Arc<crate::temporal_cognition::body::Snapshot>>,
-    #[cfg(feature = "research")]
-    pub(crate) temporal: Arc<[crate::temporal_cognition::observation::Snapshot; 2]>,
+    pub(crate) observation: crate::temporal_cognition::ui_observation::TemporalUi,
     pub wave: WaveFrame,
     pub spec: SpecFrame,
     pub listener: ListenerFrame,

@@ -70,6 +70,12 @@ mod monitor;
 mod phases;
 mod scenario_load;
 pub mod step;
+#[cfg(feature = "research")]
+#[path = "temporal_ports/active.rs"]
+mod temporal_ports;
+#[cfg(not(feature = "research"))]
+#[path = "temporal_ports/inactive.rs"]
+mod temporal_ports;
 mod ui_frame;
 mod wiring;
 mod worker;

@@ -1,3 +1,4 @@
+use super::temporal_ports;
 #[cfg(feature = "research")]
 #[path = "phases/felt_reports/active.rs"]
 mod felt_reports;
@@ -209,17 +210,10 @@ pub(super) fn advance_population(
         .pop
         .body_metabolism
         .prepare(&state.pop.voices, now_tick, &state.lparams);
-    #[cfg(feature = "research")]
-    if let Some(capture) = state.schedule_renderer.body_capture.as_mut() {
-        capture.prepare(
-            state
-                .pop
-                .voices
-                .iter()
-                .map(|v| (v.id(), v.metadata.generation, v.body_snapshot())),
-            now_tick,
-        );
-    }
+    state
+        .schedule_renderer
+        .body_capture
+        .prepare(&state.pop.voices, now_tick);
     #[cfg(feature = "research")]
     if cfg.onset_comparison.is_some() {
         for voice in &mut state.pop.voices {
@@ -327,9 +321,9 @@ pub(super) fn advance_population(
             #[cfg(feature = "research")]
             cfg.onset_comparison
                 .filter(|c| c.arrival)
-                .map(|_| &state.temporal.temporal_frames[0]),
+                .map(|_| &state.temporal.observation.temporal_frames[0]),
             #[cfg(feature = "research")]
-            state.temporal.body_snapshot.as_deref(),
+            state.temporal.observation.body_snapshot.as_deref(),
             #[cfg(feature = "research")]
             state.schedule_renderer.body_capture.as_ref(),
             &mut state.phonation_batches_buf,
@@ -565,14 +559,7 @@ pub(super) fn emit_hop_reports(
         report_try(&mut state.reporter, "estimator status", |writer| {
             writer.write_estimator_status()
         });
-        #[cfg(feature = "research")]
-        for observation in state.temporal.temporal_frames.iter() {
-            if observation.state != crate::temporal_cognition::observation::ObservationState::Off {
-                report_try(&mut state.reporter, "temporal observation", |writer| {
-                    writer.write_temporal_observation(now_sec, observation)
-                });
-            }
-        }
+        temporal_ports::emit_observations(state, now_sec);
         for (bus, history) in [
             (
                 "habitat",
@@ -983,21 +970,8 @@ pub(super) fn render_and_route_audio(
         );
         state.offline_body_probe = Some(probe);
     }
-    #[cfg(feature = "research")]
-    if let Some(capture) = state.schedule_renderer.body_capture.as_ref() {
-        let snapshot = capture.snapshot();
+    temporal_ports::refresh_body(state);
 
-        if let Some(current) = state.temporal.body_snapshot.as_mut()
-            && (current.version != snapshot.version
-                || current.capture_drops != snapshot.capture_drops
-                || current.outside_voice_hops != snapshot.outside_voice_hops)
-        {
-            **current = snapshot;
-            report_try(&mut state.reporter, "body observation", |writer| {
-                writer.write_body_observation(&snapshot)
-            });
-        }
-    }
     #[cfg(feature = "native")]
     #[cfg(feature = "research")]
     if let Some(worker) = state.temporal.footprint_worker.as_mut() {
@@ -1107,7 +1081,7 @@ pub(super) fn participation_outcome(
 pub(super) fn drive_production_meter(
     state: &mut WorkerState,
     cfg: &WorkerConfig,
-    #[cfg(feature = "research")] channels: &mut WorkerChannels,
+    channels: &mut temporal_ports::TemporalChannels,
     habitat_chunk: &[f32],
 ) {
     if state.lifecycle.finished {
@@ -1155,14 +1129,11 @@ pub(super) fn drive_production_meter(
             );
         });
     }
-    #[cfg(feature = "research")]
-    let fast_known = !cfg.temporal_meter_t2 || habitat_chunk.iter().all(|v| v.is_finite());
-    #[cfg(feature = "research")]
+    let fast_known =
+        !cfg.temporal_config.t2_enabled() || habitat_chunk.iter().all(|v| v.is_finite());
     if fast_known {
         state.dorsal.process(habitat_chunk);
     }
-    #[cfg(not(feature = "research"))]
-    state.dorsal.process(habitat_chunk);
     let flux_drive = (state.dorsal.last_metrics().flux.max(0.0) * 500.0)
         .tanh()
         .clamp(0.0, 1.0);
@@ -1174,105 +1145,11 @@ pub(super) fn drive_production_meter(
         * ONSET_DRIVE_GAIN)
         .clamp(0.0, 1.0);
     let drive = flux_drive.max(onset_drive);
-    #[cfg_attr(not(feature = "research"), allow(unused_labels))]
-    let meter_state = 'meter: {
-        #[cfg(feature = "research")]
-        if let Some(inbox) = channels.t2_inbox.as_mut() {
-            let start = state.timebase.frame_start_tick(state.frame_idx);
-            let end = state.timebase.frame_end_tick(state.frame_idx);
-            if let Some(meter) = state.temporal.flora_meter.as_mut() {
-                if meter.needs_felt_bands() {
-                    let m = state.dorsal.last_metrics();
-                    meter.set_felt_bands(end, fast_known.then_some([m.e_low, m.e_mid, m.e_high]));
-                }
-                meter.continuous_fast(
-                    start,
-                    end,
-                    cfg.hop_duration.as_secs_f32(),
-                    fast_known.then_some(flux_drive),
-                );
-            }
-            state.temporal.prod_meter.continuous_fast(
-                start,
-                end,
-                cfg.hop_duration.as_secs_f32(),
-                fast_known.then_some(drive),
-            );
-            let mut remaining = inbox.rx.len();
-            let mut failure = None;
-            loop {
-                if !cfg.deterministic_analysis && remaining == 0 {
-                    break;
-                }
-                match inbox.rx.try_recv() {
-                    Ok(delivery) => {
-                        let packet = inbox.received(delivery, end);
-                        if let Some(meter) = state.temporal.flora_meter.as_mut()
-                            && let Err(reason) = meter.continuous_ingest(packet)
-                        {
-                            failure = Some(reason);
-                            break;
-                        }
-                        if let Err(reason) = state.temporal.prod_meter.continuous_ingest(packet) {
-                            failure = Some(reason);
-                            break;
-                        }
-                        remaining = remaining.saturating_sub(1);
-                        if cfg.deterministic_analysis && packet.end == end {
-                            break;
-                        }
-                    }
-                    Err(crate::handoff::TryRecvError::Empty) => {
-                        if !cfg.deterministic_analysis || cfg.exiting.load(Ordering::SeqCst) {
-                            break;
-                        }
-                        #[cfg(feature = "native")]
-                        thread::sleep(Duration::from_micros(200));
-                        #[cfg(not(feature = "native"))]
-                        {
-                            failure = Some("inline T2 delivery is unsupported");
-                            break;
-                        }
-                    }
-                    Err(crate::handoff::TryRecvError::Disconnected) => {
-                        failure = Some("raw T2 producer disconnected");
-                        break;
-                    }
-                }
-            }
-            if let Some(reason) = failure {
-                cfg.exiting.store(true, Ordering::SeqCst);
-                state.lifecycle.failures.push(reason.to_owned());
-            }
-            if let Some(meter) = state.temporal.flora_meter.as_mut() {
-                state.temporal.flora_rhythm = crate::life::flora::TemporalObservation {
-                    observed_end: Some(end),
-                    known: fast_known && failure.is_none(),
-                    flux: flux_drive,
-                    state: meter.continuous_finish(),
-                };
-            }
-            let result = state.temporal.prod_meter.continuous_finish();
-            if state.reporter.is_some() || state.profile.is_some() {
-                let sample = crate::life::report::TemporalMeterSample {
-                    sample_rate: cfg.fs as u32,
-                    hop: cfg.hop as u64,
-                    use_cut: end,
-                    input: inbox.diagnostics,
-                    recurrence: state
-                        .temporal
-                        .prod_meter
-                        .continuous_diagnostics()
-                        .expect("continuous mode"),
-                    state: result,
-                };
-                report_try(&mut state.reporter, "T2 meter", |writer| {
-                    writer.write_temporal_meter(&sample)
-                });
-                state.temporal.t2_sample = Some(sample);
-            }
-            break 'meter result;
-        }
+    let meter_state = if let Some(state) =
+        temporal_ports::update_meter(state, channels, cfg, fast_known, flux_drive, drive)
+    {
+        state
+    } else {
         if let Some(meter) = state.temporal.flora_meter.as_mut() {
             let known = habitat_chunk.iter().all(|v| v.is_finite());
             if meter.needs_felt_bands() {

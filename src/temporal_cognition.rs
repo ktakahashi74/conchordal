@@ -8,6 +8,7 @@ pub(crate) mod arrival;
 pub(crate) mod body;
 #[cfg(feature = "research")]
 pub(crate) mod body_model;
+pub(crate) mod capture;
 #[cfg(feature = "research")]
 pub(crate) mod context;
 #[cfg(feature = "research")]
@@ -33,6 +34,7 @@ mod ridge;
 pub(crate) mod t2;
 #[cfg(feature = "research")]
 mod trajectory;
+pub(crate) mod ui_observation;
 
 #[cfg(all(test, feature = "research"))]
 mod tests;

@@ -112,7 +112,7 @@ fn n3_offline_body_equivalence() {
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
-            #[cfg(feature = "research")]
+            #[cfg(test)]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: false,
@@ -219,7 +219,7 @@ fn render_metabolism_flags(metabolism: Option<bool>, prototype: bool) -> Vec<Fla
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
-            #[cfg(feature = "research")]
+            #[cfg(test)]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: false,
@@ -433,7 +433,7 @@ fn b7_dynamic_etude_render() {
             end_request: Arc::new(AtomicBool::new(false)),
             duration_sec: None,
             offline_body_probe: Some(probe),
-            #[cfg(feature = "research")]
+            #[cfg(test)]
             raw_t2_delay: std::time::Duration::ZERO,
             ui_tx: None,
             listener_forced: false,

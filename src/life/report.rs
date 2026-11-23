@@ -1,4 +1,10 @@
 #[cfg(feature = "research")]
+#[path = "report/temporal.rs"]
+mod temporal;
+#[cfg(feature = "research")]
+pub(crate) use temporal::TemporalMeterSample;
+
+#[cfg(feature = "research")]
 #[path = "report/felt.rs"]
 mod felt;
 
@@ -100,17 +106,6 @@ pub(crate) struct ListenerStateSample {
     pub(crate) measure_hz: f32,
     pub(crate) measure_ratio: u8,
     pub(crate) measure_confidence: f32,
-}
-
-#[derive(Clone, Copy, Debug, Serialize)]
-#[cfg(feature = "research")]
-pub(crate) struct TemporalMeterSample {
-    pub sample_rate: u32,
-    pub hop: u64,
-    pub use_cut: u64,
-    pub input: crate::temporal_cognition::t2::runtime_input::Diagnostics,
-    pub recurrence: crate::core::meter::ContinuousDiagnostics,
-    pub state: crate::core::meter::MeterState,
 }
 
 /// Wall-clock telemetry only; never used by the synthesis or ecology controls.
@@ -248,22 +243,6 @@ enum ReportRecord<'a> {
         reason: Option<&'static str>,
     },
     Flora(crate::life::flora::FloraReport<'a>),
-    #[cfg(feature = "research")]
-    TemporalMeter(&'a TemporalMeterSample),
-    #[cfg(feature = "research")]
-    BodyObservation(&'a crate::temporal_cognition::body::Snapshot),
-    #[cfg(feature = "research")]
-    BodyDescriptor {
-        #[serde(flatten)]
-        record: &'a crate::temporal_cognition::body::Record,
-        standardized: [Option<f64>; 6],
-        prototype_assignment: Option<crate::temporal_cognition::body_model::Assignment>,
-    },
-    #[cfg(feature = "research")]
-    TemporalObservation {
-        time_sec: f64,
-        observation: &'a crate::temporal_cognition::observation::Snapshot,
-    },
     Meta {
         seed: u64,
         hop_timing_scope: &'static str,
@@ -543,27 +522,6 @@ impl JsonlReporter {
         self.write_record(&ReportRecord::Flora(flora.report(time_sec, landscape)))
     }
 
-    #[cfg(feature = "research")]
-    pub(crate) fn write_body_observation(
-        &mut self,
-        snapshot: &crate::temporal_cognition::body::Snapshot,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::BodyObservation(snapshot))?;
-        for (index, record) in snapshot
-            .records
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| r.active)
-        {
-            self.write_record(&ReportRecord::BodyDescriptor {
-                record,
-                standardized: record.standardized(snapshot.config),
-                prototype_assignment: snapshot.prototype_assignments[index],
-            })?;
-        }
-        Ok(())
-    }
-
     #[cfg(feature = "native")]
     pub fn create(path: &str) -> Result<Self, String> {
         let file = File::create(path).map_err(|err| format!("create report {path}: {err}"))?;
@@ -580,20 +538,6 @@ impl JsonlReporter {
         })
     }
 
-    /// Header record identifying the effective scenario seed, written first
-    /// so a report can be matched back to a `--seed` replay.
-    #[cfg(feature = "research")]
-    pub(crate) fn write_temporal_observation(
-        &mut self,
-        time_sec: f64,
-        observation: &crate::temporal_cognition::observation::Snapshot,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::TemporalObservation {
-            time_sec,
-            observation,
-        })
-    }
-
     pub(crate) fn write_estimator_status(&mut self) -> Result<(), String> {
         let (freeze_count, frozen_at_issue) = crate::core::history_prediction::freeze_status();
         self.write_record(&ReportRecord::EstimatorStatus {
@@ -602,19 +546,13 @@ impl JsonlReporter {
         })
     }
 
+    /// Header record identifying the effective scenario seed, written first
+    /// so a report can be matched back to a `--seed` replay.
     pub fn write_meta(&mut self, seed: u64) -> Result<(), String> {
         self.write_record(&ReportRecord::Meta {
             seed,
             hop_timing_scope: "process_hop entry through end; excludes hop_timing serialization/write",
         })
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn write_temporal_meter(
-        &mut self,
-        sample: &TemporalMeterSample,
-    ) -> Result<(), String> {
-        self.write_record(&ReportRecord::TemporalMeter(sample))
     }
 
     pub(crate) fn write_hop_timing(&mut self, sample: &HopTimingSample) -> Result<(), String> {

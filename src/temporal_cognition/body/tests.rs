@@ -466,7 +466,8 @@ fn private_capture_matches_isolated_render_for_every_body_and_route() {
             let mut tracked = ScheduleRenderer::new(time);
             let mut capture = Capture::spawn(analyzer(), config(), true, None);
             capture.prepare(std::iter::once((5, 2, body)), 0);
-            tracked.body_capture = Some(capture);
+            tracked.body_capture =
+                crate::temporal_cognition::capture::BodyCapture::new(Some(capture));
             let mut control = ScheduleRenderer::new(time);
             let mut isolated = ScheduleRenderer::new(time);
             let mut pcm = [Vec::new(), Vec::new()];

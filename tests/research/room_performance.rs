@@ -304,7 +304,7 @@ fn render_reservation() {
             end_request: end,
             duration_sec: None,
             offline_body_probe: Some(probe),
-            #[cfg(feature = "research")]
+            #[cfg(test)]
             raw_t2_delay: Duration::ZERO,
             ui_tx: None,
             listener_forced: true,

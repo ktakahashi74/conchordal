@@ -6,7 +6,7 @@ fn parseval_resource_power_units_support_boundaries_and_amplitude() {
         state.alpha = 0.0;
     }
     let n = analyzer.nfft;
-    let fs = analyzer.fs;
+    let fs = analyzer.fs();
     // Derive f64 power directly from unnormalized coherent NSGT kernels.
     let kernels: Vec<Vec<_>> = analyzer
         .nsgt

@@ -1,3 +1,14 @@
+#[cfg(feature = "research")]
+#[path = "runtime_profile/temporal/active.rs"]
+mod temporal;
+#[cfg(not(feature = "research"))]
+#[path = "runtime_profile/temporal/inactive.rs"]
+mod temporal;
+
+pub(crate) use temporal::{BackgroundTemporalProfile, TemporalMeterProfile};
+#[cfg(feature = "research")]
+pub(crate) use temporal::{BodyWorkerProfile, SharedWorkerProfile};
+
 #[cfg(feature = "native")]
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -32,9 +43,8 @@ pub(crate) struct HopProfile {
     pub(crate) rendered_tone_count: usize,
     pub(crate) post_render_us: f64,
     pub(crate) worker_allocations: Option<AllocationCounts>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg(feature = "research")]
-    pub(crate) t2_meter: Option<crate::life::report::TemporalMeterSample>,
+    #[serde(flatten)]
+    pub(crate) temporal_meter: TemporalMeterProfile,
     pub(crate) underrun_frames_total: Option<u64>,
 }
 
@@ -57,39 +67,10 @@ struct AudioProfile {
 }
 
 #[derive(Serialize)]
-#[cfg(feature = "research")]
-pub(crate) struct SharedWorkerProfile {
-    pub bus: u8,
-    pub state: crate::temporal_cognition::observation::ObservationState,
-    pub received_frames: u64,
-    pub source_missing_samples: u64,
-    pub delivery_dropped_frames: u64,
-    pub rejected_frames: u64,
-}
-
-#[derive(Serialize)]
-#[cfg(feature = "research")]
-pub(crate) struct BodyWorkerProfile {
-    pub finished: bool,
-    pub input_end: u64,
-    pub processed_frames: u64,
-    pub invalid_hops: u64,
-    pub capture_drops: u64,
-    pub outside_voice_hops: u64,
-    pub worker_resources: crate::temporal_cognition::resources::Snapshot,
-}
-
-#[derive(Serialize)]
 pub(crate) struct BackgroundProfile {
     pub scope: &'static str,
-    #[cfg(feature = "research")]
-    pub shared: [Option<SharedWorkerProfile>; 2],
-    #[cfg(feature = "research")]
-    pub body: Option<BodyWorkerProfile>,
-    #[cfg(not(feature = "research"))]
-    pub shared: [Option<()>; 2],
-    #[cfg(not(feature = "research"))]
-    pub body: Option<()>,
+    #[serde(flatten)]
+    pub(crate) observation: BackgroundTemporalProfile,
 }
 
 #[derive(Serialize)]
@@ -447,8 +428,7 @@ mod tests {
                 rendered_tone_count: 0,
                 post_render_us: 0.0,
                 worker_allocations: None,
-                #[cfg(feature = "research")]
-                t2_meter: None,
+                temporal_meter: Default::default(),
                 underrun_frames_total: None,
             });
         }
@@ -510,8 +490,7 @@ mod tests {
                 rendered_tone_count: 0,
                 post_render_us: 0.0,
                 worker_allocations: None,
-                #[cfg(feature = "research")]
-                t2_meter: None,
+                temporal_meter: Default::default(),
                 underrun_frames_total: Some(16),
             });
         }

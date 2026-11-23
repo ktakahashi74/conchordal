@@ -1,3 +1,12 @@
+#[cfg(feature = "research")]
+#[path = "analysis_worker/temporal/active.rs"]
+mod temporal;
+#[cfg(not(feature = "research"))]
+#[path = "analysis_worker/temporal/inactive.rs"]
+mod temporal;
+
+pub(crate) use temporal::AnalysisTemporalInput;
+
 use std::sync::Arc;
 
 #[cfg(feature = "native")]
@@ -45,10 +54,7 @@ pub(crate) fn run(
     result_tx: Sender<AnalysisResult>,
     update_rx: Receiver<LandscapeUpdate>,
     delivery: AnalysisDelivery,
-    #[cfg(feature = "research")] temporal_tap: Option<crate::temporal_cognition::observation::Tap>,
-    #[cfg(feature = "research")] raw_output: Option<
-        crate::temporal_cognition::t2::runtime_input::Output,
-    >,
+    temporal: AnalysisTemporalInput,
 ) {
     let mut step = make_step(
         stream,
@@ -56,10 +62,7 @@ pub(crate) fn run(
         result_tx,
         update_rx,
         delivery,
-        #[cfg(feature = "research")]
-        temporal_tap,
-        #[cfg(feature = "research")]
-        raw_output,
+        temporal,
     );
     while let Ok(hop) = hop_rx.recv() {
         if !step(hop) {
@@ -90,34 +93,14 @@ pub(crate) struct AnalysisState {
     next_frame_id: u64,
     warmup_samples: usize,
     hop_samples: usize,
-    #[cfg(feature = "research")]
-    raw: Option<crate::temporal_cognition::t2::runtime_input::Input>,
     spectral_history: Option<crate::core::spectral_history::SpectralHistory>,
-    #[cfg(feature = "research")]
-    temporal_tap: Option<crate::temporal_cognition::observation::Tap>,
+    temporal: temporal::AnalysisTemporal,
 }
 
 impl AnalysisState {
-    pub(crate) fn new(
-        stream: AnalysisStream,
-        #[cfg(feature = "research")] temporal_tap: Option<
-            crate::temporal_cognition::observation::Tap,
-        >,
-        #[cfg(feature = "research")] raw_output: Option<
-            crate::temporal_cognition::t2::runtime_input::Output,
-        >,
-    ) -> Self {
+    pub(crate) fn new(stream: AnalysisStream, temporal: AnalysisTemporalInput) -> Self {
         let hop_samples = stream.hop_samples();
-        #[cfg(feature = "research")]
-        let raw = (raw_output.is_some() || temporal_tap.as_ref().is_some_and(|t| t.t2_enabled))
-            .then(|| {
-                crate::temporal_cognition::t2::runtime_input::Input::new(
-                    stream.sample_rate() as u32,
-                    hop_samples as u64,
-                    raw_output,
-                )
-                .expect("validated raw T2 geometry")
-            });
+        let temporal = temporal.start(&stream);
         let spectral_history = stream.spectral_history_enabled().then(|| {
             crate::core::spectral_history::SpectralHistory::new(
                 stream.last().space.clone(),
@@ -132,11 +115,8 @@ impl AnalysisState {
             next_frame_id: 0,
             warmup_samples: 0,
             hop_samples,
-            #[cfg(feature = "research")]
-            raw,
             spectral_history,
-            #[cfg(feature = "research")]
-            temporal_tap,
+            temporal,
         }
     }
 
@@ -209,11 +189,8 @@ impl AnalysisState {
             sites,
             warmup_samples,
             hop_samples,
-            #[cfg(feature = "research")]
-            raw,
             spectral_history,
-            #[cfg(feature = "research")]
-            temporal_tap,
+            temporal,
             ..
         } = self;
         let hop_samples = *hop_samples;
@@ -222,8 +199,7 @@ impl AnalysisState {
             hop_samples,
             "analysis delivery requires complete hops"
         );
-        #[cfg(feature = "research")]
-        let t2 = raw.as_mut().and_then(|input| input.observe(frame_id, hop));
+        let t2 = temporal.observe_raw(frame_id, hop);
         if let Some(packet) = loo_pcm {
             sites.retain(|s| packet.sites.iter().any(|p| p.id == s.id));
             for full in &packet.sites {
@@ -266,12 +242,7 @@ impl AnalysisState {
             }
         }
         let frame = stream.process_from(hop, source);
-        #[cfg(all(feature = "native", feature = "research"))]
-        if let Some(tap) = temporal_tap.as_mut() {
-            let mono_energy =
-                hop.iter().map(|x| f64::from(*x).powi(2)).sum::<f64>() / hop.len() as f64;
-            tap.observe_frame(frame_id, &frame.nsgt_power, mono_energy, t2);
-        }
+        temporal.observe_spectrum(frame_id, hop, &frame.nsgt_power, t2);
         if let Some(history) = spectral_history {
             history.observe(
                 frame_id * hop_samples as u64,
@@ -385,11 +356,9 @@ impl AnalysisState {
     }
 }
 
-#[cfg(feature = "research")]
 impl Drop for AnalysisState {
     fn drop(&mut self) {
-        drop(self.raw.take());
-        drop(self.temporal_tap.take());
+        self.temporal.finish();
     }
 }
 
@@ -400,18 +369,9 @@ pub(crate) fn make_step(
     result_tx: Sender<AnalysisResult>,
     update_rx: Receiver<LandscapeUpdate>,
     delivery: AnalysisDelivery,
-    #[cfg(feature = "research")] temporal_tap: Option<crate::temporal_cognition::observation::Tap>,
-    #[cfg(feature = "research")] raw_output: Option<
-        crate::temporal_cognition::t2::runtime_input::Output,
-    >,
+    temporal: AnalysisTemporalInput,
 ) -> impl FnMut(AnalysisHop) -> bool {
-    let mut state = AnalysisState::new(
-        stream,
-        #[cfg(feature = "research")]
-        temporal_tap,
-        #[cfg(feature = "research")]
-        raw_output,
-    );
+    let mut state = AnalysisState::new(stream, temporal);
     #[cfg(test)]
     let mut l1_probe = crate::runtime::l1_probe::Probe::new("analysis");
     move |first_hop: AnalysisHop| {
@@ -540,10 +500,7 @@ mod tests {
                 tx,
                 update_rx,
                 AnalysisDelivery::Ordered,
-                #[cfg(feature = "research")]
-                None,
-                #[cfg(feature = "research")]
-                None,
+                Default::default(),
             );
             let frames: Vec<_> = rx.into_iter().collect();
             assert_eq!(
@@ -617,17 +574,7 @@ mod tests {
             } else {
                 AnalysisDelivery::Ordered
             };
-            run(
-                stream,
-                hop_rx,
-                tx,
-                urx,
-                delivery,
-                #[cfg(feature = "research")]
-                None,
-                #[cfg(feature = "research")]
-                None,
-            );
+            run(stream, hop_rx, tx, urx, delivery, Default::default());
             let frames: Vec<_> = rx.into_iter().collect();
             assert!(
                 frames
@@ -745,10 +692,7 @@ mod tests {
                     result_tx,
                     update_rx,
                     AnalysisDelivery::Ordered,
-                    #[cfg(feature = "research")]
-                    None,
-                    #[cfg(feature = "research")]
-                    None,
+                    Default::default(),
                 );
             });
             for (index, reference) in expected.iter().enumerate() {
@@ -815,10 +759,7 @@ mod tests {
                 result_tx,
                 update_rx,
                 AnalysisDelivery::Latest(result_rx.clone()),
-                #[cfg(feature = "research")]
-                Some(tap),
-                #[cfg(feature = "research")]
-                None,
+                AnalysisTemporalInput::new(Some(tap), None),
             );
             let observation = *observed.lock().unwrap();
             assert_eq!(
@@ -871,10 +812,7 @@ mod tests {
                 result_tx,
                 update_rx,
                 AnalysisDelivery::Ordered,
-                #[cfg(feature = "research")]
-                None,
-                #[cfg(feature = "research")]
-                None,
+                Default::default(),
             );
             done_tx.send(()).unwrap();
         });
@@ -940,10 +878,7 @@ mod tests {
                 result_tx,
                 update_rx,
                 delivery,
-                #[cfg(feature = "research")]
-                None,
-                #[cfg(feature = "research")]
-                None,
+                Default::default(),
             );
 
             if ordered {
@@ -1006,10 +941,7 @@ mod tests {
                 result_tx,
                 update_rx,
                 delivery,
-                #[cfg(feature = "research")]
-                None,
-                #[cfg(feature = "research")]
-                None,
+                Default::default(),
             )
         });
 
@@ -1076,13 +1008,7 @@ mod tests {
         let (kernel, params) = crate::runtime::body_metabolism_test_core();
         let mut stream = AnalysisStream::new(params, kernel);
         stream.enable_onset_habituation(0.5);
-        let mut analysis = AnalysisState::new(
-            stream,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-        );
+        let mut analysis = AnalysisState::new(stream, Default::default());
         let mut packet = packet(7, 0, &[0.; 512]);
         packet.sources[0].kind = SourceKind::Voice;
         packet.sources[0].onset_history = true;
@@ -1176,10 +1102,7 @@ mod tests {
             result_tx,
             updates,
             AnalysisDelivery::Ordered,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            Default::default(),
         );
         for (id, frame) in result_rx.try_iter() {
             let frame = frame.unwrap();
@@ -1245,10 +1168,7 @@ mod tests {
                 result_tx,
                 updates,
                 delivery,
-                #[cfg(feature = "research")]
-                None,
-                #[cfg(feature = "research")]
-                None,
+                Default::default(),
             );
             let frames: Vec<_> = result_rx.try_iter().collect();
             assert_eq!(frames.len(), if ordered { 40 } else { 1 });
@@ -1299,10 +1219,7 @@ mod tests {
             result_tx,
             updates,
             AnalysisDelivery::Latest(result_rx.clone()),
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            Default::default(),
         );
         let frames: Vec<_> = result_rx.try_iter().collect();
         assert_eq!(frames.len(), 1);
@@ -1409,10 +1326,7 @@ mod tests {
             result_tx,
             updates,
             AnalysisDelivery::Ordered,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
+            Default::default(),
         );
         let frames: Vec<_> = result_rx.try_iter().collect();
         assert_eq!(frames.len(), 24);
@@ -1457,10 +1371,7 @@ mod tests {
                 result_tx,
                 updates,
                 AnalysisDelivery::Ordered,
-                #[cfg(feature = "research")]
-                None,
-                #[cfg(feature = "research")]
-                None,
+                Default::default(),
             );
             producer.join().unwrap();
         }
@@ -1480,27 +1391,9 @@ mod tests {
         let mut listener_stream = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
         listener_stream
             .enable_tonal_context(crate::core::tonal_context::Decoder::unqueried_for_test());
-        let mut field = AnalysisState::new(
-            field_stream,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-        );
-        let mut follower = AnalysisState::new(
-            listener_stream.clone(),
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-        );
-        let mut reference = AnalysisState::new(
-            listener_stream,
-            #[cfg(feature = "research")]
-            None,
-            #[cfg(feature = "research")]
-            None,
-        );
+        let mut field = AnalysisState::new(field_stream, Default::default());
+        let mut follower = AnalysisState::new(listener_stream.clone(), Default::default());
+        let mut reference = AnalysisState::new(listener_stream, Default::default());
         assert!(follower.can_follow() && !field.can_follow());
         let hop = reference.hop_samples;
         let tone = |hz: f32, frame: u64, amp: f32| -> Vec<f32> {

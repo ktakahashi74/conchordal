@@ -1,3 +1,4 @@
+use super::temporal_ports::{self, TemporalChannels, TemporalConfig, TemporalObservation};
 use super::*;
 
 /// Immutable per-run settings and shared control flags for the worker thread.
@@ -7,8 +8,7 @@ pub(super) struct WorkerConfig {
     /// Reserve the habitat audio-only meter (Flora, harmonic rhythm, Rain follow_meter).
     pub(super) habitat_meter: bool,
     pub(super) render_prototype: crate::life::sound::render_prototype::RenderPrototype,
-    #[cfg(feature = "research")]
-    pub(super) temporal_meter_t2: bool,
+    pub(super) temporal_config: TemporalConfig,
     #[cfg(feature = "research")]
     pub(super) onset_comparison: Option<crate::config::TemporalOnsetComparisonConfig>,
     pub(super) scenario_name: String,
@@ -37,11 +37,7 @@ pub(super) struct WorkerConfig {
 
 /// Channel endpoints and the audio ring-buffer producer owned by the worker.
 pub(super) struct WorkerChannels {
-    #[cfg(feature = "research")]
-    pub(super) t2_inbox: Option<crate::temporal_cognition::t2::runtime_input::Inbox>,
-    #[cfg(feature = "research")]
-    pub(super) temporal_snapshots:
-        [Option<Arc<std::sync::Mutex<crate::temporal_cognition::observation::Snapshot>>>; 2],
+    pub(super) observation: TemporalChannels,
     pub(super) ui_tx: Option<Sender<UiFrame>>,
     #[cfg(feature = "native")]
     pub(super) audio_prod: Option<ringbuf::HeapProd<f32>>,
@@ -120,6 +116,7 @@ pub(super) struct ListenerSync {
 }
 
 pub(super) struct TemporalState {
+    pub(super) observation: TemporalObservation,
     pub(super) harmonic_relations:
         Option<crate::temporal_cognition::harmonic_relations::runtime::Runtime>,
     // Production-side meter core (auditory-motor coupling), separate from the
@@ -129,16 +126,10 @@ pub(super) struct TemporalState {
     pub(super) harmonic_clock: Option<crate::life::harmonic_rhythm::HarmonicRhythm>,
     pub(super) flora_meter: Option<MeterNetwork>,
     pub(super) flora_rhythm: crate::life::flora::TemporalObservation,
-    #[cfg(feature = "research")]
-    pub(super) t2_sample: Option<crate::life::report::TemporalMeterSample>,
     pub(super) temporal_expectation:
         Option<crate::core::temporal_expectation::AcousticTemporalExpectation>,
     #[cfg(feature = "research")]
-    pub(super) body_snapshot: Option<Box<crate::temporal_cognition::body::Snapshot>>,
-    #[cfg(feature = "research")]
     pub(super) footprint_worker: Option<crate::life::onset_footprint::Worker>,
-    #[cfg(feature = "research")]
-    pub(super) temporal_frames: Box<[crate::temporal_cognition::observation::Snapshot; 2]>,
     pub(super) participation_predictions: Vec<(u64, u32, ParticipationPrediction)>,
     /// Traced decisions wait here so their encoding is charged to the report phase.
     #[cfg(feature = "research")]
@@ -258,11 +249,8 @@ impl WorkerState {
             hop: cfg.hop,
         };
         let new_meter = || {
-            #[cfg(feature = "research")]
-            if cfg.temporal_meter_t2 {
-                return MeterNetwork::new_continuous(cfg.fs as u32, cfg.hop as u64);
-            }
-            MeterNetwork::new()
+            cfg.temporal_config
+                .make_meter(cfg.fs as u32, cfg.hop as u64)
         };
         let mut prod_meter = new_meter();
         prod_meter.set_shaping(cfg.meter_shaping);
@@ -296,8 +284,6 @@ impl WorkerState {
             warn!("listener contour reporting unavailable below 2400 Hz sample rate");
         }
         let now = Instant::now();
-        #[cfg(feature = "research")]
-        let temporal_frames = Default::default();
         let monitor = AudioMonitor::new();
         let harmonic_clock = (cfg.harmonic_rhythm > 0).then(|| {
             crate::life::harmonic_rhythm::HarmonicRhythm::new(
@@ -366,16 +352,13 @@ impl WorkerState {
                 hab_listener,
             },
             temporal: TemporalState {
+                observation: Default::default(),
                 harmonic_relations,
                 prod_meter,
                 harmonic_clock,
                 flora_meter,
                 flora_rhythm: Default::default(),
-                #[cfg(feature = "research")]
-                t2_sample: None,
                 temporal_expectation,
-                #[cfg(feature = "research")]
-                body_snapshot: None,
                 #[cfg(feature = "native")]
                 #[cfg(feature = "research")]
                 footprint_worker: cfg.onset_comparison.map(|_| {
@@ -388,8 +371,6 @@ impl WorkerState {
                 #[cfg(not(feature = "native"))]
                 #[cfg(feature = "research")]
                 footprint_worker: None,
-                #[cfg(feature = "research")]
-                temporal_frames,
                 participation_predictions: Vec::new(),
                 #[cfg(feature = "research")]
                 participation_decisions: Vec::new(),
@@ -414,19 +395,9 @@ pub(super) fn worker_loop(
     #[cfg(test)]
     let mut l1_probe = super::l1_probe::Probe::new("audio");
 
-    #[cfg(feature = "research")]
-    for (target, snapshot) in state
-        .temporal
-        .temporal_frames
-        .iter_mut()
-        .zip(&channels.temporal_snapshots)
-    {
-        if let Some(snapshot) = snapshot {
-            *target = *snapshot.lock().expect("initial observation snapshot");
-        }
-    }
+    temporal_ports::read_initial(&mut state, &channels);
     if let Some(tx) = &channels.ui_tx {
-        let initial_frame = build_initial_ui_frame(
+        let mut initial_frame = build_initial_ui_frame(
             &cfg.scenario_name,
             &state.conductor,
             &state.pop,
@@ -435,11 +406,10 @@ pub(super) fn worker_loop(
             state.lifecycle.playback_state,
             cfg.fs,
         );
-        #[cfg(feature = "research")]
-        let initial_frame = UiFrame {
-            temporal: Arc::new(*state.temporal.temporal_frames),
-            ..initial_frame
-        };
+        state
+            .temporal
+            .observation
+            .set_initial_ui(&mut initial_frame);
         let _ = tx.try_send(initial_frame);
     }
 
@@ -630,79 +600,9 @@ pub(super) fn finish_run(
             |writer| writer.write_body_footprint_worker(&worker.stats),
         );
     }
-    #[cfg(feature = "research")]
-    if let Some(capture) = state.schedule_renderer.body_capture.as_mut() {
-        capture.finish();
-        let snapshot = capture.snapshot();
-        if snapshot.state == crate::temporal_cognition::observation::ObservationState::Failed {
-            state
-                .lifecycle
-                .failures
-                .push("private body analysis worker failed".into());
-        }
+    temporal_ports::finish_capture(state);
 
-        if let Some(current) = state.temporal.body_snapshot.as_mut() {
-            **current = snapshot;
-        }
-        report_try(&mut state.reporter, "final body observation", |writer| {
-            writer.write_body_observation(&snapshot)
-        });
-    }
-
-    #[cfg(feature = "research")]
-    if (channels.temporal_snapshots.iter().any(Option::is_some) || channels.t2_inbox.is_some())
-        && channels.audio_to_analysis_tx.is_some()
-    {
-        // Close input and drain publishers before reading their final observer state.
-        // This runs after generation has stopped, never in a live hop or callback.
-        channels.audio_to_analysis_tx.take();
-        channels.presentation_to_listener_tx.take();
-        if let Some(inbox) = channels.t2_inbox.as_mut() {
-            loop {
-                for _ in inbox.rx.try_iter() {}
-                match channels.analysis_result_rx.try_recv() {
-                    Ok(_) => {}
-                    Err(crate::handoff::TryRecvError::Disconnected) => break,
-                    Err(crate::handoff::TryRecvError::Empty) => {
-                        thread::sleep(Duration::from_micros(200))
-                    }
-                }
-            }
-            inbox.finish();
-            if let Some(sample) = state.temporal.t2_sample.as_mut() {
-                sample.input = inbox.diagnostics;
-                report_try(&mut state.reporter, "final T2 meter", |writer| {
-                    writer.write_temporal_meter(sample)
-                });
-            }
-        } else {
-            for _ in &channels.analysis_result_rx {}
-        }
-        if let Some(rx) = &channels.listener_result_rx {
-            for _ in rx {}
-        }
-        let now_sec = state.current_time();
-
-        #[cfg(feature = "research")]
-        for (target, snapshot) in state
-            .temporal
-            .temporal_frames
-            .iter_mut()
-            .zip(&channels.temporal_snapshots)
-        {
-            if let Some(snapshot) = snapshot {
-                *target = *snapshot.lock().expect("final observation snapshot");
-                report_try(
-                    &mut state.reporter,
-                    "final temporal observation",
-                    |writer| writer.write_temporal_observation(now_sec, target),
-                );
-            }
-        }
-        state.ui.last_ui_update = Instant::now() - UI_MIN_INTERVAL;
-        let now_tick = state.timebase.frame_start_tick(state.frame_idx);
-        send_runtime_ui_frame(state, channels, cfg, Arc::from([]), 0.0, [0.0; 2], now_tick);
-    }
+    temporal_ports::finish_analysis(state, channels, cfg);
     for (voice_id, _, prediction) in state.temporal.participation_predictions.drain(..) {
         let sample = participation_outcome(voice_id, cfg.fs as u32, prediction, None)
             .expect("end of input closes every pending observation");
@@ -710,6 +610,7 @@ pub(super) fn finish_run(
             writer.write_participation_outcome(&sample)
         });
     }
+
     report_try(&mut state.reporter, "rhythm summary", |writer| {
         writer.write_rhythm_summary()
     });
@@ -724,43 +625,12 @@ pub(super) fn finish_run(
         .as_mut()
         .and_then(|writer| writer.failure.take());
     if let Some(profile) = state.profile.as_mut() {
-        use crate::runtime_profile::BackgroundProfile;
-        #[cfg(feature = "research")]
-        use crate::runtime_profile::{BodyWorkerProfile, SharedWorkerProfile};
-        profile.background = Some(BackgroundProfile {
+        profile.background = Some(crate::runtime_profile::BackgroundProfile {
             scope: "terminal worker counters after drain/join; null means disabled, not zero cost; resource distributions cover all received frames and sample-clock 100ms windows, not the selected hop measurement interval; wall processing includes publication lock/copy, delivery includes queue wait, neither is thread CPU time; private startup is worker lane initialization; table/rejected are unused for private body; excludes final profile serialization",
-            #[cfg(feature = "research")]
-            shared: std::array::from_fn(|bus| {
-                channels.temporal_snapshots[bus].as_ref().map(|_| {
-                    let snapshot = &state.temporal.temporal_frames[bus];
-                    SharedWorkerProfile {
-                        bus: snapshot.bus,
-                        state: snapshot.state,
-                        received_frames: snapshot.received_frames,
-                        source_missing_samples: snapshot.source_missing_samples,
-                        delivery_dropped_frames: snapshot.delivery_dropped_frames,
-                        rejected_frames: snapshot.rejected_frames,
-                    }
-                })
-            }),
-            #[cfg(feature = "research")]
-            body: state
+            observation: state
                 .temporal
-                .body_snapshot
-                .as_ref()
-                .map(|snapshot| BodyWorkerProfile {
-                    finished: snapshot.finished,
-                    input_end: snapshot.input_end,
-                    processed_frames: snapshot.processed_frames,
-                    invalid_hops: snapshot.invalid_hops,
-                    capture_drops: snapshot.capture_drops,
-                    outside_voice_hops: snapshot.outside_voice_hops,
-                    worker_resources: snapshot.worker_resources,
-                }),
-            #[cfg(not(feature = "research"))]
-            shared: [None; 2],
-            #[cfg(not(feature = "research"))]
-            body: None,
+                .observation
+                .background_profile(&channels.observation),
         });
     }
     if let Some(profile) = state.profile.take()
@@ -849,19 +719,7 @@ pub(super) fn process_hop(
     let listener_pressure_update =
         listener_state_update.map(|listener_state| cfg.dcc_coupler.pressure(listener_state));
 
-    #[cfg(feature = "research")]
-    for (target, snapshot) in state
-        .temporal
-        .temporal_frames
-        .iter_mut()
-        .zip(&channels.temporal_snapshots)
-    {
-        if let Some(snapshot) = snapshot
-            && let Ok(current) = snapshot.try_lock()
-        {
-            *target = *current;
-        }
-    }
+    temporal_ports::read_live(state, channels);
 
     let population_start = state.profile.as_ref().map(|_| Instant::now());
     state.current_landscape.harmonic.now_sample = now_tick;
@@ -956,29 +814,11 @@ pub(super) fn process_hop(
         });
     let channel_peak = [max_abs, max_abs];
 
-    #[cfg(feature = "research")]
-    if cfg.temporal_meter_t2
-        && let Err(err) = channels
-            .audio_to_analysis_tx
-            .as_ref()
-            .expect("analysis input open during generation")
-            .send((
-                state.frame_idx,
-                Arc::clone(&habitat_chunk),
-                loo_chunk.take(),
-            ))
-    {
-        state
-            .lifecycle
-            .failures
-            .push(format!("analysis worker disconnected: {err}"));
-        cfg.exiting.store(true, Ordering::SeqCst);
-    }
+    temporal_ports::send_before_meter(state, channels, cfg, &habitat_chunk, &mut loo_chunk);
     drive_production_meter(
         state,
         cfg,
-        #[cfg(feature = "research")]
-        channels,
+        &mut channels.observation,
         habitat_chunk.as_ref(),
     );
     state.listener.latest_listener_fast_state =
@@ -1015,10 +855,7 @@ pub(super) fn process_hop(
     );
 
     // Feed every habitat hop to analysis. Dropping hops breaks time continuity.
-    #[cfg(feature = "research")]
-    let send_after_meter = !cfg.temporal_meter_t2;
-    #[cfg(not(feature = "research"))]
-    let send_after_meter = true;
+    let send_after_meter = !cfg.temporal_config.t2_enabled();
     if send_after_meter
         && let Err(err) = channels
             .audio_to_analysis_tx
@@ -1203,8 +1040,7 @@ pub(super) fn process_hop(
             rendered_tone_count: state.schedule_renderer.active_tone_count(),
             post_render_us,
             worker_allocations,
-            #[cfg(feature = "research")]
-            t2_meter: state.temporal.t2_sample,
+            temporal_meter: state.temporal.observation.meter_profile(),
             underrun_frames_total: cfg
                 .underrun_frames
                 .as_ref()

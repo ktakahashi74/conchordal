@@ -34,12 +34,14 @@ struct PendingTrigger {
     energy: f32,
 }
 
-#[derive(Clone)]
 #[cfg(feature = "research")]
-struct ExcitedState {
-    closed: bool,
-    retired: bool,
-}
+#[path = "tone/prototype/active.rs"]
+mod prototype;
+#[cfg(not(feature = "research"))]
+#[path = "tone/prototype/inactive.rs"]
+mod prototype;
+
+use prototype::PrototypeTone;
 
 #[derive(Clone)]
 pub struct Tone {
@@ -49,8 +51,7 @@ pub struct Tone {
     pub(crate) phrase_pitch_changed: bool,
     pub(crate) phrase_off_origin: &'static str,
     pub(crate) phrase_gain: f32,
-    #[cfg(feature = "research")]
-    excited: Option<ExcitedState>,
+    prototype: PrototypeTone,
     backend: AnyBackend,
     render_modulator: Option<RenderModulator>,
     pending_impulse_energy: f32,
@@ -118,11 +119,7 @@ impl Tone {
         assert_eq!(self.envelope, other.envelope);
         assert_eq!(self.started, other.started);
         assert_eq!(self.noise_state, other.noise_state);
-        #[cfg(feature = "research")]
-        assert_eq!(
-            self.excited.as_ref().map(|s| (s.closed, s.retired)),
-            other.excited.as_ref().map(|s| (s.closed, s.retired))
-        );
+        assert_eq!(self.prototype, other.prototype);
         assert_eq!(
             format!("{:?}", self.pending_updates),
             format!("{:?}", other.pending_updates)
@@ -162,10 +159,7 @@ impl Tone {
         self.phrase_off_origin = template.phrase_off_origin;
         self.phrase_gain = template.phrase_gain;
         self.backend.reset_representative();
-        #[cfg(feature = "research")]
-        {
-            self.excited = template.excited.clone();
-        }
+        self.prototype = template.prototype.clone();
         self.render_modulator = template.render_modulator.clone();
         self.pending_impulse_energy = template.pending_impulse_energy;
         self.envelope = template.envelope;
@@ -240,8 +234,7 @@ impl Tone {
             phrase_pitch_changed: false,
             phrase_off_origin: "materialized_duration",
             phrase_gain: 1.,
-            #[cfg(feature = "research")]
-            excited: None,
+            prototype: Default::default(),
             backend,
             render_modulator: render_modulator.map(RenderModulator::from_spec),
             pending_impulse_energy: 0.0,
@@ -287,23 +280,13 @@ impl Tone {
 
     pub fn seed_modal_phases(&mut self, seed: u64) {
         self.backend.seed_modal_phases(seed);
-        #[cfg(feature = "research")]
-        if self.excited.is_some() {
+        if self.prototype.enabled() {
             self.noise_state = seed;
         }
     }
 
-    #[cfg(feature = "research")]
-    pub(crate) fn enable_phase3(&mut self) {
-        self.excited = Some(ExcitedState {
-            closed: false,
-            retired: false,
-        });
-    }
-
     pub(crate) fn supports_self_model(&self) -> bool {
-        #[cfg(feature = "research")]
-        if self.excited.is_some() {
+        if self.prototype.enabled() {
             return false;
         }
         self.phrase.is_none_or(|p| p.reservation.is_none())
@@ -321,9 +304,8 @@ impl Tone {
         adsr: Option<ToneAdsr>,
         modulator: RenderModulatorSpec,
         rhythms: &NeuralRhythms,
-        #[cfg(feature = "research")] renderer_phase3: bool,
+        renderer_phase3: bool,
     ) -> Option<crate::life::tone_energy::ToneEnergy> {
-        #[cfg(feature = "research")]
         if renderer_phase3 {
             return None;
         }
@@ -346,31 +328,6 @@ impl Tone {
             sine: None,
             bank: None,
         })
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn residual_bound(&self, now: Tick) -> Option<f64> {
-        let state = self.excited.as_ref()?;
-        if now < self.envelope.release_end {
-            return None;
-        }
-        if !self.started {
-            return Some(0.0);
-        }
-        if !state.closed || now < self.sound_end_tick() {
-            return None;
-        }
-        Some(match &self.backend {
-            AnyBackend::Oscillator(_) => 0.0,
-            AnyBackend::Resonator(engine) => engine.phase3_residual_bound(),
-        })
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn retire_phase3(&mut self) {
-        if let Some(state) = &mut self.excited {
-            state.retired = true;
-        }
     }
 
     pub fn note_off(&mut self, tick: Tick) {
@@ -421,8 +378,7 @@ impl Tone {
     }
 
     pub fn trigger_impulse(&mut self, energy: f32) {
-        #[cfg(feature = "research")]
-        if self.excited.as_ref().is_some_and(|s| s.closed || s.retired) {
+        if self.prototype.blocked() {
             return;
         }
         if !energy.is_finite() || energy <= 0.0 {
@@ -444,17 +400,9 @@ impl Tone {
     }
 
     pub fn schedule_update(&mut self, at_tick: Tick, update: ToneUpdate) -> bool {
-        #[cfg(feature = "research")]
-        if self.excited.is_some()
-            && (at_tick >= self.envelope.release_end
-                || self.excited.as_ref().is_some_and(|s| s.closed || s.retired)
-                || update
-                    .target_freq_hz
-                    .is_some_and(|v| !v.is_finite() || v <= 0.0)
-                || update.target_amp.is_some_and(|v| !v.is_finite() || v < 0.0)
-                || update
-                    .continuous_drive
-                    .is_some_and(|v| !v.is_finite() || v < 0.0))
+        if self
+            .prototype
+            .rejects_update(at_tick, self.envelope.release_end, &update)
         {
             return false;
         }
@@ -472,8 +420,7 @@ impl Tone {
     }
 
     pub fn apply_updates_if_due(&mut self, tick: Tick) {
-        #[cfg(feature = "research")]
-        if self.excited.is_some() && tick >= self.envelope.release_end {
+        if self.prototype.enabled() && tick >= self.envelope.release_end {
             self.pending_updates.clear();
             return;
         }
@@ -485,8 +432,7 @@ impl Tone {
             self.apply_update(&pending.update);
         }
         if tick >= self.envelope.hold_end {
-            #[cfg(feature = "research")]
-            if self.excited.is_some() {
+            if self.prototype.enabled() {
                 return;
             }
             self.pending_updates.clear();
@@ -494,8 +440,7 @@ impl Tone {
     }
 
     pub fn kick_planned_if_due(&mut self, tick: Tick) -> bool {
-        #[cfg(feature = "research")]
-        if self.excited.is_some() && tick >= self.envelope.release_end {
+        if self.prototype.enabled() && tick >= self.envelope.release_end {
             self.planned_kick_pending = None;
             return false;
         }
@@ -510,12 +455,7 @@ impl Tone {
     }
 
     pub(crate) fn phrase_start_due(&self, at: Tick) -> bool {
-        #[cfg(feature = "research")]
-        if self
-            .excited
-            .as_ref()
-            .is_some_and(|state| state.closed || state.retired)
-        {
+        if self.prototype.blocked() {
             return false;
         }
         at >= self.envelope.onset
@@ -544,12 +484,7 @@ impl Tone {
     }
 
     pub(crate) fn harmonic_impulse_due(&self, sample: Tick) -> bool {
-        #[cfg(feature = "research")]
-        if self
-            .excited
-            .as_ref()
-            .is_some_and(|state| state.closed || state.retired)
-        {
+        if self.prototype.blocked() {
             return false;
         }
         sample >= self.envelope.onset
@@ -595,9 +530,8 @@ impl Tone {
         {
             self.radiated_amplitude = 0.0;
         }
-        #[cfg(feature = "research")]
-        if self.excited.is_some() {
-            return self.render_excited_tick(tick, dt, rhythms);
+        if let Some(sample) = self.render_prototype_sample(tick, dt, rhythms) {
+            return sample;
         }
         if let Some(trigger) = self.pending_trigger
             && tick >= trigger.at_tick
@@ -683,103 +617,6 @@ impl Tone {
         if noise != 0. {
             sample += noise;
         }
-        sample
-    }
-
-    #[cfg(feature = "research")]
-    fn render_excited_tick(&mut self, tick: Tick, dt: f32, rhythms: &NeuralRhythms) -> f32 {
-        if tick < self.envelope.onset || self.excited.as_ref().unwrap().retired {
-            return 0.0;
-        }
-        let open = tick < self.envelope.release_end;
-        if !open {
-            let state = self.excited.as_mut().unwrap();
-            state.closed = true;
-            self.pending_updates.clear();
-            self.pending_trigger = None;
-            self.planned_kick_pending = None;
-            self.pending_impulse_energy = 0.0;
-            if let AnyBackend::Oscillator(bank) = &mut self.backend {
-                return bank.attack_sample(self.current_pitch_hz, tick, 0., 0.);
-            }
-        } else {
-            if let Some(trigger) = self.pending_trigger
-                && tick >= trigger.at_tick
-            {
-                self.pending_trigger = None;
-                self.trigger_impulse(trigger.energy);
-            }
-            self.advance_smoothing();
-        }
-        if self.pending_impulse_energy > 0.0 {
-            self.started = true;
-        }
-        if !self.started {
-            return 0.0;
-        }
-        let impulse = std::mem::take(&mut self.pending_impulse_energy);
-        let mut z = 0.0;
-        let mut strike_gain = 0.;
-        let mut spectral_drive = 0.0;
-        let mut active = false;
-        if open {
-            let signal = self.articulation_signal(rhythms, dt);
-            strike_gain = signal.strike_gain;
-            // Preserve the legacy harmonic burst independently of amplitude kick.
-            spectral_drive =
-                impulse + self.continuous_drive * (signal.amplitude * self.envelope.gain_at(tick));
-            active = signal.is_active;
-            if active {
-                z = self.envelope.gain_at(tick) * signal.amplitude.max(0.0);
-            }
-        }
-        let a = self.current_amp;
-        let sample = match &mut self.backend {
-            AnyBackend::Oscillator(bank) => {
-                let gain = if bank.is_sine() {
-                    if impulse > 0.0 {
-                        self.sine_impulse_boost = (self.sine_impulse_boost
-                            + impulse * SINE_IMPULSE_BOOST_GAIN)
-                            .clamp(0.0, SINE_IMPULSE_BOOST_MAX);
-                    }
-                    let gain = 1.0 + self.sine_impulse_boost;
-                    if active && z > 0.0 {
-                        self.sine_impulse_boost *= impulse_boost_decay(self.sample_dt);
-                    }
-                    gain
-                } else {
-                    bank.excitation_gain(spectral_drive)
-                };
-                let excitation = if active && z > 0.0 { a * z * gain } else { 0.0 };
-                #[cfg(test)]
-                {
-                    self.radiated_amplitude = excitation;
-                }
-                let spectral_drive = if bank.is_sine() { 0.0 } else { spectral_drive };
-                let carrier =
-                    excitation * bank.phase3_carrier(self.current_pitch_hz, spectral_drive, open);
-                let noise =
-                    bank.attack_sample(self.current_pitch_hz, tick, impulse, a * strike_gain);
-                if noise == 0. {
-                    carrier
-                } else {
-                    carrier + noise
-                }
-            }
-            AnyBackend::Resonator(engine) => {
-                let mut drive = 0.0;
-                if open {
-                    // Address noise by Tone identity and sample clock, never pool order.
-                    let mut noise = self
-                        .noise_state
-                        .wrapping_add(tick.wrapping_mul(0x9E3779B97F4A7C15));
-                    drive =
-                        a * impulse + a * self.continuous_drive * z * z * fast_noise(&mut noise);
-                }
-                engine.phase3_sample(self.current_pitch_hz, drive, open)
-            }
-        };
-        assert!(sample.is_finite(), "phase3 produced non-finite PCM");
         sample
     }
 
@@ -1056,8 +893,7 @@ impl Tone {
     }
 
     pub fn end_tick(&self) -> Tick {
-        #[cfg(feature = "research")]
-        if self.excited.is_some() {
+        if self.prototype.enabled() {
             return Tick::MAX;
         }
         self.sound_end_tick()
@@ -1068,9 +904,8 @@ impl Tone {
     }
 
     pub fn is_done(&self, now: Tick) -> bool {
-        #[cfg(feature = "research")]
-        if let Some(state) = &self.excited {
-            return state.retired;
+        if let Some(done) = self.prototype.retired() {
+            return done;
         }
         now >= self.end_tick()
     }
@@ -1315,7 +1150,6 @@ mod tests {
                 None,
                 spec.clone(),
                 &rhythms,
-                #[cfg(feature = "research")]
                 false,
             )
             .unwrap();

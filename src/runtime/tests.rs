@@ -372,8 +372,7 @@ fn scenario_dispatch_after_ten_minutes_uses_audio_frame_time() {
         duration_tick: None,
         harmonic_relations: None,
         habitat_meter: false,
-        #[cfg(feature = "research")]
-        render_prototype: false,
+        render_prototype: Default::default(),
         #[cfg(feature = "research")]
         temporal_meter_t2: false,
         #[cfg(feature = "research")]
@@ -994,8 +993,7 @@ fn flora_acoustic_meter_ignores_internal_commands_for_identical_pcm() {
             duration_tick: None,
             harmonic_relations: None,
             habitat_meter: true,
-            #[cfg(feature = "research")]
-            render_prototype: false,
+            render_prototype: Default::default(),
             #[cfg(feature = "research")]
             temporal_meter_t2: _continuous,
             #[cfg(feature = "research")]
@@ -1215,8 +1213,7 @@ fn realtime_listener_update_does_not_block_on_a_full_queue() {
             duration_tick: None,
             harmonic_relations: None,
             habitat_meter: false,
-            #[cfg(feature = "research")]
-            render_prototype: false,
+            render_prototype: Default::default(),
             #[cfg(feature = "research")]
             temporal_meter_t2: false,
             #[cfg(feature = "research")]

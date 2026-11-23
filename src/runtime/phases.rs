@@ -116,10 +116,7 @@ pub(super) fn advance_population(
     }
     for voice in &mut state.pop.voices {
         if crate::life::support_action::active(state.current_landscape.harmonic.support_weights) {
-            #[cfg(feature = "research")]
-            {
-                voice.support.renderer_phase3 = cfg.render_prototype;
-            }
+            voice.support.renderer_phase3 = cfg.render_prototype;
             voice.support.body = state.schedule_renderer.support_body(
                 voice.id(),
                 voice.metadata.generation,

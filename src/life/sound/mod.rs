@@ -10,6 +10,7 @@ pub(crate) mod mode_utils;
 pub mod oscillator_bank;
 pub mod pitch_motion;
 pub mod render_modulator;
+pub(crate) mod render_prototype;
 pub(crate) mod sine_forecast;
 pub(crate) mod spectral;
 pub mod tone;

@@ -1,4 +1,12 @@
+#[cfg(feature = "research")]
+#[path = "schedule_renderer/prototype/active.rs"]
+mod prototype;
+#[cfg(not(feature = "research"))]
+#[path = "schedule_renderer/prototype/inactive.rs"]
+mod prototype;
+
 use crate::clock::Instant;
+use crate::life::sound::render_prototype::RenderPrototype;
 mod room_buses;
 #[cfg(test)]
 mod site_tests;
@@ -205,8 +213,7 @@ pub struct ScheduleRenderer {
     expression: Option<crate::scenario::expression::Expression>,
     expression_gain: Vec<f32>,
     pub(crate) rest_sources: Vec<RestSource>,
-    #[cfg(feature = "research")]
-    prototype: bool,
+    pub(crate) prototype: RenderPrototype,
     time: Timebase,
     buf_presentation: Vec<f32>,
     buf_habitat: Vec<f32>,
@@ -324,8 +331,7 @@ impl ScheduleRenderer {
             expression: None,
             expression_gain: Vec::new(),
             rest_sources: Vec::new(),
-            #[cfg(feature = "research")]
-            prototype: false,
+            prototype: Default::default(),
             time,
             buf_presentation: vec![0.0; time.hop],
             buf_habitat: vec![0.0; time.hop],
@@ -354,21 +360,10 @@ impl ScheduleRenderer {
         self
     }
 
-    #[cfg(feature = "research")]
+    #[cfg(test)]
     pub(crate) fn with_prototype(mut self, prototype: bool) -> Self {
-        self.prototype = prototype;
+        self.prototype = RenderPrototype::from_enabled(prototype);
         self
-    }
-
-    #[cfg(all(test, not(feature = "research")))]
-    pub(crate) fn with_prototype(self, prototype: bool) -> Self {
-        assert!(!prototype);
-        self
-    }
-
-    #[cfg(feature = "research")]
-    pub(crate) fn phase3_enabled(&self) -> bool {
-        self.prototype
     }
 
     /// Copy only one actor's current sounding state for an offline forward model.
@@ -378,10 +373,7 @@ impl ScheduleRenderer {
     pub fn fork_source(&self, source_id: u64) -> Self {
         let mut fork = Self::new(self.time);
         fork = fork.with_expression(self.expression);
-        #[cfg(feature = "research")]
-        {
-            fork.prototype = self.prototype;
-        }
+        fork.prototype = self.prototype;
         fork.cutoff_tick = self.cutoff_tick;
         fork.phrase_sources = self
             .phrase_sources
@@ -577,94 +569,6 @@ impl ScheduleRenderer {
         self.render_with_prediction_matches(phonation_batches, now, rhythms, |_, _, _, _| {})
     }
 
-    #[cfg(feature = "research")]
-    fn retire_closed_sources(&mut self, now: Tick) {
-        #[cfg(test)]
-        if self.sample_major_oracle {
-            self.retire_closed_sources_oracle(now);
-            return;
-        }
-        use std::ops::Bound::{Excluded, Unbounded};
-        let mut after = None;
-        while let Some((key, generation)) = self
-            .tones
-            .range((after.map_or(Unbounded, Excluded), Unbounded))
-            .next()
-            .map(|(k, _)| (*k, k.generation))
-        {
-            after = Some(key);
-            let from = ToneKey {
-                source_id: key.source_id,
-                tone_id: 0,
-                generation: 0,
-            };
-            let through = ToneKey {
-                source_id: key.source_id,
-                tone_id: u64::MAX,
-                generation: u32::MAX,
-            };
-            // Generations may interleave in ToneKey order; evaluate each group once.
-            if self
-                .tones
-                .range(from..key)
-                .any(|(k, _)| k.generation == generation)
-            {
-                continue;
-            }
-            let residual = self
-                .tones
-                .range(from..=through)
-                .filter(|(k, _)| k.generation == generation)
-                .filter_map(|(_, rt)| rt.tone.residual_bound(now))
-                .sum::<f64>();
-            if residual <= f64::from(crate::life::voice::Voice::AMP_EPS) {
-                for (k, rt) in self.tones.range_mut(from..=through) {
-                    if k.generation == generation && rt.tone.residual_bound(now).is_some() {
-                        rt.tone.retire_phase3();
-                    }
-                }
-            }
-        }
-    }
-
-    #[cfg(test)]
-    #[cfg(feature = "research")]
-    fn retire_closed_sources_oracle(&mut self, now: Tick) {
-        use std::ops::Bound::{Excluded, Unbounded};
-        let mut after = None;
-        while let Some((key, generation)) = self
-            .tones
-            .range((after.map_or(Unbounded, Excluded), Unbounded))
-            .next()
-            .map(|(k, _)| (*k, k.generation))
-        {
-            after = Some(key);
-            let from = ToneKey {
-                source_id: key.source_id,
-                tone_id: 0,
-                generation: 0,
-            };
-            let through = ToneKey {
-                source_id: key.source_id,
-                tone_id: u64::MAX,
-                generation: u32::MAX,
-            };
-            let residual = self
-                .tones
-                .range(from..=through)
-                .filter(|(k, _)| k.generation == generation)
-                .filter_map(|(_, rt)| rt.tone.residual_bound(now))
-                .sum::<f64>();
-            if residual <= f64::from(crate::life::voice::Voice::AMP_EPS) {
-                for (k, rt) in self.tones.range_mut(from..=through) {
-                    if k.generation == generation && rt.tone.residual_bound(now).is_some() {
-                        rt.tone.retire_phase3();
-                    }
-                }
-            }
-        }
-    }
-
     pub(crate) fn render_with_prediction_matches(
         &mut self,
         phonation_batches: &[PhonationBatch],
@@ -710,10 +614,7 @@ impl ScheduleRenderer {
                 "duplicate source PCM identity"
             );
         }
-        #[cfg(feature = "research")]
-        if self.prototype {
-            self.retire_closed_sources(now);
-        }
+        self.retire_prototype_sources(now);
         let mut checkpoint = self.profile.as_ref().map(|_| Instant::now());
         self.profile = self.profile.map(|_| RenderProfile::default());
         let hop = self.time.hop;
@@ -1410,12 +1311,7 @@ impl ScheduleRenderer {
                         {
                             continue;
                         }
-                        #[cfg(feature = "research")]
-                        let default_hold_ticks = if self.prototype {
-                            Tick::MAX
-                        } else {
-                            default_hold_ticks
-                        };
+                        let default_hold_ticks = self.prototype.hold_ticks(default_hold_ticks);
                         let hold_ticks = spec.hold_ticks.unwrap_or(default_hold_ticks);
                         if let Some(mut tone) = Tone::from_parts(
                             self.time,
@@ -1433,17 +1329,10 @@ impl ScheduleRenderer {
                                     .entry((batch.source_id, batch.source_generation))
                                     .or_default();
                             }
-                            #[cfg(feature = "research")]
-                            if self.prototype {
-                                tone.enable_phase3();
-                            }
-                            let seed_source = batch.source_id;
-                            #[cfg(feature = "research")]
-                            let seed_source = if self.prototype {
-                                modal_phase_seed(seed_source, u64::from(batch.source_generation), 0)
-                            } else {
-                                seed_source
-                            };
+                            self.enable_prototype_tone(&mut tone);
+                            let seed_source = self
+                                .prototype
+                                .seed_source(batch.source_id, batch.source_generation);
                             tone.seed_modal_phases(modal_phase_seed(
                                 seed_source,
                                 spec.onset,

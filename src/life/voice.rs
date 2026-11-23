@@ -67,8 +67,7 @@ pub struct VoiceMetadata {
 #[derive(Debug)]
 pub(crate) struct VoiceSupportState {
     pub(crate) body: super::support_action::Body,
-    #[cfg(feature = "research")]
-    pub(crate) renderer_phase3: bool,
+    pub(crate) renderer_phase3: crate::life::sound::render_prototype::RenderPrototype,
     onset: Option<(BodySnapshot, crate::life::sound::Tone)>,
     held_opportunities: Vec<(Tick, Option<Tick>)>,
     clock_fs: f32,
@@ -502,8 +501,7 @@ impl Voice {
             pending_motion_amount: None,
             support: VoiceSupportState {
                 body: Default::default(),
-                #[cfg(feature = "research")]
-                renderer_phase3: false,
+                renderer_phase3: Default::default(),
                 onset: None,
                 held_opportunities: Vec::new(),
                 clock_fs: 0.,

@@ -9,8 +9,7 @@ pub(super) struct WorkerConfig {
     pub(super) harmonic_relations: Option<(Arc<crate::core::harmonic_support::Geometry>, usize)>,
     /// Reserve the habitat audio-only meter (Flora, harmonic rhythm, Rain follow_meter).
     pub(super) habitat_meter: bool,
-    #[cfg(feature = "research")]
-    pub(super) render_prototype: bool,
+    pub(super) render_prototype: crate::life::sound::render_prototype::RenderPrototype,
     #[cfg(feature = "research")]
     pub(super) temporal_meter_t2: bool,
     #[cfg(feature = "research")]
@@ -319,9 +318,8 @@ impl WorkerState {
         });
         let temporal_expectation =
             crate::core::temporal_expectation::AcousticTemporalExpectation::new(cfg.fs as u32);
-        let schedule_renderer = ScheduleRenderer::new(timebase).with_expression(expression);
-        #[cfg(feature = "research")]
-        let schedule_renderer = schedule_renderer.with_prototype(cfg.render_prototype);
+        let mut schedule_renderer = ScheduleRenderer::new(timebase).with_expression(expression);
+        schedule_renderer.prototype = cfg.render_prototype;
         Self {
             #[cfg(test)]
             offline_body_probe: None,
@@ -1056,8 +1054,7 @@ pub(super) fn process_hop(
         && state.lifecycle.failures.is_empty()
         && !cfg.exiting.load(Ordering::SeqCst);
     let abort_without_tails = state.pop.abort_requested;
-    #[cfg(feature = "research")]
-    let abort_without_tails = abort_without_tails && !cfg.render_prototype;
+    let abort_without_tails = abort_without_tails && !cfg.render_prototype.enabled();
     let finished_now = if let Some(room) = room {
         state.lifecycle.finish_begun
             && room.drained()

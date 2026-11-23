@@ -843,8 +843,9 @@ pub(super) fn prepare_runtime(
         felt_period_guard,
         harmonic_relations,
         habitat_meter,
-        #[cfg(feature = "research")]
-        render_prototype: config.render_prototype,
+        render_prototype: crate::life::sound::render_prototype::RenderPrototype::from_config(
+            config,
+        ),
         #[cfg(feature = "research")]
         temporal_meter_t2: config.temporal_meter_t2,
         #[cfg(feature = "research")]

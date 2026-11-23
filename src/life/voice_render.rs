@@ -127,8 +127,7 @@ impl Voice {
                     self.voice_adsr,
                     spec,
                     &landscape.rhythm,
-                    #[cfg(feature = "research")]
-                    self.support.renderer_phase3,
+                    self.support.renderer_phase3.enabled(),
                 )
             });
         self.phonation_engine.support_action = Some(Context {

@@ -415,7 +415,7 @@ fn support_reuses_actual_projection_and_does_not_change_hr() {
     let (nsgt, params) = crate::runtime::body_metabolism_test_core();
     let mut baseline = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
     let mut active = baseline.clone();
-    let geometry = Geometry::new(&baseline.last().space, &params.harmonicity_kernel);
+    let geometry = Geometry::new(&baseline.last().acoustic.space, &params.harmonicity_kernel);
     active.enable_support(geometry, false);
     let mut pcm = vec![0.; active.hop_samples()];
     let hop_len = pcm.len();
@@ -426,18 +426,26 @@ fn support_reuses_actual_projection_and_does_not_change_hr() {
         }
         let before = baseline.process(&pcm);
         let after = active.process(&pcm);
-        assert_eq!(before.harmonicity, after.harmonicity);
-        assert_eq!(before.roughness, after.roughness);
-        assert_eq!(before.subjective_intensity, after.subjective_intensity);
+        assert_eq!(before.acoustic.harmonicity, after.acoustic.harmonicity);
+        assert_eq!(before.acoustic.roughness, after.acoustic.roughness);
+        assert_eq!(
+            before.acoustic.subjective_intensity,
+            after.acoustic.subjective_intensity
+        );
         let support = after.harmonic.support.as_ref().unwrap();
         assert_eq!(support.end_sample, ((hop + 1) * pcm.len()) as u64);
-        let mut smeared = vec![0.; pcm.len().max(after.space.n_bins())];
-        smeared.truncate(after.space.n_bins());
-        let mut r = vec![0.; params.harmonicity_kernel.root_buffer_len(&after.space)];
-        let mut h = vec![0.; after.space.n_bins()];
+        let mut smeared = vec![0.; pcm.len().max(after.acoustic.space.n_bins())];
+        smeared.truncate(after.acoustic.space.n_bins());
+        let mut r = vec![
+            0.;
+            params
+                .harmonicity_kernel
+                .root_buffer_len(&after.acoustic.space)
+        ];
+        let mut h = vec![0.; after.acoustic.space.n_bins()];
         params.harmonicity_kernel.potential_h_into(
-            &after.subjective_intensity,
-            &after.space,
+            &after.acoustic.subjective_intensity,
+            &after.acoustic.space,
             &mut smeared,
             &mut r,
             &mut h,
@@ -474,7 +482,7 @@ fn support_processing_reuses_scratch_with_one_publication_in_flight() {
     use crate::core::stream::analysis::AnalysisStream;
     let (nsgt, params) = crate::runtime::body_metabolism_test_core();
     let mut stream = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
-    let g = Geometry::new(&stream.last().space, &params.harmonicity_kernel);
+    let g = Geometry::new(&stream.last().acoustic.space, &params.harmonicity_kernel);
     stream.enable_support(g, false);
     let pcm = vec![0.002; stream.hop_samples()];
     stream.process(&pcm);
@@ -496,7 +504,7 @@ fn support_display_survives_zero_updates_and_gaps_without_enabling_loo() {
     use crate::core::stream::analysis::AnalysisStream;
     let (nsgt, params) = crate::runtime::body_metabolism_test_core();
     let mut stream = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
-    let geometry = Geometry::new(&stream.last().space, &params.harmonicity_kernel);
+    let geometry = Geometry::new(&stream.last().acoustic.space, &params.harmonicity_kernel);
     stream.enable_support(geometry, false);
     stream.publish_support_for_display(false);
     let pcm = vec![0.002; stream.hop_samples()];

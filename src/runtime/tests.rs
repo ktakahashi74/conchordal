@@ -65,7 +65,10 @@ fn analysis_runtime_core_uses_config_values() {
     assert_eq!(core.lparams.consonance_kernel.a, 0.9);
     assert_eq!(core.lparams.consonance_representation.beta, 3.0);
     assert_eq!(core.lparams.consonance_density_roughness_gain, 1.5);
-    assert_eq!(core.landscape.space.n_bins(), core.nsgt.space().n_bins());
+    assert_eq!(
+        core.landscape.acoustic.space.n_bins(),
+        core.nsgt.space().n_bins()
+    );
 }
 
 #[test]
@@ -446,13 +449,13 @@ fn explicitly_disabled_habituation_preserves_base_view_bits() {
     let mut hab = crate::core::habituation::HabituationField::new(
         &core.lparams.habituation,
         core.lparams.consonance_representation.theta,
-        core.landscape.space.n_bins(),
+        core.landscape.acoustic.space.n_bins(),
     );
     for hop in 0..3 {
-        for i in 0..core.landscape.space.n_bins() {
-            core.landscape.harmonicity01[i] = ((i + hop) % 7) as f32 / 7.0;
-            core.landscape.roughness01[i] = ((i + hop) % 11) as f32 / 11.0;
-            core.landscape.subjective_intensity[i] = 0.25;
+        for i in 0..core.landscape.acoustic.space.n_bins() {
+            core.landscape.acoustic.harmonicity01[i] = ((i + hop) % 7) as f32 / 7.0;
+            core.landscape.acoustic.roughness01[i] = ((i + hop) % 11) as f32 / 11.0;
+            core.landscape.acoustic.subjective_intensity[i] = 0.25;
         }
         core.landscape.recompute_consonance(&core.lparams);
         drive_and_apply_habituation(
@@ -463,16 +466,16 @@ fn explicitly_disabled_habituation_preserves_base_view_bits() {
         );
         for (base, effective) in [
             (
-                &core.landscape.consonance_field_score,
-                &core.landscape.consonance_field_score_eff,
+                &core.landscape.acoustic.consonance_field_score,
+                &core.landscape.acoustic.consonance_field_score_eff,
             ),
             (
-                &core.landscape.consonance_field_level,
-                &core.landscape.consonance_field_level_eff,
+                &core.landscape.acoustic.consonance_field_level,
+                &core.landscape.acoustic.consonance_field_level_eff,
             ),
             (
-                &core.landscape.consonance_density_mass,
-                &core.landscape.consonance_density_mass_eff,
+                &core.landscape.acoustic.consonance_density_mass,
+                &core.landscape.acoustic.consonance_density_mass_eff,
             ),
         ] {
             assert!(
@@ -512,8 +515,8 @@ fn listener_memory_is_independent_of_receive_batching() {
             for frame_id in start..end {
                 let mut frame = Landscape::new(space.clone());
                 if frame_id < 18 {
-                    frame.subjective_intensity[10] = 1.0;
-                    frame.harmonicity[10] = 10.0;
+                    frame.acoustic.subjective_intensity[10] = 1.0;
+                    frame.acoustic.harmonicity[10] = 10.0;
                 }
                 tx.send((frame_id as u64, Some(frame))).unwrap();
             }
@@ -574,8 +577,8 @@ fn listener_analysis_gap_clears_state_instead_of_reusing_prior_pressure() {
         max_temperature_bonus: 0.1,
     });
     let mut evidence = Landscape::new(space.clone());
-    evidence.subjective_intensity[2] = 1.0;
-    evidence.harmonicity[3] = 10.0;
+    evidence.acoustic.subjective_intensity[2] = 1.0;
+    evidence.acoustic.harmonicity[3] = 10.0;
     tx.send((1, Some(evidence.clone()))).unwrap();
     let (update, _) = observe_listener_analysis_results(
         Some(&rx),
@@ -694,13 +697,13 @@ fn roughness_aversion_update_reaches_kernel_and_fields_without_touching_sensatio
     let space = Log2Space::new(80.0, 2_000.0, 96);
     let mut params = build_test_params(&space);
     let mut landscape = Landscape::new(space);
-    let n = landscape.roughness01.len();
-    landscape.harmonicity = vec![0.6; n];
-    landscape.roughness01 = vec![0.5; n];
+    let n = landscape.acoustic.roughness01.len();
+    landscape.acoustic.harmonicity = vec![0.6; n];
+    landscape.acoustic.roughness01 = vec![0.5; n];
     landscape.recompute_consonance(&params);
-    let r01_before = landscape.roughness01.clone();
-    let h01_before = landscape.harmonicity01.clone();
-    let score_before = landscape.consonance_field_score[0];
+    let r01_before = landscape.acoustic.roughness01.clone();
+    let h01_before = landscape.acoustic.harmonicity01.clone();
+    let score_before = landscape.acoustic.consonance_field_score[0];
     let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 256,
@@ -732,11 +735,17 @@ fn roughness_aversion_update_reaches_kernel_and_fields_without_touching_sensatio
         Some(0.0)
     );
     let kernel = params.consonance_field_kernel();
-    assert_eq!(landscape.consonance_kernel.b.to_bits(), kernel.b.to_bits());
-    assert_eq!(landscape.consonance_kernel.c.to_bits(), kernel.c.to_bits());
-    assert_eq!(landscape.roughness01, r01_before);
-    assert_eq!(landscape.harmonicity01, h01_before);
-    assert_ne!(landscape.consonance_field_score[0], score_before);
+    assert_eq!(
+        landscape.acoustic.consonance_kernel.b.to_bits(),
+        kernel.b.to_bits()
+    );
+    assert_eq!(
+        landscape.acoustic.consonance_kernel.c.to_bits(),
+        kernel.c.to_bits()
+    );
+    assert_eq!(landscape.acoustic.roughness01, r01_before);
+    assert_eq!(landscape.acoustic.harmonicity01, h01_before);
+    assert_ne!(landscape.acoustic.consonance_field_score[0], score_before);
 }
 
 #[test]
@@ -744,12 +753,12 @@ fn harmonicity_preference_update_reaches_kernel_and_fields_without_touching_sens
     let space = Log2Space::new(80.0, 2_000.0, 96);
     let mut params = build_test_params(&space);
     let mut landscape = Landscape::new(space);
-    landscape.harmonicity.fill(0.6);
-    landscape.roughness01.fill(0.2);
+    landscape.acoustic.harmonicity.fill(0.6);
+    landscape.acoustic.roughness01.fill(0.2);
     landscape.recompute_consonance(&params);
-    let h_before = landscape.harmonicity01.clone();
-    let r_before = landscape.roughness01.clone();
-    let score_before = landscape.consonance_field_score[0];
+    let h_before = landscape.acoustic.harmonicity01.clone();
+    let r_before = landscape.acoustic.roughness01.clone();
+    let score_before = landscape.acoustic.consonance_field_score[0];
     let mut pop = Community::new(Timebase {
         fs: 48_000.0,
         hop: 256,
@@ -773,25 +782,29 @@ fn harmonicity_preference_update_reaches_kernel_and_fields_without_touching_sens
         assert_eq!(update.roughness_aversion, Some(2.0));
     }
     let kernel = params.consonance_field_kernel();
-    assert_eq!(landscape.consonance_kernel.a.to_bits(), kernel.a.to_bits());
     assert_eq!(
-        landscape.consonance_field_score[0].to_bits(),
+        landscape.acoustic.consonance_kernel.a.to_bits(),
+        kernel.a.to_bits()
+    );
+    assert_eq!(
+        landscape.acoustic.consonance_field_score[0].to_bits(),
         kernel.score(0.6, 0.2).to_bits()
     );
     assert_eq!(
-        landscape.consonance_field_level[0].to_bits(),
+        landscape.acoustic.consonance_field_level[0].to_bits(),
         params
             .consonance_representation
             .level(kernel.score(0.6, 0.2))
             .to_bits()
     );
     assert_eq!(
-        landscape.consonance_density_mass[0].to_bits(),
+        landscape.acoustic.consonance_density_mass[0].to_bits(),
         0.6_f32.to_bits()
     );
-    assert_ne!(landscape.consonance_field_score[0], score_before);
+    assert_ne!(landscape.acoustic.consonance_field_score[0], score_before);
     assert!(
         landscape
+            .acoustic
             .harmonicity01
             .iter()
             .zip(h_before)
@@ -799,6 +812,7 @@ fn harmonicity_preference_update_reaches_kernel_and_fields_without_touching_sens
     );
     assert!(
         landscape
+            .acoustic
             .roughness01
             .iter()
             .zip(r_before)
@@ -822,7 +836,7 @@ fn harmonicity_preference_update_reaches_kernel_and_fields_without_touching_sens
         &tx,
         None,
     ));
-    assert_eq!(landscape.consonance_kernel.a, 2.0);
+    assert_eq!(landscape.acoustic.consonance_kernel.a, 2.0);
     assert_eq!(rx.try_recv().unwrap().harmonicity_preference, Some(2.0));
 }
 
@@ -907,9 +921,12 @@ wait(0.03);
                 (actual.id, actual.generation),
                 (source.id, source.generation)
             );
-            assert_eq!(actual.h_scan, expected.harmonicity01);
-            assert_eq!(actual.r_scan, expected.roughness01);
-            assert_eq!(&*actual.score_scan, &expected.consonance_field_score);
+            assert_eq!(actual.h_scan, expected.acoustic.harmonicity01);
+            assert_eq!(actual.r_scan, expected.acoustic.roughness01);
+            assert_eq!(
+                &*actual.score_scan,
+                &expected.acoustic.consonance_field_score
+            );
             observed.lock().unwrap()[usize::from(enabled)] += 1;
         }
         let removed: Vec<_> = audio[0]
@@ -919,7 +936,7 @@ wait(0.03);
             .collect();
         let mut expected = reference.process(&removed).clone();
         expected.recompute_consonance(&core.lparams);
-        assert!(expected.harmonicity01.iter().any(|h| *h > 0.));
+        assert!(expected.acoustic.harmonicity01.iter().any(|h| *h > 0.));
         previous = Some(expected);
     });
     let wiring = wire_runtime(

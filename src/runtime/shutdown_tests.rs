@@ -566,7 +566,7 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
         config.dcc.coupling_strength = 0.0;
         let core = build_analysis_runtime_core(&config, 48000);
         let mut reference = core.nsgt;
-        let mut previous = vec![0.0; core.landscape.space.n_bins()];
+        let mut previous = vec![0.0; core.landscape.acoustic.space.n_bins()];
         let mixed_enabled = kind != "none";
         // Only reports read spectral history, on either bus.
         let history = kind == "report";
@@ -579,13 +579,25 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
                 && state.frame_idx > 0
             {
                 if mixed_enabled {
-                    assert_eq!(state.current_landscape.nsgt_power, previous);
+                    assert_eq!(state.current_landscape.acoustic.nsgt_power, previous);
                 } else {
-                    assert!(state.current_landscape.nsgt_power.iter().all(|&p| p == 0.0));
+                    assert!(
+                        state
+                            .current_landscape
+                            .acoustic
+                            .nsgt_power
+                            .iter()
+                            .all(|&p| p == 0.0)
+                    );
                 }
             }
             let mut seen = observed.lock().unwrap();
-            seen[0] |= state.current_landscape.nsgt_power.iter().any(|&p| p > 0.0);
+            seen[0] |= state
+                .current_landscape
+                .acoustic
+                .nsgt_power
+                .iter()
+                .any(|&p| p > 0.0);
             seen[1] |= state.listener.listener_twin.spectral_history.is_some();
             seen[2] |= state.current_landscape.ecology.spectral_history.is_some();
             previous.copy_from_slice(reference.process_hop(pcm[0]));
@@ -618,7 +630,12 @@ fn nsgt_wiring_retains_only_requested_bus_power() {
             let frames: Vec<_> = ui_rx.try_iter().collect();
             assert!(frames.iter().any(|f| f.spec.amps.iter().any(|&p| p > 0.0)));
             for frame in frames {
-                for (amp, power) in frame.spec.amps.iter().zip(&frame.landscape.nsgt_power) {
+                for (amp, power) in frame
+                    .spec
+                    .amps
+                    .iter()
+                    .zip(&frame.landscape.acoustic.nsgt_power)
+                {
                     assert_eq!(amp.to_bits(), power.sqrt().to_bits());
                 }
             }
@@ -1185,7 +1202,7 @@ fn onset_habituation_wiring_starts_before_late_birth_and_zero_allocates_no_state
                 let mut observed = copy.lock().unwrap();
                 let frame = &state.current_landscape;
                 if weight == 0.0 {
-                    assert!(frame.onset_habituation_state_scan.is_empty());
+                    assert!(frame.acoustic.onset_habituation_state_scan.is_empty());
                     assert!(
                         state
                             .pop
@@ -1194,12 +1211,16 @@ fn onset_habituation_wiring_starts_before_late_birth_and_zero_allocates_no_state
                             .all(|v| v.phonation_engine.span_gap.is_none())
                     );
                 } else if tick > 512 && tick < 48000 {
-                    assert!(frame.onset_habituation_known);
+                    assert!(frame.acoustic.onset_habituation_known);
                     assert_eq!(
-                        frame.onset_habituation_state_scan.len(),
-                        frame.space.n_bins()
+                        frame.acoustic.onset_habituation_state_scan.len(),
+                        frame.acoustic.space.n_bins()
                     );
-                    observed.0 |= frame.onset_habituation_state_scan.iter().any(|&x| x > 0.0);
+                    observed.0 |= frame
+                        .acoustic
+                        .onset_habituation_state_scan
+                        .iter()
+                        .any(|&x| x > 0.0);
                 }
                 for voice in &state.pop.voices {
                     if let Some(gap) = &voice.phonation_engine.span_gap {
@@ -1264,13 +1285,13 @@ fn respond_to_onsets_alone_reserves_onset_history_from_run_start() {
         opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
             let frame = &state.current_landscape;
             if weight == 0.0 {
-                assert!(frame.onset_habituation_state_scan.is_empty());
+                assert!(frame.acoustic.onset_habituation_state_scan.is_empty());
             } else if tick > 512 && tick < 48000 {
                 assert!(state.pop.flora.is_empty());
-                assert!(frame.onset_habituation_known);
+                assert!(frame.acoustic.onset_habituation_known);
                 assert_eq!(
-                    frame.onset_habituation_state_scan.len(),
-                    frame.space.n_bins()
+                    frame.acoustic.onset_habituation_state_scan.len(),
+                    frame.acoustic.space.n_bins()
                 );
                 observed.store(true, Ordering::SeqCst);
             }
@@ -1330,14 +1351,14 @@ fn voice_respond_to_onsets_reserves_history_at_run_start_and_reports_only_when_p
                     // Before the line is placed, the mixed history exists only for w > 0.
                     assert!(state.pop.voices.is_empty());
                     assert_eq!(
-                        frame.onset_habituation_state_scan.len(),
+                        frame.acoustic.onset_habituation_state_scan.len(),
                         if weight > 0.0 {
-                            frame.space.n_bins()
+                            frame.acoustic.space.n_bins()
                         } else {
                             0
                         }
                     );
-                    assert_eq!(frame.onset_habituation_known, weight > 0.0);
+                    assert_eq!(frame.acoustic.onset_habituation_known, weight > 0.0);
                     observed.lock().unwrap().0 = true;
                 }
                 if tick > 96000
@@ -1854,10 +1875,11 @@ fn endless_onset_history_starts_before_future_consumers() {
     opts.duration_sec = Some(1.1);
     opts.offline_body_probe = Some(Box::new(move |state, tick, _, _| {
         if tick == 20 * 512 {
-            assert!(state.current_landscape.onset_habituation_known);
+            assert!(state.current_landscape.acoustic.onset_habituation_known);
             assert!(
                 !state
                     .current_landscape
+                    .acoustic
                     .onset_habituation_state_scan
                     .is_empty()
             );
@@ -2010,7 +2032,7 @@ fn harmonic_observer_reservation_cost() {
         let mut mixed = AnalysisStream::new(core.lparams.clone(), core.nsgt).with_nsgt_power(true);
         if support {
             let geometry = crate::core::harmonic_support::Geometry::new(
-                &mixed.last().space,
+                &mixed.last().acoustic.space,
                 &core.lparams.harmonicity_kernel,
             );
             mixed.enable_support(geometry, true);
@@ -2169,7 +2191,7 @@ fn gui1_listener_replay_cost() {
     let mut hab = crate::core::habituation::HabituationField::new(
         &core.lparams.habituation,
         core.lparams.consonance_representation.theta,
-        core.landscape.space.n_bins(),
+        core.landscape.acoustic.space.n_bins(),
     );
     let mut reader = hound::WavReader::open(path).unwrap();
     assert_eq!(reader.spec().sample_rate, 48000);

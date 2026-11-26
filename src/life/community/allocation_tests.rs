@@ -19,7 +19,7 @@ fn community_steady_hops_reuse_respawn_social_and_sequential_storage() {
     for voice in &mut community.voices {
         voice.social_coupling = 0.5;
     }
-    let mut model = GeneratorModel::new(community.time, landscape.space.clone());
+    let mut model = GeneratorModel::new(community.time, landscape.acoustic.space.clone());
     let mut batches = Vec::new();
     let dt = community.time.hop as f32 / community.time.fs;
     for frame in 0..4 {
@@ -72,9 +72,9 @@ fn loo_observation_delivery_steady_state_allocates_nothing() {
                 support: None,
                 id: voice.id(),
                 generation: voice.metadata.generation,
-                h_scan: vec![0.; landscape.space.n_bins()],
-                r_scan: vec![0.; landscape.space.n_bins()],
-                score_scan: vec![0.; landscape.space.n_bins()].into(),
+                h_scan: vec![0.; landscape.acoustic.space.n_bins()],
+                r_scan: vec![0.; landscape.acoustic.space.n_bins()],
+                score_scan: vec![0.; landscape.acoustic.space.n_bins()].into(),
                 onset_habituation_state_scan: None,
                 onset_habituation_end: 0,
                 onset_habituation_known: false,

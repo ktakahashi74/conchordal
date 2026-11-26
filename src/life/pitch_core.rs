@@ -203,8 +203,9 @@ impl AnyPitchCore {
             .exact_score
             .as_deref()
             .filter(|_| leave_self_out);
-        let score_scan = scan.unwrap_or(&landscape.consonance_field_score_eff);
+        let score_scan = scan.unwrap_or(&landscape.acoustic.consonance_field_score_eff);
         landscape
+            .acoustic
             .space
             .assert_scan_len_named(score_scan, "dwell_score_scan");
         // Ordinary pitch sampling sanitizes invalid input to zero. Dwell needs
@@ -212,19 +213,19 @@ impl AnyPitchCore {
         let log2 = freq_hz.max(1.0).log2();
         let sample_hz = log2
             .exp2()
-            .clamp(landscape.space.fmin, landscape.space.fmax);
+            .clamp(landscape.acoustic.space.fmin, landscape.acoustic.space.fmax);
         let (lo, hi) = landscape.freq_bounds_log2();
         if (lo..=hi).contains(&log2) {
-            let pos =
-                (sample_hz.log2() - landscape.space.centers_log2[0]) / landscape.space.step_log2;
+            let pos = (sample_hz.log2() - landscape.acoustic.space.centers_log2[0])
+                / landscape.acoustic.space.step_log2;
             let raw = crate::core::log2space::sample_scan_linear_at_pos(score_scan, pos);
             let invalid_habituation = scan.is_some() && {
-                landscape.space.assert_scan_len_named(
-                    &landscape.perc_habituation_state_scan,
+                landscape.acoustic.space.assert_scan_len_named(
+                    &landscape.acoustic.perc_habituation_state_scan,
                     "dwell_habituation_scan",
                 );
                 !crate::core::log2space::sample_scan_linear_at_pos(
-                    &landscape.perc_habituation_state_scan,
+                    &landscape.acoustic.perc_habituation_state_scan,
                     pos,
                 )
                 .is_finite()
@@ -243,7 +244,7 @@ impl AnyPitchCore {
             score
         };
         let level = if score.is_finite() {
-            landscape.consonance_representation.level(score)
+            landscape.acoustic.consonance_representation.level(score)
         } else {
             0.5
         };

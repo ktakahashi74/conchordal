@@ -330,10 +330,9 @@ impl Observer {
             generation: self.generation,
             power_scan: power.resource_power().map(<[f32]>::to_vec),
             perception: self.stream.as_ref().map(|_| self.snapshot()),
-            level_scan: self
-                .stream
-                .as_ref()
-                .map_or_else(Vec::new, |stream| vec![0.0; stream.last().space.n_bins()]),
+            level_scan: self.stream.as_ref().map_or_else(Vec::new, |stream| {
+                vec![0.0; stream.last().acoustic.space.n_bins()]
+            }),
         }
     }
 
@@ -354,6 +353,7 @@ impl Observer {
                 .as_ref()
                 .unwrap()
                 .last()
+                .acoustic
                 .consonance_density_mass
                 .clone(),
         }
@@ -362,15 +362,16 @@ impl Observer {
     pub(crate) fn snapshot(&self) -> Observation {
         let frame = self.stream.as_ref().unwrap().last();
         let h_scan: Vec<_> = frame
+            .acoustic
             .harmonicity
             .iter()
             .map(|&x| crate::core::float::sanitize01(x))
             .collect();
-        let r_scan = frame.roughness01.clone();
+        let r_scan = frame.acoustic.roughness01.clone();
         let score_scan = h_scan
             .iter()
             .zip(&r_scan)
-            .map(|(&h, &r)| frame.consonance_kernel.score(h, r))
+            .map(|(&h, &r)| frame.acoustic.consonance_kernel.score(h, r))
             .collect();
         Observation {
             support: frame.harmonic.support.clone(),
@@ -379,10 +380,10 @@ impl Observer {
             h_scan,
             r_scan,
             score_scan,
-            onset_habituation_state_scan: (!frame.onset_habituation_state_scan.is_empty())
-                .then(|| frame.onset_habituation_state_scan.clone()),
-            onset_habituation_end: frame.onset_habituation_end,
-            onset_habituation_known: frame.onset_habituation_known,
+            onset_habituation_state_scan: (!frame.acoustic.onset_habituation_state_scan.is_empty())
+                .then(|| frame.acoustic.onset_habituation_state_scan.clone()),
+            onset_habituation_end: frame.acoustic.onset_habituation_end,
+            onset_habituation_known: frame.acoustic.onset_habituation_known,
         }
     }
 }
@@ -516,21 +517,27 @@ mod tests {
             let mut f = flora.resource_snapshot();
             elapsed[5] = start.elapsed().as_secs_f64();
             let start = Instant::now();
-            v.revalue(&mixed.last().space, &params);
+            v.revalue(&mixed.last().acoustic.space, &params);
             elapsed[6] = start.elapsed().as_secs_f64();
             let start = Instant::now();
-            f.revalue(&mixed.last().space, &params);
+            f.revalue(&mixed.last().acoustic.space, &params);
             elapsed[7] = start.elapsed().as_secs_f64();
             let start = Instant::now();
             black_box(mixed.last().clone());
             elapsed[8] = start.elapsed().as_secs_f64();
-            assert_eq!(voice.last().harmonicity, flora.last().harmonicity);
-            assert_eq!(voice.last().roughness01, flora.last().roughness01);
+            assert_eq!(
+                voice.last().acoustic.harmonicity,
+                flora.last().acoustic.harmonicity
+            );
+            assert_eq!(
+                voice.last().acoustic.roughness01,
+                flora.last().acoustic.roughness01
+            );
             black_box((v, f));
             rows.push(serde_json::json!({"step":step,"elapsed_us":elapsed.map(|t|t*1e6),
-                "density_subnormal":flora.last().subjective_intensity.iter().filter(|x|x.is_subnormal()).count(),
-                "h_subnormal":flora.last().harmonicity.iter().filter(|x|x.is_subnormal()).count(),
-                "r_subnormal":flora.last().roughness.iter().filter(|x|x.is_subnormal()).count()}));
+                "density_subnormal":flora.last().acoustic.subjective_intensity.iter().filter(|x|x.is_subnormal()).count(),
+                "h_subnormal":flora.last().acoustic.harmonicity.iter().filter(|x|x.is_subnormal()).count(),
+                "r_subnormal":flora.last().acoustic.roughness.iter().filter(|x|x.is_subnormal()).count()}));
             if capture.is_some() || step >= 64 {
                 measured += 1;
                 for (total, elapsed) in times.iter_mut().zip(elapsed) {
@@ -578,7 +585,14 @@ mod tests {
         }
         let counts = crate::runtime_profile::finish_allocations().unwrap();
         assert_eq!((counts.count, counts.bytes), (0, 0));
-        assert!(observer.last().subjective_intensity.iter().any(|x| *x > 0.));
+        assert!(
+            observer
+                .last()
+                .acoustic
+                .subjective_intensity
+                .iter()
+                .any(|x| *x > 0.)
+        );
         println!(
             "L1_PCM_ALLOC {counts:?} mean_us={}",
             start.elapsed().as_secs_f64() * 1e6 / 1024.
@@ -604,7 +618,14 @@ mod tests {
         }
         let counts = crate::runtime_profile::finish_allocations().unwrap();
         assert_eq!((counts.count, counts.bytes), (0, 0));
-        assert!(observer.last().harmonicity.iter().any(|&x| x > 0.0));
+        assert!(
+            observer
+                .last()
+                .acoustic
+                .harmonicity
+                .iter()
+                .any(|&x| x > 0.0)
+        );
         assert!(observer.resource_snapshot().power_scan.is_some());
         println!("F19_OBSERVER_ALLOC {counts:?}");
     }
@@ -638,7 +659,7 @@ mod tests {
         for _ in 0..400 {
             mixed.process(&silence);
         }
-        assert!(mixed.last().onset_habituation_known);
+        assert!(mixed.last().acoustic.onset_habituation_known);
         mixed
     }
 
@@ -647,7 +668,7 @@ mod tests {
         let template = onset_mixed();
         let hop = template.hop_samples();
         let fs = f64::from(template.sample_rate());
-        let space = template.last().space.clone();
+        let space = template.last().acoustic.space.clone();
         let near = |hz: f32| {
             let c = space.nearest_index(hz);
             c.saturating_sub(4)..(c + 5).min(space.n_bins())
@@ -663,7 +684,7 @@ mod tests {
             let born = observer.snapshot();
             assert_eq!(
                 born.onset_habituation_state_scan.as_deref(),
-                Some(&*mixed.last().onset_habituation_state_scan)
+                Some(&*mixed.last().acoustic.onset_habituation_state_scan)
             );
             assert!(born.onset_habituation_known);
             let (mut own, mut mix) = (vec![0.0; hop], vec![0.0; hop]);
@@ -688,7 +709,7 @@ mod tests {
                 };
                 own_max = own_max.max(scan[region.clone()].iter().copied().fold(0.0, f32::max));
                 mixed_max = mixed_max.max(
-                    mixed.last().onset_habituation_state_scan[region]
+                    mixed.last().acoustic.onset_habituation_state_scan[region]
                         .iter()
                         .copied()
                         .fold(0.0, f32::max),
@@ -721,6 +742,7 @@ mod tests {
         assert!(
             template
                 .last()
+                .acoustic
                 .onset_habituation_state_scan
                 .iter()
                 .any(|&x| x > 0.0)
@@ -748,8 +770,14 @@ mod tests {
         let mut flora = Observer::flora(8, 0, &mut template, true, false);
         for observer in [&mut plain, &mut flora] {
             observer.process(&pcm, &silence);
-            assert!(observer.last().onset_habituation_state_scan.is_empty());
-            assert!(!observer.last().onset_habituation_known);
+            assert!(
+                observer
+                    .last()
+                    .acoustic
+                    .onset_habituation_state_scan
+                    .is_empty()
+            );
+            assert!(!observer.last().acoustic.onset_habituation_known);
             assert!(observer.snapshot().onset_habituation_state_scan.is_none());
         }
     }
@@ -772,7 +800,7 @@ mod tests {
         }
         let counts = crate::runtime_profile::finish_allocations().unwrap();
         assert_eq!((counts.count, counts.bytes), (0, 0));
-        assert!(observer.last().onset_habituation_known);
+        assert!(observer.last().acoustic.onset_habituation_known);
         println!("RESPOND_OBSERVER_ALLOC {counts:?}");
     }
 
@@ -783,6 +811,6 @@ mod tests {
         let template = AnalysisStream::new(params.clone(), nsgt);
         let mut observation = Observer::new(7, 0, &template, false).snapshot();
         observation.score_scan = vec![0.].into();
-        observation.revalue(&template.last().space, &params);
+        observation.revalue(&template.last().acoustic.space, &params);
     }
 }

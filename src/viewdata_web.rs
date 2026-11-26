@@ -32,7 +32,8 @@ impl crate::viewdata::UiFrame {
             step_log2: s.step(),
         };
         let l = &self.landscape;
-        let k = l.consonance_kernel;
+        let a = &l.acoustic;
+        let k = a.consonance_kernel;
         wire::UiFrame {
             wave: self.wave.clone(),
             spec: self.spec.clone(),
@@ -41,7 +42,6 @@ impl crate::viewdata::UiFrame {
             prediction: self.prediction.clone(),
             diagnostics: diagnostics(self),
             landscape: wire::Landscape {
-                space: space(&l.space),
                 harmonic: wire::HarmonicExtensions {
                     support: l.harmonic.support.as_ref().map(|s| {
                         std::sync::Arc::new(wire::Snapshot {
@@ -57,17 +57,20 @@ impl crate::viewdata::UiFrame {
                         })
                     }),
                 },
-                subjective_intensity: l.subjective_intensity.clone(),
-                nsgt_power: l.nsgt_power.clone(),
-                consonance_field_score: l.consonance_field_score.clone(),
-                consonance_field_level: l.consonance_field_level.clone(),
-                harmonicity01: l.harmonicity01.clone(),
-                roughness01: l.roughness01.clone(),
-                consonance_kernel: wire::ConsonanceKernel {
-                    a: k.a,
-                    b: k.b,
-                    c: k.c,
-                    d: k.d,
+                acoustic: wire::AcousticField {
+                    space: space(&a.space),
+                    subjective_intensity: a.subjective_intensity.clone(),
+                    nsgt_power: a.nsgt_power.clone(),
+                    consonance_field_score: a.consonance_field_score.clone(),
+                    consonance_field_level: a.consonance_field_level.clone(),
+                    harmonicity01: a.harmonicity01.clone(),
+                    roughness01: a.roughness01.clone(),
+                    consonance_kernel: wire::ConsonanceKernel {
+                        a: k.a,
+                        b: k.b,
+                        c: k.c,
+                        d: k.d,
+                    },
                 },
             },
             voices: self
@@ -80,7 +83,7 @@ impl crate::viewdata::UiFrame {
                     integration_window: v.integration_window,
                     consonance: v.consonance,
                     support_template: v.support_template.clone(),
-                    support_scans: support_scans(v, l.space.n_bins()),
+                    support_scans: support_scans(v, a.space.n_bins()),
                 })
                 .collect(),
             meta: wire::SimulationMeta {
@@ -139,17 +142,32 @@ mod tests {
         });
         let mut decoder = wire::Decoder::default();
         let mut encoder = wire::Encoder::default();
-        decoder
-            .decode(&encoder.encode(source.web_snapshot()).unwrap())
-            .unwrap();
-        source.landscape.roughness01[0] = 0.125;
+        let first = encoder.encode(source.web_snapshot()).unwrap();
+        let header_len = u32::from_le_bytes(first[..4].try_into().unwrap()) as usize;
+        let header: serde_json::Value = serde_json::from_slice(&first[4..4 + header_len]).unwrap();
+        let landscape = header["frame"]["landscape"].as_object().unwrap();
+        let keys = [
+            "space",
+            "support",
+            "subjective_intensity",
+            "nsgt_power",
+            "consonance_field_score",
+            "consonance_field_level",
+            "harmonicity01",
+            "roughness01",
+            "consonance_kernel",
+        ];
+        assert_eq!(landscape.len(), keys.len());
+        assert!(keys.iter().all(|&key| landscape.contains_key(key)));
+        decoder.decode(&first).unwrap();
+        source.landscape.acoustic.roughness01[0] = 0.125;
         // The second packet omits the frequency axes; the decoder restores them.
         let decoded = decoder
             .decode(&encoder.encode(source.web_snapshot()).unwrap())
             .unwrap();
         assert_eq!(
-            decoded.landscape.space.centers_hz,
-            source.landscape.space.centers_hz
+            decoded.landscape.acoustic.space.centers_hz,
+            source.landscape.acoustic.space.centers_hz
         );
         assert_eq!(
             decoded.listener.generated_frame_id,
@@ -163,6 +181,9 @@ mod tests {
         assert_eq!(decoded.listener.prediction.forecast, None);
         assert_eq!(decoded.listener_rhythm.len(), 1);
         assert_eq!(decoded.listener_rhythm[0].time_sec, 1.25);
-        assert_eq!(decoded.landscape.roughness01, source.landscape.roughness01);
+        assert_eq!(
+            decoded.landscape.acoustic.roughness01,
+            source.landscape.acoustic.roughness01
+        );
     }
 }

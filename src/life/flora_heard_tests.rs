@@ -26,13 +26,13 @@ fn heard_resource_unknown_hold_geometry_and_fixed_reference() {
         generation: 1,
         perception: None,
         level_scan: Vec::new(),
-        power_scan: Some(vec![0.00045; terrain.space.n_bins()]),
+        power_scan: Some(vec![0.00045; terrain.acoustic.space.n_bins()]),
     });
     flora.observe_external(&terrain, Some(8));
     assert!(flora.external_observed_frame.is_none());
     terrain.ecology.flora_observations[0].generation = 0;
     flora.observe_external(&terrain, Some(9));
-    let expected = terrain.space.bins_per_oct as f32 / REFERENCE_DENSITY;
+    let expected = terrain.acoustic.space.bins_per_oct as f32 / REFERENCE_DENSITY;
     for &ce in &flora.external_consumption_scan {
         assert!((ce - expected).abs() < 16.0 * f32::EPSILON * expected);
     }
@@ -80,8 +80,8 @@ fn heard_flora_pcm_oracle_two_sources_routing_mute_fade_and_gap() {
     let fs = nsgt.fs();
     let hop = nsgt.hop();
     let mut terrain = Landscape::new(nsgt.space().clone());
-    terrain.consonance_field_level.fill(0.7);
-    terrain.harmonicity01.fill(0.4);
+    terrain.acoustic.consonance_field_level.fill(0.7);
+    terrain.acoustic.harmonicity01.fill(0.4);
     for (tone, residual) in [
         (FloraTone::Sine, false),
         (FloraTone::Resonant, false),
@@ -305,7 +305,10 @@ fn growth_and_seed_follow_recorded_pcm_reference() {
                         hop,
                     );
                     // Ensure the assay exercises sounding ownership and retirement.
-                    let peak = terrain.space.nearest_index(330.0 + 220.0 * i as f32);
+                    let peak = terrain
+                        .acoustic
+                        .space
+                        .nearest_index(330.0 + 220.0 * i as f32);
                     f.biomass_mass_scan[peak] = 0.5;
                     f
                 })
@@ -349,8 +352,14 @@ fn growth_and_seed_follow_recorded_pcm_reference() {
                     expected.recompute_consonance(&params);
                     let report = f.report(frame as f64 * hop as f64 / fs as f64, &terrain);
                     for (actual, expected) in [
-                        (report.growth_level_scan, &expected.consonance_field_level),
-                        (report.harmonicity_state_scan, &expected.harmonicity01),
+                        (
+                            report.growth_level_scan,
+                            &expected.acoustic.consonance_field_level,
+                        ),
+                        (
+                            report.harmonicity_state_scan,
+                            &expected.acoustic.harmonicity01,
+                        ),
                     ] {
                         for (&a, &b) in actual.iter().zip(expected) {
                             assert!(
@@ -402,8 +411,14 @@ fn growth_and_seed_follow_recorded_pcm_reference() {
                     expected.recompute_consonance(&params);
                     if habitat && leave_self_out {
                         for (actual, reference) in [
-                            (&observers[i].last().harmonicity, &expected.harmonicity),
-                            (&observers[i].last().roughness, &expected.roughness),
+                            (
+                                &observers[i].last().acoustic.harmonicity,
+                                &expected.acoustic.harmonicity,
+                            ),
+                            (
+                                &observers[i].last().acoustic.roughness,
+                                &expected.acoustic.roughness,
+                            ),
                         ] {
                             for (&a, &b) in actual.iter().zip(reference) {
                                 max_hr_error = max_hr_error.max((a - b).abs());
@@ -412,16 +427,19 @@ fn growth_and_seed_follow_recorded_pcm_reference() {
                         }
                     }
                     let mut observation = observers[i].resource_snapshot();
-                    observation.revalue(&terrain.space, &params);
+                    observation.revalue(&terrain.acoustic.space, &params);
                     assert_eq!(observation.perception.is_some(), habitat && leave_self_out);
                     if (40..80).contains(&frame) {
                         assert!(observation.power_scan.is_some());
                     }
                     if let Some(perception) = &observation.perception {
                         for (actual, reference) in [
-                            (&perception.h_scan, &expected.harmonicity01),
-                            (&perception.r_scan, &expected.roughness01),
-                            (&observation.level_scan, &expected.consonance_field_level),
+                            (&perception.h_scan, &expected.acoustic.harmonicity01),
+                            (&perception.r_scan, &expected.acoustic.roughness01),
+                            (
+                                &observation.level_scan,
+                                &expected.acoustic.consonance_field_level,
+                            ),
                         ] {
                             for (&a, &b) in actual.iter().zip(reference) {
                                 max_hr_error = max_hr_error.max((a - b).abs());
@@ -492,16 +510,16 @@ fn growth_observation_revalues_holds_and_discards_old_geometry() {
     let held_growth = flora.growth_level_scan.clone();
     let held_seeds = flora.harmonicity_state_scan.clone();
     terrain.ecology.flora_observations.clear();
-    terrain.consonance_field_level.fill(1.0);
-    terrain.harmonicity01.fill(1.0);
+    terrain.acoustic.consonance_field_level.fill(1.0);
+    terrain.acoustic.harmonicity01.fill(1.0);
     flora.advance(&terrain);
     assert_eq!(flora.growth_level_scan, held_growth);
     assert_eq!(flora.harmonicity_state_scan, held_seeds);
     let new_space = Log2Space::new(110.0, 1000.0, 48);
     flora.on_space_change(&new_space);
     let mut new_terrain = Landscape::new(new_space);
-    new_terrain.consonance_field_level.fill(1.0);
-    new_terrain.harmonicity01.fill(1.0);
+    new_terrain.acoustic.consonance_field_level.fill(1.0);
+    new_terrain.acoustic.harmonicity01.fill(1.0);
     flora.advance(&new_terrain);
     assert!(
         flora

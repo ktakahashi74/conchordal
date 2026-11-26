@@ -59,10 +59,10 @@ mod tests {
 
     fn setup(weight: f32, residual: bool) -> (Landscape, Flora) {
         let mut l = Landscape::new(Log2Space::new(220., 880., 96));
-        l.onset_habituation_state_scan = vec![0.8; l.space.n_bins()].into();
-        l.onset_habituation_known = true;
-        l.consonance_field_level.fill(0.7);
-        l.harmonicity01.fill(0.4);
+        l.acoustic.onset_habituation_state_scan = vec![0.8; l.acoustic.space.n_bins()].into();
+        l.acoustic.onset_habituation_known = true;
+        l.acoustic.consonance_field_level.fill(0.7);
+        l.acoustic.harmonicity01.fill(0.4);
         let mut f = Flora::new(
             1,
             FloraSpec {
@@ -86,7 +86,9 @@ mod tests {
                 0.001
                     + 0.1
                         * (-0.5
-                            * ((l.space.centers_hz[i].log2() - 330_f32.log2()) * 96. / 1.5).powi(2))
+                            * ((l.acoustic.space.centers_hz[i].log2() - 330_f32.log2()) * 96.
+                                / 1.5)
+                                .powi(2))
                         .exp()
             } else {
                 0.
@@ -161,9 +163,9 @@ mod tests {
                 observer.process(front.band_energy().1, 512, (hop + 1) * 512);
             }
             let mut l = Landscape::new(space.clone());
-            l.onset_habituation_state_scan = observer.state.into();
-            l.onset_habituation_known = true;
-            l.onset_habituation_end = 500 * 512;
+            l.acoustic.onset_habituation_state_scan = observer.state.into();
+            l.acoustic.onset_habituation_known = true;
+            l.acoustic.onset_habituation_end = 500 * 512;
             histories.push(l);
         }
         for ablate in [false, true] {
@@ -172,7 +174,8 @@ mod tests {
                 let (_, mut f) = setup(1., false);
                 let mut history = history.clone();
                 if ablate {
-                    std::sync::Arc::make_mut(&mut history.onset_habituation_state_scan).fill(0.);
+                    std::sync::Arc::make_mut(&mut history.acoustic.onset_habituation_state_scan)
+                        .fill(0.);
                 }
                 let start = 500 * 512;
                 render(&mut f, &history, start, true, true);
@@ -327,9 +330,9 @@ mod tests {
     #[test]
     fn weighted_heard_uses_sounding_tonal_target_power_and_empty_is_zero() {
         let (mut l, mut f) = setup(1., true);
-        let split = l.space.n_bins() / 2;
-        std::sync::Arc::make_mut(&mut l.onset_habituation_state_scan)[..split].fill(0.);
-        std::sync::Arc::make_mut(&mut l.onset_habituation_state_scan)[split..].fill(1.);
+        let split = l.acoustic.space.n_bins() / 2;
+        std::sync::Arc::make_mut(&mut l.acoustic.onset_habituation_state_scan)[..split].fill(0.);
+        std::sync::Arc::make_mut(&mut l.acoustic.onset_habituation_state_scan)[split..].fill(1.);
         let gap = f.span_gap.as_mut().unwrap();
         gap.observe(&l, 0);
         gap.advance(0, false);

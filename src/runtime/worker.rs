@@ -233,7 +233,7 @@ impl WorkerState {
         });
         #[cfg(not(feature = "native"))]
         let harmonic_relations = None;
-        let log_space = current_landscape.space.clone();
+        let log_space = current_landscape.acoustic.space.clone();
         let timebase = crate::core::timebase::Timebase {
             fs: cfg.fs,
             hop: cfg.hop,
@@ -255,7 +255,7 @@ impl WorkerState {
         let mut generator_model =
             crate::life::generator_model::GeneratorModel::new(timebase, log_space.clone());
         generator_model.advance_to(timebase.frame_start_tick(0));
-        let hab_bins = current_landscape.space.n_bins();
+        let hab_bins = current_landscape.acoustic.space.n_bins();
         let hab_ecology = crate::core::habituation::HabituationField::new(
             &lparams.habituation,
             lparams.consonance_representation.theta,

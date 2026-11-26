@@ -417,7 +417,7 @@ impl Voice {
         if respond.is_finite() && respond > 0.0 {
             pitch_ctl.respond = Some(pitch_controller::OnsetResponse::new(
                 respond,
-                landscape.map_or(0, |landscape| landscape.space.n_bins()),
+                landscape.map_or(0, |landscape| landscape.acoustic.space.n_bins()),
             ));
         }
         if effective_control.pitch.follow_own_sequence > 0.0

@@ -118,8 +118,14 @@ fn aud_m1_v4_state() {
             body.process_body_gap(&pcm, 4, &params);
             body.recompute_body_score(&params, None);
             let expected = evaluate(&sparse.density_scan, &space, &params, &mut scratch, peak);
-            assert_eq!(body.landscape.harmonicity, expected.harmonicity);
-            assert_eq!(body.landscape.roughness01, expected.roughness01);
+            assert_eq!(
+                body.landscape.acoustic.harmonicity,
+                expected.acoustic.harmonicity
+            );
+            assert_eq!(
+                body.landscape.acoustic.roughness01,
+                expected.acoustic.roughness01
+            );
             assert_eq!(sparse.bank.energy, every.bank.energy);
             assert_eq!(sparse.bank.correlation, every.bank.correlation);
             assert_eq!(sparse.channel_mass, every.channel_mass);
@@ -183,25 +189,27 @@ fn aud_m1_v4_state() {
         let actual = observer.last();
         let kernel = params.consonance_field_kernel();
         for i in 0..space.n_bins() {
-            let h = crate::core::float::sanitize01(actual.harmonicity[i]);
-            let href = crate::core::float::sanitize01(reference.harmonicity[i]);
-            let r = actual.roughness01[i];
-            let rref = reference.roughness01[i];
+            let h = crate::core::float::sanitize01(actual.acoustic.harmonicity[i]);
+            let href = crate::core::float::sanitize01(reference.acoustic.harmonicity[i]);
+            let r = actual.acoustic.roughness01[i];
+            let rref = reference.acoustic.roughness01[i];
             maximum_clone_error = maximum_clone_error
                 .max((h - href).abs())
                 .max((r - rref).abs())
                 .max((kernel.score(h, r) - kernel.score(href, rref)).abs());
         }
         let mass = reference
+            .acoustic
             .subjective_intensity
             .iter()
             .zip(&template.reassignment.du)
             .map(|(d, w)| d * w)
             .sum::<f32>();
         let l1 = actual
+            .acoustic
             .subjective_intensity
             .iter()
-            .zip(&reference.subjective_intensity)
+            .zip(&reference.acoustic.subjective_intensity)
             .zip(&template.reassignment.du)
             .map(|((a, b), w)| (a - b).abs() * w)
             .sum::<f32>()

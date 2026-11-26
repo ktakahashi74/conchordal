@@ -185,7 +185,7 @@ impl PitchCore for PitchPeakSamplerCore {
         neighbor_salience: &[f32],
         rng: &mut R,
     ) -> TargetProposal {
-        let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
+        let (fmin, fmax) = landscape.acoustic.space.voice_pitch_bounds_log2();
         let current_target_log2 = current_target_log2.clamp(fmin, fmax);
         let window_bins = window_bins_from_cents(landscape, self.window_cents);
         let tessitura_center = self.tessitura_center;
@@ -222,8 +222,11 @@ impl PitchCore for PitchPeakSamplerCore {
                 leave_self_out,
                 ReferenceLooMode::ApproxHarmonics,
                 DEFAULT_LOO_HARMONICS,
-                self.loo_input
-                    .candidate_scan(&landscape.space, pitch_log2, loo_scan.as_deref()),
+                self.loo_input.candidate_scan(
+                    &landscape.acoustic.space,
+                    pitch_log2,
+                    loo_scan.as_deref(),
+                ),
                 body_ratios.as_deref(),
                 crowding_strength,
                 crowding_sigma_cents,

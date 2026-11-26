@@ -255,10 +255,10 @@ fn b7_static_current_scores() {
             .iter()
             .map(|analysis| {
                 evaluate(
-                    &analysis.landscape.space,
+                    &analysis.landscape.acoustic.space,
                     &source.density_scan,
                     &analysis.du,
-                    &analysis.landscape.consonance_field_score_eff,
+                    &analysis.landscape.acoustic.consonance_field_score_eff,
                     &params.consonance_representation,
                 )
                 .unwrap()
@@ -349,7 +349,7 @@ fn site_metabolism_matches_a_local_mixture_without_the_owner() {
     });
     actual.prepare_sites(&buses.full);
     let voices = [voice(2, 7, BodyMethod::Sine)];
-    let shared = Landscape::new(actual.shared.landscape.space.clone());
+    let shared = Landscape::new(actual.shared.landscape.acoustic.space.clone());
     let mut scores = 0;
     for hop in 0..58 {
         let now = hop * 512;
@@ -374,8 +374,8 @@ fn site_metabolism_matches_a_local_mixture_without_the_owner() {
             reference.pcm[0].habitat.fill(0.);
             let (a, r) = (&mut actual.sources[0], &mut reference.sources[0]);
             assert_eq!(
-                a.environment.landscape.roughness01,
-                r.environment.landscape.roughness01
+                a.environment.landscape.acoustic.roughness01,
+                r.environment.landscape.acoustic.roughness01
             );
             if let (Ok(a), Ok(r)) = (
                 a.score(440f32.log2(), &params, &shared),
@@ -418,8 +418,8 @@ fn harmonicity_preference_revalues_body_metabolism_without_reanalyzing_sensation
     let before = source
         .score(440_f32.log2(), current_params, &shared)
         .unwrap();
-    let h_before = source.environment.landscape.harmonicity01.clone();
-    let r_before = source.environment.landscape.roughness01.clone();
+    let h_before = source.environment.landscape.acoustic.harmonicity01.clone();
+    let r_before = source.environment.landscape.acoustic.roughness01.clone();
     let density_builds = source.density_builds;
     params.set_harmonicity_preference(0.0);
     runtime.prepare(&voices, now, &params);
@@ -435,6 +435,7 @@ fn harmonicity_preference_revalues_body_metabolism_without_reanalyzing_sensation
         source
             .environment
             .landscape
+            .acoustic
             .harmonicity01
             .iter()
             .zip(h_before)
@@ -444,6 +445,7 @@ fn harmonicity_preference_revalues_body_metabolism_without_reanalyzing_sensation
         source
             .environment
             .landscape
+            .acoustic
             .roughness01
             .iter()
             .zip(r_before)
@@ -755,7 +757,7 @@ fn strict_room_advances_own_sound_between_selected_metabolism_hops() {
         for s in &runtime.sources {
             if s.selected_hop == now {
                 visits[s.id as usize - 1] += 1;
-                let h = &s.environment.landscape.harmonicity;
+                let h = &s.environment.landscape.acoustic.harmonicity;
                 if s.id == 1 {
                     assert!(h.iter().all(|&x| x == 0.));
                 } else {

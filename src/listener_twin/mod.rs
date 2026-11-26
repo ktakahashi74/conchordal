@@ -178,10 +178,13 @@ impl ListenerTwin {
         landscape: &Landscape,
     ) -> ListenerState {
         self.spectral_history = landscape.ecology.spectral_history.clone();
-        let space = &landscape.space;
-        space.assert_scan_len_named(&landscape.subjective_intensity, "subjective_intensity");
+        let space = &landscape.acoustic.space;
         space.assert_scan_len_named(
-            &landscape.consonance_field_level_eff,
+            &landscape.acoustic.subjective_intensity,
+            "subjective_intensity",
+        );
+        space.assert_scan_len_named(
+            &landscape.acoustic.consonance_field_level_eff,
             "consonance_field_level_eff",
         );
         let key = (
@@ -297,12 +300,12 @@ impl ListenerTwin {
     }
 
     fn prepare_components(&mut self, landscape: &Landscape) {
-        let space = &landscape.space;
+        let space = &landscape.acoustic.space;
         space.assert_scan_len_named(&self.mass_scan, "listener_mass_scan");
         space.assert_scan_len_named(&self.component_mass_scan, "listener_component_mass_scan");
         space.assert_scan_len_named(&self.component_peak_bin, "listener_component_peak_bins");
         group_components(
-            &landscape.subjective_intensity,
+            &landscape.acoustic.subjective_intensity,
             &self.erb_du_scan,
             &mut self.mass_scan,
             &mut self.component_mass_scan,
@@ -375,10 +378,13 @@ fn group_components(
 /// mass as the listener's stability level and read at its peak bin. Valuation
 /// weights do not enter. `None` without audible evidence. Allocates its scratch.
 pub(crate) fn component_weighted_sensation(landscape: &Landscape) -> Option<(f32, f32)> {
-    let space = &landscape.space;
-    space.assert_scan_len_named(&landscape.subjective_intensity, "subjective_intensity");
-    space.assert_scan_len_named(&landscape.harmonicity01, "harmonicity01");
-    space.assert_scan_len_named(&landscape.roughness01, "roughness01");
+    let space = &landscape.acoustic.space;
+    space.assert_scan_len_named(
+        &landscape.acoustic.subjective_intensity,
+        "subjective_intensity",
+    );
+    space.assert_scan_len_named(&landscape.acoustic.harmonicity01, "harmonicity01");
+    space.assert_scan_len_named(&landscape.acoustic.roughness01, "roughness01");
     let (_, erb_du) = erb_grid(space);
     if !has_audible_evidence(landscape, &erb_du) {
         return None;
@@ -388,7 +394,7 @@ pub(crate) fn component_weighted_sensation(landscape: &Landscape) -> Option<(f32
     let mut component_mass_scan = vec![0.0; n];
     let mut component_peak_bin = vec![usize::MAX; n];
     group_components(
-        &landscape.subjective_intensity,
+        &landscape.acoustic.subjective_intensity,
         &erb_du,
         &mut mass_scan,
         &mut component_mass_scan,
@@ -397,8 +403,8 @@ pub(crate) fn component_weighted_sensation(landscape: &Landscape) -> Option<(f32
     let (mut h, mut r, mut weight_sum) = (0.0f32, 0.0f32, 0.0f32);
     for ((&weight, &h01), &r01) in component_mass_scan
         .iter()
-        .zip(&landscape.harmonicity01)
-        .zip(&landscape.roughness01)
+        .zip(&landscape.acoustic.harmonicity01)
+        .zip(&landscape.acoustic.roughness01)
     {
         if weight <= 0.0 {
             continue;
@@ -418,6 +424,7 @@ impl Default for ListenerTwin {
 
 fn has_audible_evidence(landscape: &Landscape, erb_du: &[f32]) -> bool {
     landscape
+        .acoustic
         .subjective_intensity
         .iter()
         .zip(erb_du)
@@ -428,11 +435,13 @@ fn has_audible_evidence(landscape: &Landscape, erb_du: &[f32]) -> bool {
 
 fn weighted_stability_level(landscape: &Landscape, component_mass_scan: &[f32]) -> f32 {
     landscape
+        .acoustic
         .space
         .assert_scan_len_named(component_mass_scan, "listener_component_mass_scan");
     let mut sum = 0.0f32;
     let mut weight_sum = 0.0f32;
     for (&value, &weight) in landscape
+        .acoustic
         .consonance_field_level_eff
         .iter()
         .zip(component_mass_scan)
@@ -457,13 +466,15 @@ fn weighted_resolution_gain(
     config: &ListenerTwinConfig,
 ) -> f32 {
     landscape
+        .acoustic
         .space
         .assert_scan_len_named(component_mass_scan, "listener_component_mass_scan");
     landscape
+        .acoustic
         .space
         .assert_scan_len_named(component_peak_bin, "listener_component_peak_bins");
-    let levels = &landscape.consonance_field_level_eff;
-    let window_bins = reachable_window_bins(&landscape.space, config.reachable_cents);
+    let levels = &landscape.acoustic.consonance_field_level_eff;
+    let window_bins = reachable_window_bins(&landscape.acoustic.space, config.reachable_cents);
     let mut gain_sum = 0.0f32;
     let mut weight_sum = 0.0f32;
     for (idx, &weight) in component_mass_scan.iter().enumerate() {
@@ -479,7 +490,8 @@ fn weighted_resolution_gain(
             if component_peak_bin[target_idx] == idx {
                 continue;
             }
-            let dist_oct = target_idx.abs_diff(idx) as f32 / landscape.space.bins_per_oct as f32;
+            let dist_oct =
+                target_idx.abs_diff(idx) as f32 / landscape.acoustic.space.bins_per_oct as f32;
             let movement_cost = config.movement_cost_per_oct.max(0.0) * dist_oct;
             let gain = candidate.clamp(0.0, 1.0) - current - movement_cost;
             if gain.is_finite() {
@@ -501,9 +513,10 @@ fn bin_weighted_stability_level(landscape: &Landscape, erb_du: &[f32]) -> f32 {
     let mut sum = 0.0f32;
     let mut weight_sum = 0.0f32;
     for ((&value, &density), &du) in landscape
+        .acoustic
         .consonance_field_level_eff
         .iter()
-        .zip(&landscape.subjective_intensity)
+        .zip(&landscape.acoustic.subjective_intensity)
         .zip(erb_du)
     {
         let w = sanitize_nonnegative_finite(density * du);
@@ -527,10 +540,10 @@ fn bin_weighted_resolution_gain(
     erb_du: &[f32],
     config: &ListenerTwinConfig,
 ) -> f32 {
-    let levels = &landscape.consonance_field_level_eff;
-    let weights = &landscape.subjective_intensity;
+    let levels = &landscape.acoustic.consonance_field_level_eff;
+    let weights = &landscape.acoustic.subjective_intensity;
 
-    let window_bins = reachable_window_bins(&landscape.space, config.reachable_cents);
+    let window_bins = reachable_window_bins(&landscape.acoustic.space, config.reachable_cents);
     let mut gain_sum = 0.0f32;
     let mut weight_sum = 0.0f32;
 
@@ -549,7 +562,8 @@ fn bin_weighted_resolution_gain(
 
         for (offset, &candidate) in levels[lo..hi].iter().enumerate() {
             let target_idx = lo + offset;
-            let dist_oct = target_idx.abs_diff(idx) as f32 / landscape.space.bins_per_oct as f32;
+            let dist_oct =
+                target_idx.abs_diff(idx) as f32 / landscape.acoustic.space.bins_per_oct as f32;
             let movement_cost = config.movement_cost_per_oct.max(0.0) * dist_oct;
             let gain = candidate.clamp(0.0, 1.0) - current - movement_cost;
             if gain.is_finite() {
@@ -639,15 +653,24 @@ mod tests {
     ) -> Landscape {
         let (_, du) = erb_grid(&space);
         let mut landscape = Landscape::new(space);
-        landscape.consonance_field_level.fill(default_level);
-        landscape.consonance_field_level_eff.fill(default_level);
-        landscape.consonance_field_score.fill(default_level);
-        landscape.subjective_intensity.fill(0.0);
+        landscape
+            .acoustic
+            .consonance_field_level
+            .fill(default_level);
+        landscape
+            .acoustic
+            .consonance_field_level_eff
+            .fill(default_level);
+        landscape
+            .acoustic
+            .consonance_field_score
+            .fill(default_level);
+        landscape.acoustic.subjective_intensity.fill(0.0);
         for &(idx, level, mass) in active {
-            landscape.consonance_field_level[idx] = level;
-            landscape.consonance_field_level_eff[idx] = level;
-            landscape.consonance_field_score[idx] = level;
-            landscape.subjective_intensity[idx] = mass / du[idx];
+            landscape.acoustic.consonance_field_level[idx] = level;
+            landscape.acoustic.consonance_field_level_eff[idx] = level;
+            landscape.acoustic.consonance_field_score[idx] = level;
+            landscape.acoustic.subjective_intensity[idx] = mass / du[idx];
         }
         landscape
     }
@@ -656,7 +679,7 @@ mod tests {
     #[should_panic(expected = "scan length mismatch: subjective_intensity")]
     fn observation_rejects_density_scan_length_mismatch() {
         let mut landscape = test_landscape(0.0, &[]);
-        landscape.subjective_intensity.pop();
+        landscape.acoustic.subjective_intensity.pop();
         ListenerTwin::default().observe_presentation_landscape(0.0, 0, 0, &landscape);
     }
 
@@ -664,7 +687,7 @@ mod tests {
     #[should_panic(expected = "scan length mismatch: consonance_field_level_eff")]
     fn silent_observation_rejects_level_scan_length_mismatch() {
         let mut landscape = test_landscape(0.0, &[]);
-        landscape.consonance_field_level_eff.pop();
+        landscape.acoustic.consonance_field_level_eff.pop();
         ListenerTwin::default().observe_presentation_landscape(0.0, 0, 0, &landscape);
     }
 
@@ -682,8 +705,8 @@ mod tests {
     fn equal_mass_at_different_frequencies_contributes_equally_to_stability() {
         let landscape = test_landscape(0.0, &[(2, 0.2, 1.0), (20, 0.8, 1.0)]);
         assert_ne!(
-            landscape.subjective_intensity[2],
-            landscape.subjective_intensity[20]
+            landscape.acoustic.subjective_intensity[2],
+            landscape.acoustic.subjective_intensity[20]
         );
         let state = ListenerTwin::default().observe_presentation_landscape(0.0, 0, 0, &landscape);
 
@@ -694,11 +717,11 @@ mod tests {
     fn component_weighted_sensation_uses_stability_weights_without_valuation() {
         // Bin 3 ascends into bin 2's component (mass 1.5); bin 20 is its own (mass 1.0).
         let mut landscape = test_landscape(0.0, &[(2, 0.2, 1.0), (3, 0.9, 0.5), (20, 0.8, 1.0)]);
-        landscape.harmonicity01.fill(1.0);
-        landscape.roughness01.fill(1.0);
+        landscape.acoustic.harmonicity01.fill(1.0);
+        landscape.acoustic.roughness01.fill(1.0);
         for (idx, h01, r01) in [(2, 0.2, 0.6), (20, 0.8, 0.0)] {
-            landscape.harmonicity01[idx] = h01;
-            landscape.roughness01[idx] = r01;
+            landscape.acoustic.harmonicity01[idx] = h01;
+            landscape.acoustic.roughness01[idx] = r01;
         }
         let (h, r) = component_weighted_sensation(&landscape).unwrap();
         assert!((h - 0.44).abs() < 1e-6, "h={h}");
@@ -709,8 +732,8 @@ mod tests {
         assert!((state.stability_level - h).abs() < 1e-6);
 
         // Valuation views do not enter the sensation.
-        landscape.consonance_field_level_eff.fill(0.0);
-        landscape.consonance_field_score.fill(-3.0);
+        landscape.acoustic.consonance_field_level_eff.fill(0.0);
+        landscape.acoustic.consonance_field_score.fill(-3.0);
         assert_eq!(component_weighted_sensation(&landscape), Some((h, r)));
 
         assert_eq!(
@@ -739,7 +762,7 @@ mod tests {
     #[test]
     fn audible_evidence_threshold_uses_mass_instead_of_density_sum() {
         let below = test_landscape(0.2, &[(2, 0.2, AUDIBLE_EVIDENCE_EPS * 0.5)]);
-        assert!(below.subjective_intensity[2] > AUDIBLE_EVIDENCE_EPS);
+        assert!(below.acoustic.subjective_intensity[2] > AUDIBLE_EVIDENCE_EPS);
         let mut twin = ListenerTwin::default();
         let silent = twin.observe_presentation_landscape(0.0, 0, 0, &below);
         assert_eq!(silent.stability_level, NEUTRAL_STABILITY_LEVEL);
@@ -749,7 +772,7 @@ mod tests {
             0.2,
             &[(2, 0.2, AUDIBLE_EVIDENCE_EPS * 2.0)],
         );
-        assert!(above.subjective_intensity[2] < AUDIBLE_EVIDENCE_EPS);
+        assert!(above.acoustic.subjective_intensity[2] < AUDIBLE_EVIDENCE_EPS);
         let audible = twin.observe_presentation_landscape(0.01, 1, 1, &above);
         assert!((audible.stability_level - 0.2).abs() < 1e-6);
     }
@@ -762,7 +785,7 @@ mod tests {
             0.0,
             &[(2, 0.2, 1.0), (20, 0.8, 1.0)],
         );
-        assert_eq!(low.space.n_bins(), high.space.n_bins());
+        assert_eq!(low.acoustic.space.n_bins(), high.acoustic.space.n_bins());
         let mut twin = ListenerTwin::default();
         twin.observe_presentation_landscape(0.0, 0, 0, &low);
         let old_widths = twin.erb_du_scan.clone();
@@ -845,7 +868,12 @@ mod tests {
                 vec![(0, 0.35, 0.01), (n / 2, 0.75, 2.0), (n - 1, 0.1, 0.5)],
             ] {
                 let mut landscape = test_landscape_with_space(space.clone(), 0.4, &active);
-                for (i, level) in landscape.consonance_field_level_eff.iter_mut().enumerate() {
+                for (i, level) in landscape
+                    .acoustic
+                    .consonance_field_level_eff
+                    .iter_mut()
+                    .enumerate()
+                {
                     if !active.iter().any(|a| a.0 == i) {
                         *level = (i % 7) as f32 / 7.0;
                     }
@@ -883,7 +911,7 @@ mod tests {
     #[test]
     fn two_bin_component_has_no_internal_resolution_move() {
         let landscape = test_landscape(0.1, &[(12, 0.4, 0.75), (13, 0.9, 0.25)]);
-        let du = erb_grid(&landscape.space).1;
+        let du = erb_grid(&landscape.acoustic.space).1;
         let mut twin = ListenerTwin::default();
         let state = twin.observe_presentation_landscape(0.0, 1, 0, &landscape);
         assert_eq!(twin.component_peak_bin[12], 12);
@@ -917,7 +945,7 @@ mod tests {
             (12, 3.0),
             (13, 3.0),
         ] {
-            landscape.subjective_intensity[i] = mass;
+            landscape.acoustic.subjective_intensity[i] = mass;
         }
         twin.prepare_components(&landscape);
         for (i, peak) in [

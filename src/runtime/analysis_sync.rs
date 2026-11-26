@@ -43,11 +43,11 @@ pub(super) fn merge_latest_analysis_results(
                     site.ecology.rain_observations.clear();
                     site.ecology.tonal_observations.clear();
                     site.ecology.tonal_context = None;
-                    site.onset_habituation_known = false;
+                    site.acoustic.onset_habituation_known = false;
                     site.harmonic.support = None;
                     site.ecology.site_resource_power = None;
                 }
-                current_landscape.onset_habituation_known = false;
+                current_landscape.acoustic.onset_habituation_known = false;
                 current_landscape.ecology.tonal_context = None;
                 current_landscape.ecology.tonal_observations.clear();
                 current_landscape.ecology.spectral_history = None;
@@ -68,52 +68,53 @@ pub(super) fn merge_latest_analysis_results(
                     site.ecology.rain_observations.clear();
                     site.ecology.tonal_observations.clear();
                     site.ecology.tonal_context = None;
-                    site.onset_habituation_known = false;
+                    site.acoustic.onset_habituation_known = false;
                     site.harmonic.support = None;
                     site.ecology.site_resource_power = None;
                 }
-                current_landscape.onset_habituation_known = false;
+                current_landscape.acoustic.onset_habituation_known = false;
                 current_landscape.ecology.tonal_context = None;
                 current_landscape.ecology.tonal_observations.clear();
                 break;
             }
         }
     }
-    let Some((_analysis_id, frame)) = latest_audio else {
+    let Some((_analysis_id, mut frame)) = latest_audio else {
         return (false, unavailable, false);
     };
 
-    let space_changed = current_landscape.space.n_bins() != frame.space.n_bins()
-        || current_landscape.space.fmin != frame.space.fmin
-        || current_landscape.space.fmax != frame.space.fmax
-        || current_landscape.space.bins_per_oct != frame.space.bins_per_oct;
+    let current_space = &current_landscape.acoustic.space;
+    let incoming_space = &frame.acoustic.space;
+    let space_changed = current_space.n_bins() != incoming_space.n_bins()
+        || current_space.fmin != incoming_space.fmin
+        || current_space.fmax != incoming_space.fmax
+        || current_space.bins_per_oct != incoming_space.bins_per_oct;
     if space_changed {
-        current_landscape.resize_to_space(frame.space.clone());
-        *log_space = current_landscape.space.clone();
+        current_landscape.resize_to_space(incoming_space.clone());
+        *log_space = current_landscape.acoustic.space.clone();
         generator_model.set_space(log_space.clone());
     }
     // Keep frame perception metadata, but use the worker's current valuation.
-    current_landscape.set_analysis_metadata(
-        frame.roughness_kernel_params,
-        frame.harmonicity_params,
+    frame.set_analysis_metadata(
+        frame.acoustic.roughness_kernel_params,
+        frame.acoustic.harmonicity_params,
         lparams.consonance_field_kernel(),
-        frame.roughness_k,
-        frame.roughness_ref_peak,
-        frame.roughness_ref_eps,
+        frame.acoustic.roughness_k,
+        frame.acoustic.roughness_ref_peak,
+        frame.acoustic.roughness_ref_eps,
     );
-    current_landscape.onset_habituation_state_scan = frame.onset_habituation_state_scan;
-    current_landscape.onset_habituation_end = frame.onset_habituation_end;
-    current_landscape.onset_habituation_known = frame.onset_habituation_known;
-    current_landscape.roughness = frame.roughness;
-    current_landscape.roughness_shape_raw = frame.roughness_shape_raw;
-    current_landscape.roughness01 = frame.roughness01;
-    current_landscape.harmonicity = frame.harmonicity;
-    current_landscape.roughness01_scalar = frame.roughness01_scalar;
-    current_landscape.loudness_mass = frame.loudness_mass;
+    // Keep the active grid and worker-owned values. Revaluation below overwrites
+    // H01 and the incoming consonance buffers before any consumer reads them.
+    let acoustic = &mut current_landscape.acoustic;
+    std::mem::swap(&mut acoustic.space, &mut frame.acoustic.space);
+    *acoustic = crate::core::landscape::AcousticField {
+        perc_habituation_state_scan: std::mem::take(&mut acoustic.perc_habituation_state_scan),
+        consonance_theta: acoustic.consonance_theta,
+        loudness_exp: acoustic.loudness_exp,
+        ..frame.acoustic
+    };
     current_landscape.pitch_objective_mode = frame.pitch_objective_mode;
     current_landscape.harmonic.support = frame.harmonic.support;
-    current_landscape.subjective_intensity = frame.subjective_intensity;
-    current_landscape.nsgt_power = frame.nsgt_power;
     current_landscape.ecology.sites = frame.ecology.sites;
     current_landscape.ecology.loo = frame.ecology.loo;
     current_landscape.ecology.tonal_context = frame.ecology.tonal_context;
@@ -128,28 +129,32 @@ pub(super) fn merge_latest_analysis_results(
     if cfg!(debug_assertions) && frame_idx.is_multiple_of(30) {
         let mut max_r = 0.0f32;
         let mut max_i = 0usize;
-        for (i, &r) in current_landscape.roughness01.iter().enumerate() {
+        for (i, &r) in current_landscape.acoustic.roughness01.iter().enumerate() {
             if r.is_finite() && r > max_r {
                 max_r = r;
                 max_i = i;
             }
         }
         let h = current_landscape
+            .acoustic
             .harmonicity01
             .get(max_i)
             .copied()
             .unwrap_or(0.0);
         let r = current_landscape
+            .acoustic
             .roughness01
             .get(max_i)
             .copied()
             .unwrap_or(0.0);
         let c_score = current_landscape
+            .acoustic
             .consonance_field_score_eff
             .get(max_i)
             .copied()
             .unwrap_or(0.0);
         let c_level = current_landscape
+            .acoustic
             .consonance_field_level_eff
             .get(max_i)
             .copied()
@@ -177,17 +182,18 @@ pub(super) fn drive_and_apply_habituation(
     if !hab.is_enabled() {
         return;
     }
-    hab.ensure_len(landscape.space.n_bins());
+    hab.ensure_len(landscape.acoustic.space.n_bins());
     match hab.drive() {
         crate::core::habituation::HabituationDrive::RootProjection => {
-            let (proj, _max) = lparams
-                .harmonicity_kernel
-                .potential_h_from_log2_spectrum(&landscape.subjective_intensity, &landscape.space);
-            hab.advance_from_parts(&landscape.consonance_field_level, &proj, dt_sec);
+            let (proj, _max) = lparams.harmonicity_kernel.potential_h_from_log2_spectrum(
+                &landscape.acoustic.subjective_intensity,
+                &landscape.acoustic.space,
+            );
+            hab.advance_from_parts(&landscape.acoustic.consonance_field_level, &proj, dt_sec);
         }
         _ => hab.advance_from_channels(
-            &landscape.subjective_intensity,
-            &landscape.space,
+            &landscape.acoustic.subjective_intensity,
+            &landscape.acoustic.space,
             &lparams.harmonicity_kernel.params,
             dt_sec,
         ),
@@ -380,7 +386,7 @@ pub(super) fn apply_landscape_updates(
         let obs_tick = state.timebase.frame_end_tick(analysis_id);
         state.generator_model.observe_consonance_field_level(
             obs_tick,
-            Arc::from(&state.current_landscape.consonance_field_level_eff[..]),
+            Arc::from(&state.current_landscape.acoustic.consonance_field_level_eff[..]),
         );
     }
 
@@ -512,7 +518,7 @@ pub(super) fn apply_pending_landscape_update(
             current_landscape.pitch_objective_mode = mode;
         }
         if valuation_changed {
-            current_landscape.consonance_kernel = params.consonance_field_kernel();
+            current_landscape.acoustic.consonance_kernel = params.consonance_field_kernel();
             current_landscape.recompute_consonance(params);
         }
         if let Err(err) = analysis_update_tx.send(update) {
@@ -568,7 +574,7 @@ mod habituation_tests {
         params.habituation.drive = HabituationDrive::RootProjection;
         let mut actual = core.landscape;
         let mut legacy = actual.clone();
-        let n = actual.space.n_bins();
+        let n = actual.acoustic.space.n_bins();
         let mut field = HabituationField::new(&params.habituation, 0.0, n);
         let mut old_h = vec![0.0_f32; n];
         for step in 0..20 {
@@ -578,20 +584,21 @@ mod habituation_tests {
                 } else {
                     0.0
                 };
-                actual.subjective_intensity[i] = v;
-                actual.harmonicity01[i] = v;
-                actual.roughness01[i] = 0.2;
+                actual.acoustic.subjective_intensity[i] = v;
+                actual.acoustic.harmonicity01[i] = v;
+                actual.acoustic.roughness01[i] = 0.2;
             }
             actual.recompute_consonance(&params);
             legacy.clone_from(&actual);
-            let (proj, _) = params
-                .harmonicity_kernel
-                .potential_h_from_log2_spectrum(&legacy.subjective_intensity, &legacy.space);
+            let (proj, _) = params.harmonicity_kernel.potential_h_from_log2_spectrum(
+                &legacy.acoustic.subjective_intensity,
+                &legacy.acoustic.space,
+            );
             let dt = 0.05_f32;
             let ae = (-dt / (5.0 / std::f32::consts::LN_10)).exp();
             let ar = (-dt / (8.0 / std::f32::consts::LN_10)).exp();
             for i in 0..n {
-                let raw = (legacy.consonance_field_level[i] * proj[i]).max(0.0);
+                let raw = (legacy.acoustic.consonance_field_level[i] * proj[i]).max(0.0);
                 let d = (raw / (raw + 0.25)).clamp(0.0, 1.0);
                 let a = if d > old_h[i] { ae } else { ar };
                 old_h[i] = (a * old_h[i] + (1.0 - a) * d).clamp(0.0, 1.0);
@@ -600,20 +607,20 @@ mod habituation_tests {
             drive_and_apply_habituation(&mut actual, &mut field, &params, dt);
             for (got, expected) in [
                 (
-                    &actual.perc_habituation_state_scan,
-                    &legacy.perc_habituation_state_scan,
+                    &actual.acoustic.perc_habituation_state_scan,
+                    &legacy.acoustic.perc_habituation_state_scan,
                 ),
                 (
-                    &actual.consonance_field_score_eff,
-                    &legacy.consonance_field_score_eff,
+                    &actual.acoustic.consonance_field_score_eff,
+                    &legacy.acoustic.consonance_field_score_eff,
                 ),
                 (
-                    &actual.consonance_field_level_eff,
-                    &legacy.consonance_field_level_eff,
+                    &actual.acoustic.consonance_field_level_eff,
+                    &legacy.acoustic.consonance_field_level_eff,
                 ),
                 (
-                    &actual.consonance_density_mass_eff,
-                    &legacy.consonance_density_mass_eff,
+                    &actual.acoustic.consonance_density_mass_eff,
+                    &legacy.acoustic.consonance_density_mass_eff,
                 ),
             ] {
                 assert!(
@@ -634,10 +641,13 @@ mod habituation_tests {
             let core = super::super::wiring::build_analysis_runtime_core(&config, 48000);
             assert_eq!(core.lparams.habituation.drive, drive);
             let mut landscape = core.landscape;
-            landscape.subjective_intensity[100] = 1.0;
+            landscape.acoustic.subjective_intensity[100] = 1.0;
             landscape.recompute_consonance(&core.lparams);
-            let mut field =
-                HabituationField::new(&core.lparams.habituation, 0.0, landscape.space.n_bins());
+            let mut field = HabituationField::new(
+                &core.lparams.habituation,
+                0.0,
+                landscape.acoustic.space.n_bins(),
+            );
             crate::runtime_profile::begin_allocations();
             for _ in 0..64 {
                 drive_and_apply_habituation(
@@ -652,6 +662,7 @@ mod habituation_tests {
             assert_eq!(counts.bytes, 0);
             assert!(
                 landscape
+                    .acoustic
                     .perc_habituation_state_scan
                     .iter()
                     .any(|&h| h > 0.0)

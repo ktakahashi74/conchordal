@@ -205,10 +205,10 @@ fn support_changes_lane_placement_but_not_growth_input() {
     let mut l = terrain();
     l.harmonic.support_planned = true;
     let g = Geometry::new(
-        &l.space,
-        &HarmonicityKernel::new(&l.space, HarmonicityParams::default()),
+        &l.acoustic.space,
+        &HarmonicityKernel::new(&l.acoustic.space, HarmonicityParams::default()),
     );
-    let mut e = vec![0.; l.space.n_bins()];
+    let mut e = vec![0.; l.acoustic.space.n_bins()];
     e[20] = 1.;
     let mut s = Snapshot::new(g);
     s.observe(&e, 1e-12, 512);
@@ -238,7 +238,7 @@ fn support_changes_lane_placement_but_not_growth_input() {
         let negative = run(&l);
         assert_ne!(positive.0, negative.0);
         assert_eq!(positive.1, negative.1);
-        assert_eq!(positive.1, l.consonance_field_level);
+        assert_eq!(positive.1, l.acoustic.consonance_field_level);
     }
 }
 
@@ -265,7 +265,11 @@ fn joint_fixture() -> Flora {
     f.gain.value = 1.;
     f.temporal.as_mut().unwrap().now = 512;
     f.biomass_mass_scan.fill(0.);
-    hill(&mut f, l.space.nearest_index(context.pitch.exp2()), 1.);
+    hill(
+        &mut f,
+        l.acoustic.space.nearest_index(context.pitch.exp2()),
+        1.,
+    );
     f.decompose();
     f
 }
@@ -624,7 +628,7 @@ fn support_action_rearticulate_preview_is_the_selected_lane_target() {
     f.gain.value = 1.;
     f.harmonic.act_now = true;
     f.tonal_len = 1;
-    let bin = l.space.nearest_index(context.pitch.exp2());
+    let bin = l.acoustic.space.nearest_index(context.pitch.exp2());
     let cell = f.cells.iter().position(|c| c.bins.contains(&bin)).unwrap();
     let peak = Peak {
         bin,
@@ -742,8 +746,8 @@ fn support_action_flora_birth_vs_no_spawn_and_retirement_keep_signed_midpoint_ra
 #[test]
 fn dynamics_large_hop_high_rate_preserves_nonnegativity_and_extent() {
     let mut l = Landscape::new(Log2Space::new(110.0, 1760.0, 96));
-    l.consonance_field_level.fill(1.0);
-    l.harmonicity01.fill(1.0);
+    l.acoustic.consonance_field_level.fill(1.0);
+    l.acoustic.harmonicity01.fill(1.0);
     let mut f = Flora::new(
         1,
         spec(),
@@ -842,8 +846,8 @@ fn consumption_kernel_is_truncated_row_normalized_and_extent_local() {
 #[test]
 fn flat_terrain_biomass_stays_below_twenty_over_120_seconds() {
     let mut l = terrain();
-    l.consonance_field_level.fill(0.5);
-    l.harmonicity01.fill(0.0);
+    l.acoustic.consonance_field_level.fill(0.5);
+    l.acoustic.harmonicity01.fill(0.0);
     for total in [0.05, 5.0] {
         let mut f = flora(&l);
         f.biomass_mass_scan[f.range.clone()].fill(total / f.range.len() as f32);
@@ -946,7 +950,7 @@ fn biomass_growth_uses_harmonic_seed_rain_and_not_amplitude() {
     let mut b = a.clone();
     a.spec.amp = 0.0;
     b.spec.amp = 1.0;
-    l.harmonicity01[33] = 1.0;
+    l.acoustic.harmonicity01[33] = 1.0;
     a.advance(&l);
     b.advance(&l);
     assert_eq!(a.biomass_mass_scan, b.biomass_mass_scan);
@@ -985,7 +989,7 @@ fn target_scaling_bounds_tonal_and_residual_amplitudes_together() {
 #[test]
 fn seeding_is_reproducible_restricted_and_has_uniform_fallback() {
     let mut l = terrain();
-    l.consonance_density_mass[31..35].fill(2.0);
+    l.acoustic.consonance_density_mass[31..35].fill(2.0);
     let make = |l: &Landscape| {
         Flora::new(
             7,
@@ -1009,7 +1013,7 @@ fn seeding_is_reproducible_restricted_and_has_uniform_fallback() {
             .iter()
             .all(|&u| u == 1.0)
     );
-    l.consonance_density_mass.fill(0.0);
+    l.acoustic.consonance_density_mass.fill(0.0);
     let f = make(&l);
     assert!(
         f.biomass_mass_scan[f.range.clone()]
@@ -1020,7 +1024,7 @@ fn seeding_is_reproducible_restricted_and_has_uniform_fallback() {
     let total: f32 = f.biomass_mass_scan.iter().sum();
     assert!((total - INITIAL_BIOMASS).abs() < 1e-6, "{total}");
     // Tiny weights next to zero bins must not overflow to Inf or NaN.
-    l.consonance_density_mass[31..33].fill(1e-40);
+    l.acoustic.consonance_density_mass[31..33].fill(1e-40);
     let tiny = make(&l);
     assert!(tiny.biomass_mass_scan.iter().all(|v| v.is_finite()));
     let total: f32 = tiny.biomass_mass_scan.iter().sum();
@@ -1034,12 +1038,13 @@ fn habituation_changes_neither_base_seeding_nor_base_driven_growth() {
 
     let mut base = terrain();
     let repr = ConsonanceRepresentationParams::default();
-    let n = base.space.n_bins();
+    let n = base.acoustic.space.n_bins();
     for i in 0..n {
-        base.consonance_field_score[i] = 0.5 + i as f32 / n as f32;
-        base.consonance_field_level[i] = repr.level(base.consonance_field_score[i]);
-        base.consonance_density_mass[i] = 0.1 + i as f32 / n as f32;
-        base.harmonicity01[i] = (i % 11) as f32 / 10.0;
+        base.acoustic.consonance_field_score[i] = 0.5 + i as f32 / n as f32;
+        base.acoustic.consonance_field_level[i] =
+            repr.level(base.acoustic.consonance_field_score[i]);
+        base.acoustic.consonance_density_mass[i] = 0.1 + i as f32 / n as f32;
+        base.acoustic.harmonicity01[i] = (i % 11) as f32 / 10.0;
     }
     base.apply_habituation(&vec![0.0; n], repr.theta, &repr);
     let mut habituated = base.clone();
@@ -1049,18 +1054,21 @@ fn habituation_changes_neither_base_seeding_nor_base_driven_growth() {
         .map(|i| if i < n / 2 { 10.0 } else { 0.01 })
         .collect();
     for _ in 0..200 {
-        hab.advance_from_parts(&base.consonance_field_level, &projection, 0.05);
+        hab.advance_from_parts(&base.acoustic.consonance_field_level, &projection, 0.05);
     }
     habituated.apply_habituation(hab.state(), repr.theta, &repr);
     assert_ne!(
-        habituated.consonance_field_level,
-        habituated.consonance_field_level_eff
+        habituated.acoustic.consonance_field_level,
+        habituated.acoustic.consonance_field_level_eff
     );
     assert_ne!(
-        habituated.consonance_density_mass,
-        habituated.consonance_density_mass_eff
+        habituated.acoustic.consonance_density_mass,
+        habituated.acoustic.consonance_density_mass_eff
     );
-    assert_eq!(habituated.harmonicity01, base.harmonicity01);
+    assert_eq!(
+        habituated.acoustic.harmonicity01,
+        base.acoustic.harmonicity01
+    );
     let make = |l: &Landscape| {
         Flora::new(
             7,
@@ -1079,8 +1087,9 @@ fn habituation_changes_neither_base_seeding_nor_base_driven_growth() {
     let mut reduced = make(&base);
     let mut reduced_base = habituated.clone();
     reduced_base
+        .acoustic
         .consonance_field_level
-        .copy_from_slice(&habituated.consonance_field_level_eff);
+        .copy_from_slice(&habituated.acoustic.consonance_field_level_eff);
     for _ in 0..100 {
         expected.advance(&base);
         actual.advance(&habituated);
@@ -1095,8 +1104,8 @@ fn habituation_changes_neither_base_seeding_nor_base_driven_growth() {
 fn advance_matches_the_closed_form_update_for_uniform_biomass() {
     // Uniform biomass removes the spread and makes consumption the local density.
     let mut l = terrain();
-    l.consonance_field_level.fill(0.7);
-    l.harmonicity01.fill(0.4);
+    l.acoustic.consonance_field_level.fill(0.7);
+    l.acoustic.harmonicity01.fill(0.4);
     // At a 50 ms hop, rate 8 requires 6, 8 or 12 substeps respectively.
     for (pace, substeps) in [(0.75, 6), (1.0, 8), (1.5, 12)] {
         let mut f = flora(&l);
@@ -2049,7 +2058,7 @@ fn reconfiguration_dormancy_requires_an_actual_bin_and_resumes_uniformly() {
     let mut h = p.clone();
     f.render_add(&mut p, &mut h);
     assert!(p.iter().all(|&x| x == 0.0));
-    f.on_space_change(&l.space);
+    f.on_space_change(&l.acoustic.space);
     assert!(!f.range.is_empty());
     assert!(
         f.resource_state_scan[f.range.clone()]
@@ -2167,7 +2176,7 @@ fn f2_every_internal_scan_boundary_names_the_bad_scan() {
                         f.report(0.0, &l);
                     }
                     5 => f.advance_resource(0.01),
-                    _ => f.on_space_change(&l.space),
+                    _ => f.on_space_change(&l.acoustic.space),
                 }));
             let error = result.expect_err(name);
             let message = error
@@ -2185,7 +2194,7 @@ fn f2_every_internal_scan_boundary_names_the_bad_scan() {
 fn f2_advance_checks_landscape_input() {
     let mut l = terrain();
     let mut f = flora(&l);
-    l.consonance_field_level.pop();
+    l.acoustic.consonance_field_level.pop();
     f.advance(&l);
 }
 
@@ -2194,7 +2203,7 @@ fn f2_advance_checks_landscape_input() {
 fn f2_advance_checks_harmonicity_input() {
     let mut l = terrain();
     let mut f = flora(&l);
-    l.harmonicity01.pop();
+    l.acoustic.harmonicity01.pop();
     f.advance(&l);
 }
 
@@ -2202,7 +2211,7 @@ fn f2_advance_checks_harmonicity_input() {
 #[should_panic(expected = "consonance_density_mass")]
 fn f2_placement_checks_landscape_input() {
     let mut l = terrain();
-    l.consonance_density_mass.pop();
+    l.acoustic.consonance_density_mass.pop();
     let _ = flora(&l);
 }
 
@@ -2216,11 +2225,11 @@ fn support_flora_partial_scan_reuses_cache_without_allocations() {
         l.harmonic.support_planned = true;
         l.harmonic.support_weights.0 = [1.; 3];
         let g = Geometry::new(
-            &l.space,
-            &HarmonicityKernel::new(&l.space, HarmonicityParams::default()),
+            &l.acoustic.space,
+            &HarmonicityKernel::new(&l.acoustic.space, HarmonicityParams::default()),
         );
         let mut s = Snapshot::new(g);
-        let mut e = vec![0.; l.space.n_bins()];
+        let mut e = vec![0.; l.acoustic.space.n_bins()];
         e[30] = 1.;
         s.observe(&e, 1e-12, 512);
         l.harmonic.support = Some(std::sync::Arc::new(s));
@@ -2250,13 +2259,13 @@ fn advance_and_render_allocate_nothing_during_continual_turnover() {
         (FloraTone::Sine, 2.0),
     ] {
         let mut l = terrain();
-        l.harmonicity01.fill(0.0);
-        l.onset_habituation_state_scan = vec![0.0; l.space.n_bins()].into();
-        l.onset_habituation_known = true;
+        l.acoustic.harmonicity01.fill(0.0);
+        l.acoustic.onset_habituation_state_scan = vec![0.0; l.acoustic.space.n_bins()].into();
+        l.acoustic.onset_habituation_known = true;
         let mut f = flora(&l);
         f.spec.tone = tone;
         f.respond = (respond > 0.0).then(|| Respond::new(respond));
-        f.on_space_change(&l.space);
+        f.on_space_change(&l.acoustic.space);
         let mut p = vec![0.0; f.hop];
         let mut h = p.clone();
         let boundary = f.cells[2].bins.start;
@@ -2264,7 +2273,7 @@ fn advance_and_render_allocate_nothing_during_continual_turnover() {
         let mut crossings = 0;
         begin_allocations();
         for t in 0..300 {
-            l.consonance_field_level.fill(0.5);
+            l.acoustic.consonance_field_level.fill(0.5);
             f.biomass_mass_scan.fill(0.000001);
             if t % 30 < 10 {
                 hill(&mut f, 33, 1.0);
@@ -2278,7 +2287,8 @@ fn advance_and_render_allocate_nothing_during_continual_turnover() {
                 }
             }
             normalize(&mut f);
-            let history = std::sync::Arc::get_mut(&mut l.onset_habituation_state_scan).unwrap();
+            let history =
+                std::sync::Arc::get_mut(&mut l.acoustic.onset_habituation_state_scan).unwrap();
             for (i, x) in history.iter_mut().enumerate() {
                 *x = if (t + i) % 7 == 0 {
                     *x + 0.01
@@ -2286,8 +2296,8 @@ fn advance_and_render_allocate_nothing_during_continual_turnover() {
                     0.9 * *x
                 };
             }
-            l.onset_habituation_end = t as u64 * f.hop as u64;
-            f.observe_onsets(&l, l.onset_habituation_end);
+            l.acoustic.onset_habituation_end = t as u64 * f.hop as u64;
+            f.observe_onsets(&l, l.acoustic.onset_habituation_end);
             f.advance(&l);
             p.fill(0.0);
             h.fill(0.0);
@@ -2333,7 +2343,7 @@ impl Flora {
                 let mut flora = Self::new(
                     1,
                     FloraSpec::default(),
-                    (landscape.space.fmin, landscape.space.fmax),
+                    (landscape.acoustic.space.fmin, landscape.acoustic.space.fmax),
                     FloraSeeding::Uniform,
                     1,
                     landscape,
@@ -2342,7 +2352,7 @@ impl Flora {
                 );
                 flora
                     .biomass_mass_scan
-                    .fill(density / landscape.space.bins_per_oct as f32);
+                    .fill(density / landscape.acoustic.space.bins_per_oct as f32);
                 flora.resource_state_scan.fill(resource);
                 states.push(flora);
             }

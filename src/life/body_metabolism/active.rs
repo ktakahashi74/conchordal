@@ -217,14 +217,14 @@ impl Evaluator {
             params
                 .habituation
                 .enabled
-                .then_some(shared.perc_habituation_state_scan.as_slice()),
+                .then_some(shared.acoustic.perc_habituation_state_scan.as_slice()),
         );
         let environment = &self.environment.landscape;
         let value = evaluate(
-            &environment.space,
+            &environment.acoustic.space,
             &self.density_scan,
             &self.environment.du,
-            &environment.consonance_field_score_eff,
+            &environment.acoustic.consonance_field_score_eff,
             &params.consonance_representation,
         )
         .map_err(|error| match error {
@@ -348,7 +348,7 @@ impl BodyMetabolism {
                             .expect("planned metabolism receiver")
                             .1
                     };
-                    let bins = before.landscape.space.n_bins();
+                    let bins = before.landscape.acoustic.space.n_bins();
                     self.sources.push(Evaluator {
                         id: voice.id(),
                         generation: voice.metadata.generation,

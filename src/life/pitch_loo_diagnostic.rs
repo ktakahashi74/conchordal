@@ -165,15 +165,15 @@ pub(crate) fn replay(
         let stage = starts.iter().rposition(|&start| time >= start);
         let save = CAPTURE.with_borrow_mut(|s| stage.is_some_and(|i| s.witnessed.insert(i)));
         if save {
-            let r = landscape.roughness_kernel_params;
-            let h = landscape.harmonicity_params;
-            let k = landscape.consonance_kernel;
+            let r = landscape.acoustic.roughness_kernel_params;
+            let h = landscape.acoustic.harmonicity_params;
+            let k = landscape.acoustic.consonance_kernel;
             let witness = serde_json::json!({"proposal":row,
-                "space":[landscape.space.fmin,landscape.space.fmax,landscape.space.bins_per_oct],
-                "density":landscape.subjective_intensity,"habituation":landscape.perc_habituation_state_scan,
+                "space":[landscape.acoustic.space.fmin,landscape.acoustic.space.fmax,landscape.acoustic.space.bins_per_oct],
+                "density":landscape.acoustic.subjective_intensity,"habituation":landscape.acoustic.perc_habituation_state_scan,
                 "loo_score_scan":hill.loo_input.exact_score.as_deref(),
-                "loudness_exp":landscape.loudness_exp,"theta":landscape.consonance_theta,
-                "r_ref":landscape.roughness_ref_peak,"r_k":landscape.roughness_k,"eps":landscape.roughness_ref_eps,
+                "loudness_exp":landscape.acoustic.loudness_exp,"theta":landscape.acoustic.consonance_theta,
+                "r_ref":landscape.acoustic.roughness_ref_peak,"r_k":landscape.acoustic.roughness_k,"eps":landscape.acoustic.roughness_ref_eps,
                 "r_params":[r.tau_erb,r.mix_tail,r.sethares_gain,r.sethares_b,r.sethares_c,r.sethares_kappa_erb,r.half_width_erb,r.suppress_sigma_erb,r.suppress_pow,r.sigma_neural_erb,r.w_neural],
                 "h_params":[h.num_subharmonics,h.num_harmonics,h.rho_common_root,h.sigma_cents,h.normalize_output,h.gamma_root,h.diag_weight,h.freq_gate,h.tfs_f_pl_hz,h.tfs_eta],
                 "kernel":[k.a,k.b,k.c,k.d]});

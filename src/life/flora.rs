@@ -381,7 +381,7 @@ impl Flora {
             harmonic: FloraHarmonicState {
                 consumer: None,
                 cells: Vec::with_capacity(if landscape.harmonic.support_planned {
-                    landscape.space.n_bins()
+                    landscape.acoustic.space.n_bins()
                 } else {
                     0
                 }),
@@ -396,14 +396,14 @@ impl Flora {
                 choice_scan: if landscape.harmonic.support_planned
                     || landscape.harmonic.support.is_some()
                 {
-                    vec![0.; landscape.space.n_bins()]
+                    vec![0.; landscape.acoustic.space.n_bins()]
                 } else {
                     Vec::new()
                 },
                 native_scores: if landscape.harmonic.support_planned
                     || landscape.harmonic.support.is_some()
                 {
-                    vec![0.; landscape.space.n_bins()]
+                    vec![0.; landscape.acoustic.space.n_bins()]
                 } else {
                     Vec::new()
                 },
@@ -435,7 +435,7 @@ impl Flora {
             acoustic_observation: TemporalObservation::default(),
             temporal: Some(MetricState::new(scenario_seed ^ id, fs, hop)),
             extent_hz,
-            space: landscape.space.clone(),
+            space: landscape.acoustic.space.clone(),
             range: 0..0,
             fs,
             hop,
@@ -473,13 +473,13 @@ impl Flora {
             rendered_samples: 0,
             lifecycle_changed: true,
         };
-        flora.on_space_change(&landscape.space);
+        flora.on_space_change(&landscape.acoustic.space);
         flora
             .growth_level_scan
-            .copy_from_slice(&landscape.consonance_field_level);
+            .copy_from_slice(&landscape.acoustic.consonance_field_level);
         flora
             .harmonicity_state_scan
-            .copy_from_slice(&landscape.harmonicity01);
+            .copy_from_slice(&landscape.acoustic.harmonicity01);
         flora.seed_biomass(seeding, landscape);
         flora.assert_scans();
         flora.gain.to(1.0, spec.fade_sec, fs);
@@ -585,10 +585,12 @@ impl Flora {
                     .then_some(self.space.centers_hz[i])
             })
             .collect();
+        self.space.assert_scan_len_named(
+            &landscape.acoustic.consonance_field_level,
+            "growth_level_scan",
+        );
         self.space
-            .assert_scan_len_named(&landscape.consonance_field_level, "growth_level_scan");
-        self.space
-            .assert_scan_len_named(&landscape.harmonicity01, "harmonicity_state_scan");
+            .assert_scan_len_named(&landscape.acoustic.harmonicity01, "harmonicity_state_scan");
         FloraReport {
             pace: self.pace,
             temporal: self.temporal.as_ref(),

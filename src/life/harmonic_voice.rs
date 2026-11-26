@@ -40,7 +40,7 @@ impl Voice {
         };
         self.phonation_engine.set_sound_adsr(self.voice_adsr);
         let pitch = &self.effective_control.pitch;
-        let (field_lo, field_hi) = landscape.space.voice_pitch_bounds_log2();
+        let (field_lo, field_hi) = landscape.acoustic.space.voice_pitch_bounds_log2();
         let center = pitch.freq.log2();
         let half = pitch.range_oct.clamp(0., 6.) * 0.5;
         let lo = field_lo.max(center - half);
@@ -342,7 +342,7 @@ mod tests {
     fn harmonic_voice_dwell_stop_and_empty_range_preserve_readiness() {
         let (mut v, mut land, tb, mut out) = fixture();
         v.effective_control.pitch.dwell = 2.0;
-        land.consonance_field_score_eff.fill(100.);
+        land.acoustic.consonance_field_score_eff.fill(100.);
         v.tick_harmonic(&tb, 0, &land, &[100, 400], &mut out);
         assert!(v.harmonic.events.iter().all(|e| e.action == "not_ready"));
         let state = v.pitch_ctl.dwell_state.unwrap();

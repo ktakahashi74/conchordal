@@ -42,7 +42,7 @@ fn emit(v: &mut Voice, tb: &Timebase, r: &NeuralRhythms, at: Tick, out: &mut Pho
 }
 
 fn adopt(v: &mut Voice, land: &Landscape, r: &NeuralRhythms, index: usize, at: Tick) {
-    v.effective_control.pitch.freq = land.space.centers_log2[index].exp2();
+    v.effective_control.pitch.freq = land.acoustic.space.centers_log2[index].exp2();
     v.effective_control.pitch.range_oct = 0.0;
     v.effective_control.pitch.proposal_interval_sec = Some(0.5);
     v.set_accumulated_time_for_test(0.5);
@@ -167,15 +167,15 @@ fn glide_selection_and_actual_on_reuse_birth_storage() {
     emit(&mut v, &tb, &r, 0, &mut out);
     v.set_control_tick(576);
     v.pitch_ctl
-        .force_set_target_pitch_log2(land.space.centers_log2[101]);
+        .force_set_target_pitch_log2(land.acoustic.space.centers_log2[101]);
     crate::runtime_profile::begin_allocations();
-    v.select_adoption_application(&land.space, land.space.centers_log2[100]);
+    v.select_adoption_application(&land.acoustic.space, land.acoustic.space.centers_log2[100]);
     let small = v.participation_pitch.adoption_application;
     v.update_articulation_autonomous(0.001, &r);
     v.pitch_ctl
-        .force_set_target_pitch_log2(land.space.centers_log2[105]);
+        .force_set_target_pitch_log2(land.acoustic.space.centers_log2[105]);
     v.set_control_tick(640);
-    v.select_adoption_application(&land.space, land.space.centers_log2[101]);
+    v.select_adoption_application(&land.acoustic.space, land.acoustic.space.centers_log2[101]);
     let large = v.participation_pitch.adoption_application;
     v.participation_pitch.rearticulations.push(Rearticulation {
         at: 640,
@@ -231,7 +231,7 @@ fn roughness_view_follows_eligible_off_on_actions() {
         let (mut v, mut land, tb, r, mut out) = fixture();
         v.effective_control.pitch.leave_self_out = true;
         v.effective_control.pitch.tail_roughness_aversion = 1.0;
-        let n = land.space.n_bins();
+        let n = land.acoustic.space.n_bins();
         land.ecology
             .loo
             .push(crate::core::stream::loo::Observation {
@@ -281,7 +281,7 @@ fn roughness_view_follows_eligible_off_on_actions() {
         if case == "deferred" {
             v.sustain_participation = true;
         }
-        v.effective_control.pitch.freq = land.space.centers_log2[target_index].exp2();
+        v.effective_control.pitch.freq = land.acoustic.space.centers_log2[target_index].exp2();
         v.effective_control.pitch.range_oct = 0.;
         v.effective_control.pitch.proposal_interval_sec = Some(0.5);
         v.set_accumulated_time_for_test(0.5);
@@ -303,7 +303,11 @@ fn roughness_view_follows_eligible_off_on_actions() {
         if let Some(view) = view {
             let application = select_pitch_application(
                 &v.effective_control.pitch,
-                Some((&land.space, view.reference_log2, v.target_pitch_log2())),
+                Some((
+                    &land.acoustic.space,
+                    view.reference_log2,
+                    v.target_pitch_log2(),
+                )),
             );
             v.update_articulation_autonomous(0.001, &r);
             emit(&mut v, &tb, &r, 512, &mut out);

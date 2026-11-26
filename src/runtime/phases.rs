@@ -539,18 +539,24 @@ pub(super) fn emit_hop_reports(
     report_try(&mut state.reporter, "rhythm observation", |writer| {
         writer.write_rhythm_observation(rhythm_observation)
     });
-    let hstate = &state.current_landscape.perc_habituation_state_scan;
+    let hstate = &state.current_landscape.acoustic.perc_habituation_state_scan;
     let n = hstate.len().max(1);
     let mean_h = hstate.iter().sum::<f32>() / n as f32;
     let max_h = hstate.iter().copied().fold(0.0f32, f32::max);
     let mut mean_erosion = 0.0f32;
-    for i in 0..state.current_landscape.consonance_field_score.len() {
-        mean_erosion += state.current_landscape.consonance_field_score[i]
-            - state.current_landscape.consonance_field_score_eff[i];
+    for i in 0..state
+        .current_landscape
+        .acoustic
+        .consonance_field_score
+        .len()
+    {
+        mean_erosion += state.current_landscape.acoustic.consonance_field_score[i]
+            - state.current_landscape.acoustic.consonance_field_score_eff[i];
     }
     mean_erosion /= n as f32;
     let tracked_bin = state
         .current_landscape
+        .acoustic
         .consonance_field_score
         .iter()
         .enumerate()
@@ -561,9 +567,10 @@ pub(super) fn emit_hop_reports(
             },
         )
         .0;
-    let tracked_state = state.current_landscape.perc_habituation_state_scan[tracked_bin];
-    let tracked_score = state.current_landscape.consonance_field_score[tracked_bin];
-    let tracked_score_eff = state.current_landscape.consonance_field_score_eff[tracked_bin];
+    let tracked_state = state.current_landscape.acoustic.perc_habituation_state_scan[tracked_bin];
+    let tracked_score = state.current_landscape.acoustic.consonance_field_score[tracked_bin];
+    let tracked_score_eff =
+        state.current_landscape.acoustic.consonance_field_score_eff[tracked_bin];
     report_try(&mut state.reporter, "habituation", |w| {
         w.write_habituation(
             now_sec,
@@ -589,7 +596,7 @@ pub(super) fn emit_hop_reports(
         });
         for rain in &state.pop.rain {
             report_try(&mut state.reporter, "rain field", |writer| {
-                writer.write_rain_field(now_sec, rain, &state.current_landscape.space)
+                writer.write_rain_field(now_sec, rain, &state.current_landscape.acoustic.space)
             });
         }
     }

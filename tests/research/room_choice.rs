@@ -36,12 +36,13 @@ pub(super) fn rescore(
     let base = hill.loo_input.exact_score.as_ref().unwrap();
     let mut verified = false;
     for (label, score, h) in fields {
-        let same = base.as_ref() == score.as_ref() && h == landscape.perc_habituation_state_scan;
+        let same =
+            base.as_ref() == score.as_ref() && h == landscape.acoustic.perc_habituation_state_scan;
         let mut shadow = hill.clone();
         shadow.diagnostic_variant = Some("corrected");
         shadow.melodic_trace = false;
         shadow.loo_input.exact_score = Some(score);
-        ls.perc_habituation_state_scan = h;
+        ls.acoustic.perc_habituation_state_scan = h;
         CAPTURE.with_borrow_mut(|s| {
             s.active = true;
             s.scores.clear();

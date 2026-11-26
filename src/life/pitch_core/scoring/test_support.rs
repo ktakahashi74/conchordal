@@ -9,10 +9,13 @@ pub(in super::super) fn approx_loo_score_scan(
     if input.own_power_scan.is_empty() && input.other_power_scan.is_empty() {
         return None;
     }
-    let space = &landscape.space;
+    let space = &landscape.acoustic.space;
     space.assert_scan_len_named(&input.own_power_scan, "loo_own_power_scan");
     space.assert_scan_len_named(&input.other_power_scan, "loo_other_power_scan");
-    space.assert_scan_len_named(&landscape.subjective_intensity, "subjective_intensity_scan");
+    space.assert_scan_len_named(
+        &landscape.acoustic.subjective_intensity,
+        "subjective_intensity_scan",
+    );
     if let Some(score) = &input.computed_score {
         return score.clone();
     }
@@ -20,14 +23,14 @@ pub(in super::super) fn approx_loo_score_scan(
     if !input
         .own_power_scan
         .iter()
-        .zip(&landscape.subjective_intensity)
+        .zip(&landscape.acoustic.subjective_intensity)
         .any(|(&own, &observed)| own > 0. && own.is_finite() && observed > 0.)
     {
         input.computed_score = Some(None);
         return None;
     }
     let cache = prepare_loo_scratch(landscape, scratch);
-    let mut density = landscape.subjective_intensity.clone();
+    let mut density = landscape.acoustic.subjective_intensity.clone();
     let removed = redistribute_loo_density(landscape, input, cache, &mut density);
     if !removed {
         input.computed_score = Some(None);
@@ -48,13 +51,14 @@ pub(in super::super) fn redistribute_loo_density(
     density: &mut [f32],
 ) -> bool {
     landscape
+        .acoustic
         .space
         .assert_scan_len_named(density, "loo_residual_density_scan");
-    let space = &landscape.space;
-    space.assert_scan_len_named(&landscape.nsgt_power, "nsgt_power_scan");
+    let space = &landscape.acoustic.space;
+    space.assert_scan_len_named(&landscape.acoustic.nsgt_power, "nsgt_power_scan");
     let cfg = crate::core::peak_extraction::PeakExtractConfig::nsgt_default();
     for (i, raw) in cache.raw_density.iter_mut().enumerate() {
-        *raw = (landscape.nsgt_power[i] / cache.potentials.du[i].max(1e-12)).max(0.);
+        *raw = (landscape.acoustic.nsgt_power[i] / cache.potentials.du[i].max(1e-12)).max(0.);
     }
     cache.merge_ranges.clone_from(&cache.suppression_ranges);
     let peaks = crate::core::peak_extraction::extract_peaks_density_with_grid_reuse(
@@ -81,7 +85,7 @@ pub(in super::super) fn redistribute_loo_density(
     }
     let mut removed = false;
     for (i, &own) in input.own_power_scan.iter().enumerate() {
-        let observed = landscape.subjective_intensity[i];
+        let observed = landscape.acoustic.subjective_intensity[i];
         if own <= 0.0 || !own.is_finite() || observed <= 0.0 {
             continue;
         }
@@ -89,8 +93,9 @@ pub(in super::super) fn redistribute_loo_density(
         let other: f64 = input.other_power_scan[lo..hi].iter().sum();
         let own: f64 = input.own_power_scan[lo..hi].iter().map(|&v| v as f64).sum();
         // Form the residual directly: 1 - own / total loses quiet neighbours.
-        let retained =
-            (observed as f64 * (other / (own + other)).powf(landscape.loudness_exp as f64)) as f32;
+        let retained = (observed as f64
+            * (other / (own + other)).powf(landscape.acoustic.loudness_exp as f64))
+            as f32;
         if other > 0.0 {
             let mass = retained as f64 * cache.potentials.du[i] as f64;
             for (j, &power) in input.other_power_scan.iter().enumerate().take(hi).skip(lo) {

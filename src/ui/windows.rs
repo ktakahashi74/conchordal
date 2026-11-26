@@ -840,7 +840,7 @@ pub fn main_window(
 
         let intensity_max = frame
             .landscape
-            .subjective_intensity
+            .acoustic.subjective_intensity
             .iter()
             .cloned()
             .fold(0.0f32, f32::max);
@@ -850,7 +850,7 @@ pub fn main_window(
         let overlay_vals = if *show_raw_nsgt_power {
             let raw_max = frame
                 .landscape
-                .nsgt_power
+                .acoustic.nsgt_power
                 .iter()
                 .cloned()
                 .fold(0.0f32, f32::max)
@@ -859,7 +859,7 @@ pub fn main_window(
             Some(
                 frame
                     .landscape
-                    .nsgt_power
+                    .acoustic.nsgt_power
                     .iter()
                     .map(|&p| p * scale)
                     .collect::<Vec<f32>>(),
@@ -878,8 +878,8 @@ pub fn main_window(
         log2_plot_hz(
             ui,
             "Subjective Intensity",
-            &frame.landscape.space.centers_hz,
-            &frame.landscape.subjective_intensity,
+            &frame.landscape.acoustic.space.centers_hz,
+            &frame.landscape.acoustic.subjective_intensity,
             "Intensity",
             y_min,
             y_max,
@@ -891,8 +891,8 @@ pub fn main_window(
 
         ui.separator();
 
-        let consonance_field_score = &frame.landscape.consonance_field_score;
-        let (y_min, y_max) = consonance_field_score_axis_bounds(frame.landscape.consonance_kernel);
+        let consonance_field_score = &frame.landscape.acoustic.consonance_field_score;
+        let (y_min, y_max) = consonance_field_score_axis_bounds(frame.landscape.acoustic.consonance_kernel);
 
         ui.columns(1, |cols| {
             let ui = &mut cols[0];
@@ -902,7 +902,7 @@ pub fn main_window(
             log2_plot_hz(
                 ui,
                 "Consonance Field Score",
-                &frame.landscape.space.centers_hz,
+                &frame.landscape.acoustic.space.centers_hz,
                 consonance_field_score,
                 "C_field_score",
                 y_min,
@@ -917,9 +917,9 @@ pub fn main_window(
             draw_roughness_harmonicity(
                 ui,
                 "Roughness / Harmonicity",
-                &frame.landscape.space.centers_hz,
-                &frame.landscape.harmonicity01,
-                &frame.landscape.roughness01,
+                &frame.landscape.acoustic.space.centers_hz,
+                &frame.landscape.acoustic.harmonicity01,
+                &frame.landscape.acoustic.roughness01,
                 102.0,
                 Some("landscape_population"),
             );
@@ -937,13 +937,13 @@ pub fn main_window(
                         .show_ui(ui, |ui| { for voice in &frame.voices { ui.selectable_value(&mut selected, voice.id, format!("Voice {}", voice.id)); } });
                     ui.ctx().data_mut(|data| data.insert_temp(id, selected));
                     if let Some(voice) = frame.voices.iter().find(|v| v.id == selected) {
-                        if let Some(scans) = super::model::support_scans(voice, frame.landscape.space.n_bins()) {
+                        if let Some(scans) = super::model::support_scans(voice, frame.landscape.acoustic.space.n_bins()) {
                             ui.label(if voice.support_template.is_some() { "Body partials reading first-order fields; PCM self-excluded reference" } else { "Single partial at the nominal pitch and level (no spectral self-report); PCM self-excluded reference." });
                             for (name, scan) in ["dC (first order)", "dD (first order)", "N"].into_iter().zip(scans) {
                                 let values: Vec<_> = scan.into_iter().map(|v| v as f32).collect();
                                 let lo = values.iter().copied().fold(0., f32::min);
                                 let hi = values.iter().copied().fold(0., f32::max);
-                                log2_plot_hz(ui, name, &frame.landscape.space.centers_hz, &values, name, f64::from(lo), if hi > lo { f64::from(hi) } else { 1. }, 90., None, None, None);
+                                log2_plot_hz(ui, name, &frame.landscape.acoustic.space.centers_hz, &values, name, f64::from(lo), if hi > lo { f64::from(hi) } else { 1. }, 90., None, None, None);
                             }
                         } else { ui.label("No self-excluded support for this Voice; movement term unavailable."); }
                     }
@@ -1036,8 +1036,8 @@ pub fn main_window(
                 log2_plot_hz(
                     ui,
                     "Consonance Field Level (Observed/Predicted)",
-                    &frame.landscape.space.centers_hz,
-                    &frame.landscape.consonance_field_level,
+                    &frame.landscape.acoustic.space.centers_hz,
+                    &frame.landscape.acoustic.consonance_field_level,
                     "C_field_level",
                     0.0,
                     1.0,

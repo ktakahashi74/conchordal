@@ -112,9 +112,9 @@ impl Flora {
                 .unwrap_or((&[], 0, false))
         } else {
             (
-                landscape.onset_habituation_state_scan.as_ref(),
-                landscape.onset_habituation_end,
-                landscape.onset_habituation_known,
+                landscape.acoustic.onset_habituation_state_scan.as_ref(),
+                landscape.acoustic.onset_habituation_end,
+                landscape.acoustic.onset_habituation_known,
             )
         };
         if !known || end > now {
@@ -168,12 +168,12 @@ mod tests {
 
     fn setup(weight: f32) -> (Landscape, Flora) {
         let mut l = Landscape::new(Log2Space::new(110.0, 1760.0, 96));
-        for i in 0..l.space.n_bins() {
-            l.consonance_field_level[i] = 0.6 + 0.3 * (i as f32 * 0.07).sin();
-            l.harmonicity01[i] = 0.4 + 0.3 * (i as f32 * 0.05).cos();
+        for i in 0..l.acoustic.space.n_bins() {
+            l.acoustic.consonance_field_level[i] = 0.6 + 0.3 * (i as f32 * 0.07).sin();
+            l.acoustic.harmonicity01[i] = 0.4 + 0.3 * (i as f32 * 0.05).cos();
         }
-        l.onset_habituation_state_scan = vec![0.1; l.space.n_bins()].into();
-        l.onset_habituation_known = true;
+        l.acoustic.onset_habituation_state_scan = vec![0.1; l.acoustic.space.n_bins()].into();
+        l.acoustic.onset_habituation_known = true;
         let mut f = Flora::new(
             1,
             FloraSpec {
@@ -203,14 +203,14 @@ mod tests {
     }
 
     fn observe(l: &mut Landscape, end: u64, f: impl Fn(f32, f32) -> f32) {
-        let hz = l.space.centers_hz.clone();
-        for (x, hz) in Arc::make_mut(&mut l.onset_habituation_state_scan)
+        let hz = l.acoustic.space.centers_hz.clone();
+        for (x, hz) in Arc::make_mut(&mut l.acoustic.onset_habituation_state_scan)
             .iter_mut()
             .zip(hz)
         {
             *x = f(*x, hz);
         }
-        l.onset_habituation_end = end;
+        l.acoustic.onset_habituation_end = end;
     }
 
     fn rhythm(f: &mut Flora, now: u64) {
@@ -253,10 +253,11 @@ mod tests {
             observe(&mut l, now, |x, hz| {
                 ((x + 0.37 * (hz * 0.01 + hop as f32).sin().abs()) * 1.7).fract()
             });
-            l.onset_habituation_known = hop % 7 != 3;
+            l.acoustic.onset_habituation_known = hop % 7 != 3;
             observed.observe_onsets(&l, now);
             let mut still = l.clone();
-            still.onset_habituation_state_scan = vec![0.1; l.space.n_bins()].into();
+            still.acoustic.onset_habituation_state_scan =
+                vec![0.1; l.acoustic.space.n_bins()].into();
             flat.observe_onsets(&still, now);
             let mut out = Vec::new();
             for f in [&mut observed, &mut plain, &mut flat] {
@@ -381,11 +382,11 @@ mod tests {
         assert_eq!(respond(&f).rise_sum, 0.0);
         // Unknown.
         observe(&mut l, 2 * h, up);
-        l.onset_habituation_known = false;
+        l.acoustic.onset_habituation_known = false;
         f.observe_onsets(&l, 2 * h);
         assert_eq!(respond(&f).rise_sum, 0.0);
         // The next known observation only re-primes.
-        l.onset_habituation_known = true;
+        l.acoustic.onset_habituation_known = true;
         observe(&mut l, 3 * h, up);
         f.observe_onsets(&l, 3 * h);
         assert_eq!(respond(&f).rise_sum, 0.0);
@@ -401,7 +402,7 @@ mod tests {
         assert!((respond(&f).rise_sum - 0.003).abs() < 1e-6);
         // A grid change discards the history while keeping the debt.
         observe(&mut l, 7 * h, up);
-        f.on_space_change(&l.space.clone());
+        f.on_space_change(&l.acoustic.space.clone());
         let pending = respond(&f).pending;
         f.observe_onsets(&l, 7 * h);
         assert!((respond(&f).rise_sum - 0.003).abs() < 1e-6);
@@ -501,9 +502,9 @@ mod tests {
                 front.process(&pcm, &params);
                 let end = (hop + 1) * HOP as u64;
                 observer.process(front.band_energy().1, HOP, end);
-                l.onset_habituation_state_scan = observer.state.clone().into();
-                l.onset_habituation_known = observer.known();
-                l.onset_habituation_end = end;
+                l.acoustic.onset_habituation_state_scan = observer.state.clone().into();
+                l.acoustic.onset_habituation_known = observer.known();
+                l.acoustic.onset_habituation_end = end;
                 f.observe_onsets(&l, end);
                 if hop * HOP as u64 > 48_000 {
                     max_factor = max_factor.max(respond(&f).factor);

@@ -46,7 +46,7 @@ impl Voice {
     pub(super) const PHONATION_UPDATE_SMOOTH_TAU_SEC: f32 = 0.02;
 
     pub(crate) fn refresh_support_template(&mut self, landscape: &Landscape) {
-        let space = &landscape.space;
+        let space = &landscape.acoustic.space;
         let key = (
             space.fmin,
             space.fmax,

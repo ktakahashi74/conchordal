@@ -394,8 +394,8 @@ fn span_gap_executes_on_real_synchronized_and_participation_paths() {
                     );
                 }
                 let mut evidence = Landscape::new(space.clone());
-                evidence.onset_habituation_known = true;
-                evidence.onset_habituation_state_scan = vec![1.0; space.n_bins()].into();
+                evidence.acoustic.onset_habituation_known = true;
+                evidence.acoustic.onset_habituation_state_scan = vec![1.0; space.n_bins()].into();
                 let mut gap = SpanGap::new(1.0, 21, 2, 0, tb.fs, 330.0);
                 gap.observe(&evidence, 0);
                 gap.trace_enabled = true;
@@ -519,9 +519,9 @@ fn acoustic_history_changes_a_legal_exit_and_clamping_heard_removes_the_differen
             observer.process(frontend.band_energy().1, 512, (hop + 1) * 512);
         }
         let mut frame = Landscape::new(space.clone());
-        frame.onset_habituation_state_scan = observer.state.into();
-        frame.onset_habituation_end = 500 * 512;
-        frame.onset_habituation_known = true;
+        frame.acoustic.onset_habituation_state_scan = observer.state.into();
+        frame.acoustic.onset_habituation_end = 500 * 512;
+        frame.acoustic.onset_habituation_known = true;
         histories.push(frame);
     }
     for clamp in [false, true] {
@@ -531,7 +531,8 @@ fn acoustic_history_changes_a_legal_exit_and_clamping_heard_removes_the_differen
                 setup(BodyMethod::Sine, PitchApplyMode::GateSnap, 0.0, 0.0, 20.0);
             let mut evidence = history.clone();
             if clamp {
-                std::sync::Arc::make_mut(&mut evidence.onset_habituation_state_scan).fill(0.0);
+                std::sync::Arc::make_mut(&mut evidence.acoustic.onset_habituation_state_scan)
+                    .fill(0.0);
             }
             let start = 500 * 512;
             let mut gap = SpanGap::new(1.0, 21, 2, 0, 48000.0, 330.0);
@@ -611,9 +612,9 @@ fn dwell_proposals_reach_distinct_legal_onsets_without_forcing_attacks() {
             v.pitch_ctl.set_adaptation_enabled(false);
             v.pitch_ctl.dwell_trace_enabled = true;
             let mut evidence = Landscape::new(space.clone());
-            evidence.consonance_field_score_eff.fill(0.55);
+            evidence.acoustic.consonance_field_score_eff.fill(0.55);
             let index = space.nearest_index(target);
-            evidence.consonance_field_score_eff[index] = 1.5;
+            evidence.acoustic.consonance_field_score_eff[index] = 1.5;
             emit(&mut v, &tb, &r, 0, &mut out, &space);
             let mut first = None;
             for step in 1..300 {
@@ -668,9 +669,9 @@ fn dwell_gap_clock_keeps_running_and_private_recovery_uses_real_time() {
         v.pitch_ctl.dwell_trace_enabled = true;
         let mut gap = SpanGap::new(1.0, 21, 2, 0, tb.fs, 330.0);
         let mut evidence = Landscape::new(space.clone());
-        evidence.consonance_field_score_eff.fill(-0.5);
-        evidence.onset_habituation_known = true;
-        evidence.onset_habituation_state_scan = vec![0.0; space.n_bins()].into();
+        evidence.acoustic.consonance_field_score_eff.fill(-0.5);
+        evidence.acoustic.onset_habituation_known = true;
+        evidence.acoustic.onset_habituation_state_scan = vec![0.0; space.n_bins()].into();
         gap.observe(&evidence, 0);
         gap.phase = Phase::GapActive;
         gap.own = 0.8;
@@ -733,10 +734,10 @@ fn dwell_adoption_at_exit_waits_for_tail_and_ready_veto_then_consumes_once() {
         v.pitch_ctl.apply_control(&v.effective_control.pitch);
         v.pitch_ctl.set_adaptation_enabled(false);
         let mut evidence = Landscape::new(space.clone());
-        evidence.consonance_field_score_eff.fill(-0.5);
-        evidence.consonance_field_score_eff[space.nearest_index(440.0)] = 2.0;
-        evidence.onset_habituation_known = true;
-        evidence.onset_habituation_state_scan = vec![1.0; space.n_bins()].into();
+        evidence.acoustic.consonance_field_score_eff.fill(-0.5);
+        evidence.acoustic.consonance_field_score_eff[space.nearest_index(440.0)] = 2.0;
+        evidence.acoustic.onset_habituation_known = true;
+        evidence.acoustic.onset_habituation_state_scan = vec![1.0; space.n_bins()].into();
         let mut gap = SpanGap::new(1.0, 21, 2, 0, tb.fs, 330.0);
         gap.observe(&evidence, 0);
         v.phonation_engine.span_gap = Some(gap);
@@ -835,8 +836,8 @@ fn dwell_multiple_adoptions_replace_pending_without_extra_onsets() {
     let mut adopted = Vec::new();
     let mut sounded = Vec::new();
     for step in 1..90 {
-        evidence.consonance_field_score_eff.fill(-100.0);
-        evidence.consonance_field_score_eff
+        evidence.acoustic.consonance_field_score_eff.fill(-100.0);
+        evidence.acoustic.consonance_field_score_eff
             [space.nearest_index(if step < 15 { 440.0 } else { 550.0 })] = 2.0;
         v.control_tick = Some(step * 512);
         v.update_pitch_target(&r, 512.0 / tb.fs, &evidence, &[], &[]);

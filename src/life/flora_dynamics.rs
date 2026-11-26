@@ -6,7 +6,7 @@ use crate::core::log2space::sample_scan_linear_log2;
 impl Flora {
     pub(super) fn seed_biomass(&mut self, seeding: FloraSeeding, landscape: &Landscape) {
         self.space.assert_scan_len_named(
-            &landscape.consonance_density_mass,
+            &landscape.acoustic.consonance_density_mass,
             "consonance_density_mass",
         );
         if !self.range.is_empty() {
@@ -14,7 +14,7 @@ impl Flora {
                 self.biomass_mass_scan[i] = match seeding {
                     FloraSeeding::Uniform => 1.0,
                     FloraSeeding::Consonance => {
-                        finite_or(landscape.consonance_density_mass[i], 0.0).max(0.0)
+                        finite_or(landscape.acoustic.consonance_density_mass[i], 0.0).max(0.0)
                     }
                 };
             }
@@ -315,7 +315,7 @@ impl Flora {
                 self.space
                     .assert_scan_len_named(&self.support.choice_scan, "flora_support_choice_scan");
                 for (i, value) in self.support.choice_scan.iter_mut().enumerate() {
-                    *value = (f64::from(landscape.consonance_representation.beta)
+                    *value = (f64::from(landscape.acoustic.consonance_representation.beta)
                         * landscape
                             .harmonic
                             .support_weights
@@ -331,18 +331,26 @@ impl Flora {
         }
 
         self.assert_scans();
+        self.space.assert_scan_len_named(
+            &landscape.acoustic.consonance_field_level,
+            "consonance_field_level",
+        );
         self.space
-            .assert_scan_len_named(&landscape.consonance_field_level, "consonance_field_level");
-        self.space
-            .assert_scan_len_named(&landscape.harmonicity01, "harmonicity01");
+            .assert_scan_len_named(&landscape.acoustic.harmonicity01, "harmonicity01");
         assert_eq!(
             (self.space.fmin, self.space.step()),
-            (landscape.space.fmin, landscape.space.step()),
+            (
+                landscape.acoustic.space.fmin,
+                landscape.acoustic.space.step()
+            ),
             "Flora space change was not applied"
         );
         // Before the first render there is no own sound in the mixed history.
         let fields = if !self.needs_hr_observer() || self.rendered_samples == 0 {
-            Some((&landscape.consonance_field_level, &landscape.harmonicity01))
+            Some((
+                &landscape.acoustic.consonance_field_level,
+                &landscape.acoustic.harmonicity01,
+            ))
         } else if let Some(observation) = landscape
             .ecology
             .flora_observations

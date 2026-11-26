@@ -581,33 +581,34 @@ fn inertia_depends_on_frequency() {
 fn scan_moves_toward_higher_scoring_neighbor() {
     let mut landscape = make_landscape();
     let mut voice = spawn_voice(220.0, 3);
-    let n = landscape.consonance_field_score.len();
-    landscape.subjective_intensity = vec![1.0; n];
-    landscape.consonance_field_score.fill(0.0);
-    landscape.consonance_field_level.fill(0.0);
-    landscape.consonance_field_score_eff.fill(0.0);
-    landscape.consonance_field_level_eff.fill(0.0);
+    let n = landscape.acoustic.consonance_field_score.len();
+    landscape.acoustic.subjective_intensity = vec![1.0; n];
+    landscape.acoustic.consonance_field_score.fill(0.0);
+    landscape.acoustic.consonance_field_level.fill(0.0);
+    landscape.acoustic.consonance_field_score_eff.fill(0.0);
+    landscape.acoustic.consonance_field_level_eff.fill(0.0);
     let idx_cur = landscape
+        .acoustic
         .space
         .index_of_freq(voice.body.base_freq_hz())
         .unwrap_or(0);
-    landscape.consonance_field_score[idx_cur] = 0.0;
-    landscape.consonance_field_level[idx_cur] = 0.0;
+    landscape.acoustic.consonance_field_score[idx_cur] = 0.0;
+    landscape.acoustic.consonance_field_level[idx_cur] = 0.0;
     let target_alt = voice.body.base_freq_hz() * 1.5;
-    if let Some(idx_alt) = landscape.space.index_of_freq(target_alt) {
+    if let Some(idx_alt) = landscape.acoustic.space.index_of_freq(target_alt) {
         let lo = idx_alt.saturating_sub(1);
         let hi = (idx_alt + 1).min(n.saturating_sub(1));
         for idx in lo..=hi {
-            if let Some(c) = landscape.consonance_field_score.get_mut(idx) {
+            if let Some(c) = landscape.acoustic.consonance_field_score.get_mut(idx) {
                 *c = 1.0;
             }
-            if let Some(c) = landscape.consonance_field_level.get_mut(idx) {
+            if let Some(c) = landscape.acoustic.consonance_field_level.get_mut(idx) {
                 *c = 1.0;
             }
-            if let Some(c) = landscape.consonance_field_score_eff.get_mut(idx) {
+            if let Some(c) = landscape.acoustic.consonance_field_score_eff.get_mut(idx) {
                 *c = 1.0;
             }
-            if let Some(c) = landscape.consonance_field_level_eff.get_mut(idx) {
+            if let Some(c) = landscape.acoustic.consonance_field_level_eff.get_mut(idx) {
                 *c = 1.0;
             }
         }

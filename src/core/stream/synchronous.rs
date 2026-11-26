@@ -96,12 +96,12 @@ impl SynchronousAnalysis {
             } else {
                 self.nsgt.process_hop_gap(audio, gap)
             };
-            self.landscape.nsgt_power.copy_from_slice(power);
+            self.landscape.acoustic.nsgt_power.copy_from_slice(power);
         }
         #[cfg(test)]
         let density = if let Some(legacy) = &mut self.legacy {
             let power = if full {
-                &self.landscape.nsgt_power
+                &self.landscape.acoustic.nsgt_power
             } else {
                 self.nsgt.process_hop_gap(audio, gap)
             };
@@ -125,7 +125,7 @@ impl SynchronousAnalysis {
             }
             &self.frontend.density_scan
         };
-        let space = &self.landscape.space;
+        let space = &self.landscape.acoustic.space;
         let eps = params.roughness_ref_eps.max(1e-12);
         let roughness_k = params.roughness_k.max(1e-6);
         let shape_total = self.potentials.compute_shape(
@@ -133,26 +133,30 @@ impl SynchronousAnalysis {
             space,
             (&params.harmonicity_kernel, &params.roughness_kernel),
             eps,
-            &mut self.landscape.harmonicity,
-            &mut self.landscape.roughness_shape_raw,
+            &mut self.landscape.acoustic.harmonicity,
+            &mut self.landscape.acoustic.roughness_shape_raw,
         );
         r_pot_scan_to_r_state01_scan(
-            &self.landscape.roughness_shape_raw,
+            &self.landscape.acoustic.roughness_shape_raw,
             self.ref_peak.max(eps),
             roughness_k,
-            &mut self.landscape.roughness01,
+            &mut self.landscape.acoustic.roughness01,
         );
         if full {
             self.potentials.geometry.potential_r_into(
                 density,
                 space,
                 &self.du,
-                &mut self.landscape.roughness,
+                &mut self.landscape.acoustic.roughness,
             );
-            self.landscape.loudness_exp = params.loudness_exp.max(0.01);
-            self.landscape.subjective_intensity.copy_from_slice(density);
-            self.landscape.loudness_mass = crate::core::density::density_to_mass(density, &self.du);
-            self.landscape.roughness01_scalar =
+            self.landscape.acoustic.loudness_exp = params.loudness_exp.max(0.01);
+            self.landscape
+                .acoustic
+                .subjective_intensity
+                .copy_from_slice(density);
+            self.landscape.acoustic.loudness_mass =
+                crate::core::density::density_to_mass(density, &self.du);
+            self.landscape.acoustic.roughness01_scalar =
                 roughness_ratio_to_state01(shape_total / self.ref_total.max(eps), roughness_k);
         }
         self.landscape.set_analysis_metadata(
@@ -170,16 +174,24 @@ impl SynchronousAnalysis {
     /// caller adopts the source's front end before the inputs differ.
     pub(super) fn copy_spectral(&mut self, source: &Self, params: &LandscapeParams) {
         let (to, from) = (&mut self.landscape, &source.landscape);
-        to.harmonicity.copy_from_slice(&from.harmonicity);
-        to.roughness_shape_raw
-            .copy_from_slice(&from.roughness_shape_raw);
-        to.roughness01.copy_from_slice(&from.roughness01);
-        to.roughness.copy_from_slice(&from.roughness);
-        to.subjective_intensity
-            .copy_from_slice(&from.subjective_intensity);
-        to.loudness_exp = params.loudness_exp.max(0.01);
-        to.loudness_mass = from.loudness_mass;
-        to.roughness01_scalar = from.roughness01_scalar;
+        to.acoustic
+            .harmonicity
+            .copy_from_slice(&from.acoustic.harmonicity);
+        to.acoustic
+            .roughness_shape_raw
+            .copy_from_slice(&from.acoustic.roughness_shape_raw);
+        to.acoustic
+            .roughness01
+            .copy_from_slice(&from.acoustic.roughness01);
+        to.acoustic
+            .roughness
+            .copy_from_slice(&from.acoustic.roughness);
+        to.acoustic
+            .subjective_intensity
+            .copy_from_slice(&from.acoustic.subjective_intensity);
+        to.acoustic.loudness_exp = params.loudness_exp.max(0.01);
+        to.acoustic.loudness_mass = from.acoustic.loudness_mass;
+        to.acoustic.roughness01_scalar = from.acoustic.roughness01_scalar;
         to.set_analysis_metadata(
             params.roughness_kernel.params,
             params.harmonicity_kernel.params,
@@ -251,22 +263,25 @@ mod tests {
             selected.process(&pcm, &params);
             direct.process(&pcm, &params);
             assert_density_bits(
-                &selected.landscape.subjective_intensity,
+                &selected.landscape.acoustic.subjective_intensity,
                 &direct.density_scan,
             );
-            assert_eq!(selected.landscape.nsgt_power, baseline.landscape.nsgt_power);
+            assert_eq!(
+                selected.landscape.acoustic.nsgt_power,
+                baseline.landscape.acoustic.nsgt_power
+            );
         }
         assert_ne!(
-            selected.landscape.subjective_intensity,
-            baseline.landscape.subjective_intensity
+            selected.landscape.acoustic.subjective_intensity,
+            baseline.landscape.acoustic.subjective_intensity
         );
         let mut copy = selected.clone();
         let silence = vec![0.0; hop];
         selected.process(&silence, &params);
         copy.process(&silence, &params);
         assert_eq!(
-            selected.landscape.subjective_intensity,
-            copy.landscape.subjective_intensity
+            selected.landscape.acoustic.subjective_intensity,
+            copy.landscape.acoustic.subjective_intensity
         );
 
         selected.reset_density();
@@ -309,24 +324,42 @@ mod tests {
             body.process_gap(&audio, 1, &params);
             body_only.process_body_gap(&audio, 1, &params);
             for (a, b) in [
-                (&actual.nsgt_power, &body.landscape.nsgt_power),
                 (
-                    &actual.subjective_intensity,
-                    &body.landscape.subjective_intensity,
+                    &actual.acoustic.nsgt_power,
+                    &body.landscape.acoustic.nsgt_power,
                 ),
-                (&actual.harmonicity, &body.landscape.harmonicity),
-                (&actual.roughness, &body.landscape.roughness),
                 (
-                    &actual.roughness_shape_raw,
-                    &body.landscape.roughness_shape_raw,
+                    &actual.acoustic.subjective_intensity,
+                    &body.landscape.acoustic.subjective_intensity,
                 ),
-                (&actual.roughness01, &body.landscape.roughness01),
-                (&actual.harmonicity, &body_only.landscape.harmonicity),
                 (
-                    &actual.roughness_shape_raw,
-                    &body_only.landscape.roughness_shape_raw,
+                    &actual.acoustic.harmonicity,
+                    &body.landscape.acoustic.harmonicity,
                 ),
-                (&actual.roughness01, &body_only.landscape.roughness01),
+                (
+                    &actual.acoustic.roughness,
+                    &body.landscape.acoustic.roughness,
+                ),
+                (
+                    &actual.acoustic.roughness_shape_raw,
+                    &body.landscape.acoustic.roughness_shape_raw,
+                ),
+                (
+                    &actual.acoustic.roughness01,
+                    &body.landscape.acoustic.roughness01,
+                ),
+                (
+                    &actual.acoustic.harmonicity,
+                    &body_only.landscape.acoustic.harmonicity,
+                ),
+                (
+                    &actual.acoustic.roughness_shape_raw,
+                    &body_only.landscape.acoustic.roughness_shape_raw,
+                ),
+                (
+                    &actual.acoustic.roughness01,
+                    &body_only.landscape.acoustic.roughness01,
+                ),
             ] {
                 assert_eq!(
                     a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
@@ -335,12 +368,12 @@ mod tests {
                 );
             }
             assert_eq!(
-                actual.roughness01_scalar.to_bits(),
-                body.landscape.roughness01_scalar.to_bits()
+                actual.acoustic.roughness01_scalar.to_bits(),
+                body.landscape.acoustic.roughness01_scalar.to_bits()
             );
             assert_eq!(
-                actual.loudness_mass.to_bits(),
-                body.landscape.loudness_mass.to_bits()
+                actual.acoustic.loudness_mass.to_bits(),
+                body.landscape.acoustic.loudness_mass.to_bits()
             );
         }
     }
@@ -358,7 +391,7 @@ mod tests {
             let mut full = full_shared.clone();
             let mut body = density_shared.clone();
             let mut audio = vec![0.; full.nsgt.hop()];
-            let mut habituation = vec![0.; full.landscape.space.n_bins()];
+            let mut habituation = vec![0.; full.landscape.acoustic.space.n_bins()];
             let mut last = 0;
             for frame in 0..(2 * gap + 5) {
                 let hop = audio.len();
@@ -401,11 +434,13 @@ mod tests {
                     last = end;
                     assert_eq!(
                         full.landscape
+                            .acoustic
                             .harmonicity
                             .iter()
                             .map(|v| v.to_bits())
                             .collect::<Vec<_>>(),
                         body.landscape
+                            .acoustic
                             .harmonicity
                             .iter()
                             .map(|v| v.to_bits())
@@ -413,11 +448,13 @@ mod tests {
                     );
                     assert_eq!(
                         full.landscape
+                            .acoustic
                             .roughness_shape_raw
                             .iter()
                             .map(|v| v.to_bits())
                             .collect::<Vec<_>>(),
                         body.landscape
+                            .acoustic
                             .roughness_shape_raw
                             .iter()
                             .map(|v| v.to_bits())
@@ -425,11 +462,13 @@ mod tests {
                     );
                     assert_eq!(
                         full.landscape
+                            .acoustic
                             .roughness01
                             .iter()
                             .map(|v| v.to_bits())
                             .collect::<Vec<_>>(),
                         body.landscape
+                            .acoustic
                             .roughness01
                             .iter()
                             .map(|v| v.to_bits())
@@ -454,10 +493,13 @@ mod tests {
                             enabled.then_some(habituation.as_slice()),
                         );
                         for (reference, actual) in [
-                            (&full.landscape.harmonicity01, &body.landscape.harmonicity01),
                             (
-                                &full.landscape.consonance_field_score_eff,
-                                &body.landscape.consonance_field_score_eff,
+                                &full.landscape.acoustic.harmonicity01,
+                                &body.landscape.acoustic.harmonicity01,
+                            ),
+                            (
+                                &full.landscape.acoustic.consonance_field_score_eff,
+                                &body.landscape.acoustic.consonance_field_score_eff,
                             ),
                         ] {
                             assert_eq!(
@@ -466,17 +508,17 @@ mod tests {
                             );
                         }
                         let reference = crate::life::body_fitness::evaluate(
-                            &full.landscape.space,
+                            &full.landscape.acoustic.space,
                             &full.potentials.normalized,
                             &full.du,
-                            &full.landscape.consonance_field_score_eff,
+                            &full.landscape.acoustic.consonance_field_score_eff,
                             &params.consonance_representation,
                         );
                         let actual = crate::life::body_fitness::evaluate(
-                            &body.landscape.space,
+                            &body.landscape.acoustic.space,
                             &body.potentials.normalized,
                             &body.du,
-                            &body.landscape.consonance_field_score_eff,
+                            &body.landscape.acoustic.consonance_field_score_eff,
                             &params.consonance_representation,
                         );
                         match (reference, actual) {

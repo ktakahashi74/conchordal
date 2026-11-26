@@ -246,11 +246,16 @@ impl ConsonanceKernel {
 }
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Landscape {
-    pub space: Space,
-    /// Flattened: the packet header keeps `support` at this level, so the wire format
-    /// and acquired frames are unchanged.
+    /// Keep the acoustic fields at landscape level in the packet header.
+    #[serde(flatten)]
+    pub acoustic: AcousticField,
+    /// Keep support at landscape level in the packet header.
     #[serde(flatten)]
     pub harmonic: HarmonicExtensions,
+}
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct AcousticField {
+    pub space: Space,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
     pub consonance_field_score: Vec<f32>,
@@ -311,16 +316,16 @@ fn arrays(
     let l = &mut frame.landscape;
     if axes {
         visit(Array::F32(&mut frame.spec.spec_hz))?;
-        visit(Array::F32(&mut l.space.centers_hz))?;
-        visit(Array::F32(&mut l.space.centers_log2))?;
+        visit(Array::F32(&mut l.acoustic.space.centers_hz))?;
+        visit(Array::F32(&mut l.acoustic.space.centers_log2))?;
     }
     for scan in [
-        &mut l.subjective_intensity,
-        &mut l.nsgt_power,
-        &mut l.consonance_field_score,
-        &mut l.consonance_field_level,
-        &mut l.harmonicity01,
-        &mut l.roughness01,
+        &mut l.acoustic.subjective_intensity,
+        &mut l.acoustic.nsgt_power,
+        &mut l.acoustic.consonance_field_score,
+        &mut l.acoustic.consonance_field_level,
+        &mut l.acoustic.harmonicity01,
+        &mut l.acoustic.roughness01,
     ] {
         visit(Array::F32(scan))?;
     }
@@ -373,8 +378,8 @@ impl Encoder {
             .map(|s| &s.geometry.space);
         let unchanged = self.axes.as_ref().is_some_and(|axes| {
             same_bits(&axes.spec_hz, &frame.spec.spec_hz)
-                && same_bits(&axes.space.0, &frame.landscape.space.centers_hz)
-                && same_bits(&axes.space.1, &frame.landscape.space.centers_log2)
+                && same_bits(&axes.space.0, &frame.landscape.acoustic.space.centers_hz)
+                && same_bits(&axes.space.1, &frame.landscape.acoustic.space.centers_log2)
                 && support.is_none_or(|space| {
                     axes.support.as_ref().is_some_and(|(hz, log2)| {
                         same_bits(hz, &space.centers_hz) && same_bits(log2, &space.centers_log2)
@@ -385,7 +390,7 @@ impl Encoder {
             let previous = self.axes.take().and_then(|axes| axes.support);
             self.axes = Some(Axes {
                 spec_hz: frame.spec.spec_hz.clone(),
-                space: space_axes(&frame.landscape.space),
+                space: space_axes(&frame.landscape.acoustic.space),
                 support: support.map(space_axes).or(previous),
             });
         }
@@ -411,8 +416,8 @@ impl Encoder {
         .expect("encoding visits cannot fail");
         if unchanged {
             frame.spec.spec_hz.clear();
-            frame.landscape.space.centers_hz.clear();
-            frame.landscape.space.centers_log2.clear();
+            frame.landscape.acoustic.space.centers_hz.clear();
+            frame.landscape.acoustic.space.centers_log2.clear();
             if let Some(support) = &mut frame.landscape.harmonic.support {
                 let space = &mut Arc::make_mut(support).geometry.space;
                 space.centers_hz.clear();
@@ -490,7 +495,7 @@ impl Decoder {
             let previous = self.axes.take().and_then(|axes| axes.support);
             self.axes = Some(Axes {
                 spec_hz: frame.spec.spec_hz.clone(),
-                space: space_axes(&frame.landscape.space),
+                space: space_axes(&frame.landscape.acoustic.space),
                 support: support.map(|s| space_axes(&s.geometry.space)).or(previous),
             });
         } else {
@@ -500,8 +505,8 @@ impl Decoder {
                 .ok_or("UI snapshot refers to frequency axes it never received")?;
             frame.spec.spec_hz.clone_from(&axes.spec_hz);
             (
-                frame.landscape.space.centers_hz,
-                frame.landscape.space.centers_log2,
+                frame.landscape.acoustic.space.centers_hz,
+                frame.landscape.acoustic.space.centers_log2,
             ) = axes.space.clone();
             if let Some(support) = support {
                 let (hz, log2) = axes

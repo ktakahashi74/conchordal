@@ -103,14 +103,15 @@ impl OnsetResponse {
     #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
     pub(crate) fn oracle_step(&mut self, frame: &crate::core::landscape::Landscape, dt: f32) {
         let mut input = super::pitch_core::LooInput::default();
-        input.onset_habituation_state_scan = Some(frame.onset_habituation_state_scan.clone());
-        input.onset_habituation_end = frame.onset_habituation_end;
-        input.onset_habituation_known = frame.onset_habituation_known;
+        input.onset_habituation_state_scan =
+            Some(frame.acoustic.onset_habituation_state_scan.clone());
+        input.onset_habituation_end = frame.acoustic.onset_habituation_end;
+        input.onset_habituation_known = frame.acoustic.onset_habituation_known;
         self.step(
             &input,
             Some(input.onset_habituation_end),
-            &frame.space,
-            0..frame.space.n_bins(),
+            &frame.acoustic.space,
+            0..frame.acoustic.space.n_bins(),
             dt,
             0.5,
         );
@@ -217,7 +218,7 @@ impl PitchController {
         current_pitch_log2: f32,
         landscape: &Landscape,
     ) -> (f32, f32) {
-        let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
+        let (fmin, fmax) = landscape.acoustic.space.voice_pitch_bounds_log2();
         let center_log2 = if pitch.freq.is_finite() && pitch.freq > 0.0 {
             pitch.freq.log2()
         } else {
@@ -453,7 +454,7 @@ impl PitchController {
         };
         if let AnyPitchCore::PitchHillClimb(core) = &mut self.core {
             if landscape.ecology.pitch_set_weight > 0. {
-                let (lo, hi) = landscape.space.voice_pitch_bounds_log2();
+                let (lo, hi) = landscape.acoustic.space.voice_pitch_bounds_log2();
                 let center = if pitch.freq.is_finite() && pitch.freq > 0. {
                     pitch.freq.log2()
                 } else {
@@ -484,7 +485,7 @@ impl PitchController {
                     .tonal_context
                     .clone()
                     .filter(|s| self.control_tick.is_some_and(|at| s.end <= at));
-                let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
+                let (fmin, fmax) = landscape.acoustic.space.voice_pitch_bounds_log2();
                 let center = if pitch.freq.is_finite() && pitch.freq > 0. {
                     pitch.freq.log2()
                 } else {
@@ -513,9 +514,9 @@ impl PitchController {
                 let (lo, hi) = if lo <= hi {
                     (lo, hi)
                 } else {
-                    landscape.space.voice_pitch_bounds_log2()
+                    landscape.acoustic.space.voice_pitch_bounds_log2()
                 };
-                let centers = &landscape.space.centers_log2;
+                let centers = &landscape.acoustic.space.centers_log2;
                 let bins =
                     centers.partition_point(|&x| x < lo)..centers.partition_point(|&x| x <= hi);
                 let threshold = pitch
@@ -525,7 +526,7 @@ impl PitchController {
                 let spend = response.step(
                     self.core.loo_input(),
                     self.control_tick,
-                    &landscape.space,
+                    &landscape.acoustic.space,
                     bins,
                     dt_sec,
                     threshold,
@@ -707,12 +708,13 @@ impl PitchController {
             // kernel and width as the crowding penalty so the two share one
             // occupancy definition. See docs/design-notes/voice-movement-redesign.md.
             self.build_neighbor_occupancy(
-                &landscape.space,
+                &landscape.acoustic.space,
                 neighbor_pitch_log2,
                 neighbor_salience,
                 pitch.crowding_sigma_cents,
             );
-            let features = FeaturesNow::from_occupancy_scan(&landscape.space, &self.occupancy_scan);
+            let features =
+                FeaturesNow::from_occupancy_scan(&landscape.acoustic.space, &self.occupancy_scan);
             self.adaptation.ensure_len(features.density.len());
             if let AnyPitchCore::PitchHillClimb(core) = &mut self.core {
                 core.melodic = self
@@ -786,7 +788,12 @@ impl PitchController {
             }
             target_pitch_log2 = proposal.target_pitch_log2;
             self.last_target_salience = proposal.salience;
-            if self.adaptation_enabled && landscape.space.index_of_log2(target_pitch_log2).is_some()
+            if self.adaptation_enabled
+                && landscape
+                    .acoustic
+                    .space
+                    .index_of_log2(target_pitch_log2)
+                    .is_some()
             {
                 self.adaptation.update(&features, elapsed);
             }
@@ -804,7 +811,7 @@ impl PitchController {
             self.last_target_salience = 1.0;
             return false;
         }
-        let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
+        let (fmin, fmax) = landscape.acoustic.space.voice_pitch_bounds_log2();
         let (min, max) = Self::target_bounds(pitch, current_pitch_log2, landscape);
         let clamped = if min <= max {
             target_pitch_log2.clamp(min, max)
@@ -905,7 +912,7 @@ mod dwell_tests {
             ..Default::default()
         };
         let (landscape, _) = test_landscape(1., true);
-        let mut ctl = controller(&pitch, &landscape.space);
+        let mut ctl = controller(&pitch, &landscape.acoustic.space);
         ctl.loo_input_mut().relations = Some(test_use(1., true).0);
         ctl.loo_input_mut().relations.as_mut().unwrap().continuation = 1.;
         ctl.harmonic_gate = Some(true);
@@ -961,7 +968,7 @@ mod dwell_tests {
                     ..Default::default()
                 };
                 let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
-                let mut ctl = controller(&pitch, &landscape.space);
+                let mut ctl = controller(&pitch, &landscape.acoustic.space);
                 let mut phase = 0.0_f64;
                 let mut elapsed = 0.0_f32;
                 let mut previous_phase = 0.0;
@@ -969,8 +976,8 @@ mod dwell_tests {
                 let mut proposals = 0;
                 for step in 0..180 {
                     let raw = if changing && step >= 70 { -0.7 } else { 0.6 };
-                    landscape.consonance_field_score_eff.fill(raw);
-                    let level = landscape.consonance_representation.level(raw);
+                    landscape.acoustic.consonance_field_score_eff.fill(raw);
+                    let level = landscape.acoustic.consonance_representation.level(raw);
                     let theta = (step % 9) as f32 / 9.0;
                     rhythms.theta.phase = theta;
                     rhythms.theta.mag = if branch == 1 { 1.0 } else { 0.0 };
@@ -1018,18 +1025,21 @@ mod dwell_tests {
             ..Default::default()
         };
         let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
-        landscape.consonance_field_score_eff.fill(0.7);
-        let mut ctl = controller(&pitch, &landscape.space);
-        let mut reference =
-            AdaptationContext::from_config(&AdaptationConfig::default(), landscape.space.n_bins());
+        landscape.acoustic.consonance_field_score_eff.fill(0.7);
+        let mut ctl = controller(&pitch, &landscape.acoustic.space);
+        let mut reference = AdaptationContext::from_config(
+            &AdaptationConfig::default(),
+            landscape.acoustic.space.n_bins(),
+        );
         let neighbors = [330.0_f32.log2()];
         ctl.build_neighbor_occupancy(
-            &landscape.space,
+            &landscape.acoustic.space,
             &neighbors,
             &[],
             pitch.crowding_sigma_cents,
         );
-        let features = FeaturesNow::from_occupancy_scan(&landscape.space, &ctl.occupancy_scan);
+        let features =
+            FeaturesNow::from_occupancy_scan(&landscape.acoustic.space, &ctl.occupancy_scan);
         let mut real = 0.0;
         for _ in 0..100 {
             real += 0.13;
@@ -1047,7 +1057,7 @@ mod dwell_tests {
             if ctl.dwell_trace.len() > before {
                 reference.update(&features, real);
                 real = 0.0;
-                for i in 0..landscape.space.n_bins() {
+                for i in 0..landscape.acoustic.space.n_bins() {
                     assert_eq!(
                         reference.score_adjustment(i),
                         ctl.adaptation.score_adjustment(i)
@@ -1072,11 +1082,12 @@ mod dwell_tests {
             ..Default::default()
         };
         let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
-        let mut traced = controller(&pitch, &landscape.space);
-        let mut quiet = controller(&pitch, &landscape.space);
+        let mut traced = controller(&pitch, &landscape.acoustic.space);
+        let mut quiet = controller(&pitch, &landscape.acoustic.space);
         quiet.dwell_trace_enabled = false;
         for step in 0..80 {
             landscape
+                .acoustic
                 .consonance_field_score_eff
                 .fill(if step < 40 { 100.0 } else { -100.0 });
             for ctl in [&mut traced, &mut quiet] {
@@ -1114,9 +1125,9 @@ mod dwell_tests {
                 ..Default::default()
             };
             let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
-            let mut ctl = controller(&pitch, &landscape.space);
+            let mut ctl = controller(&pitch, &landscape.acoustic.space);
             for (score, stopped) in [(100.0, true), (-100.0, false)] {
-                landscape.consonance_field_score_eff.fill(score);
+                landscape.acoustic.consonance_field_score_eff.fill(score);
                 for _ in 0..8 {
                     ctl.update_pitch_target(
                         220.0,
@@ -1148,39 +1159,47 @@ mod dwell_tests {
             ..Default::default()
         };
         let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
-        landscape.consonance_field_score.fill(-10.0);
-        landscape.consonance_field_score_eff.fill(0.3);
-        let mut ctl = controller(&pitch, &landscape.space);
-        let n = landscape.space.n_bins();
+        landscape.acoustic.consonance_field_score.fill(-10.0);
+        landscape.acoustic.consonance_field_score_eff.fill(0.3);
+        let mut ctl = controller(&pitch, &landscape.acoustic.space);
+        let n = landscape.acoustic.space.n_bins();
         ctl.loo_input_mut().exact_score = Some(vec![1.2; n].into());
         for h in [0.0, 0.5, 1.0] {
-            landscape.perc_habituation_state_scan.fill(h);
+            landscape.acoustic.perc_habituation_state_scan.fill(h);
             let (mixed, source) = ctl.core.dwell_level(&landscape, 220.0, false);
             assert!(!source);
-            assert!((mixed - landscape.consonance_representation.level(0.3)).abs() < 1e-6);
+            assert!((mixed - landscape.acoustic.consonance_representation.level(0.3)).abs() < 1e-6);
             let (own, source) = ctl.core.dwell_level(&landscape, 220.0, true);
             assert!(source);
             assert!(
-                (own - landscape.consonance_representation.level(1.2 * (1.0 - h))).abs() < 1e-6
+                (own - landscape
+                    .acoustic
+                    .consonance_representation
+                    .level(1.2 * (1.0 - h)))
+                .abs()
+                    < 1e-6
             );
         }
         ctl.loo_input_mut().exact_score = None;
         assert!(!ctl.core.dwell_level(&landscape, 220.0, true).1);
-        landscape.perc_habituation_state_scan.fill(0.0);
-        landscape.consonance_field_score_eff.fill(0.0);
+        landscape.acoustic.perc_habituation_state_scan.fill(0.0);
+        landscape.acoustic.consonance_field_score_eff.fill(0.0);
         let i = n / 2;
-        landscape.consonance_field_score_eff[i] = 4.0;
-        let log2 = (landscape.space.centers_log2[i] + landscape.space.centers_log2[i + 1]) * 0.5;
-        let raw = landscape.sample_linear_log2(&landscape.consonance_field_score_eff, log2);
+        landscape.acoustic.consonance_field_score_eff[i] = 4.0;
+        let log2 = (landscape.acoustic.space.centers_log2[i]
+            + landscape.acoustic.space.centers_log2[i + 1])
+            * 0.5;
+        let raw =
+            landscape.sample_linear_log2(&landscape.acoustic.consonance_field_score_eff, log2);
         assert!(
             (ctl.core.dwell_level(&landscape, log2.exp2(), false).0
-                - landscape.consonance_representation.level(raw))
+                - landscape.acoustic.consonance_representation.level(raw))
             .abs()
                 < 1e-6
         );
-        landscape.consonance_representation.theta = 0.7;
+        landscape.acoustic.consonance_representation.theta = 0.7;
         for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-            landscape.consonance_field_score_eff.fill(invalid);
+            landscape.acoustic.consonance_field_score_eff.fill(invalid);
             assert_eq!(ctl.core.dwell_level(&landscape, 220.0, false).0, 0.5);
             ctl.loo_input_mut().exact_score = Some(vec![invalid; n].into());
             assert_eq!(ctl.core.dwell_level(&landscape, 220.0, true).0, 0.5);
@@ -1203,7 +1222,7 @@ mod dwell_tests {
             freq: 10000.0,
             ..Default::default()
         };
-        let mut ctl = controller(&pitch, &landscape.space);
+        let mut ctl = controller(&pitch, &landscape.acoustic.space);
         ctl.update_pitch_target(
             10000.0,
             &NeuralRhythms::default(),
@@ -1224,7 +1243,7 @@ mod dwell_tests {
             range_oct: 0.0,
             ..Default::default()
         };
-        let mut ctl = controller(&pitch, &landscape.space);
+        let mut ctl = controller(&pitch, &landscape.acoustic.space);
         ctl.force_set_target_pitch_log2(10000.0_f32.log2());
         ctl.update_pitch_target(
             10000.0,
@@ -1297,8 +1316,13 @@ mod respond_tests {
     /// A peak that moves every few seconds, so proposals both move and stay.
     fn terrain(landscape: &mut Landscape, step: usize) {
         let peak = [220.0_f32, 330.0, 330.0, 247.0][(step / 90) % 4].log2();
-        let centers = landscape.space.centers_log2.clone();
-        for (score, x) in landscape.consonance_field_score_eff.iter_mut().zip(centers) {
+        let centers = landscape.acoustic.space.centers_log2.clone();
+        for (score, x) in landscape
+            .acoustic
+            .consonance_field_score_eff
+            .iter_mut()
+            .zip(centers)
+        {
             *score = 1.0 - 8.0 * (x - peak).abs();
         }
     }
@@ -1656,9 +1680,10 @@ mod respond_tests {
         for step in 0..600_usize {
             terrain(&mut landscape, step);
             let at = step as u64 * STEP;
-            landscape.onset_habituation_state_scan = vec![0.01 * (step % 40) as f32; n].into();
-            landscape.onset_habituation_end = at;
-            landscape.onset_habituation_known = true;
+            landscape.acoustic.onset_habituation_state_scan =
+                vec![0.01 * (step % 40) as f32; n].into();
+            landscape.acoustic.onset_habituation_end = at;
+            landscape.acoustic.onset_habituation_known = true;
             responding.control_tick = Some(at);
             plain.control_tick = Some(at);
             assert_eq!(

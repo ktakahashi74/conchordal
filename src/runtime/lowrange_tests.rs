@@ -16,7 +16,7 @@ fn lowrange_input_evidence_moves_below_55_hz() {
     let mut centroids = Vec::new();
     for frequency in [31.0, 40.0, 50.0] {
         let (mut stream, params) = production_analysis();
-        let (_, du) = erb_grid(&stream.last().space);
+        let (_, du) = erb_grid(&stream.last().acoustic.space);
         let mut centroid_sum = 0.0;
         let mut observed = 0;
         let mut min_mass = f32::INFINITY;
@@ -33,7 +33,7 @@ fn lowrange_input_evidence_moves_below_55_hz() {
             if frame * 512 < 24_000 {
                 continue;
             }
-            let density = &landscape.subjective_intensity;
+            let density = &landscape.acoustic.subjective_intensity;
             assert!(density.iter().all(|d| d.is_finite() && *d >= 0.0));
             let mass: f32 = density.iter().zip(&du).map(|(d, w)| d * w).sum();
             assert!(
@@ -44,7 +44,7 @@ fn lowrange_input_evidence_moves_below_55_hz() {
             let centroid = density
                 .iter()
                 .zip(&du)
-                .zip(&landscape.space.centers_hz)
+                .zip(&landscape.acoustic.space.centers_hz)
                 .map(|((d, w), f)| d * w * f)
                 .sum::<f32>()
                 / mass;
@@ -59,7 +59,7 @@ fn lowrange_input_evidence_moves_below_55_hz() {
                 .max_by(|a, b| a.1.total_cmp(b.1))
                 .unwrap()
                 .0;
-            assert!(peak > 0 && landscape.space.centers_hz[peak] < 55.0);
+            assert!(peak > 0 && landscape.acoustic.space.centers_hz[peak] < 55.0);
             assert!(density[peak] > density[0]);
             centroid_sum += centroid;
             observed += 1;
@@ -98,8 +98,11 @@ fn lowrange_candidates_match_unmodified_harmonicity_law() {
         if frame * 512 < 24_000 {
             continue;
         }
-        assert_eq!(landscape.space.centers_log2, reference_space.centers_log2);
-        let density = &landscape.subjective_intensity;
+        assert_eq!(
+            landscape.acoustic.space.centers_log2,
+            reference_space.centers_log2
+        );
+        let density = &landscape.acoustic.subjective_intensity;
         assert!(density.iter().all(|d| d.is_finite() && *d >= 0.0));
         let mass: f32 = density.iter().zip(&du).map(|(d, w)| d * w).sum();
         assert!(mass > params.roughness_ref_eps);
@@ -107,7 +110,7 @@ fn lowrange_candidates_match_unmodified_harmonicity_law() {
         let mut support = 0.0;
         for (i, &hz) in reference_space.centers_hz.iter().enumerate() {
             if (30.0..55.0).contains(&hz) {
-                let actual = landscape.harmonicity[i];
+                let actual = landscape.acoustic.harmonicity[i];
                 assert!(actual.is_finite() && actual >= 0.0);
                 // Both paths apply the identical unchanged kernel to identical density.
                 assert_eq!(actual, expected[i], "candidate {hz} Hz");
@@ -125,7 +128,7 @@ fn lowrange_candidates_match_unmodified_harmonicity_law() {
 #[test]
 fn lowrange_production_bank_has_extended_channels() {
     let (stream, _) = production_analysis();
-    assert_eq!(stream.last().space.n_bins(), 892);
+    assert_eq!(stream.last().acoustic.space.n_bins(), 892);
     let diagnostic = stream.aud_m1_shadow_diagnostic();
     let centers = diagnostic["centers_hz"].as_array().unwrap();
     assert_eq!(centers.len(), 198);

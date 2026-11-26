@@ -117,15 +117,17 @@ pub(super) fn fields(id: u64, g: u32, land: &Landscape) -> Option<Vec<room_shado
         assert_eq!(fixed.end, land.harmonic.now_sample);
         let frame = fixed.observers[&(id, g)].last();
         let score = frame
+            .acoustic
             .harmonicity
             .iter()
-            .zip(&frame.roughness01)
+            .zip(&frame.acoustic.roughness01)
             .map(|(&h, &r)| {
-                land.consonance_kernel
+                land.acoustic
+                    .consonance_kernel
                     .score(crate::core::float::sanitize01(h), r)
             })
             .collect();
-        let hab = &land.perc_habituation_state_scan;
+        let hab = &land.acoustic.perc_habituation_state_scan;
         Some(vec![
             ("strict".into(), native.score_scan.clone(), hab.clone()),
             ("power".into(), score, hab.clone()),
@@ -246,7 +248,7 @@ fn isolated_tones() {
         let mut streams = kernel.stream_pool(2, 2).unwrap();
         let mut observers = std::array::from_fn::<_, 3, _>(|_| template.voice_observer(true));
         let mut response = std::array::from_fn::<_, 3, _>(|_| {
-            OnsetResponse::new(16., template.last().space.n_bins())
+            OnsetResponse::new(16., template.last().acoustic.space.n_bins())
         });
         let mut own = vec![0.; hop];
         let mut mix = own.clone();
@@ -282,12 +284,12 @@ fn isolated_tones() {
                 };
                 response[idx].oracle_step(frame, hop as f32 / 48000.);
                 response_control_active |= idx == 0 && other > 0. && response[idx].extra_sec > 0.;
-                let hz = &frame.space.centers_hz;
+                let hz = &frame.acoustic.space.centers_hz;
                 for (name, scan) in [
-                    ("S6", &*frame.subjective_intensity),
-                    ("H", &*frame.harmonicity),
-                    ("R", &*frame.roughness01),
-                    ("onset", &*frame.onset_habituation_state_scan),
+                    ("S6", &*frame.acoustic.subjective_intensity),
+                    ("H", &*frame.acoustic.harmonicity),
+                    ("R", &*frame.acoustic.roughness01),
+                    ("onset", &*frame.acoustic.onset_habituation_state_scan),
                 ] {
                     let mut peaks: Vec<_> = (0..scan.len())
                         .filter(|&i| {
@@ -309,7 +311,7 @@ fn isolated_tones() {
                         pitch(0),
                         pitch(1),
                         pitch(2),
-                        scan[frame.space.nearest_index(440.)],
+                        scan[frame.acoustic.space.nearest_index(440.)],
                         response[idx].rise_sum,
                         response[idx].extra_sec
                     )

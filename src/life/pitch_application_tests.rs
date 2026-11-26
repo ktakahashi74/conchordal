@@ -81,7 +81,12 @@ fn rearticulate_controller_uses_formal_community_sample_clock_for_any_hop() {
     for hop in [32, 65, 257, 512, 1024] {
         let (mut v, tb, rhythms, mut batch) = setup(hop, false);
         let mut landscape = Landscape::new(Log2Space::new(55.0, 4000.0, 64));
-        for (i, value) in landscape.consonance_field_score_eff.iter_mut().enumerate() {
+        for (i, value) in landscape
+            .acoustic
+            .consonance_field_score_eff
+            .iter_mut()
+            .enumerate()
+        {
             *value = i as f32 * 10.0;
         }
         v.effective_control.pitch.temperature = Some(0.0);
@@ -331,7 +336,7 @@ fn dwell_keeps_glide_in_real_seconds_while_proposals_are_stopped() {
         v.effective_control.pitch.proposal_interval_sec = Some(100.0);
         v.pitch_ctl.force_set_target_pitch_log2(440.0_f32.log2());
         let mut landscape = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
-        landscape.consonance_field_score_eff.fill(100.0);
+        landscape.acoustic.consonance_field_score_eff.fill(100.0);
         let mut trajectory = Vec::new();
         for _ in 0..100 {
             v.update_pitch_target(&r, 0.01, &landscape, &[], &[]);

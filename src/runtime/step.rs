@@ -538,8 +538,8 @@ mod tests {
             if hop == 45 {
                 assert!(landscape.ecology.rain_observations.is_empty());
                 silent = Some((
-                    landscape.harmonicity01.clone(),
-                    landscape.roughness01.clone(),
+                    landscape.acoustic.harmonicity01.clone(),
+                    landscape.acoustic.roughness01.clone(),
                 ));
             }
             if let (Some((h, r)), Some(observation)) =
@@ -550,7 +550,8 @@ mod tests {
                     (h, r),
                     "hop {hop}"
                 );
-                heard |= landscape.harmonicity01 != *h || landscape.roughness01 != *r;
+                heard |=
+                    landscape.acoustic.harmonicity01 != *h || landscape.acoustic.roughness01 != *r;
                 checked += 1;
             }
         }
@@ -643,13 +644,16 @@ mod strict_room_readers {
             if n > 0 {
                 let mut expected = reference.last().clone();
                 expected.recompute_consonance(&params);
-                assert_eq!(actual.subjective_intensity, expected.subjective_intensity);
                 assert_eq!(
-                    actual.consonance_density_mass,
-                    expected.consonance_density_mass
+                    actual.acoustic.subjective_intensity,
+                    expected.acoustic.subjective_intensity
                 );
-                differs |=
-                    actual.subjective_intensity != state.current_landscape.subjective_intensity;
+                assert_eq!(
+                    actual.acoustic.consonance_density_mass,
+                    expected.acoustic.consonance_density_mass
+                );
+                differs |= actual.acoustic.subjective_intensity
+                    != state.current_landscape.acoustic.subjective_intensity;
             }
             let sites = state.schedule_renderer.sites.as_ref().unwrap();
             let local: [f32; 512] = std::array::from_fn(|i| sites.dry_habitat(0)[i] * (1. / 24.));
@@ -699,7 +703,7 @@ mod strict_room_readers {
                         let scan = obs.onset_habituation_state_scan.as_ref().unwrap();
                         assert_eq!(
                             scan.as_ref(),
-                            local.onset_habituation_state_scan.as_ref(),
+                            local.acoustic.onset_habituation_state_scan.as_ref(),
                             "silent moss leaves the same local field"
                         );
                         onset += scan.iter().map(|x| f64::from(*x)).sum::<f64>();
@@ -813,6 +817,7 @@ mod strict_room_readers {
                     !state
                         .current_landscape
                         .at_site(1)
+                        .acoustic
                         .onset_habituation_state_scan
                         .is_empty()
                 );
@@ -822,7 +827,7 @@ mod strict_room_readers {
                 assert_eq!(state.current_landscape.ecology.sites.len(), 1);
                 let local = state.current_landscape.at_site(1);
                 assert!(
-                    local.onset_habituation_state_scan.is_empty()
+                    local.acoustic.onset_habituation_state_scan.is_empty()
                         && local.ecology.site_resource_power.is_none()
                 );
             }
@@ -937,7 +942,7 @@ mod strict_room_readers {
         }
         let state = &mut step.runtime.state;
         let field = &state.current_landscape;
-        assert!(heard && field.harmonicity.iter().any(|&x| x > 0.));
+        assert!(heard && field.acoustic.harmonicity.iter().any(|&x| x > 0.));
         let observation = &field.ecology.flora_observations[0];
         assert!(
             observation

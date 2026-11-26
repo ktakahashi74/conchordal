@@ -17,8 +17,8 @@ impl Community {
     pub(crate) fn aud_m1_respawn(landscape: &Landscape) -> Vec<usize> {
         peak_bias_candidate_bins(
             landscape,
-            landscape.space.fmin,
-            landscape.space.fmax,
+            landscape.acoustic.space.fmin,
+            landscape.acoustic.space.fmax,
             RESPAWN_CANDIDATE_COUNT,
         )
     }
@@ -94,15 +94,15 @@ pub(super) fn peak_bias_candidate_bins(
     candidate_count: usize,
 ) -> Vec<usize> {
     let candidate_count = candidate_count.max(1);
-    let (voice_min, voice_max) = landscape.space.voice_pitch_bounds();
+    let (voice_min, voice_max) = landscape.acoustic.space.voice_pitch_bounds();
     let min_hz = min_hz.min(max_hz).clamp(voice_min.max(1e-6), voice_max);
     let max_hz = max_hz.max(min_hz).clamp(min_hz, voice_max.max(min_hz));
-    let mut weights = vec![0.0f32; landscape.space.n_bins()];
-    for (idx, &freq_hz) in landscape.space.centers_hz.iter().enumerate() {
+    let mut weights = vec![0.0f32; landscape.acoustic.space.n_bins()];
+    for (idx, &freq_hz) in landscape.acoustic.space.centers_hz.iter().enumerate() {
         if !freq_hz.is_finite() || freq_hz < min_hz || freq_hz > max_hz {
             continue;
         }
-        let weight = landscape.consonance_field_score_eff[idx].max(0.0);
+        let weight = landscape.acoustic.consonance_field_score_eff[idx].max(0.0);
         if weight.is_finite() {
             weights[idx] = weight;
         }
@@ -112,7 +112,7 @@ pub(super) fn peak_bias_candidate_bins(
     cfg.max_peaks = Some(candidate_count.saturating_mul(2));
     cfg.min_prominence_db_power = 0.5;
     cfg.min_sep_erb = 0.10;
-    let mut bins: Vec<usize> = extract_peaks_density(&weights, &landscape.space, &cfg)
+    let mut bins: Vec<usize> = extract_peaks_density(&weights, &landscape.acoustic.space, &cfg)
         .into_iter()
         .filter_map(|peak| (weights[peak.bin_idx] > 0.0).then_some(peak.bin_idx))
         .collect();
@@ -349,7 +349,7 @@ impl Community {
             .strategy
             .as_ref()
             .map(SpawnStrategy::freq_range_hz)
-            .unwrap_or_else(|| landscape.space.voice_pitch_bounds());
+            .unwrap_or_else(|| landscape.acoustic.space.voice_pitch_bounds());
         let lo = min_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
         let hi = max_hz.clamp(lo, MAX_FREQ_HZ);
         let candidate_count = RESPAWN_CANDIDATE_COUNT;
@@ -374,12 +374,13 @@ impl Community {
                 .filter(|freq_hz| freq_hz.is_finite() && *freq_hz > 0.0);
             let mut centers = [0.0; RESPAWN_CANDIDATE_COUNT];
             for (idx, &bin) in candidate_bins.iter().enumerate() {
-                centers[idx] = landscape.space.centers_hz[bin].clamp(lo, hi);
+                centers[idx] = landscape.acoustic.space.centers_hz[bin].clamp(lo, hi);
             }
             let mut scene_weights = Vec::with_capacity(candidate_bins.len());
             let mut final_weights = Vec::with_capacity(candidate_bins.len());
             for (&bin_idx, &center_hz) in candidate_bins.iter().zip(&centers) {
-                let mut scene_weight = landscape.consonance_field_score_eff[bin_idx].max(0.0);
+                let mut scene_weight =
+                    landscape.acoustic.consonance_field_score_eff[bin_idx].max(0.0);
                 if scene_exp > 0.0 {
                     scene_weight = scene_weight.powf(scene_exp);
                 }
@@ -444,7 +445,8 @@ impl Community {
                     baseline
                 }
             };
-            let center_hz = landscape.space.centers_hz[candidate_bins[chosen_idx]].clamp(lo, hi);
+            let center_hz =
+                landscape.acoustic.space.centers_hz[candidate_bins[chosen_idx]].clamp(lo, hi);
             let active = &self.spawn_support.relations;
             let temporal = if temporal { active.as_ref() } else { None };
             peak_bias_local_search_frequency(landscape, center_hz, lo, hi, config, temporal)
@@ -541,7 +543,7 @@ impl Community {
                                 .strategy
                                 .as_ref()
                                 .map(SpawnStrategy::freq_range_hz)
-                                .unwrap_or_else(|| landscape.space.voice_pitch_bounds());
+                                .unwrap_or_else(|| landscape.acoustic.space.voice_pitch_bounds());
                             let lo = min_hz.clamp(MIN_FREQ_HZ, MAX_FREQ_HZ);
                             let hi = max_hz.clamp(lo, MAX_FREQ_HZ);
                             2.0f32.powf(child_log2).clamp(lo, hi)
@@ -1317,14 +1319,14 @@ mod tests {
     fn random_respawn_selection_uses_weighted_scene_scores() {
         let mut landscape = Landscape::new(Log2Space::new(220.0, 880.0, 96));
         let candidate_bins = [12usize, 36usize, 60usize];
-        let candidate_freqs = candidate_bins.map(|idx| landscape.space.centers_hz[idx]);
+        let candidate_freqs = candidate_bins.map(|idx| landscape.acoustic.space.centers_hz[idx]);
         let candidate_scores = [0.0f32, 0.5, 2.0];
 
         for (bin_idx, score) in candidate_bins.into_iter().zip(candidate_scores) {
-            landscape.consonance_field_score[bin_idx] = score;
-            landscape.consonance_field_level[bin_idx] = score.clamp(0.0, 1.0);
-            landscape.consonance_field_score_eff[bin_idx] = score;
-            landscape.consonance_field_level_eff[bin_idx] = score.clamp(0.0, 1.0);
+            landscape.acoustic.consonance_field_score[bin_idx] = score;
+            landscape.acoustic.consonance_field_level[bin_idx] = score.clamp(0.0, 1.0);
+            landscape.acoustic.consonance_field_score_eff[bin_idx] = score;
+            landscape.acoustic.consonance_field_level_eff[bin_idx] = score.clamp(0.0, 1.0);
         }
 
         let mut rng = rand::rngs::SmallRng::seed_from_u64(20260331);
@@ -1358,7 +1360,7 @@ mod tests {
     fn terrain_respawn_keeps_selection_rng_lineage_and_thresholds() {
         let mut pop = test_pop();
         let mut landscape = peak_bias_landscape();
-        landscape.consonance_density_mass_eff.fill(0.5);
+        landscape.acoustic.consonance_density_mass_eff.fill(0.5);
         let mut spec = spawn_spec_with_freq(220.0);
         spec.control.body.method = crate::scenario::control::BodyMethod::Harmonic;
         spec.control.body.timbre.spread = 0.0;
@@ -1429,7 +1431,7 @@ mod tests {
                 assert_eq!((parent, generation), (Some(17), Some(3)));
             }
         }
-        landscape.consonance_field_level_eff.fill(0.25);
+        landscape.acoustic.consonance_field_level_eff.fill(0.25);
         population.respawn_min_c_level = Some(0.5);
         for policy in [
             RespawnPolicy::Random,
@@ -1456,8 +1458,8 @@ mod tests {
     fn hr2_respawn_keeps_policy_specific_ranges() {
         let space = crate::core::log2space::production_space(48000).unwrap();
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass_eff.fill(1.0);
-        landscape.consonance_field_score_eff.fill(1.0);
+        landscape.acoustic.consonance_density_mass_eff.fill(1.0);
+        landscape.acoustic.consonance_field_score_eff.fill(1.0);
         let mut pop = test_pop();
         pop.apply_action(
             Action::Spawn {
@@ -1507,7 +1509,8 @@ mod tests {
             .0;
         assert_eq!(candidate, 8000.0);
         for (i, &hz) in space.centers_hz.iter().enumerate() {
-            landscape.consonance_field_score_eff[i] = if hz > 8000.0 { 1000.0 } else { 1.0 };
+            landscape.acoustic.consonance_field_score_eff[i] =
+                if hz > 8000.0 { 1000.0 } else { 1.0 };
         }
         let bins = peak_bias_candidate_bins(&landscape, 3000.0, 11000.0, 16);
         assert!(!bins.is_empty());

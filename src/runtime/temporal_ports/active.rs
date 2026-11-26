@@ -125,7 +125,7 @@ impl TemporalWiring {
                         runtime_sample_rate,
                         hop,
                         core.nsgt.nfft(),
-                        core.landscape.space.clone(),
+                        core.landscape.acoustic.space.clone(),
                         crate::temporal_cognition::observation::Options {
                             body_prototypes: config.temporal_body_prototypes.as_ref().map(
                                 |model| {

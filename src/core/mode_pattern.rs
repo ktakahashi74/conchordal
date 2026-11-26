@@ -380,13 +380,13 @@ impl ModePattern {
         let Some(landscape) = landscape else {
             return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         };
-        let eval_space = &landscape.space;
+        let eval_space = &landscape.acoustic.space;
         let Some((idx_min, idx_max)) =
             freq_range_to_bins(eval_space, base_hz * min_mul, base_hz * max_mul)
         else {
             return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         };
-        if landscape.consonance_density_mass.len() != eval_space.n_bins() {
+        if landscape.acoustic.consonance_density_mass.len() != eval_space.n_bins() {
             return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         }
         let gamma = sanitize_positive_finite(self.gamma, 1.0);
@@ -398,7 +398,7 @@ impl ModePattern {
             // modes would conflate perception and production (cf. the H01 decision to
             // erode kernel output but never the physical analysis). Spawn placement
             // uses the eroded views; body timbre tracks the physical terrain.
-            let raw = sanitize_nonnegative_finite(landscape.consonance_density_mass[idx]);
+            let raw = sanitize_nonnegative_finite(landscape.acoustic.consonance_density_mass[idx]);
             weights.push(raw.powf(gamma));
         }
 
@@ -448,13 +448,13 @@ impl ModePattern {
         let Some(landscape) = landscape else {
             return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         };
-        let eval_space = &landscape.space;
+        let eval_space = &landscape.acoustic.space;
         let Some((idx_min, idx_max)) =
             freq_range_to_bins(eval_space, base_hz * min_mul, base_hz * max_mul)
         else {
             return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         };
-        if landscape.consonance_field_level.len() != eval_space.n_bins() {
+        if landscape.acoustic.consonance_field_level.len() != eval_space.n_bins() {
             return self.eval_harmonic_like_in_range(min_mul, max_mul, self.count.max(1), 1.0);
         }
         // Intentional: body-mode generation is production-side (a voice's physical
@@ -463,7 +463,7 @@ impl ModePattern {
         // modes would conflate perception and production (cf. the H01 decision to
         // erode kernel output but never the physical analysis). Spawn placement
         // uses the eroded views; body timbre tracks the physical terrain.
-        let scan = &landscape.consonance_field_level;
+        let scan = &landscape.acoustic.consonance_field_level;
         let mut candidates = Vec::new();
         for idx in idx_min..=idx_max {
             let center = sanitize_nonnegative_finite(scan[idx]);
@@ -675,9 +675,9 @@ mod tests {
         let idx_a = space.index_of_freq(220.0).expect("idx a");
         let idx_b = space.index_of_freq(233.0).expect("idx b");
         let idx_c = space.index_of_freq(440.0).expect("idx c");
-        landscape.consonance_density_mass[idx_a] = 1.0;
-        landscape.consonance_density_mass[idx_b] = 0.95;
-        landscape.consonance_density_mass[idx_c] = 0.8;
+        landscape.acoustic.consonance_density_mass[idx_a] = 1.0;
+        landscape.acoustic.consonance_density_mass[idx_b] = 0.95;
+        landscape.acoustic.consonance_density_mass[idx_c] = 0.8;
 
         let pattern = ModePattern::landscape_density_modes()
             .with_count(2)

@@ -38,8 +38,8 @@ pub(super) fn build_initial_ui_frame(
             samples: Arc::from(Vec::<f32>::new()),
         },
         spec: SpecFrame {
-            spec_hz: current_landscape.space.centers_hz.clone(),
-            amps: vec![0.0; current_landscape.space.n_bins()],
+            spec_hz: current_landscape.acoustic.space.centers_hz.clone(),
+            amps: vec![0.0; current_landscape.acoustic.space.n_bins()],
         },
         listener: ListenerFrame::default(),
         listener_rhythm: Vec::new(),
@@ -85,6 +85,7 @@ pub(super) fn build_runtime_ui_frame(input: RuntimeUiFrameInput<'_>) -> UiFrame 
         spec_hz: input.log_space.centers_hz.clone(),
         amps: input
             .current_landscape
+            .acoustic
             .nsgt_power
             .iter()
             .map(|&x| x.sqrt())

@@ -14,17 +14,20 @@ const TENSION_LEVEL_SIGMA_FRAC: f32 = 0.15;
 fn field_peak_score(target: FieldTarget, landscape: &Landscape, i: usize) -> f32 {
     match target {
         FieldTarget::Consonance => landscape
+            .acoustic
             .consonance_field_level_eff
             .get(i)
             .copied()
             .unwrap_or(f32::MIN),
         FieldTarget::Dissonance => -landscape
+            .acoustic
             .consonance_field_level_eff
             .get(i)
             .copied()
             .unwrap_or(f32::MAX),
         FieldTarget::Edge => {
             let v = landscape
+                .acoustic
                 .consonance_field_level_eff
                 .get(i)
                 .copied()
@@ -32,6 +35,7 @@ fn field_peak_score(target: FieldTarget, landscape: &Landscape, i: usize) -> f32
             -(v - 0.5).abs()
         }
         FieldTarget::Gap => -landscape
+            .acoustic
             .subjective_intensity
             .get(i)
             .copied()
@@ -52,16 +56,19 @@ pub(crate) fn field_density_mass(
     field_target_mass(
         target,
         landscape
+            .acoustic
             .consonance_density_mass_eff
             .get(i)
             .copied()
             .unwrap_or(0.0),
         landscape
+            .acoustic
             .consonance_field_level_eff
             .get(i)
             .copied()
             .unwrap_or(1.0),
         landscape
+            .acoustic
             .subjective_intensity
             .get(i)
             .copied()
@@ -110,7 +117,7 @@ impl Community {
                 ..Default::default()
             };
             body.project_support_density(
-                &landscape.space,
+                &landscape.acoustic.space,
                 landscape.harmonic.support_ref_power,
                 landscape.harmonic.support_loudness_exp,
                 &signal,
@@ -242,8 +249,8 @@ impl Community {
 
     #[cfg(test)]
     pub(crate) fn aud_m1_range_mass(landscape: &Landscape, range: (f32, f32)) -> Vec<f32> {
-        let lo = landscape.space.nearest_index(range.0);
-        let hi = landscape.space.nearest_index(range.1);
+        let lo = landscape.acoustic.space.nearest_index(range.0);
+        let hi = landscape.acoustic.space.nearest_index(range.1);
         // Empty population, zero tension: every in-range bin is unoccupied.
         let mut weights: Vec<_> = (lo..=hi)
             .map(|i| field_density_mass(FieldTarget::Consonance, landscape, i, 0.0))
@@ -316,7 +323,7 @@ impl Community {
         control: Option<&crate::scenario::control::VoiceControl>,
         condition_temporal: bool,
     ) -> f32 {
-        let space = &landscape.space;
+        let space = &landscape.acoustic.space;
         let n_bins = space.n_bins();
         let (voice_min, voice_max) = space.voice_pitch_bounds();
         let (min_freq, max_freq) = strategy.freq_range_hz();
@@ -404,6 +411,7 @@ impl Community {
             let mut lmin = f32::MAX;
             for i in idx_min..=idx_max {
                 let s = landscape
+                    .acoustic
                     .consonance_field_score_eff
                     .get(i)
                     .copied()
@@ -466,6 +474,7 @@ impl Community {
                 let native_score = |i: usize| match target_score {
                     Some(t) => {
                         let s = landscape
+                            .acoustic
                             .consonance_field_score_eff
                             .get(i)
                             .copied()
@@ -525,7 +534,7 @@ impl Community {
                 // Gap mass is measured relative to the loudest bin in range.
                 let gap_ref = if *target == FieldTarget::Gap {
                     (idx_min..=idx_max)
-                        .filter_map(|i| landscape.subjective_intensity.get(i).copied())
+                        .filter_map(|i| landscape.acoustic.subjective_intensity.get(i).copied())
                         .fold(0.0f32, f32::max)
                 } else {
                     0.0
@@ -543,6 +552,7 @@ impl Community {
                     let raw = match target_score {
                         Some(t) => {
                             let s = landscape
+                                .acoustic
                                 .consonance_field_score_eff
                                 .get(i)
                                 .copied()
@@ -617,7 +627,7 @@ impl Community {
             unreachable!()
         };
         let snapshot = landscape.harmonic.support.as_ref().unwrap();
-        let space = &landscape.space;
+        let space = &landscape.acoustic.space;
         let (a, b) = strategy.freq_range_hz();
         let (voice_min, voice_max) = space.voice_pitch_bounds();
         let lo_hz = a.min(b).max(voice_min);
@@ -642,13 +652,13 @@ impl Community {
         let [scores, masses] = &mut self.spawn_support.scores_and_masses;
         let mut minimum = f64::MAX;
         let mut maximum = -f64::MAX;
-        let gap_ref = landscape.subjective_intensity[lo..=hi]
+        let gap_ref = landscape.acoustic.subjective_intensity[lo..=hi]
             .iter()
             .copied()
             .fold(0., f32::max);
         let choice_base = |i: usize| match target {
-            FieldTarget::Consonance => landscape.consonance_field_score_eff[i],
-            FieldTarget::Dissonance => -landscape.consonance_field_score_eff[i],
+            FieldTarget::Consonance => landscape.acoustic.consonance_field_score_eff[i],
+            FieldTarget::Dissonance => -landscape.acoustic.consonance_field_score_eff[i],
             _ => field_peak_score(*target, landscape, i),
         };
         for i in lo..=hi {
@@ -663,7 +673,7 @@ impl Community {
             let base_mass = field_density_mass(*target, landscape, i, gap_ref);
             masses[i] = if base_mass > 0. {
                 (f64::from(base_mass).ln()
-                    + (f64::from(landscape.consonance_representation.beta) * value)
+                    + (f64::from(landscape.acoustic.consonance_representation.beta) * value)
                         .clamp(-f64::MAX, f64::MAX))
                 .clamp(-f64::MAX, f64::MAX)
             } else {
@@ -853,7 +863,7 @@ mod tests {
         use crate::scenario::control::{BodyMethod, VoiceControl};
         let space = Log2Space::new(55., 3520., 24);
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass_eff.fill(1.);
+        landscape.acoustic.consonance_density_mass_eff.fill(1.);
         let mut pop = test_pop();
         pop.prepare_support(space.n_bins());
         let geometry = Geometry::new(
@@ -906,7 +916,7 @@ mod tests {
         use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
         let space = Log2Space::new(55., 1760., 24);
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass_eff.fill(1.);
+        landscape.acoustic.consonance_density_mass_eff.fill(1.);
         let mut pop = test_pop();
         pop.prepare_support(space.n_bins());
         let geometry = Geometry::new(
@@ -956,8 +966,8 @@ mod tests {
             *sampling = FieldSampling::Density;
         }
         let only = 60;
-        landscape.consonance_density_mass_eff.fill(0.);
-        landscape.consonance_density_mass_eff[only] = 1.;
+        landscape.acoustic.consonance_density_mass_eff.fill(0.);
+        landscape.acoustic.consonance_density_mass_eff[only] = 1.;
         let mut rng = rand::rngs::SmallRng::seed_from_u64(10);
         for _ in 0..16 {
             assert_eq!(
@@ -979,12 +989,12 @@ mod tests {
         use crate::temporal_cognition::harmonic_relations::{Acoustic, Bin, Value, consumer};
         let (mut landscape, pitches) = consumer::test_landscape(1., false);
         let mut pop = test_pop();
-        pop.prepare_support(landscape.space.n_bins());
-        landscape.consonance_field_level_eff.fill(0.);
-        landscape.consonance_field_level_eff[80] = 0.1;
-        landscape.consonance_density_mass_eff.fill(0.);
-        landscape.consonance_density_mass_eff[20] = 1.;
-        landscape.consonance_density_mass_eff[80] = 1.;
+        pop.prepare_support(landscape.acoustic.space.n_bins());
+        landscape.acoustic.consonance_field_level_eff.fill(0.);
+        landscape.acoustic.consonance_field_level_eff[80] = 0.1;
+        landscape.acoustic.consonance_density_mass_eff.fill(0.);
+        landscape.acoustic.consonance_density_mass_eff[20] = 1.;
+        landscape.acoustic.consonance_density_mass_eff[80] = 1.;
         let mut preview = Preview::new(landscape.harmonic.support.as_ref().unwrap());
         let density =
             landscape.support_single_density(crate::scenario::control::BodyControl::default().amp);
@@ -1004,7 +1014,7 @@ mod tests {
         };
         let mut baseline_rng = rand::rngs::SmallRng::seed_from_u64(7);
         let baseline = pop.decide_frequency(&strategy, &landscape, &mut baseline_rng, &[], None);
-        assert_eq!(landscape.space.nearest_index(baseline), 80);
+        assert_eq!(landscape.acoustic.space.nearest_index(baseline), 80);
         let decision = Arc::make_mut(landscape.harmonic.relations.as_mut().unwrap());
         decision.prediction.unknown = 0.;
         decision.prediction.len = 1;
@@ -1029,7 +1039,7 @@ mod tests {
             })
             .collect();
         let chosen = pop.decide_frequency(&strategy, &landscape, &mut baseline_rng, &[], None);
-        assert_eq!(landscape.space.nearest_index(chosen), 20);
+        assert_eq!(landscape.acoustic.space.nearest_index(chosen), 20);
         if let SpawnStrategy::Field { sampling, .. } = &mut strategy {
             *sampling = FieldSampling::Density;
         }
@@ -1072,7 +1082,7 @@ mod tests {
         use crate::scenario::control::VoiceControl;
         let space = Log2Space::new(55., 1760., 24);
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass_eff.fill(1.);
+        landscape.acoustic.consonance_density_mass_eff.fill(1.);
         let geometry = Geometry::new(
             &space,
             &HarmonicityKernel::new(&space, HarmonicityParams::default()),
@@ -1215,10 +1225,10 @@ mod tests {
         let min_freq = 219.0;
         let idx_min = space.nearest_index(min_freq);
         let next_freq = space.freq_of_index(idx_min + 1);
-        landscape.consonance_field_level_eff[idx_min] = 1.0;
-        landscape.consonance_density_mass_eff[idx_min] = 1.0;
-        landscape.consonance_field_level_eff[idx_min + 1] = 0.5;
-        landscape.consonance_density_mass_eff[idx_min + 1] = 0.5;
+        landscape.acoustic.consonance_field_level_eff[idx_min] = 1.0;
+        landscape.acoustic.consonance_density_mass_eff[idx_min] = 1.0;
+        landscape.acoustic.consonance_field_level_eff[idx_min + 1] = 0.5;
+        landscape.acoustic.consonance_density_mass_eff[idx_min + 1] = 0.5;
         let mut pop = test_pop();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(3);
         for sampling in [FieldSampling::Peak, FieldSampling::Density] {
@@ -1248,17 +1258,17 @@ mod tests {
     fn decide_frequency_uses_consonance_field_level() {
         let space = Log2Space::new(100.0, 400.0, 12);
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_field_score.fill(-10.0);
-        landscape.consonance_field_score_eff.fill(-10.0);
-        landscape.consonance_field_level.fill(0.0);
-        landscape.consonance_field_level_eff.fill(0.0);
+        landscape.acoustic.consonance_field_score.fill(-10.0);
+        landscape.acoustic.consonance_field_score_eff.fill(-10.0);
+        landscape.acoustic.consonance_field_level.fill(0.0);
+        landscape.acoustic.consonance_field_level_eff.fill(0.0);
 
         let idx_high = space.index_of_freq(200.0).expect("idx");
         let idx_raw = space.index_of_freq(300.0).expect("idx");
-        landscape.consonance_field_level[idx_high] = 1.0;
-        landscape.consonance_field_level_eff[idx_high] = 1.0;
-        landscape.consonance_field_score[idx_raw] = 10.0;
-        landscape.consonance_field_score_eff[idx_raw] = 10.0;
+        landscape.acoustic.consonance_field_level[idx_high] = 1.0;
+        landscape.acoustic.consonance_field_level_eff[idx_high] = 1.0;
+        landscape.acoustic.consonance_field_score[idx_raw] = 10.0;
+        landscape.acoustic.consonance_field_score_eff[idx_raw] = 10.0;
 
         let mut pop = test_pop();
         let strategy = SpawnStrategy::Field {
@@ -1279,11 +1289,11 @@ mod tests {
     fn consonance_density_sampling_uses_density_pmf() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass.fill(0.0);
-        landscape.consonance_density_mass_eff.fill(0.0);
+        landscape.acoustic.consonance_density_mass.fill(0.0);
+        landscape.acoustic.consonance_density_mass_eff.fill(0.0);
         let idx_target = space.index_of_freq(220.0).expect("idx target");
-        landscape.consonance_density_mass[idx_target] = 1.0;
-        landscape.consonance_density_mass_eff[idx_target] = 1.0;
+        landscape.acoustic.consonance_density_mass[idx_target] = 1.0;
+        landscape.acoustic.consonance_density_mass_eff[idx_target] = 1.0;
 
         let mut pop = test_pop();
         let strategy = SpawnStrategy::Field {
@@ -1308,21 +1318,21 @@ mod tests {
         let space = Log2Space::new(100.0, 800.0, 48);
         let mut landscape = Landscape::new(space.clone());
         // Background well below the three steps so L_min is the background.
-        for s in landscape.consonance_field_score.iter_mut() {
+        for s in landscape.acoustic.consonance_field_score.iter_mut() {
             *s = -1.0;
         }
-        for s in landscape.consonance_field_score_eff.iter_mut() {
+        for s in landscape.acoustic.consonance_field_score_eff.iter_mut() {
             *s = -1.0;
         }
         let idx_strong = space.index_of_freq(200.0).expect("strong");
         let idx_mid = space.index_of_freq(300.0).expect("mid");
         let idx_weak = space.index_of_freq(500.0).expect("weak");
-        landscape.consonance_field_score[idx_strong] = 1.0; // L_max
-        landscape.consonance_field_score[idx_mid] = 0.5;
-        landscape.consonance_field_score[idx_weak] = 0.0;
-        landscape.consonance_field_score_eff[idx_strong] = 1.0; // L_max
-        landscape.consonance_field_score_eff[idx_mid] = 0.5;
-        landscape.consonance_field_score_eff[idx_weak] = 0.0;
+        landscape.acoustic.consonance_field_score[idx_strong] = 1.0; // L_max
+        landscape.acoustic.consonance_field_score[idx_mid] = 0.5;
+        landscape.acoustic.consonance_field_score[idx_weak] = 0.0;
+        landscape.acoustic.consonance_field_score_eff[idx_strong] = 1.0; // L_max
+        landscape.acoustic.consonance_field_score_eff[idx_mid] = 0.5;
+        landscape.acoustic.consonance_field_score_eff[idx_weak] = 0.0;
 
         let mut pop = test_pop();
         let mk = |t: f32| SpawnStrategy::Field {
@@ -1346,14 +1356,14 @@ mod tests {
     fn consonance_density_range_zero_weights_fallback_is_range_uniform() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass.fill(1.0);
-        landscape.consonance_density_mass_eff.fill(1.0);
+        landscape.acoustic.consonance_density_mass.fill(1.0);
+        landscape.acoustic.consonance_density_mass_eff.fill(1.0);
 
         let idx_min = 6usize;
         let idx_max = 12usize;
         for i in idx_min..=idx_max {
-            landscape.consonance_density_mass[i] = 0.0;
-            landscape.consonance_density_mass_eff[i] = 0.0;
+            landscape.acoustic.consonance_density_mass[i] = 0.0;
+            landscape.acoustic.consonance_density_mass_eff[i] = 0.0;
         }
 
         let mut pop = test_pop();
@@ -1389,8 +1399,8 @@ mod tests {
     fn consonance_density_range_all_occupied_fallback_does_not_panic() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass.fill(1.0);
-        landscape.consonance_density_mass_eff.fill(1.0);
+        landscape.acoustic.consonance_density_mass.fill(1.0);
+        landscape.acoustic.consonance_density_mass_eff.fill(1.0);
 
         let idx_min = 8usize;
         let idx_max = 14usize;
@@ -1424,8 +1434,8 @@ mod tests {
     fn consonance_density_avoids_occupied_when_unoccupied_exists() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass.fill(1.0);
-        landscape.consonance_density_mass_eff.fill(1.0);
+        landscape.acoustic.consonance_density_mass.fill(1.0);
+        landscape.acoustic.consonance_density_mass_eff.fill(1.0);
 
         let idx_min = 5usize;
         let idx_max = 11usize;
@@ -1461,14 +1471,14 @@ mod tests {
     fn consonance_density_zero_sum_fallback_still_avoids_occupied() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass.fill(1.0);
-        landscape.consonance_density_mass_eff.fill(1.0);
+        landscape.acoustic.consonance_density_mass.fill(1.0);
+        landscape.acoustic.consonance_density_mass_eff.fill(1.0);
 
         let idx_min = 5usize;
         let idx_max = 11usize;
         for i in idx_min..=idx_max {
-            landscape.consonance_density_mass[i] = 0.0;
-            landscape.consonance_density_mass_eff[i] = 0.0;
+            landscape.acoustic.consonance_density_mass[i] = 0.0;
+            landscape.acoustic.consonance_density_mass_eff[i] = 0.0;
         }
         let idx_occupied = 8usize;
         let reserved = vec![space.freq_of_index(idx_occupied)];
@@ -1502,14 +1512,14 @@ mod tests {
     fn consonance_density_reversed_range_is_handled_safely() {
         let space = Log2Space::new(100.0, 400.0, 24);
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass.fill(0.0);
-        landscape.consonance_density_mass_eff.fill(0.0);
+        landscape.acoustic.consonance_density_mass.fill(0.0);
+        landscape.acoustic.consonance_density_mass_eff.fill(0.0);
 
         let idx_low = 6usize;
         let idx_high = 12usize;
         let idx_target = 9usize;
-        landscape.consonance_density_mass[idx_target] = 1.0;
-        landscape.consonance_density_mass_eff[idx_target] = 1.0;
+        landscape.acoustic.consonance_density_mass[idx_target] = 1.0;
+        landscape.acoustic.consonance_density_mass_eff[idx_target] = 1.0;
 
         let mut pop = test_pop();
         let strategy = SpawnStrategy::Field {
@@ -1537,9 +1547,10 @@ mod tests {
     fn hr2_field_births_preserve_voice_and_requested_ranges() {
         let space = crate::core::log2space::production_space(48000).unwrap();
         let mut landscape = Landscape::new(space.clone());
-        landscape.consonance_density_mass_eff.fill(1.0);
+        landscape.acoustic.consonance_density_mass_eff.fill(1.0);
         for (i, &hz) in space.centers_hz.iter().enumerate() {
-            landscape.consonance_field_score_eff[i] = if hz > 8000.0 { 1000.0 } else { 1.0 };
+            landscape.acoustic.consonance_field_score_eff[i] =
+                if hz > 8000.0 { 1000.0 } else { 1.0 };
         }
         let mut pop = test_pop();
         let mut rng = rand::rngs::SmallRng::seed_from_u64(21);

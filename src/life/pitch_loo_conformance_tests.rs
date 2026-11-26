@@ -240,10 +240,14 @@ fn viability_voice(hz: f32, kind: PitchCoreKind) -> crate::life::voice::Voice {
 #[test]
 fn environment_viability_consumes_pcm_observation_without_pitch_self_exclusion() {
     let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
-    landscape.subjective_intensity[landscape.space.nearest_index(220.0)] = 1.0;
-    landscape.loudness_exp = 0.23;
-    let score = recompute_loo_score_scan(&landscape, &landscape.subjective_intensity, &mut None);
-    landscape.consonance_field_score_eff = score;
+    landscape.acoustic.subjective_intensity[landscape.acoustic.space.nearest_index(220.0)] = 1.0;
+    landscape.acoustic.loudness_exp = 0.23;
+    let score = recompute_loo_score_scan(
+        &landscape,
+        &landscape.acoustic.subjective_intensity,
+        &mut None,
+    );
+    landscape.acoustic.consonance_field_score_eff = score;
     for kind in [PitchCoreKind::HillClimb, PitchCoreKind::PeakSampler] {
         let mut voice = viability_voice(220.0, kind);
         // An isolated caller without a snapshot still reads the observed field.
@@ -260,9 +264,9 @@ fn environment_viability_consumes_pcm_observation_without_pitch_self_exclusion()
             support: None,
             id: voice.id(),
             generation: voice.metadata.generation,
-            h_scan: vec![0.; landscape.space.n_bins()],
-            r_scan: vec![0.; landscape.space.n_bins()],
-            score_scan: vec![0.; landscape.space.n_bins()].into(),
+            h_scan: vec![0.; landscape.acoustic.space.n_bins()],
+            r_scan: vec![0.; landscape.acoustic.space.n_bins()],
+            score_scan: vec![0.; landscape.acoustic.space.n_bins()].into(),
             onset_habituation_state_scan: None,
             onset_habituation_end: 0,
             onset_habituation_known: false,
@@ -285,7 +289,7 @@ fn rendered_loo_conformance() {
     config.psychoacoustics.habituation.enabled = false;
     let (params, kernel, hop) = crate::runtime::analysis_runtime_test_core(&config, FS as u32);
     let template = AnalysisStream::new(params.clone(), kernel.clone());
-    let space = template.last().space.clone();
+    let space = template.last().acoustic.space.clone();
     let (_, du) = erb_grid(&space);
     let repr = params.consonance_representation;
     let timebase = Timebase { fs: FS, hop };
@@ -426,27 +430,32 @@ fn rendered_loo_conformance() {
                     let mut oracle = oracle_stream.process(&other_pcm[frame]).clone();
                     oracle.recompute_consonance(&params);
                     let mass = oracle
+                        .acoustic
                         .subjective_intensity
                         .iter()
                         .zip(&du)
                         .map(|(q, w)| q * w)
                         .sum::<f32>();
                     let l1 = actual
+                        .acoustic
                         .subjective_intensity
                         .iter()
-                        .zip(&oracle.subjective_intensity)
+                        .zip(&oracle.acoustic.subjective_intensity)
                         .zip(&du)
                         .map(|((a, b), w)| (a - b).abs() * w)
                         .sum::<f32>();
                     max_l1 = max_l1.max(l1 / mass.max(1e-12));
                     let mut frame_field_error = 0.0_f32;
                     for (a, b) in [
-                        (&actual.harmonicity, &oracle.harmonicity),
-                        (&actual.roughness, &oracle.roughness),
-                        (&actual.roughness_shape_raw, &oracle.roughness_shape_raw),
+                        (&actual.acoustic.harmonicity, &oracle.acoustic.harmonicity),
+                        (&actual.acoustic.roughness, &oracle.acoustic.roughness),
                         (
-                            &actual.consonance_field_score,
-                            &oracle.consonance_field_score,
+                            &actual.acoustic.roughness_shape_raw,
+                            &oracle.acoustic.roughness_shape_raw,
+                        ),
+                        (
+                            &actual.acoustic.consonance_field_score,
+                            &oracle.acoustic.consonance_field_score,
                         ),
                     ] {
                         let error = a
@@ -470,9 +479,15 @@ fn rendered_loo_conformance() {
                     }
                     if other_hz.is_none() {
                         assert!(removed.iter().all(|x| *x == 0.0));
-                        assert!(actual.subjective_intensity.iter().all(|x| *x == 0.0));
-                        assert!(actual.harmonicity.iter().all(|x| *x == 0.0));
-                        assert!(actual.roughness.iter().all(|x| *x == 0.0));
+                        assert!(
+                            actual
+                                .acoustic
+                                .subjective_intensity
+                                .iter()
+                                .all(|x| *x == 0.0)
+                        );
+                        assert!(actual.acoustic.harmonicity.iter().all(|x| *x == 0.0));
+                        assert!(actual.acoustic.roughness.iter().all(|x| *x == 0.0));
                     }
                 }
                 let mut mix = mixed_stream.last().clone();
@@ -634,7 +649,7 @@ fn rendered_loo_conformance() {
                                 &space,
                                 density,
                                 &du,
-                                &removed.consonance_field_score_eff,
+                                &removed.acoustic.consonance_field_score_eff,
                                 &repr,
                             )
                             .unwrap()
@@ -735,8 +750,8 @@ fn rendered_loo_conformance() {
                         "T32_CASE {}",
                         json!({"method":method,"family":family,"base_hz":base_hz,"other_hz":other_hz,"recipe_body":format!("{:?}",own_recipe.body),
                     "ownership_bins":if family == "motion" {
-                        Some((0..space.n_bins()).filter(|&i| mix.subjective_intensity[i] > 0.0 || removed.subjective_intensity[i] > 0.0)
-                            .map(|i| json!([i,space.centers_hz[i],input.own_power_scan[i],(input.own_power_scan[i] as f64 + input.other_power_scan[i]),mix.subjective_intensity[i],removed.subjective_intensity[i]]))
+                        Some((0..space.n_bins()).filter(|&i| mix.acoustic.subjective_intensity[i] > 0.0 || removed.acoustic.subjective_intensity[i] > 0.0)
+                            .map(|i| json!([i,space.centers_hz[i],input.own_power_scan[i],(input.own_power_scan[i] as f64 + input.other_power_scan[i]),mix.acoustic.subjective_intensity[i],removed.acoustic.subjective_intensity[i]]))
                             .collect::<Vec<_>>())
                     } else { None },
                     "source_id":2,"environment_frames":ENV_FRAMES,"representative_frames":BODY_FRAMES,"cents":CENTS,
@@ -883,7 +898,9 @@ fn projected_power(recipe: &Recipe, environment: &Landscape) -> Vec<f32> {
         is_active: true,
         ..Default::default()
     };
-    voice.project_loo_power(&environment.space).to_vec()
+    voice
+        .project_loo_power(&environment.acoustic.space)
+        .to_vec()
 }
 
 fn representative_density(
@@ -914,7 +931,7 @@ fn representative_density(
     analysis.reset_density();
     let mut rhythms = NeuralRhythms::default();
     let mut pcm = vec![0.0; hop];
-    let mut density = vec![0.0; analysis.landscape.space.n_bins()];
+    let mut density = vec![0.0; analysis.landscape.acoustic.space.n_bins()];
     for frame in 0..BODY_FRAMES {
         let now = (frame * hop) as u64;
         tone.kick_planned_if_due(now);
@@ -971,13 +988,19 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
             continue;
         }
         let mut terrain = template.last().clone();
-        terrain.consonance_field_level.fill(0.5);
-        terrain.harmonicity01.fill(0.0);
+        terrain.acoustic.consonance_field_level.fill(0.5);
+        terrain.acoustic.harmonicity01.fill(0.0);
         let peak = terrain
+            .acoustic
             .space
             .nearest_index(if residual { 466.0 } else { 440.0 });
-        terrain.consonance_density_mass.fill(0.0);
-        for (i, value) in terrain.consonance_density_mass.iter_mut().enumerate() {
+        terrain.acoustic.consonance_density_mass.fill(0.0);
+        for (i, value) in terrain
+            .acoustic
+            .consonance_density_mass
+            .iter_mut()
+            .enumerate()
+        {
             *value = crate::core::float::unit_gaussian(
                 i as f32 - peak as f32,
                 if residual { 8.0 } else { 0.2 },
@@ -1131,9 +1154,10 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
             let mut reference = reference_stream.process(&solo_h).clone();
             reference.recompute_consonance(&params);
             for (bin, (a, b)) in actual
+                .acoustic
                 .consonance_field_score
                 .iter()
-                .zip(&reference.consonance_field_score)
+                .zip(&reference.acoustic.consonance_field_score)
                 .enumerate()
             {
                 if ((a - b).abs() > 1e-3 || !(a - b).is_finite())
@@ -1142,10 +1166,10 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                     crate::core::auditory_shadow::save_v3_witness(
                         json!({"gate":"Flora PCM oracle","tone":format!("{tone:?}"),
                         "residual":residual,"habitat":habitat,"supported":supported,"frame":frame,"bin":bin,
-                        "fs":FS,"hop":hop,"error":(a-b).abs(),"tolerance":1e-3,"hz":mix.space.centers_hz[bin],
-                        "actual_c":actual.consonance_field_score,"oracle_c":reference.consonance_field_score,
-                        "actual_h":actual.harmonicity,"oracle_h":reference.harmonicity,
-                        "actual_r":actual.roughness01,"oracle_r":reference.roughness01,
+                        "fs":FS,"hop":hop,"error":(a-b).abs(),"tolerance":1e-3,"hz":mix.acoustic.space.centers_hz[bin],
+                        "actual_c":actual.acoustic.consonance_field_score,"oracle_c":reference.acoustic.consonance_field_score,
+                        "actual_h":actual.acoustic.harmonicity,"oracle_h":reference.acoustic.harmonicity,
+                        "actual_r":actual.acoustic.roughness01,"oracle_r":reference.acoustic.roughness01,
                         "actual_shadow":removed_stream.aud_m1_shadow_diagnostic(),"oracle_shadow":reference_stream.aud_m1_shadow_diagnostic()}),
                         history,
                     );
@@ -1183,7 +1207,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                     is_active: true,
                     ..Default::default()
                 };
-                let own_power = voice.project_loo_power(&mix.space).to_vec();
+                let own_power = voice.project_loo_power(&mix.acoustic.space).to_vec();
                 let mut observation = candidate.snapshot();
                 observation.id = voice.id();
                 observation.generation = voice.metadata.generation;
@@ -1198,7 +1222,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                     let method = "pcm";
                     let mut input_copy = input.clone();
                     let scores = loo_score_scan(&mix, &mut input_copy);
-                    let density = candidate.last().subjective_intensity.clone();
+                    let density = candidate.last().acoustic.subjective_intensity.clone();
                     let pitches: Vec<_> =
                         CENTS.iter().map(|c| 440_f32.log2() + c / 1200.).collect();
                     let got: Vec<_> = pitches
@@ -1230,14 +1254,16 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                         .collect();
                     let repr = &params.consonance_representation;
                     let point_metrics = metrics(&got, &expected, repr);
-                    let (_, du) = erb_grid(&mix.space);
+                    let (_, du) = erb_grid(&mix.acoustic.space);
                     let scan: Vec<_> = mix
+                        .acoustic
                         .space
                         .centers_log2
                         .iter()
                         .map(|p| sample_ownership_score(&mix, *p, scores.as_deref()))
                         .collect();
                     let old_scan: Vec<_> = mix
+                        .acoustic
                         .space
                         .centers_log2
                         .iter()
@@ -1258,25 +1284,34 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                         });
                         for (target, field) in [
                             (&mut body, &scan),
-                            (&mut body_ref, &actual.consonance_field_score_eff),
+                            (&mut body_ref, &actual.acoustic.consonance_field_score_eff),
                             (&mut body_old, &old_scan),
                         ] {
                             target.push(
-                                body_fitness::evaluate(&mix.space, density, &du, field, repr)
-                                    .unwrap()
-                                    .score,
+                                body_fitness::evaluate(
+                                    &mix.acoustic.space,
+                                    density,
+                                    &du,
+                                    field,
+                                    repr,
+                                )
+                                .unwrap()
+                                .score,
                             );
                         }
                     }
                     let body_metrics = metrics(&body, &body_ref, repr);
-                    let full_metrics = metrics(&scan, &actual.consonance_field_score_eff, repr);
+                    let full_metrics =
+                        metrics(&scan, &actual.acoustic.consonance_field_score_eff, repr);
                     let mut decisions = Vec::new();
                     let mut selection_pass = true;
-                    let mut perceptual =
-                        AdaptationContext::from_config(&Default::default(), mix.space.n_bins());
+                    let mut perceptual = AdaptationContext::from_config(
+                        &Default::default(),
+                        mix.acoustic.space.n_bins(),
+                    );
                     perceptual.set_enabled(false);
                     let features = FeaturesNow {
-                        density: vec![0.; mix.space.n_bins()],
+                        density: vec![0.; mix.acoustic.space.n_bins()],
                         mass: 0.,
                     };
                     for temperature in [0.0_f32, 0.05, 0.2] {
@@ -1365,12 +1400,14 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                     let environment_pass = environment_deltas.iter().all(|d| *d <= 1e-6);
                     // Density loss is diagnostic; acceptance follows the registered consumers.
                     let reference_mass: f32 = actual
+                        .acoustic
                         .subjective_intensity
                         .iter()
                         .zip(&du)
                         .map(|(x, w)| x * w)
                         .sum();
                     let over_removed: f32 = actual
+                        .acoustic
                         .subjective_intensity
                         .iter()
                         .zip(&density)
@@ -1383,7 +1420,7 @@ fn flora_ownership_cases(supported: bool, active_timing: bool) {
                         && environment_pass;
                     let record = json!({"active_timing":active_timing,"conformance_scope":"supported","method":method,"tone":format!("{tone:?}"),"residual":residual,"habitat":habitat,"frame":frame,"kind":format!("{kind:?}"),
                     "point_scores":got,"point_reference":expected,"body_scores":body,"body_reference":body_ref,"point":point_metrics,"body":body_metrics,"selection_pass":selection_pass,"environment_pass":environment_pass,"native_ties":full_metrics,
-                    "environment_errors":environment_errors,"environment_error_order":["point_score","point_level","body_score","body_level"],"environment_error_deltas":environment_deltas,"decision_failures":decisions,"decision_failure_count":decisions.len(),"decision_failure_examples":decisions.iter().take(4).collect::<Vec<_>>(),"owned_bins":input.own_power_scan.iter().enumerate().filter(|(_,x)| **x>0.).map(|(i,x)| json!([i,x,mix.subjective_intensity[i],actual.subjective_intensity[i]])).collect::<Vec<_>>(),"density_over_removed":over_removed/reference_mass.max(1e-12),"pass":pass});
+                    "environment_errors":environment_errors,"environment_error_order":["point_score","point_level","body_score","body_level"],"environment_error_deltas":environment_deltas,"decision_failures":decisions,"decision_failure_count":decisions.len(),"decision_failure_examples":decisions.iter().take(4).collect::<Vec<_>>(),"owned_bins":input.own_power_scan.iter().enumerate().filter(|(_,x)| **x>0.).map(|(i,x)| json!([i,x,mix.acoustic.subjective_intensity[i],actual.acoustic.subjective_intensity[i]])).collect::<Vec<_>>(),"density_over_removed":over_removed/reference_mass.max(1e-12),"pass":pass});
                     if !pass && let Some(history) = &audit {
                         crate::core::auditory_shadow::save_v3_witness(
                             json!({"gate":"Flora consumer","record":record,"fs":FS,"hop":hop,
@@ -1522,7 +1559,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                     let mut tail = streams[2].last().clone();
                     tail.recompute_consonance(&params);
                     let mut obs = observer.snapshot();
-                    obs.revalue(&land.space, &params);
+                    obs.revalue(&land.acoustic.space, &params);
                     let untouched = obs.score_scan.clone();
                     land.ecology.loo.push(obs);
                     let mut input = LooInput {
@@ -1540,10 +1577,11 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                     };
                     let excluded = loo_score_scan(&land, &mut input).unwrap();
                     let expected: Vec<_> = external
+                        .acoustic
                         .harmonicity01
                         .iter()
-                        .zip(&land.roughness01)
-                        .map(|(&h, &r)| land.consonance_kernel.score(h, r))
+                        .zip(&land.acoustic.roughness01)
+                        .map(|(&h, &r)| land.acoustic.consonance_kernel.score(h, r))
                         .collect();
                     let gate = metrics(
                         &input.rearticulation_score,
@@ -1554,16 +1592,17 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                     assert_eq!(land.ecology.loo[0].score_scan, untouched);
                     assert_eq!(excluded, untouched);
                     let difference = land
+                        .acoustic
                         .roughness01
                         .iter()
-                        .zip(&tail.roughness01)
+                        .zip(&tail.acoustic.roughness01)
                         .map(|(a, b)| (a - b).abs())
                         .fold(0_f32, f32::max);
                     if habitat && tails == 0 {
                         assert!(difference > 0.);
                     }
                     if !habitat {
-                        assert_eq!(land.roughness01, external.roughness01);
+                        assert_eq!(land.acoustic.roughness01, external.acoustic.roughness01);
                     }
                     let pitches: Vec<_> =
                         CENTS.iter().map(|c| 440_f32.log2() + c / 1200.).collect();
@@ -1573,7 +1612,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                             sample_ownership_score(
                                 &land,
                                 p,
-                                input.candidate_scan(&land.space, p, Some(&excluded)),
+                                input.candidate_scan(&land.acoustic.space, p, Some(&excluded)),
                             )
                         })
                         .collect();
@@ -1584,7 +1623,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                                 &land,
                                 p,
                                 Some(if p == 440_f32.log2() {
-                                    &external.consonance_field_score
+                                    &external.acoustic.consonance_field_score
                                 } else {
                                     &expected
                                 }),
@@ -1596,10 +1635,11 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                         true
                     );
                     let tails_only_scan: Vec<_> = external
+                        .acoustic
                         .harmonicity01
                         .iter()
-                        .zip(&tail.roughness01)
-                        .map(|(&h, &r)| land.consonance_kernel.score(h, r))
+                        .zip(&tail.acoustic.roughness01)
+                        .map(|(&h, &r)| land.acoustic.consonance_kernel.score(h, r))
                         .collect();
                     let tails_only_scores: Vec<_> = pitches
                         .iter()
@@ -1608,7 +1648,7 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                                 &land,
                                 p,
                                 Some(if p == 440_f32.log2() {
-                                    &external.consonance_field_score
+                                    &external.acoustic.consonance_field_score
                                 } else {
                                     &tails_only_scan
                                 }),
@@ -1627,11 +1667,13 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                     }
                     let mut native_changes = 0;
                     // Native proposals use the same candidates, temperature and random stream.
-                    let perceptual =
-                        AdaptationContext::from_config(&Default::default(), land.space.n_bins());
+                    let perceptual = AdaptationContext::from_config(
+                        &Default::default(),
+                        land.acoustic.space.n_bins(),
+                    );
                     let features = FeaturesNow::from_occupancy_scan(
-                        &land.space,
-                        &vec![0.; land.space.n_bins()],
+                        &land.acoustic.space,
+                        &vec![0.; land.acoustic.space.n_bins()],
                     );
                     for temperature in [0., 0.05, 0.2] {
                         let mut native = PitchHillClimbPitchCore::new(24., 440_f32.log2(), 0.);
@@ -1640,11 +1682,12 @@ fn rearticulation_mixed_roughness_matches_independent_pcm() {
                         native.loo_input = input.clone();
                         let mut oracle = native.clone();
                         let mut reference_land = land.clone();
-                        reference_land.ecology.loo[0].h_scan = external.harmonicity01.clone();
+                        reference_land.ecology.loo[0].h_scan =
+                            external.acoustic.harmonicity01.clone();
                         oracle.loo_input.exact_score =
-                            Some(external.consonance_field_score.clone().into());
+                            Some(external.acoustic.consonance_field_score.clone().into());
                         let mut tails_land = reference_land.clone();
-                        tails_land.roughness01 = tail.roughness01.clone();
+                        tails_land.acoustic.roughness01 = tail.acoustic.roughness01.clone();
                         let mut control = oracle.clone();
                         for seed in 0..16 {
                             let a = native.propose_target(

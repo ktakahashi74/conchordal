@@ -4,9 +4,9 @@ use crate::scenario::FLORA_PACE_MIN;
 
 fn fixed_flora(hop: usize) -> (Landscape, Flora) {
     let mut terrain = Landscape::new(Log2Space::new(55.0, 8000.0, 96));
-    for i in 0..terrain.space.n_bins() {
-        terrain.consonance_field_level[i] = 0.6 + 0.3 * (i as f32 * 0.03).sin();
-        terrain.harmonicity01[i] = 0.4 + 0.3 * (i as f32 * 0.02).cos();
+    for i in 0..terrain.acoustic.space.n_bins() {
+        terrain.acoustic.consonance_field_level[i] = 0.6 + 0.3 * (i as f32 * 0.03).sin();
+        terrain.acoustic.harmonicity01[i] = 0.4 + 0.3 * (i as f32 * 0.02).cos();
     }
     let mut f = Flora::new(
         1,
@@ -227,7 +227,7 @@ fn flora_pace_advance_cost() {
         let micros = elapsed.as_secs_f64() * 1e6 / 1024.0;
         eprintln!(
             "pace_cost k={k} beat_hz=4 bins={} substeps={} mean_us={micros:.6}",
-            terrain.space.n_bins(),
+            terrain.acoustic.space.n_bins(),
             f.substeps
         );
         if k >= 16.0 && micros > 530.0 {

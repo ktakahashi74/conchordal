@@ -123,27 +123,28 @@ impl SpanGap {
     }
 
     pub(crate) fn observe(&mut self, frame: &Landscape, now: Tick) {
-        if frame.onset_habituation_end > now {
+        if frame.acoustic.onset_habituation_end > now {
             if self.known
-                && (self.scan.len() != frame.space.n_bins()
-                    || self.first_log2 != frame.space.centers_log2[0]
-                    || self.step_log2 != frame.space.step_log2)
+                && (self.scan.len() != frame.acoustic.space.n_bins()
+                    || self.first_log2 != frame.acoustic.space.centers_log2[0]
+                    || self.step_log2 != frame.acoustic.space.step_log2)
             {
                 self.known = false;
             }
             return;
         }
-        if !frame.onset_habituation_known {
+        if !frame.acoustic.onset_habituation_known {
             self.known = false;
-            self.observation_end = frame.onset_habituation_end;
-        } else if frame.onset_habituation_end <= now {
+            self.observation_end = frame.acoustic.onset_habituation_end;
+        } else if frame.acoustic.onset_habituation_end <= now {
             frame
+                .acoustic
                 .space
-                .assert_scan_len(&frame.onset_habituation_state_scan);
-            self.scan = Arc::clone(&frame.onset_habituation_state_scan);
-            self.first_log2 = frame.space.centers_log2[0];
-            self.step_log2 = frame.space.step_log2;
-            self.observation_end = frame.onset_habituation_end;
+                .assert_scan_len(&frame.acoustic.onset_habituation_state_scan);
+            self.scan = Arc::clone(&frame.acoustic.onset_habituation_state_scan);
+            self.first_log2 = frame.acoustic.space.centers_log2[0];
+            self.step_log2 = frame.acoustic.space.step_log2;
+            self.observation_end = frame.acoustic.onset_habituation_end;
             self.known = true;
         }
     }
@@ -342,9 +343,10 @@ mod tests {
 
     fn frame(value: f32, end: Tick) -> Landscape {
         let mut frame = Landscape::new(Log2Space::new(220.0, 880.0, 12));
-        frame.onset_habituation_state_scan = vec![value; frame.space.n_bins()].into();
-        frame.onset_habituation_end = end;
-        frame.onset_habituation_known = true;
+        frame.acoustic.onset_habituation_state_scan =
+            vec![value; frame.acoustic.space.n_bins()].into();
+        frame.acoustic.onset_habituation_end = end;
+        frame.acoustic.onset_habituation_known = true;
         frame
     }
 
@@ -363,6 +365,7 @@ mod tests {
         assert!((state.own - 0.09).abs() < 1e-12);
         assert!(
             evidence
+                .acoustic
                 .onset_habituation_state_scan
                 .iter()
                 .all(|&v| v == 0.3)
@@ -401,7 +404,7 @@ mod tests {
         state.advance(96000, false);
         assert!((state.exit_integral - 2.0 * unit).abs() < 1e-12);
         let mut unknown = frame(1.0, 96000);
-        unknown.onset_habituation_known = false;
+        unknown.acoustic.onset_habituation_known = false;
         state.observe(&unknown, 96000);
         state.advance(144000, false);
         assert!((state.exit_integral - 2.0 * unit).abs() < 1e-12);

@@ -69,13 +69,13 @@ fn observe(
                 end_sample,
                 fft_start_sample: end_sample.saturating_sub(stream.window_samples()),
                 startup_zero_samples: stream.window_samples().saturating_sub(end_sample),
-                nsgt_power_scan: frame.nsgt_power,
-                intensity_scan: frame.subjective_intensity,
-                r_state01_scan: frame.roughness01,
-                h_state01_scan: frame.harmonicity01,
-                c_field_level_scan: frame.consonance_field_level,
-                r_state01_scalar: frame.roughness01_scalar,
-                loudness_mass: frame.loudness_mass,
+                nsgt_power_scan: frame.acoustic.nsgt_power,
+                intensity_scan: frame.acoustic.subjective_intensity,
+                r_state01_scan: frame.acoustic.roughness01,
+                h_state01_scan: frame.acoustic.harmonicity01,
+                c_field_level_scan: frame.acoustic.consonance_field_level,
+                r_state01_scalar: frame.acoustic.roughness01_scalar,
+                loudness_mass: frame.acoustic.loudness_mass,
             }
         })
         .collect()
@@ -153,10 +153,10 @@ fn export_perceptual_action_assay() -> anyhow::Result<()> {
                 "bus": case.bus, "issued_sample": case.issued_sample,
                 "hop_samples": core.hop, "window_samples": observed.window_samples(),
                 "processed_samples": processed, "pending_samples": pending.len(),
-            "frequency_hz": observed.last().space.centers_hz,
-            "observed_r_state01_scan": before.roughness01,
-            "observed_h_state01_scan": before.harmonicity01,
-            "observed_c_field_level_scan": before.consonance_field_level,
+            "frequency_hz": observed.last().acoustic.space.centers_hz,
+            "observed_r_state01_scan": before.acoustic.roughness01,
+            "observed_h_state01_scan": before.acoustic.harmonicity01,
+            "observed_c_field_level_scan": before.acoustic.consonance_field_level,
             "scope": "Native analysis with copied observed state and pending PCM. Complete hops only; final snapshot exported after all updates. FFT support is not per-band latency or cognitive duration. Habituation and listener feedback excluded. Predictive branches never update observed state."
             }),
         )?;
@@ -257,10 +257,13 @@ fn perceptual_forks_preserve_history_pending_pcm_and_branch_independence() {
             branches.push(forked);
         }
         assert_ne!(branches[0], branches[1]);
-        assert_eq!(observed.last().nsgt_power, before.nsgt_power);
         assert_eq!(
-            observed.last().subjective_intensity,
-            before.subjective_intensity
+            observed.last().acoustic.nsgt_power,
+            before.acoustic.nsgt_power
+        );
+        assert_eq!(
+            observed.last().acoustic.subjective_intensity,
+            before.acoustic.subjective_intensity
         );
         let short = &past[processed..];
         assert!(

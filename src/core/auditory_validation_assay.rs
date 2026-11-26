@@ -22,7 +22,7 @@ fn span_extrema(space: &Log2Space, scan: &[f32], low: f32, high: f32) -> (f32, f
 }
 
 fn assess(actual: &Landscape, truth: &Landscape, anchors: &[f32]) -> Value {
-    let space = &truth.space;
+    let space = &truth.acoustic.space;
     let hill: Vec<_> = anchors.iter().map(|&a| {
         let (correct, margin) = crate::life::voice::pitch_core::aud_m1_hill_choice(truth, a, anchors);
         let (chosen, _) = crate::life::voice::pitch_core::aud_m1_hill_choice(actual, a, anchors);
@@ -367,10 +367,10 @@ fn acquire_windows(addendum6: bool) {
                         "after_onset_ms":(frame-onset+1) as f64*hop as f64/f64::from(params.fs)*1000.0,
                         "density":front.density_scan,"truth_density":truth_scan,"density_mass_near_far":mass,
                         "truth_mass_near_far":reference_mass,"density_l1_near_far":error,"near_mask":near,
-                        "new_fields":errors,"current_fields":field_errors(old,truth),"h01":actual.harmonicity01,
-                        "r01":actual.roughness01,"c":actual.consonance_field_score,"truth_h01":truth.harmonicity01,
-                        "truth_r01":truth.roughness01,"truth_c":truth.consonance_field_score,
-                        "current_h01":old.harmonicity01,"current_r01":old.roughness01,"current_c":old.consonance_field_score})).unwrap();
+                        "new_fields":errors,"current_fields":field_errors(old,truth),"h01":actual.acoustic.harmonicity01,
+                        "r01":actual.acoustic.roughness01,"c":actual.acoustic.consonance_field_score,"truth_h01":truth.acoustic.harmonicity01,
+                        "truth_r01":truth.acoustic.roughness01,"truth_c":truth.acoustic.consonance_field_score,
+                        "current_h01":old.acoustic.harmonicity01,"current_r01":old.acoustic.roughness01,"current_c":old.acoustic.consonance_field_score})).unwrap();
                 }
                 if !observe.contains(&frame) {
                     continue;
@@ -433,10 +433,11 @@ fn acquire_windows(addendum6: bool) {
                     let j = pair["components"][1].as_u64().unwrap() as usize;
                     let low = frequencies[i].min(frequencies[j]);
                     let high = frequencies[i].max(frequencies[j]);
-                    let c = [truth, &actual, old]
-                        .map(|l| span_extrema(&space, &l.consonance_field_score_eff, low, high).1);
+                    let c = [truth, &actual, old].map(|l| {
+                        span_extrema(&space, &l.acoustic.consonance_field_score_eff, low, high).1
+                    });
                     let r = [truth, &actual, old]
-                        .map(|l| span_extrema(&space, &l.roughness01, low, high).0);
+                        .map(|l| span_extrema(&space, &l.acoustic.roughness01, low, high).0);
                     let dc = [
                         (f64::from(c[1]) - f64::from(c[0])).max(0.0),
                         (f64::from(c[2]) - f64::from(c[0])).max(0.0),
@@ -458,8 +459,8 @@ fn acquire_windows(addendum6: bool) {
                     && (name.starts_with("loo_110.0_40.0") || name == "pair15_1000.0_ratio1.0")
                 {
                     std::fs::write(dir.join(format!("witness-{name}-{variant}.json")),serde_json::to_vec(&json!({"frame":frame,
-                        "density":front.density_scan,"h01":actual.harmonicity01,"r01":actual.roughness01,"c":actual.consonance_field_score,
-                        "truth_h01":truth.harmonicity01,"truth_r01":truth.roughness01,"truth_c":truth.consonance_field_score})).unwrap()).unwrap();
+                        "density":front.density_scan,"h01":actual.acoustic.harmonicity01,"r01":actual.acoustic.roughness01,"c":actual.acoustic.consonance_field_score,
+                        "truth_h01":truth.acoustic.harmonicity01,"truth_r01":truth.acoustic.roughness01,"truth_c":truth.acoustic.consonance_field_score})).unwrap()).unwrap();
                 }
             }
             let (flora47, signs) = sign_errors(&population47.unwrap());

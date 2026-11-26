@@ -654,7 +654,7 @@ impl Community {
                     extra_gate_gain,
                     consonance,
                     arrival_context.as_ref(),
-                    Some(&landscape.space),
+                    Some(&landscape.acoustic.space),
                     batch,
                 );
             }
@@ -922,13 +922,14 @@ impl Community {
                 && Some(self.time.frame_start_tick(self.current_frame)) == voice.birth_tick
                 && observation.is_none()
             {
-                input.exact_score = Some(landscape.consonance_field_score.as_slice().into());
+                input.exact_score =
+                    Some(landscape.acoustic.consonance_field_score.as_slice().into());
                 input.support = landscape.harmonic.support.clone();
                 if voice.effective_control.pitch.respond_to_onsets > 0. {
                     input.onset_habituation_state_scan =
-                        Some(landscape.onset_habituation_state_scan.clone());
-                    input.onset_habituation_end = landscape.onset_habituation_end;
-                    input.onset_habituation_known = landscape.onset_habituation_known;
+                        Some(landscape.acoustic.onset_habituation_state_scan.clone());
+                    input.onset_habituation_end = landscape.acoustic.onset_habituation_end;
+                    input.onset_habituation_known = landscape.acoustic.onset_habituation_known;
                 }
             }
             input.support_single_density = density;
@@ -1556,9 +1557,9 @@ mod tests {
                 support: None,
                 id: 70,
                 generation: 0,
-                h_scan: vec![0.; landscape.space.n_bins()],
-                r_scan: vec![0.; landscape.space.n_bins()],
-                score_scan: vec![0.; landscape.space.n_bins()].into(),
+                h_scan: vec![0.; landscape.acoustic.space.n_bins()],
+                r_scan: vec![0.; landscape.acoustic.space.n_bins()],
+                score_scan: vec![0.; landscape.acoustic.space.n_bins()].into(),
                 onset_habituation_state_scan: None,
                 onset_habituation_end: 0,
                 onset_habituation_known: false,
@@ -1596,7 +1597,7 @@ mod tests {
         use crate::core::harmonic_support::{Geometry, Snapshot};
         use crate::core::harmonicity_kernel::{HarmonicityKernel, HarmonicityParams};
         let mut landscape = runtime_landscape();
-        let space = landscape.space.clone();
+        let space = landscape.acoustic.space.clone();
         let mut snapshot = Snapshot::new(Geometry::new(
             &space,
             &HarmonicityKernel::new(&space, HarmonicityParams::default()),
@@ -1630,8 +1631,8 @@ mod tests {
     #[test]
     fn dwell_ownership_requires_matching_id_generation_and_pitch_flag() {
         let mut landscape = runtime_landscape();
-        landscape.consonance_field_score_eff.fill(0.3);
-        landscape.perc_habituation_state_scan.fill(0.5);
+        landscape.acoustic.consonance_field_score_eff.fill(0.3);
+        landscape.acoustic.perc_habituation_state_scan.fill(0.5);
         let mut community = test_pop();
         let mut spec = spawn_spec_with_freq(330.0);
         spec.control.pitch.dwell = 1.0;
@@ -1660,9 +1661,9 @@ mod tests {
                         support: None,
                         id,
                         generation,
-                        h_scan: vec![0.0; landscape.space.n_bins()],
-                        r_scan: vec![0.0; landscape.space.n_bins()],
-                        score_scan: vec![1.2; landscape.space.n_bins()].into(),
+                        h_scan: vec![0.0; landscape.acoustic.space.n_bins()],
+                        r_scan: vec![0.0; landscape.acoustic.space.n_bins()],
+                        score_scan: vec![1.2; landscape.acoustic.space.n_bins()].into(),
                         onset_habituation_state_scan: None,
                         onset_habituation_end: 0,
                         onset_habituation_known: false,
@@ -1679,7 +1680,10 @@ mod tests {
             } else {
                 0.3
             };
-            assert!((record.level - landscape.consonance_representation.level(score)).abs() < 1e-6);
+            assert!(
+                (record.level - landscape.acoustic.consonance_representation.level(score)).abs()
+                    < 1e-6
+            );
         }
     }
 
@@ -1805,11 +1809,11 @@ mod tests {
         let mut landscape = Landscape::new(Log2Space::new(220.0, 440.0, 96));
         let center_log2 = 330.0f32.log2();
         let width_cents = 50.0f32;
-        for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
+        for (idx, &bin_log2) in landscape.acoustic.space.centers_log2.iter().enumerate() {
             let d_cents = (bin_log2 - center_log2).abs() * 1200.0;
             let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
-            landscape.consonance_field_score[idx] = score;
-            landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+            landscape.acoustic.consonance_field_score[idx] = score;
+            landscape.acoustic.consonance_field_level[idx] = score.clamp(0.0, 1.0);
         }
         landscape.rhythm.theta.phase = 0.1;
         landscape.rhythm.theta.mag = 1.0;
@@ -1821,16 +1825,16 @@ mod tests {
         let peak_a_log2 = 330.0f32.log2();
         let peak_b_log2 = 660.0f32.log2();
         let sigma_cents = 35.0f32;
-        for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
+        for (idx, &bin_log2) in landscape.acoustic.space.centers_log2.iter().enumerate() {
             let da = (bin_log2 - peak_a_log2).abs() * 1200.0;
             let db = (bin_log2 - peak_b_log2).abs() * 1200.0;
             let peak_a = 0.85 * (-(da * da) / (2.0 * sigma_cents * sigma_cents)).exp();
             let peak_b = 1.00 * (-(db * db) / (2.0 * sigma_cents * sigma_cents)).exp();
             let score = peak_a.max(peak_b);
-            landscape.consonance_field_score[idx] = score;
-            landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
-            landscape.consonance_field_score_eff[idx] = score;
-            landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
+            landscape.acoustic.consonance_field_score[idx] = score;
+            landscape.acoustic.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+            landscape.acoustic.consonance_field_score_eff[idx] = score;
+            landscape.acoustic.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
         }
         landscape.rhythm.theta.phase = 0.1;
         landscape.rhythm.theta.mag = 1.0;
@@ -2142,11 +2146,11 @@ mod tests {
         pop.enable_auto_observe();
 
         let mut landscape_low = Landscape::new(space.clone());
-        landscape_low.consonance_field_level.fill(0.0);
-        landscape_low.consonance_field_level_eff.fill(0.0);
+        landscape_low.acoustic.consonance_field_level.fill(0.0);
+        landscape_low.acoustic.consonance_field_level_eff.fill(0.0);
         let mut landscape_high = Landscape::new(space);
-        landscape_high.consonance_field_level.fill(1.0);
-        landscape_high.consonance_field_level_eff.fill(1.0);
+        landscape_high.acoustic.consonance_field_level.fill(1.0);
+        landscape_high.acoustic.consonance_field_level_eff.fill(1.0);
 
         let spec = sustain_spawn_spec_with_gate(440.0, PhonationGate::WhenViable, 0.5);
         pop.apply_action(
@@ -2209,8 +2213,8 @@ mod tests {
         pop.enable_auto_observe();
 
         let mut landscape_high = Landscape::new(space);
-        landscape_high.consonance_field_level.fill(1.0);
-        landscape_high.consonance_field_level_eff.fill(1.0);
+        landscape_high.acoustic.consonance_field_level.fill(1.0);
+        landscape_high.acoustic.consonance_field_level_eff.fill(1.0);
 
         let spec = sustain_spawn_spec_with_gate(440.0, PhonationGate::Immediate, 0.5);
         pop.apply_action(

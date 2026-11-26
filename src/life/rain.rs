@@ -293,9 +293,12 @@ impl Rain {
         let object_ratios: Vec<Vec<f32>> = pitches
             .iter()
             .map(|&f0| {
-                let mut ratios =
-                    spec.object_modes
-                        .eval(f0, &landscape.space, Some(landscape), &mut rng);
+                let mut ratios = spec.object_modes.eval(
+                    f0,
+                    &landscape.acoustic.space,
+                    Some(landscape),
+                    &mut rng,
+                );
                 ratios.retain(|&ratio| ratio.is_finite() && ratio > 0.0);
                 ratios
             })
@@ -335,7 +338,7 @@ impl Rain {
             .collect();
         let mut impact_ratios = spec.impact_modes.eval(
             (extent_hz.0 * extent_hz.1).sqrt(),
-            &landscape.space,
+            &landscape.acoustic.space,
             Some(landscape),
             &mut rng,
         );
@@ -353,7 +356,7 @@ impl Rain {
         let mut rain = Self {
             id,
             own_score_eff_scan: if observed {
-                Vec::with_capacity(landscape.space.n_bins())
+                Vec::with_capacity(landscape.acoustic.space.n_bins())
             } else {
                 Vec::new()
             },
@@ -563,13 +566,13 @@ impl Rain {
         } else {
             None
         };
-        let space = &landscape.space;
+        let space = &landscape.acoustic.space;
         let mut own_scores = std::mem::take(&mut self.own_score_eff_scan);
         if let Some(observation) = observation {
             space.assert_scan_len_named(&observation.score_scan, "rain_score_scan");
             space.assert_scan_len_named(&observation.mass_scan, "rain_mass_scan");
             space.assert_scan_len_named(
-                &landscape.perc_habituation_state_scan,
+                &landscape.acoustic.perc_habituation_state_scan,
                 "perc_habituation_state_scan",
             );
             // The shared habituation of the mixed habitat erodes the own field, as for
@@ -579,14 +582,14 @@ impl Rain {
                 observation
                     .score_scan
                     .iter()
-                    .zip(&landscape.perc_habituation_state_scan)
-                    .map(|(&score, &h)| erode_score(score, h, landscape.consonance_theta)),
+                    .zip(&landscape.acoustic.perc_habituation_state_scan)
+                    .map(|(&score, &h)| erode_score(score, h, landscape.acoustic.consonance_theta)),
             );
         }
         let scores: &[f32] = if observation.is_some() {
             &own_scores
         } else {
-            &landscape.consonance_field_score_eff
+            &landscape.acoustic.consonance_field_score_eff
         };
         self.propose_object_pitches(landscape, scores);
         self.bin_step_log2 = space.step();
@@ -596,6 +599,7 @@ impl Rain {
             (lo..=hi)
                 .map(|i| {
                     landscape
+                        .acoustic
                         .subjective_intensity
                         .get(i)
                         .copied()
@@ -616,7 +620,7 @@ impl Rain {
             trace.raw_score.clear();
             trace.raw_score.extend_from_slice(match observation {
                 Some(observation) => &observation.score_scan[lo..=hi],
-                None => &landscape.consonance_field_score[lo..=hi],
+                None => &landscape.acoustic.consonance_field_score[lo..=hi],
             });
             trace.eff_score.clear();
             trace.eff_score.extend_from_slice(&scores[lo..=hi]);
@@ -633,10 +637,14 @@ impl Rain {
                     self.target,
                     erode_mass(
                         observation.mass_scan[i],
-                        landscape.perc_habituation_state_scan[i],
+                        landscape.acoustic.perc_habituation_state_scan[i],
                     ),
-                    landscape.consonance_representation.level(scores[i]),
                     landscape
+                        .acoustic
+                        .consonance_representation
+                        .level(scores[i]),
+                    landscape
+                        .acoustic
                         .subjective_intensity
                         .get(i)
                         .copied()
@@ -680,7 +688,7 @@ impl Rain {
     /// sounding pitch, less the Voice movement cost, keeping 1 ERB from the other objects.
     /// The object moves only when it is next struck. `scores` is an eroded score scan.
     fn propose_object_pitches(&mut self, landscape: &Landscape, scores: &[f32]) {
-        let space = &landscape.space;
+        let space = &landscape.acoustic.space;
         let objective = landscape.pitch_objective_mode;
         let (ext_lo, ext_hi) = (self.extent_hz.0.log2(), self.extent_hz.1.log2());
         if self.spec.anchored {
@@ -991,10 +999,10 @@ fn object_pitches(
     rng: &mut SmallRng,
 ) -> Vec<f32> {
     let count = spec.objects.min(MAX_RAIN_OBJECTS) as usize;
-    let space = &landscape.space;
+    let space = &landscape.acoustic.space;
     let lo = space.nearest_index(extent_hz.0);
     let hi = space.nearest_index(extent_hz.1).max(lo);
-    let level = &landscape.consonance_field_level_eff;
+    let level = &landscape.acoustic.consonance_field_level_eff;
     let mut peaks: Vec<(f32, f32)> = (lo..=hi)
         .filter(|&i| {
             let v = level.get(i).copied().unwrap_or(0.0);
@@ -1119,9 +1127,9 @@ mod tests {
     #[test]
     fn impacts_follow_the_landscape_mass() {
         let mut l = landscape();
-        let i = l.space.nearest_index(1000.0);
-        l.consonance_density_mass_eff.fill(0.0);
-        l.consonance_density_mass_eff[i] = 1.0;
+        let i = l.acoustic.space.nearest_index(1000.0);
+        l.acoustic.consonance_density_mass_eff.fill(0.0);
+        l.acoustic.consonance_density_mass_eff[i] = 1.0;
         let mut rain = Rain::new(
             1,
             RainSpec::default(),
@@ -1154,10 +1162,10 @@ mod tests {
     #[test]
     fn objects_take_consonance_peaks_and_ring_only_when_hit() {
         let mut l = landscape();
-        l.consonance_field_level_eff.fill(0.0);
+        l.acoustic.consonance_field_level_eff.fill(0.0);
         for hz in [220.0, 330.0, 440.0] {
-            let i = l.space.nearest_index(hz);
-            l.consonance_field_level_eff[i] = 0.9;
+            let i = l.acoustic.space.nearest_index(hz);
+            l.acoustic.consonance_field_level_eff[i] = 0.9;
         }
         let spec = RainSpec {
             objects: 3,
@@ -1212,12 +1220,12 @@ mod tests {
     #[test]
     fn struck_objects_drift_at_most_a_semitone_toward_consonance() {
         let mut l = landscape();
-        l.consonance_field_level_eff.fill(0.0);
-        let start = l.space.nearest_index(400.0);
-        l.consonance_field_level_eff[start] = 0.9;
-        l.consonance_field_score_eff.fill(0.0);
-        let near = l.space.nearest_index(420.0);
-        l.consonance_field_score_eff[near] = 1.0;
+        l.acoustic.consonance_field_level_eff.fill(0.0);
+        let start = l.acoustic.space.nearest_index(400.0);
+        l.acoustic.consonance_field_level_eff[start] = 0.9;
+        l.acoustic.consonance_field_score_eff.fill(0.0);
+        let near = l.acoustic.space.nearest_index(420.0);
+        l.acoustic.consonance_field_score_eff[near] = 1.0;
         let spec = RainSpec {
             objects: 1,
             hit: 0.0,
@@ -1234,24 +1242,30 @@ mod tests {
             512,
         );
         let placed = rain.object_log2[0];
-        assert_eq!(placed, l.space.centers_log2[start]);
+        assert_eq!(placed, l.acoustic.space.centers_log2[start]);
         render(&mut rain, 20);
         assert_eq!(
             rain.object_log2[0], placed,
             "unstruck objects keep their pitch"
         );
-        assert_eq!(rain.object_target_log2[0], l.space.centers_log2[near]);
+        assert_eq!(
+            rain.object_target_log2[0],
+            l.acoustic.space.centers_log2[near]
+        );
         rain.apply_patch(&RainPatch {
             hit: Some(1.0),
             ..RainPatch::default()
         });
         render(&mut rain, 20);
-        assert_eq!(rain.object_log2[0], l.space.centers_log2[near]);
+        assert_eq!(rain.object_log2[0], l.acoustic.space.centers_log2[near]);
 
         // A better peak two semitones away is out of reach in one move.
-        l.consonance_field_score_eff.fill(0.0);
-        let far = l.space.nearest_index(420.0 * 2f32.powf(2.0 / 12.0));
-        l.consonance_field_score_eff[far] = 1.0;
+        l.acoustic.consonance_field_score_eff.fill(0.0);
+        let far = l
+            .acoustic
+            .space
+            .nearest_index(420.0 * 2f32.powf(2.0 / 12.0));
+        l.acoustic.consonance_field_score_eff[far] = 1.0;
         rain.advance(&l);
         assert!(
             (rain.object_target_log2[0] - rain.object_log2[0]).abs() <= OBJECT_STEP_OCT,
@@ -1295,11 +1309,11 @@ mod tests {
     #[test]
     fn anchored_objects_never_propose_a_move() {
         let mut l = landscape();
-        l.consonance_field_level_eff.fill(0.0);
-        l.consonance_field_level_eff[l.space.nearest_index(400.0)] = 0.9;
-        l.consonance_field_score_eff.fill(0.0);
-        let near = l.space.nearest_index(420.0);
-        l.consonance_field_score_eff[near] = 1.0;
+        l.acoustic.consonance_field_level_eff.fill(0.0);
+        l.acoustic.consonance_field_level_eff[l.acoustic.space.nearest_index(400.0)] = 0.9;
+        l.acoustic.consonance_field_score_eff.fill(0.0);
+        let near = l.acoustic.space.nearest_index(420.0);
+        l.acoustic.consonance_field_score_eff[near] = 1.0;
         let mut rain = Rain::new(
             1,
             RainSpec {
@@ -1437,9 +1451,10 @@ mod tests {
         let mut l = landscape();
         let top = 1000f32.log2();
         for (s, &x) in l
+            .acoustic
             .consonance_field_score_eff
             .iter_mut()
-            .zip(&l.space.centers_log2)
+            .zip(&l.acoustic.space.centers_log2)
         {
             *s = 0.1 + 0.9 * (1.0 - (x - top).abs() / 0.5).max(0.0);
         }
@@ -1467,7 +1482,7 @@ mod tests {
     fn ring_on_a_flat_or_silent_field_changes_nothing() {
         for (score, ring) in [(0.3, 2.0), (0.0, 4.0)] {
             let mut l = landscape();
-            l.consonance_field_score_eff.fill(score);
+            l.acoustic.consonance_field_score_eff.fill(score);
             let spec = RainSpec {
                 rate: 200.0,
                 hit: 0.3,
@@ -1580,10 +1595,10 @@ mod tests {
     fn ring_at_its_bound_on_the_lowest_band_still_decays() {
         let mut l = Landscape::new(Log2Space::new(20.0, 8000.0, 96));
         let low = 2;
-        l.consonance_density_mass_eff.fill(0.0);
-        l.consonance_density_mass_eff[low] = 1.0;
-        l.consonance_field_score_eff.fill(0.0);
-        l.consonance_field_score_eff[low] = 1.0;
+        l.acoustic.consonance_density_mass_eff.fill(0.0);
+        l.acoustic.consonance_density_mass_eff[low] = 1.0;
+        l.acoustic.consonance_field_score_eff.fill(0.0);
+        l.acoustic.consonance_field_score_eff[low] = 1.0;
         let mut rain = Rain::new(
             1,
             RainSpec {
@@ -1674,13 +1689,13 @@ mod tests {
                     let (mut p, mut h) = (vec![0.0; 512], vec![0.0; 512]);
                     for second in 0..60 {
                         let scan = &rows[1 + second % (rows.len() - 1)];
-                        l.consonance_field_score_eff.copy_from_slice(scan);
+                        l.acoustic.consonance_field_score_eff.copy_from_slice(scan);
                         let (lo, hi) = scan
                             .iter()
                             .fold((f32::INFINITY, f32::NEG_INFINITY), |(lo, hi), &s| {
                                 (lo.min(s), hi.max(s))
                             });
-                        for (m, &s) in l.consonance_density_mass_eff.iter_mut().zip(scan) {
+                        for (m, &s) in l.acoustic.consonance_density_mass_eff.iter_mut().zip(scan) {
                             *m = (s - lo) / (hi - lo);
                         }
                         for _ in 0..94 {
@@ -1722,12 +1737,12 @@ mod tests {
     fn split_landscape(mixed_hz: f32, own_hz: f32) -> Landscape {
         let mut l = landscape();
         let peak = |hz: f32, x: f32| 0.1 + 0.9 * (1.0 - (x - hz.log2()).abs() / 0.25).max(0.0);
-        let n = l.space.n_bins();
+        let n = l.acoustic.space.n_bins();
         let mut own = Vec::with_capacity(n);
         for i in 0..n {
-            let x = l.space.centers_log2[i];
-            l.consonance_field_score_eff[i] = peak(mixed_hz, x);
-            l.consonance_density_mass_eff[i] = peak(mixed_hz, x) - 0.1;
+            let x = l.acoustic.space.centers_log2[i];
+            l.acoustic.consonance_field_score_eff[i] = peak(mixed_hz, x);
+            l.acoustic.consonance_density_mass_eff[i] = peak(mixed_hz, x) - 0.1;
             own.push(peak(own_hz, x));
         }
         l.ecology
@@ -1935,8 +1950,8 @@ mod tests {
         );
         let mut gap = l.clone();
         gap.ecology.rain_observations.clear();
-        gap.consonance_field_score_eff.fill(0.5);
-        gap.consonance_density_mass_eff.fill(1.0);
+        gap.acoustic.consonance_field_score_eff.fill(0.5);
+        gap.acoustic.consonance_density_mass_eff.fill(1.0);
         for _ in 0..5 {
             rain.advance(&gap);
             assert_eq!(rain.field_trace.source, "held");

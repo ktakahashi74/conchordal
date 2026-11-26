@@ -29,7 +29,7 @@ impl AnalysisStream {
     pub fn new(params: LandscapeParams, nsgt_rt: RtNsgtKernelLog2) -> Self {
         let mut analysis = SynchronousAnalysis::new(nsgt_rt, &params);
         // Live analysis publishes raw perception; the worker derives consonance.
-        let ref_peak = analysis.landscape.roughness_ref_peak;
+        let ref_peak = analysis.landscape.acoustic.roughness_ref_peak;
         analysis.landscape = Landscape::new(analysis.nsgt.space().clone());
         analysis.landscape.set_analysis_metadata(
             params.roughness_kernel.params,
@@ -65,9 +65,9 @@ impl AnalysisStream {
         self.analysis.potentials.support_roots =
             Some(vec![
                 0.;
-                self.params
-                    .harmonicity_kernel
-                    .root_buffer_len(&self.analysis.landscape.space)
+                self.params.harmonicity_kernel.root_buffer_len(
+                    &self.analysis.landscape.acoustic.space
+                )
             ]);
         self.support_buffers = Some(std::array::from_fn(|_| {
             std::sync::Arc::new(crate::core::harmonic_support::Snapshot::new(
@@ -124,7 +124,7 @@ impl AnalysisStream {
 
     pub(crate) fn enable_onset_habituation(&mut self, period: f64) {
         let mut state = crate::core::onset_habituation::OnsetHabituation::new(
-            &self.analysis.landscape.space,
+            &self.analysis.landscape.acoustic.space,
             self.analysis.frontend.band_energy().0,
             self.params.habituation,
             period,
@@ -132,8 +132,11 @@ impl AnalysisStream {
         );
         state.settling_samples = self.analysis.frontend.band_settling_samples();
         self.onset_habituation = Some(state);
-        self.analysis.landscape.onset_habituation_state_scan =
-            vec![0.0; self.analysis.landscape.space.n_bins()].into();
+        self.analysis
+            .landscape
+            .acoustic
+            .onset_habituation_state_scan =
+            vec![0.0; self.analysis.landscape.acoustic.space.n_bins()].into();
     }
 
     pub(crate) fn gap_to(&mut self, sample: u64) {
@@ -157,7 +160,7 @@ impl AnalysisStream {
         self.next_sample = sample;
         self.analysis.landscape.ecology.pitch_set =
             self.pitch_set.as_ref().and_then(|s| s.snapshot());
-        self.analysis.landscape.onset_habituation_known = false;
+        self.analysis.landscape.acoustic.onset_habituation_known = false;
     }
 
     pub(crate) fn resource_power(&self) -> Option<&[f32]> {
@@ -229,8 +232,12 @@ impl AnalysisStream {
             }
         }
         if observer.onset_habituation.is_none() {
-            observer.analysis.landscape.onset_habituation_state_scan = std::sync::Arc::from([]);
-            observer.analysis.landscape.onset_habituation_known = false;
+            observer
+                .analysis
+                .landscape
+                .acoustic
+                .onset_habituation_state_scan = std::sync::Arc::from([]);
+            observer.analysis.landscape.acoustic.onset_habituation_known = false;
         }
         // Voice observers consume H/R only, even when the mixed stream feeds Flora.
         observer.analysis.nsgt.disable_resource_power();
@@ -262,8 +269,11 @@ impl AnalysisStream {
             self.analysis.nsgt.disable_resource_power();
         }
         if !plan.onset && self.onset_habituation.take().is_some() {
-            self.analysis.landscape.onset_habituation_state_scan = std::sync::Arc::from([]);
-            self.analysis.landscape.onset_habituation_known = false;
+            self.analysis
+                .landscape
+                .acoustic
+                .onset_habituation_state_scan = std::sync::Arc::from([]);
+            self.analysis.landscape.acoustic.onset_habituation_known = false;
         }
         if !plan.tonal {
             self.tonal_context = None;
@@ -335,7 +345,7 @@ impl AnalysisStream {
                 None => self.analysis.process_spectral(audio, 1, &self.params, true),
             }
             if let Some(ps) = &mut self.pitch_set {
-                let mass = self.analysis.landscape.loudness_mass;
+                let mass = self.analysis.landscape.acoustic.loudness_mass;
                 let gate = mass.is_finite() && mass > self.params.roughness_ref_eps.max(1e-12);
                 if let Some(tc) = &mut self.tonal_context {
                     tc.process_with_pitch_set(audio, self.next_sample, gate, ps);
@@ -357,7 +367,7 @@ impl AnalysisStream {
                 };
                 observe(
                     snapshot,
-                    &self.analysis.landscape.subjective_intensity,
+                    &self.analysis.landscape.acoustic.subjective_intensity,
                     self.analysis.potentials.support_roots.as_deref(),
                     self.params.roughness_ref_eps,
                     self.next_sample,
@@ -372,14 +382,14 @@ impl AnalysisStream {
                     self.next_sample,
                 );
                 let frame = &mut self.analysis.landscape;
-                if frame.onset_habituation_state_scan.len() != state.state.len() {
-                    frame.onset_habituation_state_scan = state.state.clone().into();
+                if frame.acoustic.onset_habituation_state_scan.len() != state.state.len() {
+                    frame.acoustic.onset_habituation_state_scan = state.state.clone().into();
                 } else {
-                    std::sync::Arc::make_mut(&mut frame.onset_habituation_state_scan)
+                    std::sync::Arc::make_mut(&mut frame.acoustic.onset_habituation_state_scan)
                         .copy_from_slice(&state.state);
                 }
-                frame.onset_habituation_end = self.next_sample;
-                frame.onset_habituation_known = state.known();
+                frame.acoustic.onset_habituation_end = self.next_sample;
+                frame.acoustic.onset_habituation_known = state.known();
             }
         }
         &self.analysis.landscape
@@ -404,7 +414,7 @@ impl AnalysisStream {
         if self.pitch_set.is_some() {
             self.enable_pitch_set(pitch_set_weight);
         }
-        self.analysis.landscape.onset_habituation_known = false;
+        self.analysis.landscape.acoustic.onset_habituation_known = false;
     }
 
     pub fn apply_update(&mut self, upd: LandscapeUpdate) {
@@ -501,18 +511,30 @@ mod tests {
         let (nsgt, params) = crate::runtime::body_metabolism_test_core();
         let mut stream = AnalysisStream::new(params, nsgt).with_nsgt_power(false);
         assert!(stream.onset_habituation.is_none());
-        assert!(stream.last().onset_habituation_state_scan.is_empty());
+        assert!(
+            stream
+                .last()
+                .acoustic
+                .onset_habituation_state_scan
+                .is_empty()
+        );
         stream.enable_onset_habituation(0.5);
         let silence = vec![0.0; stream.hop_samples()];
-        assert!(!stream.last().onset_habituation_known);
+        assert!(!stream.last().acoustic.onset_habituation_known);
         stream.process(&silence);
-        assert!(stream.last().onset_habituation_known);
+        assert!(stream.last().acoustic.onset_habituation_known);
         let observer = stream.voice_observer(false);
         assert!(observer.onset_habituation.is_none());
-        assert!(observer.last().onset_habituation_state_scan.is_empty());
-        assert!(!observer.last().onset_habituation_known);
+        assert!(
+            observer
+                .last()
+                .acoustic
+                .onset_habituation_state_scan
+                .is_empty()
+        );
+        assert!(!observer.last().acoustic.onset_habituation_known);
         stream.reset();
-        assert!(!stream.last().onset_habituation_known);
+        assert!(!stream.last().acoustic.onset_habituation_known);
         assert!(
             stream
                 .onset_habituation
@@ -523,7 +545,7 @@ mod tests {
                 .all(|&x| x == 0.0)
         );
         stream.process(&silence);
-        assert!(!stream.last().onset_habituation_known);
+        assert!(!stream.last().acoustic.onset_habituation_known);
     }
 
     #[test]
@@ -550,22 +572,25 @@ mod tests {
             expected.recompute_consonance(&params);
             actual.recompute_consonance(&params);
             for (a, b) in [
-                (&actual.subjective_intensity, &expected.subjective_intensity),
-                (&actual.harmonicity, &expected.harmonicity),
-                (&actual.roughness, &expected.roughness),
-                (&actual.roughness01, &expected.roughness01),
                 (
-                    &actual.consonance_field_score,
-                    &expected.consonance_field_score,
+                    &actual.acoustic.subjective_intensity,
+                    &expected.acoustic.subjective_intensity,
+                ),
+                (&actual.acoustic.harmonicity, &expected.acoustic.harmonicity),
+                (&actual.acoustic.roughness, &expected.acoustic.roughness),
+                (&actual.acoustic.roughness01, &expected.acoustic.roughness01),
+                (
+                    &actual.acoustic.consonance_field_score,
+                    &expected.acoustic.consonance_field_score,
                 ),
                 (
-                    &actual.consonance_density_mass,
-                    &expected.consonance_density_mass,
+                    &actual.acoustic.consonance_density_mass,
+                    &expected.acoustic.consonance_density_mass,
                 ),
             ] {
                 assert!(a.iter().zip(b).all(|(a, b)| a.to_bits() == b.to_bits()));
             }
-            assert!(actual.nsgt_power.iter().all(|&p| p == 0.0));
+            assert!(actual.acoustic.nsgt_power.iter().all(|&p| p == 0.0));
             assert_eq!(
                 crate::life::community::Community::aud_m1_respawn(&actual),
                 crate::life::community::Community::aud_m1_respawn(&expected)
@@ -610,14 +635,14 @@ mod tests {
         assert!(mixed.analysis.nsgt.resource_power().is_some());
         let mut voice = mixed.voice_observer(false);
         assert!(voice.analysis.nsgt.resource_power().is_none());
-        let retained_power = voice.last().nsgt_power.clone();
+        let retained_power = voice.last().acoustic.nsgt_power.clone();
         for _ in 0..40 {
             assert!(!voice.analysis.nsgt_enabled);
             let expected = mixed.process(&audio);
             let actual = voice.process(&audio);
-            assert_eq!(actual.nsgt_power, retained_power);
-            assert_eq!(actual.harmonicity, expected.harmonicity);
-            assert_eq!(actual.roughness01, expected.roughness01);
+            assert_eq!(actual.acoustic.nsgt_power, retained_power);
+            assert_eq!(actual.acoustic.harmonicity, expected.acoustic.harmonicity);
+            assert_eq!(actual.acoustic.roughness01, expected.acoustic.roughness01);
             assert_eq!(
                 actual.harmonic.support.as_ref().unwrap().focus,
                 expected.harmonic.support.as_ref().unwrap().focus
@@ -653,21 +678,30 @@ mod tests {
             actual.recompute_consonance(&changed_params);
             observer.process(&audio, &vec![0.0; audio.len()]);
             let excluded = observer.snapshot();
-            assert_eq!(actual.consonance_kernel.a, 0.0);
+            assert_eq!(actual.acoustic.consonance_kernel.a, 0.0);
             assert_eq!(
-                actual.consonance_kernel.b.to_bits(),
-                reference.consonance_kernel.b.to_bits()
+                actual.acoustic.consonance_kernel.b.to_bits(),
+                reference.acoustic.consonance_kernel.b.to_bits()
             );
             assert_eq!(
-                actual.consonance_kernel.c.to_bits(),
-                reference.consonance_kernel.c.to_bits()
+                actual.acoustic.consonance_kernel.c.to_bits(),
+                reference.acoustic.consonance_kernel.c.to_bits()
             );
             for (a, b) in [
-                (&actual.harmonicity, &reference.harmonicity),
-                (&actual.harmonicity01, &reference.harmonicity01),
-                (&actual.roughness01, &reference.roughness01),
-                (&excluded.h_scan, &reference.harmonicity01),
-                (&excluded.r_scan, &reference.roughness01),
+                (
+                    &actual.acoustic.harmonicity,
+                    &reference.acoustic.harmonicity,
+                ),
+                (
+                    &actual.acoustic.harmonicity01,
+                    &reference.acoustic.harmonicity01,
+                ),
+                (
+                    &actual.acoustic.roughness01,
+                    &reference.acoustic.roughness01,
+                ),
+                (&excluded.h_scan, &reference.acoustic.harmonicity01),
+                (&excluded.r_scan, &reference.acoustic.roughness01),
             ] {
                 assert!(a.iter().zip(b).all(|(x, y)| x.to_bits() == y.to_bits()));
             }
@@ -684,7 +718,7 @@ mod tests {
         // New observers inherit the updated valuation; reset retains it as well.
         let mut born_after = updated.voice_observer(false);
         born_after.reset();
-        assert_eq!(born_after.process(&audio).consonance_kernel.a, 0.0);
+        assert_eq!(born_after.process(&audio).acoustic.consonance_kernel.a, 0.0);
     }
 
     #[test]
@@ -704,8 +738,8 @@ mod tests {
         stream.reset();
         let audio = vec![0.03; hop];
         assert_eq!(
-            stream.process(&audio).subjective_intensity,
-            fresh.process(&audio).subjective_intensity
+            stream.process(&audio).acoustic.subjective_intensity,
+            fresh.process(&audio).acoustic.subjective_intensity
         );
     }
 
@@ -722,6 +756,7 @@ mod tests {
             let frame = stream.process(&audio);
             assert_eq!(
                 frame
+                    .acoustic
                     .nsgt_power
                     .iter()
                     .map(|v| v.to_bits())
@@ -729,8 +764,8 @@ mod tests {
                 expected.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
             );
         }
-        let previous = stream.last().subjective_intensity.clone();
-        assert_eq!(stream.process(&[]).subjective_intensity, previous);
+        let previous = stream.last().acoustic.subjective_intensity.clone();
+        assert_eq!(stream.process(&[]).acoustic.subjective_intensity, previous);
         let update = LandscapeUpdate {
             roughness_aversion: Some(0.3),
             ..Default::default()
@@ -744,9 +779,12 @@ mod tests {
         let actual = stream.process(&audio);
         let expected = fresh.process(&audio);
         for (a, b) in [
-            (&actual.subjective_intensity, &expected.subjective_intensity),
-            (&actual.harmonicity, &expected.harmonicity),
-            (&actual.roughness01, &expected.roughness01),
+            (
+                &actual.acoustic.subjective_intensity,
+                &expected.acoustic.subjective_intensity,
+            ),
+            (&actual.acoustic.harmonicity, &expected.acoustic.harmonicity),
+            (&actual.acoustic.roughness01, &expected.acoustic.roughness01),
         ] {
             assert_eq!(
                 a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
@@ -754,7 +792,7 @@ mod tests {
             );
         }
         assert_eq!(
-            actual.consonance_kernel.score(0.4, 0.6).to_bits(),
+            actual.acoustic.consonance_kernel.score(0.4, 0.6).to_bits(),
             params.consonance_field_kernel().score(0.4, 0.6).to_bits()
         );
     }
@@ -792,7 +830,7 @@ mod onset_habituation_tests {
         assert_eq!(hop, 512);
         assert_eq!(stream.window_samples(), config.analysis.nfft);
         let mut observer = OnsetHabituation::new(
-            &stream.last().space,
+            &stream.last().acoustic.space,
             stream.analysis.frontend.band_energy().0,
             params.habituation,
             0.5,
@@ -850,7 +888,7 @@ mod onset_habituation_tests {
         let fs = params.fs;
         let mut stream = AnalysisStream::new(params.clone(), nsgt).with_nsgt_power(false);
         let mut observer = OnsetHabituation::new(
-            &stream.last().space,
+            &stream.last().acoustic.space,
             stream.analysis.frontend.band_energy().0,
             params.habituation,
             0.5,

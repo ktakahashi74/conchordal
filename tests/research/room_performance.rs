@@ -118,7 +118,7 @@ fn acquire() {
             return;
         }
         let land = &s.current_landscape;
-        let density = &land.subjective_intensity;
+        let density = &land.acoustic.subjective_intensity;
         let h = s.listener.hab_ecology.state();
         let (i, &peak) = density
             .iter()
@@ -173,7 +173,7 @@ fn acquire() {
             "audio":s.temporal.flora_meter.as_ref().map(meter),"flux":flux,
             "voices":voices,"sources":sources,"end":s.lifecycle.scenario_end_tick,
             "hash":fixed.then(|| [hash_samples(pcm[0]),hash_samples(h),hash_samples(density),
-                hash_samples(&land.consonance_field_score_eff)]),
+                hash_samples(&land.acoustic.consonance_field_score_eff)]),
             "flora_rng":fixed.then(|| s.pop.flora.iter().map(|f|(f.id,f.rng_state_for_test())).collect::<Vec<_>>())
         })).unwrap();
         for b in &s.phonation_batches_buf[..n] {

@@ -443,7 +443,11 @@ fn onset_tonal_and_hr_consume_the_same_wet_packet_on_the_render_frame() {
         );
         assert!(field.ecology.loo[1].onset_habituation_state_scan.is_none());
         heard[0] |= field.ecology.loo[1].h_scan.iter().any(|&x| x > 0.);
-        heard[1] |= field.onset_habituation_state_scan.iter().any(|&x| x > 0.);
+        heard[1] |= field
+            .acoustic
+            .onset_habituation_state_scan
+            .iter()
+            .any(|&x| x > 0.);
         let own = &field.ecology.tonal_observations[0];
         let shared = &field.ecology.tonal_observations[1];
         assert!(own.excluded && !own.shared && !shared.excluded && shared.shared);

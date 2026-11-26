@@ -1077,23 +1077,29 @@ impl JsonlReporter {
         time_sec: f64,
         landscape: &crate::core::landscape::Landscape,
     ) -> Result<(), String> {
-        let space = &landscape.space;
+        let space = &landscape.acoustic.space;
         for (scan, name) in [
-            (&landscape.perc_habituation_state_scan, "state_scan"),
-            (&landscape.consonance_field_score, "raw_score_scan"),
-            (&landscape.consonance_field_score_eff, "eff_score_scan"),
+            (
+                &landscape.acoustic.perc_habituation_state_scan,
+                "state_scan",
+            ),
+            (&landscape.acoustic.consonance_field_score, "raw_score_scan"),
+            (
+                &landscape.acoustic.consonance_field_score_eff,
+                "eff_score_scan",
+            ),
         ] {
             space.assert_scan_len_named(scan, name);
         }
-        if !landscape.onset_habituation_state_scan.is_empty() {
-            space.assert_scan_len(&landscape.onset_habituation_state_scan);
+        if !landscape.acoustic.onset_habituation_state_scan.is_empty() {
+            space.assert_scan_len(&landscape.acoustic.onset_habituation_state_scan);
             self.write_record(&ReportRecord::OnsetHabituationScan {
                 time_sec,
-                observation_end: landscape.onset_habituation_end,
-                known: landscape.onset_habituation_known,
+                observation_end: landscape.acoustic.onset_habituation_end,
+                known: landscape.acoustic.onset_habituation_known,
                 fmin_hz: space.fmin,
                 bins_per_octave: space.bins_per_oct,
-                state_scan: &landscape.onset_habituation_state_scan,
+                state_scan: &landscape.acoustic.onset_habituation_state_scan,
             })?;
         }
         // Borrow the scans; reporting must not add a per-hop snapshot allocation.
@@ -1102,9 +1108,9 @@ impl JsonlReporter {
             fmin_hz: space.fmin,
             bins_per_octave: space.bins_per_oct,
             n_bins: space.n_bins(),
-            state_scan: &landscape.perc_habituation_state_scan,
-            raw_score_scan: &landscape.consonance_field_score,
-            eff_score_scan: &landscape.consonance_field_score_eff,
+            state_scan: &landscape.acoustic.perc_habituation_state_scan,
+            raw_score_scan: &landscape.acoustic.consonance_field_score,
+            eff_score_scan: &landscape.acoustic.consonance_field_score_eff,
         })
     }
 
@@ -1556,7 +1562,7 @@ pub fn summarize_populations(
         let landscape = landscape.at_site(agent.effective_control.body.site_id);
         population.sum_score += landscape.evaluate_pitch_score(freq_hz);
         population.sum_level += landscape.evaluate_pitch_level(freq_hz);
-        if let Some(bin) = landscape.space.index_of_freq(freq_hz) {
+        if let Some(bin) = landscape.acoustic.space.index_of_freq(freq_hz) {
             *population.bins.entry(bin).or_default() += 1;
         }
     }
@@ -1758,9 +1764,9 @@ mod tests {
         ));
         let mut reporter = JsonlReporter::create(path.to_str().unwrap()).unwrap();
         let mut landscape = Landscape::new(Log2Space::new(55.0, 110.0, 1));
-        landscape.perc_habituation_state_scan = vec![0.25, 0.5];
-        landscape.consonance_field_score = vec![-0.2, 0.8];
-        landscape.consonance_field_score_eff = vec![-0.15, 0.4];
+        landscape.acoustic.perc_habituation_state_scan = vec![0.25, 0.5];
+        landscape.acoustic.consonance_field_score = vec![-0.2, 0.8];
+        landscape.acoustic.consonance_field_score_eff = vec![-0.15, 0.4];
         reporter.write_habituation_scan(2.0, &landscape).unwrap();
         reporter.flush().unwrap();
         let value: serde_json::Value =
@@ -1777,13 +1783,13 @@ mod tests {
             let mut broken = landscape.clone();
             match index {
                 0 => {
-                    broken.perc_habituation_state_scan.pop();
+                    broken.acoustic.perc_habituation_state_scan.pop();
                 }
                 1 => {
-                    broken.consonance_field_score.pop();
+                    broken.acoustic.consonance_field_score.pop();
                 }
                 _ => {
-                    broken.consonance_field_score_eff.pop();
+                    broken.acoustic.consonance_field_score_eff.pop();
                 }
             }
             assert!(

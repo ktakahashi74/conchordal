@@ -156,20 +156,23 @@ fn evaluate(
 ) -> Landscape {
     space.assert_scan_len_named(density, "subjective_intensity_scan");
     let mut result = Landscape::new(space.clone());
-    result.subjective_intensity.copy_from_slice(density);
+    result
+        .acoustic
+        .subjective_intensity
+        .copy_from_slice(density);
     scratch.compute_shape(
         density,
         space,
         (&params.harmonicity_kernel, &params.roughness_kernel),
         params.roughness_ref_eps.max(1e-12),
-        &mut result.harmonicity,
-        &mut result.roughness_shape_raw,
+        &mut result.acoustic.harmonicity,
+        &mut result.acoustic.roughness_shape_raw,
     );
     r_pot_scan_to_r_state01_scan(
-        &result.roughness_shape_raw,
+        &result.acoustic.roughness_shape_raw,
         ref_peak,
         params.roughness_k,
-        &mut result.roughness01,
+        &mut result.acoustic.roughness01,
     );
     result.set_analysis_metadata(
         params.roughness_kernel.params,
@@ -185,15 +188,18 @@ fn evaluate(
 
 fn field_errors(actual: &Landscape, truth: &Landscape) -> Value {
     let pairs = [
-        (&actual.harmonicity01, &truth.harmonicity01),
-        (&actual.roughness01, &truth.roughness01),
         (
-            &actual.consonance_field_score,
-            &truth.consonance_field_score,
+            &actual.acoustic.harmonicity01,
+            &truth.acoustic.harmonicity01,
+        ),
+        (&actual.acoustic.roughness01, &truth.acoustic.roughness01),
+        (
+            &actual.acoustic.consonance_field_score,
+            &truth.acoustic.consonance_field_score,
         ),
         (
-            &actual.consonance_field_level,
-            &truth.consonance_field_level,
+            &actual.acoustic.consonance_field_level,
+            &truth.acoustic.consonance_field_level,
         ),
     ];
     let metrics: Vec<_> = pairs
@@ -632,10 +638,10 @@ fn aud_m1_v2_consumers() {
                 if frame == *observe.last().unwrap() {
                     std::fs::write(dir.join(format!("witness-{}-{variant}.json",fixture["name"].as_str().unwrap())),serde_json::to_vec(&json!({
                         "fixture":fixture,"frame":frame,"variant":variant,"beta":front.beta,"truth_density":truth_density,
-                        "new_density":front.density_scan,"old_density":baseline.landscape.subjective_intensity,
-                        "new_h01":actual.harmonicity01,"new_r01":actual.roughness01,"new_c":actual.consonance_field_score,
-                        "truth_h01":truth.harmonicity01,"truth_r01":truth.roughness01,"truth_c":truth.consonance_field_score,
-                        "old_h01":baseline.landscape.harmonicity01,"old_r01":baseline.landscape.roughness01,"old_c":baseline.landscape.consonance_field_score,
+                        "new_density":front.density_scan,"old_density":baseline.landscape.acoustic.subjective_intensity,
+                        "new_h01":actual.acoustic.harmonicity01,"new_r01":actual.acoustic.roughness01,"new_c":actual.acoustic.consonance_field_score,
+                        "truth_h01":truth.acoustic.harmonicity01,"truth_r01":truth.acoustic.roughness01,"truth_c":truth.acoustic.consonance_field_score,
+                        "old_h01":baseline.landscape.acoustic.harmonicity01,"old_r01":baseline.landscape.acoustic.roughness01,"old_c":baseline.landscape.acoustic.consonance_field_score,
                         "new":new,"old":old})).unwrap()).unwrap();
                 }
             }

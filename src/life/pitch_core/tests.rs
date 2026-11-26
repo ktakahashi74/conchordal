@@ -289,17 +289,19 @@ fn support_movement_uses_one_loo_reference_and_ignores_mixed_without_loo() {
     use crate::core::harmonicity_kernel::HarmonicityParams;
     let mut landscape = Landscape::new(Log2Space::new(55., 1760., 24));
     let geometry = Geometry::new(
-        &landscape.space,
-        &HarmonicityKernel::new(&landscape.space, HarmonicityParams::default()),
+        &landscape.acoustic.space,
+        &HarmonicityKernel::new(&landscape.acoustic.space, HarmonicityParams::default()),
     );
-    let mut density = vec![0.; landscape.space.n_bins()];
+    let mut density = vec![0.; landscape.acoustic.space.n_bins()];
     density[72] = 1.;
     let mut snapshot = Snapshot::new(geometry);
     snapshot.observe(&density, 1e-12, 512);
     let snapshot = Arc::new(snapshot);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let current = 330.0f32.log2();
     let mut core = PitchHillClimbPitchCore::new(200., current, 0.);
     core.move_cost_coeff = 0.;
@@ -476,9 +478,11 @@ fn melodic_legal_mapping_deduplicates_before_all_scoring() {
 #[test]
 fn integrated_melodic_sequence_records_and_unknown_context_are_independent() {
     let landscape = test_landscape(&[(330., 1.), (440., 0.8)]);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let current = 330.0f32.log2();
     let mut core = PitchHillClimbPitchCore::new(200., current, 1000.);
     core.set_move_cost_coeff(1000.);
@@ -566,9 +570,11 @@ fn integrated_melodic_sequence_records_and_unknown_context_are_independent() {
 fn melodic_native_replacement_and_independent_failures() {
     for with_ps in [false, true] {
         let landscape = test_landscape(&[(330., 1.), (440., 0.8)]);
-        let perceptual = test_adaptation(landscape.space.n_bins());
-        let features =
-            FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+        let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+        let features = FeaturesNow::from_occupancy_scan(
+            &landscape.acoustic.space,
+            &landscape.acoustic.subjective_intensity,
+        );
         let current = 330.0f32.log2();
         let mut me = melodic_snapshot(&[96., 96., 98., 96.]);
         me.bounds = (220.0f32.log2(), 880.0f32.log2());
@@ -673,7 +679,7 @@ fn melodic_native_replacement_and_independent_failures() {
 fn test_landscape(peaks_hz: &[(f32, f32)]) -> Landscape {
     let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
     let width_cents = 40.0f32;
-    for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
+    for (idx, &bin_log2) in landscape.acoustic.space.centers_log2.iter().enumerate() {
         let mut score = 0.0f32;
         for &(freq_hz, gain) in peaks_hz {
             let center = freq_hz.max(1.0).log2();
@@ -681,10 +687,10 @@ fn test_landscape(peaks_hz: &[(f32, f32)]) -> Landscape {
             let g = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
             score += gain * g;
         }
-        landscape.consonance_field_score[idx] = score;
-        landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
-        landscape.consonance_field_score_eff[idx] = score;
-        landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
+        landscape.acoustic.consonance_field_score[idx] = score;
+        landscape.acoustic.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+        landscape.acoustic.consonance_field_score_eff[idx] = score;
+        landscape.acoustic.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
     }
     landscape
 }
@@ -719,21 +725,26 @@ fn exact_loo_cache_matches_uncached_kernels_and_invalidates() {
     let mut cache = None;
     for revision in 0..5 {
         if revision == 2 {
-            landscape.harmonicity_params.gamma_root = 0.7;
+            landscape.acoustic.harmonicity_params.gamma_root = 0.7;
         }
         if revision == 3 {
-            landscape.roughness_kernel_params.sethares_b = 4.2;
+            landscape.acoustic.roughness_kernel_params.sethares_b = 4.2;
         }
         if revision == 4 {
             landscape.resize_to_space(Log2Space::new(110., 6000., 36));
         }
-        let n = landscape.space.n_bins();
-        for (i, d) in landscape.subjective_intensity.iter_mut().enumerate() {
+        let n = landscape.acoustic.space.n_bins();
+        for (i, d) in landscape
+            .acoustic
+            .subjective_intensity
+            .iter_mut()
+            .enumerate()
+        {
             *d = ((i * 17 + 3) % 29) as f32 * 0.03;
         }
         let index = n / 3;
-        landscape.subjective_intensity[index] = 1.;
-        let pitch = landscape.space.centers_log2[index];
+        landscape.acoustic.subjective_intensity[index] = 1.;
+        let pitch = landscape.acoustic.space.centers_log2[index];
         assert!(
             exact_loo_consonance_score_scan(
                 &landscape,
@@ -767,26 +778,32 @@ fn exact_loo_cache_matches_uncached_kernels_and_invalidates() {
                 &cache.as_ref().unwrap().roughness.lut
             ));
         }
-        let mut density = landscape.subjective_intensity.clone();
+        let mut density = landscape.acoustic.subjective_intensity.clone();
         density[index] = 0.;
-        let h = HarmonicityKernel::new(&landscape.space, landscape.harmonicity_params)
-            .potential_h_from_log2_spectrum(&density, &landscape.space)
-            .0;
-        let (_, du) = crate::core::roughness_kernel::erb_grid(&landscape.space);
-        let eps = landscape.roughness_ref_eps.max(1e-12);
+        let h = HarmonicityKernel::new(
+            &landscape.acoustic.space,
+            landscape.acoustic.harmonicity_params,
+        )
+        .potential_h_from_log2_spectrum(&density, &landscape.acoustic.space)
+        .0;
+        let (_, du) = crate::core::roughness_kernel::erb_grid(&landscape.acoustic.space);
+        let eps = landscape.acoustic.roughness_ref_eps.max(1e-12);
         let (normalized, _) = crate::core::psycho_state::normalize_density(&density, &du, eps);
         let r = RoughnessKernel::new(
-            landscape.roughness_kernel_params,
+            landscape.acoustic.roughness_kernel_params,
             EXACT_LOO_ROUGHNESS_ERB_STEP,
         )
-        .potential_r_from_log2_spectrum_density(&normalized, &landscape.space)
+        .potential_r_from_log2_spectrum_density(&normalized, &landscape.acoustic.space)
         .0;
         for i in 0..n {
             let r01 = roughness_ratio_to_state01(
-                r[i] / landscape.roughness_ref_peak.max(eps),
-                landscape.roughness_k.max(1e-6),
+                r[i] / landscape.acoustic.roughness_ref_peak.max(eps),
+                landscape.acoustic.roughness_k.max(1e-6),
             );
-            let expected = landscape.consonance_kernel.score(h[i].clamp(0., 1.), r01);
+            let expected = landscape
+                .acoustic
+                .consonance_kernel
+                .score(h[i].clamp(0., 1.), r01);
             assert_eq!(
                 actual[i].to_bits(),
                 expected.to_bits(),
@@ -802,15 +819,15 @@ fn shared_habituation_alone_releases_a_greedy_voice_from_its_peak() {
     use rand::{SeedableRng, rngs::SmallRng};
     for leave_self_out in [false, true] {
         let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 12));
-        let n = landscape.space.n_bins();
+        let n = landscape.acoustic.space.n_bins();
         let here_idx = n / 3;
         let next_idx = here_idx + 2;
-        let here = landscape.space.centers_log2[here_idx];
-        let next = landscape.space.centers_log2[next_idx];
-        landscape.consonance_field_score.fill(-1.0);
-        landscape.consonance_field_score[here_idx] = 1.0;
-        landscape.consonance_field_score[next_idx] = 0.6;
-        let raw = landscape.consonance_field_score.clone();
+        let here = landscape.acoustic.space.centers_log2[here_idx];
+        let next = landscape.acoustic.space.centers_log2[next_idx];
+        landscape.acoustic.consonance_field_score.fill(-1.0);
+        landscape.acoustic.consonance_field_score[here_idx] = 1.0;
+        landscape.acoustic.consonance_field_score[next_idx] = 0.6;
+        let raw = landscape.acoustic.consonance_field_score.clone();
         let mut core = PitchHillClimbPitchCore::new((next - here) * 1200.0, here, 0.0);
         core.set_temperature(0.0);
         core.set_move_cost_coeff(0.0);
@@ -844,7 +861,7 @@ fn shared_habituation_alone_releases_a_greedy_voice_from_its_peak() {
                 );
                 adaptation.update(&features, 0.2);
                 assert_eq!(adaptation.score_adjustment(here_idx), 0.0);
-                assert_eq!(landscape.consonance_field_score, raw);
+                assert_eq!(landscape.acoustic.consonance_field_score, raw);
             }
         }
     }
@@ -853,11 +870,11 @@ fn shared_habituation_alone_releases_a_greedy_voice_from_its_peak() {
 #[test]
 fn exact_loo_scan_is_eroded_by_habituation() {
     let mut landscape = Landscape::new(Log2Space::new(55.0, 1760.0, 12));
-    let n = landscape.space.n_bins();
-    landscape.perc_habituation_state_scan = vec![1.0; n];
-    landscape.consonance_theta = 0.0;
+    let n = landscape.acoustic.space.n_bins();
+    landscape.acoustic.perc_habituation_state_scan = vec![1.0; n];
+    landscape.acoustic.consonance_theta = 0.0;
     let scan = vec![0.8f32; n];
-    let mid_log2 = landscape.space.centers_log2[n / 2];
+    let mid_log2 = landscape.acoustic.space.centers_log2[n / 2];
     let s = sample_consonance_score_with_loo(
         mid_log2,
         mid_log2,
@@ -874,11 +891,11 @@ fn exact_loo_scan_is_eroded_by_habituation() {
 #[test]
 fn exact_loo_scan_zero_state_is_identity() {
     let mut landscape = Landscape::new(Log2Space::new(55.0, 1760.0, 12));
-    let n = landscape.space.n_bins();
-    landscape.perc_habituation_state_scan = vec![0.0; n];
-    landscape.consonance_theta = 0.0;
+    let n = landscape.acoustic.space.n_bins();
+    landscape.acoustic.perc_habituation_state_scan = vec![0.0; n];
+    landscape.acoustic.consonance_theta = 0.0;
     let scan = vec![0.8f32; n];
-    let mid_log2 = landscape.space.centers_log2[n / 2];
+    let mid_log2 = landscape.acoustic.space.centers_log2[n / 2];
     let s = sample_consonance_score_with_loo(
         mid_log2,
         mid_log2,
@@ -1018,11 +1035,11 @@ fn approx_loo_harmonic_ratios_match_generic_series() {
 #[test]
 fn adjusted_score_landscape_weight_zero_disables_landscape_term() {
     let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
-    let idx = landscape.space.n_bins() / 2;
-    let pitch_log2 = landscape.space.centers_log2[idx];
-    landscape.consonance_field_score[idx] = 1.75;
-    landscape.consonance_field_score_eff[idx] = 1.75;
-    let perceptual = test_adaptation(landscape.space.n_bins());
+    let idx = landscape.acoustic.space.n_bins() / 2;
+    let pitch_log2 = landscape.acoustic.space.centers_log2[idx];
+    landscape.acoustic.consonance_field_score[idx] = 1.75;
+    landscape.acoustic.consonance_field_score_eff[idx] = 1.75;
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
 
     let weighted = adjusted_pitch_score(
         pitch_log2,
@@ -1066,11 +1083,11 @@ fn adjusted_score_landscape_weight_zero_disables_landscape_term() {
 #[test]
 fn adjusted_score_crowding_penalizes_close_neighbor() {
     let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
-    let idx = landscape.space.n_bins() / 2;
-    let pitch_log2 = landscape.space.centers_log2[idx];
-    landscape.consonance_field_score[idx] = 1.0;
-    landscape.consonance_field_score_eff[idx] = 1.0;
-    let perceptual = test_adaptation(landscape.space.n_bins());
+    let idx = landscape.acoustic.space.n_bins() / 2;
+    let pitch_log2 = landscape.acoustic.space.centers_log2[idx];
+    landscape.acoustic.consonance_field_score[idx] = 1.0;
+    landscape.acoustic.consonance_field_score_eff[idx] = 1.0;
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
 
     let without_crowding = adjusted_pitch_score(
         pitch_log2,
@@ -1116,10 +1133,10 @@ fn adjusted_score_crowding_penalizes_close_neighbor() {
 #[test]
 fn crowding_pairwise_split_biases_agents_in_opposite_directions() {
     let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 128));
-    landscape.consonance_field_score.fill(1.0);
-    landscape.consonance_field_score_eff.fill(1.0);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let center = landscape.space.centers_log2[landscape.space.n_bins() / 2];
+    landscape.acoustic.consonance_field_score.fill(1.0);
+    landscape.acoustic.consonance_field_score_eff.fill(1.0);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let center = landscape.acoustic.space.centers_log2[landscape.acoustic.space.n_bins() / 2];
     let left = center - cents_to_log2(6.0);
     let right = center + cents_to_log2(6.0);
     let neighbor = [center];
@@ -1204,15 +1221,18 @@ fn crowding_pairwise_split_biases_agents_in_opposite_directions() {
 #[test]
 fn crowding_samples_sigma_cents_gaussian_not_roughness() {
     let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
-    let idx = landscape.space.n_bins() / 2;
-    let pitch_log2 = landscape.space.centers_log2[idx];
+    let idx = landscape.acoustic.space.n_bins() / 2;
+    let pitch_log2 = landscape.acoustic.space.centers_log2[idx];
     let neighbor_log2 = pitch_log2 + cents_to_log2(40.0);
-    landscape.consonance_field_score[idx] = 1.0;
-    landscape.consonance_field_score_eff[idx] = 1.0;
-    let perceptual = test_adaptation(landscape.space.n_bins());
+    landscape.acoustic.consonance_field_score[idx] = 1.0;
+    landscape.acoustic.consonance_field_score_eff[idx] = 1.0;
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
 
-    landscape.roughness_suppress_sigma_erb = 0.04;
-    landscape.roughness_kernel_params.suppress_sigma_erb = 0.04;
+    landscape.acoustic.roughness_suppress_sigma_erb = 0.04;
+    landscape
+        .acoustic
+        .roughness_kernel_params
+        .suppress_sigma_erb = 0.04;
     let narrow = adjusted_pitch_score(
         pitch_log2,
         pitch_log2,
@@ -1231,8 +1251,11 @@ fn crowding_samples_sigma_cents_gaussian_not_roughness() {
         &[1.0],
     );
 
-    landscape.roughness_suppress_sigma_erb = 0.10;
-    landscape.roughness_kernel_params.suppress_sigma_erb = 0.10;
+    landscape.acoustic.roughness_suppress_sigma_erb = 0.10;
+    landscape
+        .acoustic
+        .roughness_kernel_params
+        .suppress_sigma_erb = 0.10;
     let wide = adjusted_pitch_score(
         pitch_log2,
         pitch_log2,
@@ -1259,11 +1282,11 @@ fn crowding_samples_sigma_cents_gaussian_not_roughness() {
 #[test]
 fn loo_off_preserves_legacy_score_formula() {
     let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
-    let idx = landscape.space.n_bins() / 2;
-    let pitch_log2 = landscape.space.centers_log2[idx];
-    landscape.consonance_field_score[idx] = 1.23;
-    landscape.consonance_field_score_eff[idx] = 1.23;
-    let perceptual = test_adaptation(landscape.space.n_bins());
+    let idx = landscape.acoustic.space.n_bins() / 2;
+    let pitch_log2 = landscape.acoustic.space.centers_log2[idx];
+    landscape.acoustic.consonance_field_score[idx] = 1.23;
+    landscape.acoustic.consonance_field_score_eff[idx] = 1.23;
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
 
     let score = adjusted_pitch_score(
         pitch_log2,
@@ -1288,14 +1311,14 @@ fn loo_off_preserves_legacy_score_formula() {
 #[test]
 fn approximate_loo_weakens_self_locking() {
     let mut landscape = Landscape::new(Log2Space::new(110.0, 880.0, 96));
-    let idx = landscape.space.n_bins() / 2;
-    let current = landscape.space.centers_log2[idx];
-    let nearby = landscape.space.centers_log2[idx + 1];
-    landscape.consonance_field_score[idx] = 1.0;
-    landscape.consonance_field_score[idx + 1] = 0.7;
-    landscape.consonance_field_score_eff[idx] = 1.0;
-    landscape.consonance_field_score_eff[idx + 1] = 0.7;
-    let perceptual = test_adaptation(landscape.space.n_bins());
+    let idx = landscape.acoustic.space.n_bins() / 2;
+    let current = landscape.acoustic.space.centers_log2[idx];
+    let nearby = landscape.acoustic.space.centers_log2[idx + 1];
+    landscape.acoustic.consonance_field_score[idx] = 1.0;
+    landscape.acoustic.consonance_field_score[idx + 1] = 0.7;
+    landscape.acoustic.consonance_field_score_eff[idx] = 1.0;
+    landscape.acoustic.consonance_field_score_eff[idx + 1] = 0.7;
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
 
     let current_no_loo = adjusted_pitch_score(
         current,
@@ -1359,9 +1382,11 @@ fn approximate_loo_weakens_self_locking() {
 #[test]
 fn crowding_strength_zero_keeps_behavior_with_neighbors() {
     let landscape = test_landscape(&[(330.0, 1.0)]);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let mut core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0);
     core.set_crowding(0.0, 20.0);
 
@@ -1397,9 +1422,11 @@ fn crowding_strength_zero_keeps_behavior_with_neighbors() {
 #[test]
 fn peak_sampler_crowding_zero_ignores_neighbors() {
     let landscape = test_landscape(&[(330.0, 1.0)]);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let mut core = PitchPeakSamplerCore::new(120.0, 330.0f32.log2(), 0.0, 700.0, 16, 0.03, 10.0, 2);
     core.set_crowding(0.0, 20.0);
 
@@ -1435,9 +1462,11 @@ fn peak_sampler_crowding_zero_ignores_neighbors() {
 #[test]
 fn peak_sampler_crowding_penalizes_close_neighbor_selection() {
     let landscape = test_landscape(&[(330.0, 1.0)]);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let mut no_crowding =
         PitchPeakSamplerCore::new(24.0, 330.0f32.log2(), 0.0, 700.0, 16, 0.001, 0.0, 0);
     let mut with_crowding = no_crowding.clone();
@@ -1483,20 +1512,22 @@ fn hillclimb_temperature_zero_makes_no_downhill_move() {
     // On a plateau (no improvement above threshold) a zero-temperature
     // hill-climb must stay put: greedy, never downhill.
     let mut landscape = Landscape::new(Log2Space::new(220.0, 440.0, 256));
-    let idx_center = landscape.space.n_bins() / 2;
-    let current = landscape.space.centers_log2[idx_center];
+    let idx_center = landscape.acoustic.space.n_bins() / 2;
+    let current = landscape.acoustic.space.centers_log2[idx_center];
     let width_cents = 40.0f32;
-    for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
+    for (idx, &bin_log2) in landscape.acoustic.space.centers_log2.iter().enumerate() {
         let d_cents = (bin_log2 - current).abs() * 1200.0;
         let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
-        landscape.consonance_field_score[idx] = score;
-        landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
-        landscape.consonance_field_score_eff[idx] = score;
-        landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
+        landscape.acoustic.consonance_field_score[idx] = score;
+        landscape.acoustic.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+        landscape.acoustic.consonance_field_score_eff[idx] = score;
+        landscape.acoustic.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
     }
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
 
     for seed in 0..256u64 {
         let mut core = PitchHillClimbPitchCore::new(30.0, current, 0.0);
@@ -1522,20 +1553,22 @@ fn hillclimb_temperature_zero_makes_no_downhill_move() {
 #[test]
 fn hillclimb_temperature_accepts_downhill_moves_probabilistically() {
     let mut landscape = Landscape::new(Log2Space::new(220.0, 440.0, 256));
-    let idx_center = landscape.space.n_bins() / 2;
-    let current = landscape.space.centers_log2[idx_center];
+    let idx_center = landscape.acoustic.space.n_bins() / 2;
+    let current = landscape.acoustic.space.centers_log2[idx_center];
     let width_cents = 40.0f32;
-    for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
+    for (idx, &bin_log2) in landscape.acoustic.space.centers_log2.iter().enumerate() {
         let d_cents = (bin_log2 - current).abs() * 1200.0;
         let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
-        landscape.consonance_field_score[idx] = score;
-        landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
-        landscape.consonance_field_score_eff[idx] = score;
-        landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
+        landscape.acoustic.consonance_field_score[idx] = score;
+        landscape.acoustic.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+        landscape.acoustic.consonance_field_score_eff[idx] = score;
+        landscape.acoustic.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
     }
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let trials = 256u64;
     let mut moved_with_temp = 0usize;
     let mut moved_without_temp = 0usize;
@@ -1593,17 +1626,19 @@ fn hillclimb_crowding_moves_away_from_close_neighbor() {
     let mut landscape = Landscape::new(Log2Space::new(220.0, 440.0, 256));
     let center_log2 = 330.0f32.log2();
     let width_cents = 20.0f32;
-    for (idx, &bin_log2) in landscape.space.centers_log2.iter().enumerate() {
+    for (idx, &bin_log2) in landscape.acoustic.space.centers_log2.iter().enumerate() {
         let d_cents = (bin_log2 - center_log2).abs() * 1200.0;
         let score = (-(d_cents * d_cents) / (2.0 * width_cents * width_cents)).exp();
-        landscape.consonance_field_score[idx] = score;
-        landscape.consonance_field_level[idx] = score.clamp(0.0, 1.0);
-        landscape.consonance_field_score_eff[idx] = score;
-        landscape.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
+        landscape.acoustic.consonance_field_score[idx] = score;
+        landscape.acoustic.consonance_field_level[idx] = score.clamp(0.0, 1.0);
+        landscape.acoustic.consonance_field_score_eff[idx] = score;
+        landscape.acoustic.consonance_field_level_eff[idx] = score.clamp(0.0, 1.0);
     }
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
 
     let mut without_crowding = PitchHillClimbPitchCore::new(24.0, center_log2, 0.0);
     let mut with_crowding = without_crowding.clone();
@@ -1647,9 +1682,11 @@ fn hillclimb_global_peaks_enable_distant_peak_escape() {
     let current_hz = 220.0;
     let distant_hz = 330.0;
     let landscape = test_landscape(&[(current_hz, 0.4), (distant_hz, 1.0)]);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let current_log2 = current_hz.log2();
 
     let mut local_only = PitchHillClimbPitchCore::new(120.0, current_log2, 0.0);
@@ -1694,9 +1731,11 @@ fn hillclimb_global_peaks_enable_distant_peak_escape() {
 fn peak_sampler_converges_to_single_peak() {
     let peak_hz = 330.0;
     let landscape = test_landscape(&[(peak_hz, 1.0)]);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let mut rng = SmallRng::seed_from_u64(17);
 
     let mut core = PitchPeakSamplerCore::new(120.0, 300.0f32.log2(), 0.0, 700.0, 16, 0.03, 10.0, 2);
@@ -1731,9 +1770,11 @@ fn right_peak_ratio(
     left_peak_hz: f32,
     right_peak_hz: f32,
 ) -> f32 {
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let mut rng = SmallRng::seed_from_u64(seed);
     let mut right_hits = 0u32;
     let trials = 512u32;
@@ -1817,9 +1858,11 @@ fn source_has_no_fixed_twelve_tet_candidate_patterns() {
 fn non_tet_peak_is_reached_by_hillclimb_and_peaksampler() {
     let peak_hz = 347.0;
     let landscape = test_landscape(&[(peak_hz, 1.0)]);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
 
     let mut hill_rng = SmallRng::seed_from_u64(123);
     let mut hill = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0);
@@ -1902,7 +1945,7 @@ fn contains_ordered_tokens_with_gap(text: &str, tokens: &[String], max_gap: usiz
 #[test]
 fn peak_sampler_scorer_matches_adjusted_pitch_score() {
     let landscape = test_landscape(&[(330.0, 1.0), (440.0, 0.6)]);
-    let perceptual = test_adaptation(landscape.space.n_bins());
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
     let current = 330.0f32.log2();
     let neighbor = [440.0f32.log2()];
     let salience = [1.0f32];
@@ -1954,9 +1997,11 @@ fn peak_sampler_scorer_matches_adjusted_pitch_score() {
 #[test]
 fn peak_sampler_proposal_unchanged_after_refactor() {
     let landscape = test_landscape(&[(330.0, 1.0)]);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let mut core_a =
         PitchPeakSamplerCore::new(120.0, 330.0f32.log2(), 0.0, 700.0, 16, 0.03, 10.0, 2);
     core_a.set_leave_self_out(true);
@@ -1995,9 +2040,11 @@ fn peak_sampler_proposal_unchanged_after_refactor() {
 #[test]
 fn propose_with_scorer_default_matches_trait_method() {
     let landscape = test_landscape(&[(330.0, 1.0), (440.0, 0.6)]);
-    let perceptual = test_adaptation(landscape.space.n_bins());
-    let features =
-        FeaturesNow::from_occupancy_scan(&landscape.space, &landscape.subjective_intensity);
+    let perceptual = test_adaptation(landscape.acoustic.space.n_bins());
+    let features = FeaturesNow::from_occupancy_scan(
+        &landscape.acoustic.space,
+        &landscape.acoustic.subjective_intensity,
+    );
     let core = PitchHillClimbPitchCore::new(120.0, 330.0f32.log2(), 0.0);
     let current = 330.0f32.log2();
 
@@ -2053,7 +2100,7 @@ fn propose_with_scorer_default_matches_trait_method() {
 #[test]
 fn propose_with_scorer_negated_prefers_different_peak() {
     let landscape = test_landscape(&[(330.0, 1.0), (550.0, 0.3)]);
-    let _perceptual = test_adaptation(landscape.space.n_bins());
+    let _perceptual = test_adaptation(landscape.acoustic.space.n_bins());
     let mut core = PitchHillClimbPitchCore::new(120.0, 440.0f32.log2(), 0.0);
     core.set_global_peaks(3, 0.0);
     let current = 440.0f32.log2();
@@ -2425,8 +2472,9 @@ fn propose_with_scorer_non_exploratory_plateau_stays_put() {
 #[test]
 fn hr2_global_and_local_filter_before_scoring_and_top_k() {
     let landscape = Landscape::new(crate::core::log2space::production_space(48000).unwrap());
-    let (lo, hi) = landscape.space.voice_pitch_bounds_log2();
-    let inside = landscape.space.centers_log2[landscape.space.nearest_index(7000.0)];
+    let (lo, hi) = landscape.acoustic.space.voice_pitch_bounds_log2();
+    let inside =
+        landscape.acoustic.space.centers_log2[landscape.acoustic.space.nearest_index(7000.0)];
     let mut scored = Vec::new();
     let mut out = Vec::new();
     let mut seen = Vec::new();
@@ -2445,6 +2493,7 @@ fn hr2_global_and_local_filter_before_scoring_and_top_k() {
         seen.clear();
         out.clear();
         let expected = landscape
+            .acoustic
             .space
             .centers_log2
             .iter()

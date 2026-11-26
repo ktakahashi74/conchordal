@@ -112,7 +112,7 @@ pub(super) fn adjusted_pitch_score_impl(
     neighbor_pitch_log2: &[f32],
     neighbor_salience: &[f32],
 ) -> f32 {
-    let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
+    let (fmin, fmax) = landscape.acoustic.space.voice_pitch_bounds_log2();
     let clamped = pitch_log2.clamp(fmin, fmax);
     let score = sample_consonance_score_with_loo(
         clamped,
@@ -154,7 +154,7 @@ pub(super) fn adjusted_pitch_score_impl(
         0.0
     };
     let base = weighted_score - penalty - gravity_penalty - crowding_penalty;
-    let idx = landscape.space.index_of_log2(clamped).unwrap_or(0);
+    let idx = landscape.acoustic.space.index_of_log2(clamped).unwrap_or(0);
     let result = base + perceptual.score_adjustment(idx);
     #[cfg(feature = "loo-diagnostic")]
     diagnostic::record_score(clamped, score, result);
@@ -221,11 +221,13 @@ pub(super) fn sample_ownership_score(
 ) -> f32 {
     if let Some(scan) = scan {
         landscape
+            .acoustic
             .space
             .assert_scan_len_named(scan, "loo_score_scan");
         let raw = landscape.sample_linear_log2(scan, pitch_log2);
-        let h = landscape.sample_linear_log2(&landscape.perc_habituation_state_scan, pitch_log2);
-        return crate::core::habituation::erode_score(raw, h, landscape.consonance_theta);
+        let h = landscape
+            .sample_linear_log2(&landscape.acoustic.perc_habituation_state_scan, pitch_log2);
+        return crate::core::habituation::erode_score(raw, h, landscape.acoustic.consonance_theta);
     }
     // Without an ownership estimate, preserve the observed field.
     landscape.evaluate_pitch_score_log2(pitch_log2)
@@ -249,8 +251,9 @@ pub(super) fn legacy_sample_consonance_score_with_loo(
         && let Some(scan) = exact_loo_scan
     {
         let raw = landscape.sample_linear_log2(scan, pitch_log2);
-        let h = landscape.sample_linear_log2(&landscape.perc_habituation_state_scan, pitch_log2);
-        return crate::core::habituation::erode_score(raw, h, landscape.consonance_theta);
+        let h = landscape
+            .sample_linear_log2(&landscape.acoustic.perc_habituation_state_scan, pitch_log2);
+        return crate::core::habituation::erode_score(raw, h, landscape.acoustic.consonance_theta);
     }
     let _ = (reference_loo_mode, exact_loo_scan);
     let (fmin, fmax) = landscape.freq_bounds_log2();
@@ -382,22 +385,25 @@ pub(super) fn loo_score_scan(landscape: &Landscape, input: &mut LooInput) -> Opt
             .find(|s| s.id == action.id && s.generation == action.generation)
     {
         landscape
+            .acoustic
             .space
             .assert_scan_len_named(&observation.h_scan, "loo_h_scan");
         landscape
+            .acoustic
             .space
-            .assert_scan_len_named(&landscape.roughness01, "mixed_r_scan");
+            .assert_scan_len_named(&landscape.acoustic.roughness01, "mixed_r_scan");
         // Keep the accepted weight-one arithmetic unchanged.
         if action.weight == 1.0 {
             input.rearticulation_score.extend(
                 observation
                     .h_scan
                     .iter()
-                    .zip(&landscape.roughness01)
-                    .map(|(&h, &r)| landscape.consonance_kernel.score(h, r)),
+                    .zip(&landscape.acoustic.roughness01)
+                    .map(|(&h, &r)| landscape.acoustic.consonance_kernel.score(h, r)),
             );
         } else {
             landscape
+                .acoustic
                 .space
                 .assert_scan_len_named(&observation.r_scan, "loo_r_scan");
             input.rearticulation_score.extend(
@@ -405,16 +411,17 @@ pub(super) fn loo_score_scan(landscape: &Landscape, input: &mut LooInput) -> Opt
                     .h_scan
                     .iter()
                     .zip(&observation.r_scan)
-                    .zip(&landscape.roughness01)
+                    .zip(&landscape.acoustic.roughness01)
                     .map(|((&h, &external), &mixed)| {
                         let r = (1.0 - action.weight) * external + action.weight * mixed;
-                        landscape.consonance_kernel.score(h, r)
+                        landscape.acoustic.consonance_kernel.score(h, r)
                     }),
             );
         }
     }
     if let Some(scan) = &input.exact_score {
         landscape
+            .acoustic
             .space
             .assert_scan_len_named(scan, "loo_score_scan");
     }
@@ -453,39 +460,40 @@ pub(super) fn exact_loo_consonance_score_scan(
     if !enabled || !matches!(mode, ReferenceLooMode::ExactScan) {
         return None;
     }
-    let n = landscape.space.n_bins();
+    let n = landscape.acoustic.space.n_bins();
     // F2: a misaligned landscape is a bug, but the exact-LOO path degrades to the
     // approximate score rather than panicking mid-proposal. Flag it in dev builds,
     // one scan at a time so the offender is identifiable.
     debug_assert_eq!(
-        landscape.subjective_intensity.len(),
+        landscape.acoustic.subjective_intensity.len(),
         n,
         "exact-LOO scan length mismatch: subjective_intensity"
     );
     debug_assert_eq!(
-        landscape.roughness01.len(),
+        landscape.acoustic.roughness01.len(),
         n,
         "exact-LOO scan length mismatch: roughness01"
     );
     debug_assert_eq!(
-        landscape.harmonicity01.len(),
+        landscape.acoustic.harmonicity01.len(),
         n,
         "exact-LOO scan length mismatch: harmonicity01"
     );
     if n == 0
-        || landscape.subjective_intensity.len() != n
-        || landscape.roughness01.len() != n
-        || landscape.harmonicity01.len() != n
+        || landscape.acoustic.subjective_intensity.len() != n
+        || landscape.acoustic.roughness01.len() != n
+        || landscape.acoustic.harmonicity01.len() != n
     {
         return None;
     }
-    let current_idx = landscape.space.index_of_log2(current_pitch_log2)?;
+    let current_idx = landscape.acoustic.space.index_of_log2(current_pitch_log2)?;
     let current_mass = landscape
+        .acoustic
         .subjective_intensity
         .get(current_idx)
         .copied()
         .filter(|v| v.is_finite() && *v > 0.0)?;
-    let mut density_loo = landscape.subjective_intensity.clone();
+    let mut density_loo = landscape.acoustic.subjective_intensity.clone();
     density_loo[current_idx] = (density_loo[current_idx] - current_mass).max(0.0);
 
     Some(recompute_loo_score_scan(landscape, &density_loo, scratch))
@@ -496,26 +504,29 @@ pub(super) fn prepare_loo_scratch<'a>(
     landscape: &Landscape,
     scratch: &'a mut Option<Box<LooScratch>>,
 ) -> &'a mut LooScratch {
-    let n = landscape.space.n_bins();
+    let n = landscape.acoustic.space.n_bins();
     let stale = scratch.as_ref().is_none_or(|cache| {
-        cache.space.fmin != landscape.space.fmin
-            || cache.space.fmax != landscape.space.fmax
-            || cache.space.bins_per_oct != landscape.space.bins_per_oct
-            || cache.space.step_log2 != landscape.space.step_log2
-            || cache.space.centers_hz != landscape.space.centers_hz
-            || cache.space.centers_log2 != landscape.space.centers_log2
-            || cache.harmonicity.params != landscape.harmonicity_params
-            || cache.roughness.params != landscape.roughness_kernel_params
+        cache.space.fmin != landscape.acoustic.space.fmin
+            || cache.space.fmax != landscape.acoustic.space.fmax
+            || cache.space.bins_per_oct != landscape.acoustic.space.bins_per_oct
+            || cache.space.step_log2 != landscape.acoustic.space.step_log2
+            || cache.space.centers_hz != landscape.acoustic.space.centers_hz
+            || cache.space.centers_log2 != landscape.acoustic.space.centers_log2
+            || cache.harmonicity.params != landscape.acoustic.harmonicity_params
+            || cache.roughness.params != landscape.acoustic.roughness_kernel_params
     });
     if stale {
-        let harmonicity = HarmonicityKernel::new(&landscape.space, landscape.harmonicity_params);
+        let harmonicity = HarmonicityKernel::new(
+            &landscape.acoustic.space,
+            landscape.acoustic.harmonicity_params,
+        );
         let roughness = RoughnessKernel::new(
-            landscape.roughness_kernel_params,
+            landscape.acoustic.roughness_kernel_params,
             EXACT_LOO_ROUGHNESS_ERB_STEP,
         );
-        let potentials = PotentialScratch::new(&landscape.space, &harmonicity, &roughness);
+        let potentials = PotentialScratch::new(&landscape.acoustic.space, &harmonicity, &roughness);
         *scratch = Some(Box::new(LooScratch {
-            space: landscape.space.clone(),
+            space: landscape.acoustic.space.clone(),
             harmonicity,
             roughness,
             potentials,
@@ -525,7 +536,7 @@ pub(super) fn prepare_loo_scratch<'a>(
             merge_ranges: vec![(0, 0); n],
             #[cfg(test)]
             suppression_ranges: {
-                let (erb, _) = crate::core::roughness_kernel::erb_grid(&landscape.space);
+                let (erb, _) = crate::core::roughness_kernel::erb_grid(&landscape.acoustic.space);
                 let sep =
                     crate::core::peak_extraction::PeakExtractConfig::nsgt_default().min_sep_erb;
                 erb.iter()
@@ -538,7 +549,7 @@ pub(super) fn prepare_loo_scratch<'a>(
                     .collect()
             },
             #[cfg(test)]
-            erb: crate::core::roughness_kernel::erb_grid(&landscape.space).0,
+            erb: crate::core::roughness_kernel::erb_grid(&landscape.acoustic.space).0,
             #[cfg(test)]
             raw_density: vec![0.; n],
             #[cfg(test)]
@@ -554,24 +565,24 @@ pub(super) fn recompute_loo_score_scan(
     density_loo: &[f32],
     scratch: &mut Option<Box<LooScratch>>,
 ) -> Vec<f32> {
-    let n = landscape.space.n_bins();
+    let n = landscape.acoustic.space.n_bins();
     let cache = prepare_loo_scratch(landscape, scratch);
-    let eps = landscape.roughness_ref_eps.max(1e-12);
+    let eps = landscape.acoustic.roughness_ref_eps.max(1e-12);
     cache.potentials.compute_shape(
         density_loo,
-        &landscape.space,
+        &landscape.acoustic.space,
         (&cache.harmonicity, &cache.roughness),
         eps,
         &mut cache.h,
         &mut cache.r,
     );
-    let roughness_ref_peak = landscape.roughness_ref_peak.max(eps);
-    let roughness_k = landscape.roughness_k.max(1e-6);
+    let roughness_ref_peak = landscape.acoustic.roughness_ref_peak.max(eps);
+    let roughness_k = landscape.acoustic.roughness_k.max(1e-6);
     let mut out = Vec::with_capacity(n);
     for (i, r_shape) in cache.r.iter().enumerate().take(n) {
         let h01 = cache.h.get(i).copied().unwrap_or(0.0).clamp(0.0, 1.0);
         let r01 = roughness_ratio_to_state01(*r_shape / roughness_ref_peak, roughness_k);
-        out.push(landscape.consonance_kernel.score(h01, r01));
+        out.push(landscape.acoustic.consonance_kernel.score(h01, r01));
     }
     out
 }

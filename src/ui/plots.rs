@@ -1067,10 +1067,11 @@ pub(crate) fn draw_harmony_circle(
     }
     let heard = fold_octaves(
         landscape
+            .acoustic
             .space
             .centers_log2
             .iter()
-            .zip(&landscape.subjective_intensity)
+            .zip(&landscape.acoustic.subjective_intensity)
             .map(|(&f, &v)| (f64::from(f), f64::from(v))),
     );
     let maximum = heard.iter().copied().fold(0.0_f64, f64::max);
@@ -1154,13 +1155,13 @@ pub(crate) fn draw_harmony_circle(
             let offset = pointer - center;
             let fraction = offset.x.atan2(-offset.y).rem_euclid(std::f32::consts::TAU) / std::f32::consts::TAU;
             let bin = (fraction * OCTAVE_BINS as f32).round() as usize % OCTAVE_BINS;
-            let strongest = landscape.space.centers_log2.iter().zip(&landscape.subjective_intensity)
+            let strongest = landscape.acoustic.space.centers_log2.iter().zip(&landscape.acoustic.subjective_intensity)
                 .enumerate().filter(|(_, (log2, v))| {
                     v.is_finite() && **v > 0.0 && (octave_bin(f64::from(**log2)) == bin)
                 }).max_by(|a, b| (a.1).1.total_cmp((b.1).1));
             ui.label(format!("Angle: {fraction:.3} octave"));
             if let Some((i, _)) = strongest {
-                ui.label(format!("Strongest heard component here: {:.1} Hz", landscape.space.centers_hz[i]));
+                ui.label(format!("Strongest heard component here: {:.1} Hz", landscape.acoustic.space.centers_hz[i]));
             } else {
                 ui.label("No heard component here");
             }

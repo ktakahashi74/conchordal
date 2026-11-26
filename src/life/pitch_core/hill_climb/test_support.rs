@@ -12,7 +12,8 @@ pub(crate) fn aud_m1_hill_choice(
     neighbors: &[f32],
 ) -> (f32, f32) {
     use rand::SeedableRng;
-    let mut core = PitchHillClimbPitchCore::new(landscape.space.step() * 1200.0, anchor, 0.0);
+    let mut core =
+        PitchHillClimbPitchCore::new(landscape.acoustic.space.step() * 1200.0, anchor, 0.0);
     core.set_global_peaks(8, 20.0);
     core.set_ratio_candidates(true, 20);
     core.move_cost_coeff = 0.0;

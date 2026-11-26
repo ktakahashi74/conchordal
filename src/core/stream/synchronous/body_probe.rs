@@ -45,30 +45,39 @@ impl SynchronousAnalysis {
     ) {
         let landscape = &mut self.landscape;
         landscape
+            .acoustic
             .space
-            .assert_scan_len_named(&landscape.harmonicity, "h_pot_scan");
+            .assert_scan_len_named(&landscape.acoustic.harmonicity, "h_pot_scan");
         landscape
+            .acoustic
             .space
-            .assert_scan_len_named(&landscape.roughness01, "r_state01_scan");
+            .assert_scan_len_named(&landscape.acoustic.roughness01, "r_state01_scan");
         landscape
+            .acoustic
             .space
-            .assert_scan_len_named(&landscape.consonance_field_score, "c_score_scan");
-        landscape
-            .space
-            .assert_scan_len_named(&landscape.consonance_field_score_eff, "c_score_eff_scan");
+            .assert_scan_len_named(&landscape.acoustic.consonance_field_score, "c_score_scan");
+        landscape.acoustic.space.assert_scan_len_named(
+            &landscape.acoustic.consonance_field_score_eff,
+            "c_score_eff_scan",
+        );
         if let Some(h) = habituation {
             landscape
+                .acoustic
                 .space
                 .assert_scan_len_named(h, "habituation_state_scan");
         }
-        h_pot_scan_to_h_state01_scan(&landscape.harmonicity, 1., &mut landscape.harmonicity01);
+        h_pot_scan_to_h_state01_scan(
+            &landscape.acoustic.harmonicity,
+            1.,
+            &mut landscape.acoustic.harmonicity01,
+        );
         let kernel = params.consonance_field_kernel();
-        for i in 0..landscape.space.n_bins() {
-            let h01 = crate::core::float::sanitize01(landscape.harmonicity01[i]);
-            let r01 = crate::core::float::sanitize01(landscape.roughness01[i]);
+        for i in 0..landscape.acoustic.space.n_bins() {
+            let h01 = crate::core::float::sanitize01(landscape.acoustic.harmonicity01[i]);
+            let r01 = crate::core::float::sanitize01(landscape.acoustic.roughness01[i]);
             let score = kernel.score(h01, r01);
-            landscape.consonance_field_score[i] = score;
-            landscape.consonance_field_score_eff[i] = match habituation {
+            landscape.acoustic.consonance_field_score[i] = score;
+            landscape.acoustic.consonance_field_score_eff[i] = match habituation {
                 Some(h) => crate::core::habituation::erode_score(
                     score,
                     h[i],

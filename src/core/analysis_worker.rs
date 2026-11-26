@@ -103,7 +103,7 @@ impl AnalysisState {
         let temporal = temporal.start(&stream);
         let spectral_history = stream.spectral_history_enabled().then(|| {
             crate::core::spectral_history::SpectralHistory::new(
-                stream.last().space.clone(),
+                stream.last().acoustic.space.clone(),
                 stream.sample_rate() as f64,
                 stream.window_samples(),
             )
@@ -242,12 +242,12 @@ impl AnalysisState {
             }
         }
         let frame = stream.process_from(hop, source);
-        temporal.observe_spectrum(frame_id, hop, &frame.nsgt_power, t2);
+        temporal.observe_spectrum(frame_id, hop, &frame.acoustic.nsgt_power, t2);
         if let Some(history) = spectral_history {
             history.observe(
                 frame_id * hop_samples as u64,
                 (frame_id + 1) * hop_samples as u64,
-                &frame.nsgt_power,
+                &frame.acoustic.nsgt_power,
             );
         }
         *warmup_samples = warmup_samples.saturating_sub(hop.len());
@@ -526,10 +526,13 @@ mod tests {
         }
         for ((_, expected), (_, actual)) in results[0].iter().zip(&results[1]) {
             if let (Some(expected), Some(actual)) = (expected, actual) {
-                assert_eq!(actual.subjective_intensity, expected.subjective_intensity);
-                assert_eq!(actual.harmonicity, expected.harmonicity);
-                assert_eq!(actual.roughness01, expected.roughness01);
-                assert!(actual.nsgt_power.iter().all(|&p| p == 0.0));
+                assert_eq!(
+                    actual.acoustic.subjective_intensity,
+                    expected.acoustic.subjective_intensity
+                );
+                assert_eq!(actual.acoustic.harmonicity, expected.acoustic.harmonicity);
+                assert_eq!(actual.acoustic.roughness01, expected.acoustic.roughness01);
+                assert!(actual.acoustic.nsgt_power.iter().all(|&p| p == 0.0));
             }
         }
     }
@@ -582,24 +585,34 @@ mod tests {
                     .any(|(id, frame)| *id == 105 && frame.is_none())
             );
             if !latest {
-                assert!(frames.iter().any(|(id, frame)| *id == 105
-                    && frame.as_ref().is_some_and(|f| !f.onset_habituation_known)));
+                assert!(frames.iter().any(|(id, frame)| {
+                    *id == 105
+                        && frame
+                            .as_ref()
+                            .is_some_and(|f| !f.acoustic.onset_habituation_known)
+                }));
             }
             let (id, frame) = frames.into_iter().last().unwrap();
             assert_eq!(id, 299);
             let frame = frame.unwrap();
-            assert!(frame.onset_habituation_known);
-            assert_eq!(frame.onset_habituation_end, 300 * 512);
-            assert!(frame.onset_habituation_state_scan.iter().any(|&v| v > 0.0));
+            assert!(frame.acoustic.onset_habituation_known);
+            assert_eq!(frame.acoustic.onset_habituation_end, 300 * 512);
+            assert!(
+                frame
+                    .acoustic
+                    .onset_habituation_state_scan
+                    .iter()
+                    .any(|&v| v > 0.0)
+            );
             last.push(frame);
         }
         assert_eq!(
-            last[0].onset_habituation_state_scan,
-            last[1].onset_habituation_state_scan
+            last[0].acoustic.onset_habituation_state_scan,
+            last[1].acoustic.onset_habituation_state_scan
         );
         assert_eq!(
-            last[0].onset_habituation_known,
-            last[1].onset_habituation_known
+            last[0].acoustic.onset_habituation_known,
+            last[1].acoustic.onset_habituation_known
         );
     }
 
@@ -699,8 +712,11 @@ mod tests {
                 let (frame_id, frame) = result_rx.recv_timeout(Duration::from_secs(2)).unwrap();
                 assert_eq!(frame_id, index as u64);
                 let frame = frame.expect("contiguous evidence");
-                assert_eq!(frame.nsgt_power, reference.nsgt_power);
-                assert_eq!(frame.subjective_intensity, reference.subjective_intensity);
+                assert_eq!(frame.acoustic.nsgt_power, reference.acoustic.nsgt_power);
+                assert_eq!(
+                    frame.acoustic.subjective_intensity,
+                    reference.acoustic.subjective_intensity
+                );
                 assert_eq!(frame.ecology.spectral_history.is_some(), index >= 3);
                 if let Some(history) = frame.ecology.spectral_history {
                     assert_eq!(
@@ -746,7 +762,7 @@ mod tests {
                 fs as u32,
                 hop,
                 512,
-                reference.last().space.clone(),
+                reference.last().acoustic.space.clone(),
                 crate::temporal_cognition::observation::Options {
                     deterministic: true,
                     ..Default::default()
@@ -851,7 +867,14 @@ mod tests {
             for _ in 0..4 {
                 stream.process(&tone);
             }
-            assert!(stream.last().nsgt_power.iter().any(|power| *power > 0.0));
+            assert!(
+                stream
+                    .last()
+                    .acoustic
+                    .nsgt_power
+                    .iter()
+                    .any(|power| *power > 0.0)
+            );
 
             let (hop_tx, hop_rx) = crate::handoff::unbounded();
             let (result_tx, result_rx) = crate::handoff::unbounded();
@@ -884,7 +907,14 @@ mod tests {
             if ordered {
                 let (frame_id, frame) = result_rx.recv().unwrap();
                 assert_eq!(frame_id, 0);
-                assert!(frame.unwrap().nsgt_power.iter().any(|&power| power > 0.0));
+                assert!(
+                    frame
+                        .unwrap()
+                        .acoustic
+                        .nsgt_power
+                        .iter()
+                        .any(|&power| power > 0.0)
+                );
             }
             let (gap_id, invalidated) = result_rx.recv().unwrap();
             assert_eq!(gap_id, 2);
@@ -893,7 +923,7 @@ mod tests {
                 let (frame_id, frame) = result_rx.recv().unwrap();
                 assert_eq!(frame_id, 5);
                 let frame = frame.unwrap();
-                assert!(frame.nsgt_power.iter().all(|power| *power == 0.0));
+                assert!(frame.acoustic.nsgt_power.iter().all(|power| *power == 0.0));
                 assert!(
                     frame.ecology.loo[0]
                         .h_scan
@@ -1036,7 +1066,7 @@ mod tests {
                 assert_eq!(f.ecology.loo.len(), 1);
                 assert_eq!(
                     f.ecology.loo[0].onset_habituation_end,
-                    f.onset_habituation_end
+                    f.acoustic.onset_habituation_end
                 );
                 restored |= id > 46;
             }
@@ -1152,7 +1182,7 @@ mod tests {
                     .collect();
                 let mut frame = reference.process(&removed).clone();
                 frame.recompute_consonance(&params);
-                expected.push(active.then_some(frame.consonance_field_score));
+                expected.push(active.then_some(frame.acoustic.consonance_field_score));
                 tx.send((id as u64, mix, active.then(|| packet(7, 2, &own))))
                     .unwrap();
             }
@@ -1235,10 +1265,13 @@ mod tests {
         assert_eq!((observation.id, observation.generation), (7, 2));
         let mut expected = reference.last().clone();
         expected.recompute_consonance(&params);
-        assert!(expected.harmonicity01.iter().any(|h| *h > 0.));
-        assert_eq!(observation.h_scan, expected.harmonicity01);
-        assert_eq!(observation.r_scan, expected.roughness01);
-        assert_eq!(&*observation.score_scan, &expected.consonance_field_score);
+        assert!(expected.acoustic.harmonicity01.iter().any(|h| *h > 0.));
+        assert_eq!(observation.h_scan, expected.acoustic.harmonicity01);
+        assert_eq!(observation.r_scan, expected.acoustic.roughness01);
+        assert_eq!(
+            &*observation.score_scan,
+            &expected.acoustic.consonance_field_score
+        );
     }
 
     #[test]
@@ -1299,18 +1332,21 @@ mod tests {
                 fresh.recompute_consonance(&params);
                 if id == 12 {
                     assert_ne!(
-                        frame.consonance_field_score, stale.consonance_field_score,
+                        frame.acoustic.consonance_field_score,
+                        stale.acoustic.consonance_field_score,
                         "fixture must distinguish the old exclusion history"
                     );
                     assert_ne!(
-                        frame.consonance_field_score, fresh.consonance_field_score,
+                        frame.acoustic.consonance_field_score,
+                        fresh.acoustic.consonance_field_score,
                         "fixture must distinguish a zero-history birth"
                     );
                 }
             }
-            expected.push(
-                (id >= 2).then_some((if id < 12 { 2 } else { 3 }, frame.consonance_field_score)),
-            );
+            expected.push((id >= 2).then_some((
+                if id < 12 { 2 } else { 3 },
+                frame.acoustic.consonance_field_score,
+            )));
             mixed.process(&mix);
             tx.send((
                 id as u64,

@@ -13,13 +13,13 @@ use std::sync::Arc;
 
 fn fixture() -> Landscape {
     let mut l = Landscape::new(Log2Space::new(110.0, 880.0, 96));
-    l.subjective_intensity[l.space.nearest_index(220.0)] = 1.0;
-    l.subjective_intensity[l.space.nearest_index(330.0)] = 0.7;
-    l.loudness_exp = 0.23;
-    let density = l.subjective_intensity.clone();
+    l.acoustic.subjective_intensity[l.acoustic.space.nearest_index(220.0)] = 1.0;
+    l.acoustic.subjective_intensity[l.acoustic.space.nearest_index(330.0)] = 0.7;
+    l.acoustic.loudness_exp = 0.23;
+    let density = l.acoustic.subjective_intensity.clone();
     let score = recompute_loo_score_scan(&l, &density, &mut None);
-    l.consonance_field_score.clone_from(&score);
-    l.consonance_field_score_eff = score;
+    l.acoustic.consonance_field_score.clone_from(&score);
+    l.acoustic.consonance_field_score_eff = score;
     l
 }
 
@@ -27,12 +27,12 @@ fn fixture() -> Landscape {
 fn zero_self_preserves_observed_field() {
     let l = fixture();
     let mut input = LooInput {
-        own_power_scan: vec![0.0; l.space.n_bins()],
-        other_power_scan: vec![1.0; l.space.n_bins()],
+        own_power_scan: vec![0.0; l.acoustic.space.n_bins()],
+        other_power_scan: vec![1.0; l.acoustic.space.n_bins()],
         ..Default::default()
     };
     assert!(approx_loo_score_scan(&l, &mut input, &mut None).is_none());
-    for &p in &l.space.centers_log2 {
+    for &p in &l.acoustic.space.centers_log2 {
         assert_eq!(
             sample_consonance_score_with_loo(
                 p,
@@ -52,8 +52,8 @@ fn zero_self_preserves_observed_field() {
 #[test]
 fn shared_unison_leaves_other_voice_power() {
     let l = fixture();
-    let n = l.space.n_bins();
-    let idx = l.space.nearest_index(220.0);
+    let n = l.acoustic.space.n_bins();
+    let idx = l.acoustic.space.nearest_index(220.0);
     let mut own = vec![0.0; n];
     own[idx] = 1.0;
     let mut total = vec![0.0; n];
@@ -64,8 +64,8 @@ fn shared_unison_leaves_other_voice_power() {
         ..Default::default()
     };
     let actual = approx_loo_score_scan(&l, &mut input, &mut None).unwrap();
-    let mut residual = l.subjective_intensity.clone();
-    residual[idx] *= 0.75f32.powf(l.loudness_exp);
+    let mut residual = l.acoustic.subjective_intensity.clone();
+    residual[idx] *= 0.75f32.powf(l.acoustic.loudness_exp);
     assert!(residual[idx] > 0.0);
     let expected = recompute_loo_score_scan(&l, &residual, &mut None);
     assert_eq!(&*actual, expected.as_slice());
@@ -83,10 +83,10 @@ fn shared_unison_leaves_other_voice_power() {
 #[test]
 fn isolated_fundamental_matches_exact_ranks_and_adoption() {
     let mut l = fixture();
-    l.perc_habituation_state_scan.fill(0.35);
-    let n = l.space.n_bins();
-    let idx = l.space.nearest_index(220.0);
-    let current = l.space.centers_log2[idx];
+    l.acoustic.perc_habituation_state_scan.fill(0.35);
+    let n = l.acoustic.space.n_bins();
+    let idx = l.acoustic.space.nearest_index(220.0);
+    let current = l.acoustic.space.centers_log2[idx];
     let mut own = vec![0.0; n];
     own[idx] = 1.0;
     let mut input = LooInput {
@@ -109,7 +109,8 @@ fn isolated_fundamental_matches_exact_ranks_and_adoption() {
     b.set_reference_loo_mode(ReferenceLooMode::ExactScan);
     let mut perceptual = AdaptationContext::from_config(&Default::default(), n);
     perceptual.set_enabled(false);
-    let features = FeaturesNow::from_occupancy_scan(&l.space, &l.subjective_intensity);
+    let features =
+        FeaturesNow::from_occupancy_scan(&l.acoustic.space, &l.acoustic.subjective_intensity);
     for seed in 0..64 {
         let mut ra = SmallRng::seed_from_u64(seed);
         let mut rb = ra.clone();
@@ -155,7 +156,7 @@ fn ownership_scan_boundary_is_checked() {
 #[test]
 fn exact_missing_fundamental_retains_previous_approximate_fallback() {
     let mut l = Landscape::new(Log2Space::new(110.0, 880.0, 96));
-    l.consonance_field_score_eff.fill(1.0);
+    l.acoustic.consonance_field_score_eff.fill(1.0);
     let current = 220.0f32.log2();
     assert!(
         exact_loo_consonance_score_scan(&l, current, true, ReferenceLooMode::ExactScan, &mut None)
@@ -190,7 +191,7 @@ fn exact_missing_fundamental_retains_previous_approximate_fallback() {
 fn other_ownership_scan_boundary_is_checked() {
     let l = fixture();
     let mut input = LooInput {
-        own_power_scan: vec![0.0; l.space.n_bins()],
+        own_power_scan: vec![0.0; l.acoustic.space.n_bins()],
         ..Default::default()
     };
     approx_loo_score_scan(&l, &mut input, &mut None);
@@ -199,8 +200,8 @@ fn other_ownership_scan_boundary_is_checked() {
 #[test]
 fn merged_residual_returns_to_external_projection_and_conserves_mass() {
     let l = fixture();
-    let n = l.space.n_bins();
-    let idx = l.space.nearest_index(220.0);
+    let n = l.acoustic.space.n_bins();
+    let idx = l.acoustic.space.nearest_index(220.0);
     let mut input = LooInput {
         own_power_scan: vec![0.; n],
         other_power_scan: vec![0.; n],
@@ -211,24 +212,24 @@ fn merged_residual_returns_to_external_projection_and_conserves_mass() {
     input.other_power_scan[idx + 2] = 3.;
     let mut scratch = None;
     let cache = prepare_loo_scratch(&l, &mut scratch);
-    let mut density = l.subjective_intensity.clone();
+    let mut density = l.acoustic.subjective_intensity.clone();
     assert!(redistribute_loo_density(&l, &input, cache, &mut density));
     assert_eq!(density[idx], 0.);
     let mass = |i| density[i] as f64 * cache.potentials.du[i] as f64;
-    let expected = l.subjective_intensity[idx] as f64
+    let expected = l.acoustic.subjective_intensity[idx] as f64
         * cache.potentials.du[idx] as f64
-        * 0.8_f64.powf(l.loudness_exp as f64);
+        * 0.8_f64.powf(l.acoustic.loudness_exp as f64);
     assert!((mass(idx + 1) + mass(idx + 2) - expected).abs() < expected * f32::EPSILON as f64);
     assert!((mass(idx + 2) / mass(idx + 1) - 3.).abs() < 3. * f32::EPSILON as f64);
-    let far = l.space.nearest_index(330.);
-    assert_eq!(density[far], l.subjective_intensity[far]);
+    let far = l.acoustic.space.nearest_index(330.);
+    assert_eq!(density[far], l.acoustic.subjective_intensity[far]);
 }
 
 #[test]
 fn quiet_external_power_survives_unison_and_neighbour_removal() {
     let l = fixture();
-    let n = l.space.n_bins();
-    let idx = l.space.nearest_index(220.0);
+    let n = l.acoustic.space.n_bins();
+    let idx = l.acoustic.space.nearest_index(220.0);
     let mut scratch = None;
     let cache = prepare_loo_scratch(&l, &mut scratch);
     for external in [idx, idx + 1] {
@@ -240,7 +241,7 @@ fn quiet_external_power_survives_unison_and_neighbour_removal() {
         input.own_power_scan[idx] = 1.;
         input.other_power_scan[external] = 1e-30;
         assert_eq!(1_f64 + input.other_power_scan[external], 1.);
-        let mut density = l.subjective_intensity.clone();
+        let mut density = l.acoustic.subjective_intensity.clone();
         redistribute_loo_density(&l, &input, cache, &mut density);
         assert!(density[external] > 0.);
     }
@@ -249,17 +250,17 @@ fn quiet_external_power_survives_unison_and_neighbour_removal() {
 #[test]
 fn density_floor_silences_both_potentials_on_reference_and_loo_paths() {
     let mut l = fixture();
-    l.subjective_intensity.fill(0.);
-    let idx = l.space.nearest_index(220.);
+    l.acoustic.subjective_intensity.fill(0.);
+    let idx = l.acoustic.space.nearest_index(220.);
     let mut scratch = None;
     let cache = prepare_loo_scratch(&l, &mut scratch);
-    let eps = l.roughness_ref_eps.max(1e-12);
-    l.subjective_intensity[idx] = eps / (2. * cache.potentials.du[idx]);
-    let score = recompute_loo_score_scan(&l, &l.subjective_intensity, &mut scratch);
+    let eps = l.acoustic.roughness_ref_eps.max(1e-12);
+    l.acoustic.subjective_intensity[idx] = eps / (2. * cache.potentials.du[idx]);
+    let score = recompute_loo_score_scan(&l, &l.acoustic.subjective_intensity, &mut scratch);
     assert!(
         score
             .iter()
-            .all(|s| *s == l.consonance_kernel.score(0., 0.))
+            .all(|s| *s == l.acoustic.consonance_kernel.score(0., 0.))
     );
     let cache = scratch.as_mut().unwrap();
     assert!(cache.h.iter().chain(&cache.r).all(|v| *v == 0.));
@@ -269,9 +270,9 @@ fn density_floor_silences_both_potentials_on_reference_and_loo_paths() {
 #[test]
 fn redistribution_steady_state_allocates_nothing() {
     let mut l = fixture();
-    l.nsgt_power = l.subjective_intensity.clone();
-    let n = l.space.n_bins();
-    let idx = l.space.nearest_index(220.);
+    l.acoustic.nsgt_power = l.acoustic.subjective_intensity.clone();
+    let n = l.acoustic.space.n_bins();
+    let idx = l.acoustic.space.nearest_index(220.);
     let mut input = LooInput {
         own_power_scan: vec![0.; n],
         other_power_scan: vec![0.; n],
@@ -281,11 +282,11 @@ fn redistribution_steady_state_allocates_nothing() {
     input.other_power_scan[idx + 2] = 0.3;
     let mut scratch = None;
     let cache = prepare_loo_scratch(&l, &mut scratch);
-    let mut density = l.subjective_intensity.clone();
+    let mut density = l.acoustic.subjective_intensity.clone();
     crate::runtime_profile::begin_allocations();
     let start = crate::clock::Instant::now();
     for _ in 0..300 {
-        density.copy_from_slice(&l.subjective_intensity);
+        density.copy_from_slice(&l.acoustic.subjective_intensity);
         std::hint::black_box(redistribute_loo_density(&l, &input, cache, &mut density));
     }
     let elapsed = start.elapsed();
@@ -349,7 +350,7 @@ fn rearticulation_candidate_view_preserves_holds_and_glides() {
 #[cfg(feature = "profile-alloc")]
 fn rearticulation_view_reuses_proposal_storage() {
     let mut land = Landscape::new(Log2Space::new(55., 8000., 96));
-    let n = land.space.n_bins();
+    let n = land.acoustic.space.n_bins();
     land.ecology
         .loo
         .push(crate::core::stream::loo::Observation {
@@ -380,7 +381,7 @@ fn rearticulation_view_reuses_proposal_storage() {
     crate::runtime_profile::begin_allocations();
     for _ in 0..128 {
         let scan = loo_score_scan(&land, &mut input);
-        std::hint::black_box(input.candidate_scan(&land.space, 8.1, scan.as_deref()));
+        std::hint::black_box(input.candidate_scan(&land.acoustic.space, 8.1, scan.as_deref()));
     }
     let counts = crate::runtime_profile::finish_allocations().unwrap();
     assert_eq!(counts.count, 0);
@@ -398,8 +399,8 @@ fn harmonic_opportunity_uses_the_same_separate_pitch_view() {
     };
     for opportunity in [false, true] {
         let mut land = Landscape::new(Log2Space::new(55., 2000., 96));
-        let n = land.space.n_bins();
-        land.roughness01.fill(0.2);
+        let n = land.acoustic.space.n_bins();
+        land.acoustic.roughness01.fill(0.2);
         let external: Arc<[f32]> = vec![0.; n].into();
         land.ecology
             .loo
@@ -478,8 +479,8 @@ fn tail_roughness_aversion_interpolates_r_without_changing_h_or_shared_observati
     use crate::core::consonance_kernel::ConsonanceKernel;
     for (external, mixed) in [(0.1, 0.9), (0.8, 0.2), (0.4, 0.4)] {
         let mut land = Landscape::new(Log2Space::new(55., 8000., 96));
-        let n = land.space.n_bins();
-        land.roughness01.fill(mixed);
+        let n = land.acoustic.space.n_bins();
+        land.acoustic.roughness01.fill(mixed);
         // Read R directly through the actual field path, then check the full kernel.
         for kernel in [
             ConsonanceKernel {
@@ -490,7 +491,7 @@ fn tail_roughness_aversion_interpolates_r_without_changing_h_or_shared_observati
             },
             ConsonanceKernel::default(),
         ] {
-            land.consonance_kernel = kernel;
+            land.acoustic.consonance_kernel = kernel;
             land.ecology.loo = vec![crate::core::stream::loo::Observation {
                 support: None,
                 id: 1,
@@ -520,7 +521,7 @@ fn tail_roughness_aversion_interpolates_r_without_changing_h_or_shared_observati
                 });
                 let external_scan = loo_score_scan(&land, &mut input).unwrap();
                 let actual = input
-                    .candidate_scan(&land.space, 8.1, Some(&external_scan))
+                    .candidate_scan(&land.acoustic.space, 8.1, Some(&external_scan))
                     .unwrap()[0];
                 let r = if weight == 0. {
                     external

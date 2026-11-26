@@ -81,7 +81,7 @@ pub(super) fn build_analysis_runtime_core(
     let nsgt = RtNsgtKernelLog2::with_config(nsgt_kernel.clone(), RtConfig::default());
     let hop_duration = Duration::from_secs_f32(hop as f32 / fs);
     let mut landscape = Landscape::new(nsgt.space().clone());
-    landscape.consonance_representation = lparams.consonance_representation;
+    landscape.acoustic.consonance_representation = lparams.consonance_representation;
     let dorsal = DorsalStream::new(fs);
 
     AnalysisRuntimeCore {
@@ -703,7 +703,7 @@ pub(super) fn prepare_runtime(
                     Action::PlaceFlora {
                         spec, extent_hz, ..
                     } => crate::life::flora::harmonic_source_bound(
-                        &landscape.space,
+                        &landscape.acoustic.space,
                         *extent_hz,
                         spec.residual,
                     ),

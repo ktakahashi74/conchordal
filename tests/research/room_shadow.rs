@@ -29,7 +29,7 @@ impl Reading {
             h: HabituationField::new(
                 &core.lparams.habituation,
                 core.lparams.consonance_representation.theta,
-                core.landscape.space.n_bins(),
+                core.landscape.acoustic.space.n_bins(),
             ),
             observers: BTreeMap::new(),
             last_peak: None,
@@ -43,12 +43,13 @@ impl Reading {
     fn advance_mix(&mut self, pcm: &[f32], params: &LandscapeParams, dt: f32) {
         let land = self.mix.process(pcm);
         self.h.advance_from_channels(
-            &land.subjective_intensity,
-            &land.space,
+            &land.acoustic.subjective_intensity,
+            &land.acoustic.space,
             &params.harmonicity_kernel.params,
             dt,
         );
         let (bin, &amp) = land
+            .acoustic
             .subjective_intensity
             .iter()
             .enumerate()
@@ -156,7 +157,7 @@ impl Shadow {
                     ])
                 })
                 .collect();
-            std::fs::write(PathBuf::from(std::env::var("ROOM_OUTPUT").unwrap()).join("speed.json"),json!({"hops":self.end/mix.len() as u64,"bins_per_oct":self.readings[0].mix.last().space.bins_per_oct,"dry_wet":stats}).to_string()).unwrap();
+            std::fs::write(PathBuf::from(std::env::var("ROOM_OUTPUT").unwrap()).join("speed.json"),json!({"hops":self.end/mix.len() as u64,"bins_per_oct":self.readings[0].mix.last().acoustic.space.bins_per_oct,"dry_wet":stats}).to_string()).unwrap();
         }
     }
 
@@ -171,7 +172,7 @@ impl Shadow {
             [obs.h_scan, obs.r_scan]
         });
         let live = &self.readings[self.wet_live];
-        assert_eq!(live.h.state(), land.perc_habituation_state_scan);
+        assert_eq!(live.h.state(), land.acoustic.perc_habituation_state_scan);
         let native = land
             .ecology
             .loo

@@ -19,8 +19,8 @@ fn hr2_production_bank_and_new_input_bands() {
         assert_eq!(centers.len(), 198);
         assert_eq!(centers[0].as_f64().unwrap() as f32, 14.574448_f32);
         assert_eq!(centers[197].as_f64().unwrap() as f32, 12889.027_f32);
-        assert_eq!(stream.last().space.n_bins(), 892);
-        let (_, du) = erb_grid(&stream.last().space);
+        assert_eq!(stream.last().acoustic.space.n_bins(), 892);
+        let (_, du) = erb_grid(&stream.last().acoustic.space);
         let mut observed = 0;
         let mut centroid_sum = 0.0;
         let mut min_mass = f32::INFINITY;
@@ -40,7 +40,7 @@ fn hr2_production_bank_and_new_input_bands() {
             }
             let diagnostic = stream.aud_m1_shadow_diagnostic();
             let landscape = stream.last();
-            let density = &landscape.subjective_intensity;
+            let density = &landscape.acoustic.subjective_intensity;
             assert!(density.iter().all(|x| x.is_finite() && *x >= 0.0));
             let mass: f32 = density.iter().zip(&du).map(|(d, w)| d * w).sum();
             assert!(
@@ -51,7 +51,7 @@ fn hr2_production_bank_and_new_input_bands() {
             let centroid = density
                 .iter()
                 .zip(&du)
-                .zip(&landscape.space.centers_hz)
+                .zip(&landscape.acoustic.space.centers_hz)
                 .map(|((d, w), hz)| d * w * hz)
                 .sum::<f32>()
                 / mass;
@@ -84,8 +84,8 @@ fn hr2_production_bank_and_new_input_bands() {
                     if !hz.is_finite() || hz <= 0.0 || power.as_f64().unwrap() <= 0.0 {
                         return None;
                     }
-                    let position = ((hz.log2() - landscape.space.centers_log2[0])
-                        / landscape.space.step())
+                    let position = ((hz.log2() - landscape.acoustic.space.centers_log2[0])
+                        / landscape.acoustic.space.step())
                     .clamp(0.0, (du.len() - 1) as f32);
                     let lo = position.floor() as usize;
                     let hi = (lo + 1).min(du.len() - 1);
@@ -145,12 +145,21 @@ fn hr2_flora_uses_full_low_and_high_fields() {
         let landscape = &field;
         let after = serde_json::to_value(flora.report(1.25, landscape)).unwrap();
         let (lo, hi) = landscape
+            .acoustic
             .space
             .bin_range_of_freqs(extent.0, extent.1)
             .unwrap();
         assert!(lo < hi);
-        assert!(landscape.harmonicity01[lo..=hi].iter().any(|x| *x > 0.0));
-        assert!(landscape.roughness01[lo..=hi].iter().any(|x| *x > 0.0));
+        assert!(
+            landscape.acoustic.harmonicity01[lo..=hi]
+                .iter()
+                .any(|x| *x > 0.0)
+        );
+        assert!(
+            landscape.acoustic.roughness01[lo..=hi]
+                .iter()
+                .any(|x| *x > 0.0)
+        );
         assert_ne!(before["growth_level_scan"], after["growth_level_scan"]);
         assert_ne!(
             before["harmonicity_state_scan"],
@@ -158,11 +167,11 @@ fn hr2_flora_uses_full_low_and_high_fields() {
         );
         assert_eq!(
             after["growth_level_scan"],
-            serde_json::to_value(&landscape.consonance_field_level).unwrap()
+            serde_json::to_value(&landscape.acoustic.consonance_field_level).unwrap()
         );
         assert_eq!(
             after["harmonicity_state_scan"],
-            serde_json::to_value(&landscape.harmonicity01).unwrap()
+            serde_json::to_value(&landscape.acoustic.harmonicity01).unwrap()
         );
     }
 }

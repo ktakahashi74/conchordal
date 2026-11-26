@@ -488,13 +488,13 @@ fn at_seek_can_adopt_a_target_from_its_initial_pitch() {
     use crate::core::modulation::NeuralRhythms;
 
     let mut landscape = Landscape::new(Log2Space::new(55.0, 4000.0, 64));
-    landscape.subjective_intensity.fill(1.0);
-    let target = landscape.space.index_of_freq(330.0).unwrap();
+    landscape.acoustic.subjective_intensity.fill(1.0);
+    let target = landscape.acoustic.space.index_of_freq(330.0).unwrap();
     for idx in target - 1..=target + 1 {
-        landscape.consonance_field_score[idx] = 1.0;
-        landscape.consonance_field_level[idx] = 1.0;
-        landscape.consonance_field_score_eff[idx] = 1.0;
-        landscape.consonance_field_level_eff[idx] = 1.0;
+        landscape.acoustic.consonance_field_score[idx] = 1.0;
+        landscape.acoustic.consonance_field_level[idx] = 1.0;
+        landscape.acoustic.consonance_field_score_eff[idx] = 1.0;
+        landscape.acoustic.consonance_field_level_eff[idx] = 1.0;
     }
     for (chain, moves) in [(".seek_consonance()", true), ("", false)] {
         let (scenario, _) =

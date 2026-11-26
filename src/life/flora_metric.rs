@@ -980,8 +980,8 @@ mod tests {
                 );
                 assert_eq!(unconfirmed.pace, unknown.pace);
                 let mut landscape = Landscape::new(unconfirmed.space.clone());
-                landscape.consonance_field_level.fill(0.7);
-                landscape.harmonicity01.fill(0.4);
+                landscape.acoustic.consonance_field_level.fill(0.7);
+                landscape.acoustic.harmonicity01.fill(0.4);
                 unconfirmed.external_observed_frame = Some(0);
                 unknown.external_observed_frame = Some(0);
                 unconfirmed.advance(&landscape);

@@ -264,7 +264,7 @@ impl PitchHillClimbPitchCore {
         melodic: Option<crate::life::melodic_continuity::Snapshot>,
         mut scorer: impl FnMut(f32) -> f32,
     ) -> Result<TargetProposal, &'static str> {
-        let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
+        let (fmin, fmax) = landscape.acoustic.space.voice_pitch_bounds_log2();
         let current_target_log2 = current_target_log2.clamp(fmin, fmax);
         let melodic_bounds = melodic.map(|m| (m.bounds.0.max(fmin), m.bounds.1.min(fmax)));
         if melodic_bounds.is_some_and(|(lo, hi)| lo > hi) {
@@ -432,7 +432,7 @@ impl PitchHillClimbPitchCore {
                     .as_deref()
                     .filter(|_| self.leave_self_out),
             ),
-            landscape.consonance_representation,
+            landscape.acoustic.consonance_representation,
             self.leave_self_out,
         );
         let mut current_target_log2 = current_target_log2;
@@ -606,8 +606,11 @@ impl PitchCore for PitchHillClimbPitchCore {
                 leave_self_out,
                 reference_loo_mode,
                 reference_harmonics,
-                self.loo_input
-                    .candidate_scan(&landscape.space, pitch_log2, loo_scan.as_deref()),
+                self.loo_input.candidate_scan(
+                    &landscape.acoustic.space,
+                    pitch_log2,
+                    loo_scan.as_deref(),
+                ),
                 body_ratios.as_deref(),
                 crowding_strength,
                 crowding_sigma_cents,

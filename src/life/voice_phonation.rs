@@ -429,7 +429,7 @@ impl Voice {
         if self.participation_pitch.adopted {
             self.participation_pitch.application =
                 select_pitch_application(&self.effective_control.pitch, None);
-            self.select_adoption_application(&landscape.space, previous);
+            self.select_adoption_application(&landscape.acoustic.space, previous);
             if (self.participation_pitch.adoption_application == PitchApplyMode::Rearticulate
                 || self.sustain_participation)
                 && (self.defers_participation_pitch()

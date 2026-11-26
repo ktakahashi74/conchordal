@@ -12,7 +12,7 @@ pub(super) fn cents_to_log2(cents: f32) -> f32 {
 }
 
 pub(super) fn window_bins_from_cents(landscape: &Landscape, cents: f32) -> usize {
-    let step = landscape.space.step().max(1e-6);
+    let step = landscape.acoustic.space.step().max(1e-6);
     let span_log2 = cents_to_log2(cents.max(0.0));
     (span_log2 / step).ceil() as usize
 }
@@ -27,18 +27,22 @@ pub(super) fn top_local_peaks(
     scored: &mut Vec<(f32, f32)>,
     out: &mut Vec<f32>,
 ) {
-    let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
-    let n_bins = landscape.space.n_bins();
+    let (fmin, fmax) = landscape.acoustic.space.voice_pitch_bounds_log2();
+    let n_bins = landscape.acoustic.space.n_bins();
     if n_bins == 0 {
         return;
     }
     let clamped_target = current_target_log2.clamp(fmin, fmax);
-    let idx0 = landscape.space.index_of_log2(clamped_target).unwrap_or(0);
+    let idx0 = landscape
+        .acoustic
+        .space
+        .index_of_log2(clamped_target)
+        .unwrap_or(0);
     let start = idx0.saturating_sub(window_bins);
     let end = idx0.saturating_add(window_bins).min(n_bins - 1);
     scored.clear();
     for idx in start..=end {
-        let pitch = landscape.space.centers_log2[idx];
+        let pitch = landscape.acoustic.space.centers_log2[idx];
         if pitch < fmin || pitch > fmax {
             continue;
         }
@@ -61,13 +65,13 @@ pub(super) fn top_global_peaks(
     scored: &mut Vec<(f32, f32)>,
     out: &mut Vec<f32>,
 ) {
-    let n_bins = landscape.space.n_bins();
+    let n_bins = landscape.acoustic.space.n_bins();
     if n_bins == 0 || top_k == 0 {
         return;
     }
-    let (fmin, fmax) = landscape.space.voice_pitch_bounds_log2();
+    let (fmin, fmax) = landscape.acoustic.space.voice_pitch_bounds_log2();
     scored.clear();
-    for &pitch in &landscape.space.centers_log2 {
+    for &pitch in &landscape.acoustic.space.centers_log2 {
         if pitch < fmin || pitch > fmax {
             continue;
         }

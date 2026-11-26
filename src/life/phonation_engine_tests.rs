@@ -2678,8 +2678,8 @@ fn span_exit_integrates_between_candidates_and_cancels_exactly_one_pending_off()
     );
     engine.sustain_participation = true;
     let mut frame = crate::core::landscape::Landscape::default();
-    frame.onset_habituation_state_scan = vec![1.0; frame.space.n_bins()].into();
-    frame.onset_habituation_known = true;
+    frame.acoustic.onset_habituation_state_scan = vec![1.0; frame.acoustic.space.n_bins()].into();
+    frame.acoustic.onset_habituation_known = true;
     let mut gap = SpanGap::new(1.0, 21, 2, 0, 48000.0, 440.0);
     gap.observe(&frame, 0);
     gap.advance(0, false);

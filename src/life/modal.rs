@@ -196,7 +196,7 @@ impl SoundBodyFactory for ModalBodyFactory {
     fn build(&self, input: &SoundBodyBuildInput<'_>, rng: &mut SmallRng) -> AnySoundBody {
         let fallback_space;
         let eval_space = if let Some(frame) = input.landscape {
-            &frame.space
+            &frame.acoustic.space
         } else {
             fallback_space = crate::core::log2space::production_space(input.fs as u32)
                 .expect("validated production sample rate");

@@ -20,38 +20,50 @@ fn landscape_scans_match_space_bins() {
     let scans: [(&str, &[f32]); 16] = [
         (
             "consonance_field_score_eff",
-            &landscape.consonance_field_score_eff,
+            &landscape.acoustic.consonance_field_score_eff,
         ),
         (
             "consonance_field_level_eff",
-            &landscape.consonance_field_level_eff,
+            &landscape.acoustic.consonance_field_level_eff,
         ),
         (
             "consonance_density_mass_eff",
-            &landscape.consonance_density_mass_eff,
+            &landscape.acoustic.consonance_density_mass_eff,
         ),
         (
             "perc_habituation_state_scan",
-            &landscape.perc_habituation_state_scan,
+            &landscape.acoustic.perc_habituation_state_scan,
         ),
-        ("roughness", &landscape.roughness),
-        ("roughness_shape_raw", &landscape.roughness_shape_raw),
-        ("roughness01", &landscape.roughness01),
-        ("harmonicity", &landscape.harmonicity),
-        ("harmonicity01", &landscape.harmonicity01),
-        ("consonance_field_score", &landscape.consonance_field_score),
-        ("consonance_field_level", &landscape.consonance_field_level),
+        ("roughness", &landscape.acoustic.roughness),
+        (
+            "roughness_shape_raw",
+            &landscape.acoustic.roughness_shape_raw,
+        ),
+        ("roughness01", &landscape.acoustic.roughness01),
+        ("harmonicity", &landscape.acoustic.harmonicity),
+        ("harmonicity01", &landscape.acoustic.harmonicity01),
+        (
+            "consonance_field_score",
+            &landscape.acoustic.consonance_field_score,
+        ),
+        (
+            "consonance_field_level",
+            &landscape.acoustic.consonance_field_level,
+        ),
         (
             "consonance_density_mass",
-            &landscape.consonance_density_mass,
+            &landscape.acoustic.consonance_density_mass,
         ),
-        ("consonance_density", &landscape.consonance_density),
+        ("consonance_density", &landscape.acoustic.consonance_density),
         (
             "consonance_field_energy",
-            &landscape.consonance_field_energy,
+            &landscape.acoustic.consonance_field_energy,
         ),
-        ("subjective_intensity", &landscape.subjective_intensity),
-        ("nsgt_power", &landscape.nsgt_power),
+        (
+            "subjective_intensity",
+            &landscape.acoustic.subjective_intensity,
+        ),
+        ("nsgt_power", &landscape.acoustic.nsgt_power),
     ];
 
     assert!(n > 0, "space must have bins for this test to mean anything");

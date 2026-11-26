@@ -191,6 +191,22 @@ Conchordal は `origin/main`（`dee5a91d`）時点で `src/` **181,191 行**・R
 - `src/core/landscape.rs` と `temporal_cognition::harmonic_relations` が互いに依存する点。`harmonic_relations` は分類 D（12/25 の後に再判定）なので、再判定の後に扱う。
 - 身体の二つのモデルの統一。これは設計が要るので、簡素化の期間の整理には入れない。
 
+### 追補：S2-c と S3-a の残り（2026-11-27）
+
+**2026-11-27 完了（SIMP-S2C2、SIMP-S3A2）**。作者の指示（11-26「指示書をやって」）で、手順のうち実装が届いていなかった S2-c と S3-a を進めた。commit は `99eb51cb`（S2C2）と、その上の `b73cb46e`（S3A2）。記録は `.orchestration/units/SIMP-S2C2/`、`SIMP-S3A2/`。
+- **S2-c（SIMP-S2C2）**：本番の構造体と関数に入ったテスト専用のコードを、テスト用のモジュールへ移した。指示書とレビューが挙げた9ファイルで、`cfg(test)` の行は 120 から 82 になった。
+  - 残る 82 は、テストが描画や学習の途中の値を読むためのフィールド、カウンタ、分岐と、テスト用モジュールの宣言である。外すには、途中の値を外へ渡す hook と記録先を足すことになるので残した。項目ごとの理由は同じ記録の報告にある。
+  - 同じ種類のものは、ほかの約 70 ファイルにもある（報告の末尾の一覧）。ファイルに次に手を入れるときに見る。
+- **S3-a（SIMP-S3A2）**：`Landscape` の音響場の 32 フィールドを `AcousticField`（`landscape.acoustic`）にまとめた。`pitch_objective_mode`（評価の設定）と `rhythm`（時間の変調）は `Landscape` に残した。`pub` だったフィールドのうち `tests/` が読まない 11 個を crate の中に絞った。
+  - 解析の結果の取り込み（`src/runtime/analysis_sync.rs`）は、音響場を束ごとに移し、worker が持つ値（慣れの状態、`consonance_theta`、`loudness_exp`）と格子だけを引き継ぐ形にした。UI の複製も束ごとにした。観測（`EcologyViews`）と和声拡張（`HarmonicExtensions`）は、場所に固有の値と worker の設定を含むので、これまでどおり項目ごとに移す。
+  - ブラウザー版 GUI の受け渡しの型も同じ入れ子にし、`serde(flatten)` で packet の header の階層を保った。header の JSON の中のキーの順は変わる。
+- **S3-b は、分類 D の隔離の単位に回した。** Voice と Flora の support と harmony の状態は、分類 D-2（和声拡張の生成側）に属する。D-2 は beta デモの公開と 12/25 の後に `research` へ隔離すると決まっている（同じ日の分類 D の決定）。いま `Option` に変えると、隔離のときに作り直すことになる。
+
+**受入の記録**。
+- 21 曲の WAV が、既定ビルドと research ビルドの両方で `6137ae87` の基準と一致した。各単位と載せ直しの後に worker が照合し、`b73cb46e` で統括が走らせ直した。
+- `b73cb46e` で、`just test` は 1,662 件、`cargo test --features research` は 1,906 件、`cargo test --features profile-alloc --lib` は 1,598 件通過した（定常 hop の確保0の検査を含む）。clippy は両方のビルドで通過し、ブラウザー版 GUI の check も通った。
+- `src/` の行数は 182,056 から 182,636 になった（S2-c で −9、S3-a で +589）。S3-a の増分の多くは、`.acoustic` を挟んだ参照の rustfmt による改行である。`src/` 全体の `cfg(test)` の行は 632 から 594 になった。
+
 ---
 
 ## 2. 並行トラック：マニフェスト1周年改訂（Unit M1〜M5、〜2026-12-25）

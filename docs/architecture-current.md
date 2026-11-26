@@ -1,6 +1,6 @@
 # Conchordal 現行アーキテクチャ正本
 
-基準 revision は `561957ee`（2026-11-23、設計レビュー後の整理 SIMP-R1〜R4 の時点）。`src/` は計 182,054 行 / 376 `.rs` ファイル。
+基準 revision は `b73cb46e`（2026-11-27、指示書 S2-c・S3-a の残りの整理の時点）。`src/` は計 182,636 行 / 378 `.rs` ファイル。
 
 本書は「いま動いている楽器」の構造を示す。設計経緯・陰性結果・詳細検証の記録は歴史アーカイブ（`docs/design-notes/technote-ledger.ja.md`、`docs/design-notes/dcc-neurocognitive-hierarchy.md`）に収録する。
 
@@ -68,18 +68,18 @@ Voice の身体は `SoundBodyFactory` が構築し、`SoundBody` が自己モデ
 
 | モジュール | 総行数 | 責務 | 現在の主な課題 |
 |---|---:|---|---|
-| `src/life/` | 75,790 | Voice・Flora・Rain・Community・発音・レンダラ | 群管理の `community.rs`（2,249 行）と、ルーティング・捕捉の `schedule_renderer.rs`（3,666 行）の規模。テスト専用のコードが本番の構造体と関数に残る |
-| `src/core/` | 35,156 | 聴覚前段・R/H/C・NSGT・慣れ・拍・LOO・部屋 | `Landscape` は観測と和声拡張をサブ構造体化。音響場のフィールドは `Landscape` に平らなまま残る。`landscape.rs` と `temporal_cognition::harmonic_relations` が互いに依存する |
+| `src/life/` | 76,030 | Voice・Flora・Rain・Community・発音・レンダラ | 群管理の `community.rs`（2,253 行）と、ルーティング・捕捉の `schedule_renderer.rs`（3,664 行）の規模。テストが途中の値を読むためのフィールドとカウンタが本番の構造体に残る |
+| `src/core/` | 35,368 | 聴覚前段・R/H/C・NSGT・慣れ・拍・LOO・部屋 | `Landscape` は音響場（`AcousticField`）・観測（`EcologyViews`）・和声拡張（`HarmonicExtensions`）の3つの束を持つ。`landscape.rs` と `temporal_cognition::harmonic_relations` が互いに依存する（分類 D-2 の隔離で外す予定） |
 | `src/temporal_cognition/` | 23,490 | 筋・群・身体観測・到着・和声時間関係・opt-in T2 | 研究専用16サブモジュール（43ファイル）を `research` feature へ隔離済み（既定は `harmonic_relations` のみ） |
 | `src/scripting/` | 19,374 | Rhai エンジン・172 文書エントリ・型定義/ドキュメント自動生成 | 関数の登録は持ち主ごとに分割済み（`scripting/engine/`）。既定 0 の候補層（分類 D）は 12/25 改訂後に再判定 |
-| `src/runtime/` | 14,560 | スレッド配線・worker loop・`StepEngine`・予約・監視 | `WorkerState` はサブ構造体に集約済み。段の関数と research の port は、いまも `WorkerState` の全体を受け取る |
-| `src/ui/` | 2,751 | egui 描画・UI モデル | — |
-| `src/listener_twin/` | 2,300 | 提示専用聴き手モデル・E0 予測 | — |
+| `src/runtime/` | 14,638 | スレッド配線・worker loop・`StepEngine`・予約・監視 | `WorkerState` はサブ構造体に集約済み。段の関数と research の port は、いまも `WorkerState` の全体を受け取る |
+| `src/ui/` | 2,752 | egui 描画・UI モデル | — |
+| `src/listener_twin/` | 2,328 | 提示専用聴き手モデル・E0 予測 | — |
 | `src/audio/` | 1,636 | cpal 出力・Limiter・WAV ライタ・復旧 | — |
 | `src/scenario/` + `src/scenario.rs` | 2,324 | シナリオ IR・制御設定・ライフサイクル設定 | — |
 | `src/synth/` | 948 | モーダル共振器バンク・モード表 | — |
 | `src/bin/` | 130 | オフライン WAV レンダラ・Rhai 定義生成の入口 | — |
-| `src/` 直下の残り | 3,595 | 楽器の入口・UI 契約・TOML 設定・クロック・handoff | `config.rs` の研究 opt-in 11項目は `research` feature へ隔離済み |
+| `src/` 直下の残り | 3,618 | 楽器の入口・UI 契約・TOML 設定・クロック・handoff | `config.rs` の研究 opt-in 11項目は `research` feature へ隔離済み |
 
 ---
 

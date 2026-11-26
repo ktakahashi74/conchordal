@@ -13,12 +13,8 @@ mod room_buses;
 mod site_tests;
 #[cfg(test)]
 mod strict_tests;
-#[cfg(test)]
-use crate::config::RoomMode;
 use crate::core::modulation::NeuralRhythms;
 use crate::core::room::RoomStream;
-#[cfg(test)]
-use crate::core::room::york_response;
 use crate::core::temporal_expectation::{AcousticTemporalExpectation, OwnSoundHistory};
 use crate::core::timebase::{Tick, Timebase};
 use crate::life::own_sequence::{ExecutionKind, ExecutionRecord};
@@ -357,12 +353,6 @@ impl ScheduleRenderer {
         self
     }
 
-    #[cfg(test)]
-    pub(crate) fn with_prototype(mut self, prototype: bool) -> Self {
-        self.prototype = RenderPrototype::from_enabled(prototype);
-        self
-    }
-
     /// Copy only one actor's current sounding state for an offline forward model.
     /// The caller must resume at the next unrendered tick. Future commands and rhythm
     /// changes are supplied explicitly, never borrowed from other actors' state.
@@ -400,32 +390,6 @@ impl ScheduleRenderer {
             })
             .collect();
         fork
-    }
-
-    #[cfg(all(test, feature = "native", feature = "loo-diagnostic"))]
-    #[cfg(feature = "research")]
-    pub(crate) fn oracle_readers(
-        &self,
-        live: &std::collections::BTreeSet<(u64, u32)>,
-        sources: &[SourcePcm],
-        now: Tick,
-    ) -> [usize; 6] {
-        use std::collections::BTreeSet;
-        let retiring = crate::runtime::room_performance::oracle::retiring(live, now);
-        let dorsal: BTreeSet<_> = self
-            .self_sound
-            .iter()
-            .flatten()
-            .map(|s| (s.source_id, s.generation))
-            .collect();
-        [
-            live.len(),
-            retiring,
-            dorsal.len(),
-            self.loo_pcm.len(),
-            sources.len(),
-            self.room.as_ref().unwrap().counts().active - 3,
-        ]
     }
 
     pub(crate) fn prepare_self_sound(
@@ -520,11 +484,6 @@ impl ScheduleRenderer {
                 self.self_sound.iter().flatten().any(|s| s.site_id == id)
             });
         }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn habitat_output(&self) -> &[f32] {
-        &self.buf_habitat
     }
 
     pub(crate) fn self_sound_history(
@@ -1442,6 +1401,45 @@ pub(crate) fn modal_phase_seed(a: u64, b: u64, c: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::RoomMode;
+    use crate::core::room::york_response;
+
+    impl ScheduleRenderer {
+        pub(crate) fn with_prototype(mut self, prototype: bool) -> Self {
+            self.prototype = RenderPrototype::from_enabled(prototype);
+            self
+        }
+
+        #[cfg(all(feature = "native", feature = "loo-diagnostic", feature = "research"))]
+        pub(crate) fn oracle_readers(
+            &self,
+            live: &std::collections::BTreeSet<(u64, u32)>,
+            sources: &[SourcePcm],
+            now: Tick,
+        ) -> [usize; 6] {
+            use std::collections::BTreeSet;
+            let retiring = crate::runtime::room_performance::oracle::retiring(live, now);
+            let dorsal: BTreeSet<_> = self
+                .self_sound
+                .iter()
+                .flatten()
+                .map(|s| (s.source_id, s.generation))
+                .collect();
+            [
+                live.len(),
+                retiring,
+                dorsal.len(),
+                self.loo_pcm.len(),
+                sources.len(),
+                self.room.as_ref().unwrap().counts().active - 3,
+            ]
+        }
+
+        pub(crate) fn habitat_output(&self) -> &[f32] {
+            &self.buf_habitat
+        }
+    }
+
     use crate::life::phonation_engine::{OnsetKick, ToneUpdate};
     use crate::life::sound::{BodyKind, BodySnapshot, RenderModulatorSpec, default_release_ticks};
     use crate::life::voice::{PhonationBatch, ToneSpec};

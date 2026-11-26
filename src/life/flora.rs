@@ -1,8 +1,6 @@
 //! Per-instance field dynamics and cell-based stochastic additive synthesis.
 
 use std::f32::consts::PI;
-#[cfg(test)]
-use std::f32::consts::TAU;
 use std::ops::Range;
 
 use serde::Serialize;

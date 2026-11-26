@@ -3,6 +3,7 @@ use crate::core::stream::{
     analysis::AnalysisStream,
     loo::{FloraObservation, Observer, SourceKind},
 };
+use std::f32::consts::TAU;
 
 #[test]
 fn heard_resource_unknown_hold_geometry_and_fixed_reference() {

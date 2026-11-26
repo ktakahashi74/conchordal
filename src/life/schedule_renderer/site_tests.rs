@@ -1,5 +1,10 @@
 use super::*;
-use crate::core::{landscape::Landscape, log2space::Log2Space, room::york_right_response};
+use crate::config::RoomMode;
+use crate::core::{
+    landscape::Landscape,
+    log2space::Log2Space,
+    room::{york_response, york_right_response},
+};
 use crate::life::{
     flora::Flora,
     rain::Rain,

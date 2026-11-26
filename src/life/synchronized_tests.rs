@@ -1,5 +1,6 @@
 use super::*;
 use crate::scenario::control::BodyMethod;
+use crate::scenario::control::ControlUpdate;
 use crate::scenario::{
     CoupledTimingSpec, DurationSpec, PhonationSpec, PhonationTiming, RhythmRelation,
 };

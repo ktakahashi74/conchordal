@@ -1,9 +1,10 @@
 //! B-1 PCM self-removal reference, ported to the current runtime and three LOO methods.
 //! PCM consumer checks replace the obsolete T-31 score snapshots.
+use super::scoring::test_support::approx_loo_score_scan;
 use super::scoring::{
-    ReferenceLooMode, approx_loo_score_scan, exact_loo_consonance_score_scan,
-    legacy_sample_consonance_score_with_loo, loo_score_scan, recompute_loo_score_scan,
-    sample_consonance_score_with_loo, sample_ownership_score,
+    ReferenceLooMode, exact_loo_consonance_score_scan, legacy_sample_consonance_score_with_loo,
+    loo_score_scan, recompute_loo_score_scan, sample_consonance_score_with_loo,
+    sample_ownership_score,
 };
 use super::{LooInput, PitchCore, PitchHillClimbPitchCore, RearticulationView, TargetProposal};
 use crate::config::AppConfig;

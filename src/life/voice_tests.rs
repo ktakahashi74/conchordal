@@ -1,4 +1,5 @@
 use super::*;
+use crate::scenario::control::ControlUpdate;
 
 fn test_voice() -> Voice {
     Voice::spawn_from_control(
@@ -608,5 +609,24 @@ mod expression_release_tests {
                 .iter()
                 .all(|cmd| !matches!(cmd, ToneCmd::On { .. }))
         );
+    }
+}
+
+impl Voice {
+    pub(crate) fn set_accumulated_time_for_test(&mut self, value: f32) {
+        self.pitch_ctl.set_accumulated_time_for_test(value);
+    }
+
+    pub(crate) fn pitch_core_for_test(&self) -> &AnyPitchCore {
+        self.pitch_ctl.core_for_test()
+    }
+
+    pub(crate) fn accumulated_time_for_test(&self) -> f32 {
+        self.pitch_ctl.accumulated_time_for_test()
+    }
+
+    pub(crate) fn set_theta_phase_state_for_test(&mut self, last_phase: f32, initialized: bool) {
+        self.pitch_ctl
+            .set_theta_phase_state_for_test(last_phase, initialized);
     }
 }

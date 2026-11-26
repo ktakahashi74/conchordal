@@ -1,4 +1,5 @@
 use super::*;
+use crate::scenario::control::ControlUpdate;
 
 fn setup(hop: usize, entrain: bool) -> (Voice, Timebase, NeuralRhythms, PhonationBatch) {
     let mut control = VoiceControl::default();

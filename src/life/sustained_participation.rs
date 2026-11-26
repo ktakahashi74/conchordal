@@ -221,6 +221,7 @@ impl Voice {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scenario::control::ControlUpdate;
     use crate::scenario::{DurationConfig, OnsetConfig, PhonationClockConfig, PhonationConfig};
     fn setup(entrain: bool) -> (Voice, Timebase, NeuralRhythms, PhonationBatch) {
         let mut control = VoiceControl::default();

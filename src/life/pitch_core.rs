@@ -1,7 +1,5 @@
 use crate::core::landscape::Landscape;
 use crate::life::adaptation::{AdaptationContext, FeaturesNow};
-#[cfg(test)]
-use crate::scenario::control::MoveCostTimeScale;
 use crate::scenario::control::{PitchControl, PitchCoreKind};
 use rand::Rng;
 use std::sync::Arc;
@@ -17,7 +15,7 @@ mod scoring;
 
 pub use hill_climb::PitchHillClimbPitchCore;
 #[cfg(test)]
-pub(crate) use hill_climb::aud_m1_hill_choice;
+pub(crate) use hill_climb::test_support::aud_m1_hill_choice;
 pub use peak_sampler::PitchPeakSamplerCore;
 pub(super) use scoring::RearticulationView;
 pub(crate) use scoring::{LooInput, fill_occupancy_scan};
@@ -349,79 +347,6 @@ fn apply_peak_sampler_control(core: &mut PitchPeakSamplerCore, pitch: &PitchCont
     }
     if let Some(count) = pitch.random_candidates {
         core.set_random_candidates(count);
-    }
-}
-
-#[cfg(test)]
-impl AnyPitchCore {
-    pub(crate) fn leave_self_out_for_test(&self) -> bool {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.leave_self_out,
-            AnyPitchCore::PitchPeakSampler(core) => core.leave_self_out,
-        }
-    }
-
-    pub(crate) fn move_cost_coeff_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.move_cost_coeff,
-            AnyPitchCore::PitchPeakSampler(_) => 0.0,
-        }
-    }
-
-    pub(crate) fn proposal_interval_sec_for_test(&self) -> Option<f32> {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.proposal_interval_sec,
-            AnyPitchCore::PitchPeakSampler(_) => None,
-        }
-    }
-
-    pub(crate) fn global_peak_count_for_test(&self) -> usize {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.global_peak_count,
-            AnyPitchCore::PitchPeakSampler(_) => 0,
-        }
-    }
-
-    pub(crate) fn ratio_candidate_count_for_test(&self) -> usize {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.ratio_candidate_count,
-            AnyPitchCore::PitchPeakSampler(_) => 0,
-        }
-    }
-
-    pub(crate) fn use_ratio_candidates_for_test(&self) -> bool {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.use_ratio_candidates,
-            AnyPitchCore::PitchPeakSampler(_) => false,
-        }
-    }
-
-    pub(crate) fn move_cost_time_scale_for_test(&self) -> MoveCostTimeScale {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.move_cost_time_scale,
-            AnyPitchCore::PitchPeakSampler(_) => MoveCostTimeScale::LegacyIntegrationWindow,
-        }
-    }
-
-    pub(crate) fn crowding_strength_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.crowding_strength,
-            AnyPitchCore::PitchPeakSampler(core) => core.crowding_strength,
-        }
-    }
-
-    pub(crate) fn crowding_sigma_cents_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.crowding_sigma_cents,
-            AnyPitchCore::PitchPeakSampler(core) => core.crowding_sigma_cents,
-        }
-    }
-
-    pub(crate) fn temperature_for_test(&self) -> f32 {
-        match self {
-            AnyPitchCore::PitchHillClimb(core) => core.temperature,
-            AnyPitchCore::PitchPeakSampler(core) => core.temperature,
-        }
     }
 }
 

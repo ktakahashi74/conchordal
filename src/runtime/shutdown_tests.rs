@@ -1998,7 +1998,7 @@ fn harmonic_observer_reservation_cost() {
             "follow_harmonic_relations(0.8)",
             "follow_harmonic_relations(0)",
         );
-    let (wiring, _, dir, _output) = fixture(opts, &source);
+    let (wiring, _, _dir, _output) = fixture(opts, &source);
     join(wiring).unwrap();
     let inputs = Arc::try_unwrap(inputs).unwrap().into_inner().unwrap();
     let max_own = inputs.iter().map(|(_, s)| s.len()).max().unwrap();

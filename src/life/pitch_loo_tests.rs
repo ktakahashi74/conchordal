@@ -1,7 +1,8 @@
+use super::scoring::test_support::{approx_loo_score_scan, redistribute_loo_density};
 use super::scoring::{
-    ReferenceLooMode, approx_loo_score_scan, exact_loo_consonance_score_scan,
-    legacy_sample_consonance_score_with_loo, loo_score_scan, prepare_loo_scratch,
-    recompute_loo_score_scan, redistribute_loo_density, sample_consonance_score_with_loo,
+    ReferenceLooMode, exact_loo_consonance_score_scan, legacy_sample_consonance_score_with_loo,
+    loo_score_scan, prepare_loo_scratch, recompute_loo_score_scan,
+    sample_consonance_score_with_loo,
 };
 use super::{LooInput, PitchCore, PitchHillClimbPitchCore, RearticulationView};
 use crate::core::landscape::Landscape;

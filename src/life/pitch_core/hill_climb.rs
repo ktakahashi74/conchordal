@@ -6,8 +6,6 @@ use super::candidates::{
 };
 #[cfg(feature = "loo-diagnostic")]
 use super::diagnostic;
-#[cfg(test)]
-use super::scoring::sample_ownership_score;
 use super::scoring::{
     DEFAULT_LOO_HARMONICS, DEFAULT_MOVE_COST_COEFF, DEFAULT_MOVE_COST_EXP, LooInput,
     ReferenceLooMode, adjusted_pitch_score_impl, loo_score_scan,
@@ -150,11 +148,6 @@ impl PitchHillClimbPitchCore {
 
     pub fn set_leave_self_out(&mut self, enabled: bool) {
         self.leave_self_out = enabled;
-    }
-
-    #[cfg(test)]
-    pub(super) fn set_reference_loo_mode(&mut self, mode: ReferenceLooMode) {
-        self.reference_loo_mode = mode;
     }
 
     pub fn set_neighbor_step_cents(&mut self, value: f32) {
@@ -431,7 +424,7 @@ impl PitchHillClimbPitchCore {
             scored,
             current_target_log2,
             current_adjusted,
-            sample_ownership_score(
+            super::scoring::sample_ownership_score(
                 landscape,
                 current_pitch_log2,
                 self.loo_input
@@ -715,32 +708,5 @@ impl PitchCore for PitchHillClimbPitchCore {
 }
 
 #[cfg(test)]
-pub(crate) fn aud_m1_hill_choice(
-    landscape: &Landscape,
-    anchor: f32,
-    neighbors: &[f32],
-) -> (f32, f32) {
-    use rand::SeedableRng;
-    let mut core = PitchHillClimbPitchCore::new(landscape.space.step() * 1200.0, anchor, 0.0);
-    core.set_global_peaks(8, 20.0);
-    core.set_ratio_candidates(true, 20);
-    core.move_cost_coeff = 0.0;
-    let choice = core
-        .propose_with_scorer(
-            anchor,
-            anchor,
-            landscape,
-            neighbors,
-            &mut rand::rngs::SmallRng::seed_from_u64(719),
-            |p| landscape.evaluate_pitch_score_log2(p),
-        )
-        .target_pitch_log2;
-    let mut ranked = core.scratch.borrow().scored.clone();
-    ranked.sort_unstable_by(|a, b| b.1.total_cmp(&a.1));
-    let margin = if ranked.len() > 1 {
-        ranked[0].1 - ranked[1].1
-    } else {
-        f32::INFINITY
-    };
-    (choice, margin)
-}
+#[path = "hill_climb/test_support.rs"]
+pub(super) mod test_support;

@@ -1,6 +1,7 @@
 use super::*;
 use crate::core::meter::{MeterBand, MeterState};
 use crate::life::phonation_engine::CandidatePoint;
+use std::f32::consts::TAU;
 
 #[test]
 fn rearticulate_holds_tonal_frequency_through_tracking_replacement_and_tail() {

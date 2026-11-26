@@ -213,36 +213,6 @@ impl OscillatorBank {
         })
     }
 
-    #[cfg(test)]
-    pub(super) fn set_render_cost_oracle(&mut self, enabled: bool) {
-        self.render_cost_oracle = enabled;
-    }
-
-    #[cfg(test)]
-    pub(super) fn assert_render_state_bits(&self, other: &Self) {
-        for (a, b) in [
-            (&self.freq_mul, &other.freq_mul),
-            (&self.base_gain, &other.base_gain),
-            (&self.damp_exp, &other.damp_exp),
-            (&self.x, &other.x),
-            (&self.y, &other.y),
-            (&self.rot_c, &other.rot_c),
-            (&self.rot_s, &other.rot_s),
-            (&self.gain_mask, &other.gain_mask),
-        ] {
-            assert_eq!(
-                a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
-                b.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
-            );
-        }
-        let mut a = self.clone();
-        let mut b = other.clone();
-        a.render_cost_oracle = false;
-        b.render_cost_oracle = false;
-        // Debug uses round-trip representations for the remaining finite scalars.
-        assert_eq!(format!("{a:?}"), format!("{b:?}"));
-    }
-
     pub fn is_sine(&self) -> bool {
         matches!(self.profile, OscillatorProfile::Sine)
     }
@@ -384,30 +354,6 @@ impl OscillatorBank {
         self.last_modes_len
     }
 
-    #[cfg(test)]
-    pub fn rebuild_count(&self) -> usize {
-        self.rebuild_count
-    }
-
-    #[cfg(test)]
-    pub fn motion_refresh_count(&self) -> usize {
-        self.motion_refresh_count
-    }
-
-    #[cfg(all(test, feature = "research"))]
-    pub(super) fn spectral_state_for_test(&self) -> (f32, &[f32]) {
-        (self.spectral_env, &self.gain_mask)
-    }
-
-    #[cfg(test)]
-    pub(super) fn excitation_gain_for_test(&self) -> f32 {
-        if self.is_sine() {
-            1.0
-        } else {
-            1.0 + 0.25 * self.drive_env
-        }
-    }
-
     fn apply_phase_seed_if_needed(&mut self) {
         let Some(mut state) = self.pending_phase_seed.take() else {
             return;
@@ -515,64 +461,6 @@ impl OscillatorBank {
             let dphi = TAU * freq_hz / self.fs;
             self.rot_c[idx] = dphi.cos();
             self.rot_s[idx] = dphi.sin();
-            self.gain_mask[idx] = self.base_gain[idx];
-            self.last_modes_len += 1;
-            self.active_lane_len = idx + 1;
-        }
-        for idx in culled_from..self.lane_len_real {
-            self.gain_mask[idx] = 0.0;
-        }
-        for idx in self.lane_len_real..self.lane_len_simd {
-            self.rot_c[idx] = 1.0;
-            self.rot_s[idx] = 0.0;
-            self.gain_mask[idx] = 0.0;
-        }
-
-        self.apply_phase_seed_if_needed();
-        // Newly unculled lanes must be corrected before they rotate again.
-        if nominal_pitch_hz.to_bits() != self.last_built_pitch_hz.to_bits() {
-            self.norm_counter = 0;
-        }
-        self.last_built_pitch_hz = nominal_pitch_hz;
-    }
-
-    #[cfg(test)]
-    fn refresh_pitch_state_oracle(&mut self, nominal_pitch_hz: f32) {
-        #[cfg(test)]
-        {
-            self.rebuild_count = self.rebuild_count.saturating_add(1);
-        }
-
-        if !nominal_pitch_hz.is_finite() || nominal_pitch_hz <= 0.0 {
-            self.gain_mask.fill(0.0);
-            self.active_lane_len = 0;
-            self.last_modes_len = 0;
-            self.last_built_pitch_hz = nominal_pitch_hz;
-            return;
-        }
-
-        if nominal_pitch_hz.to_bits() != self.last_built_pitch_hz.to_bits() {
-            self.motion_block = None;
-        }
-        let max_freq_hz = (self.fs * 0.49).max(1.0);
-
-        self.active_lane_len = 0;
-        self.last_modes_len = 0;
-        let mut culled_from = self.lane_len_real;
-        for idx in 0..self.lane_len_real {
-            let freq_hz = nominal_pitch_hz * self.freq_mul[idx];
-            let is_active = freq_hz.is_finite() && freq_hz > 0.0 && freq_hz <= max_freq_hz;
-            if !is_active {
-                culled_from = idx;
-                break;
-            }
-
-            // The motion refresh owns these rotations even between pitch refreshes.
-            if !self.moving {
-                let dphi = TAU * freq_hz / self.fs;
-                self.rot_c[idx] = dphi.cos();
-                self.rot_s[idx] = dphi.sin();
-            }
             self.gain_mask[idx] = self.base_gain[idx];
             self.last_modes_len += 1;
             self.active_lane_len = idx + 1;
@@ -718,22 +606,6 @@ impl OscillatorBank {
         }
     }
 
-    /// Per-lane reference for the rotation kernel.
-    #[cfg(test)]
-    fn process_sample_basic(&mut self) -> f32 {
-        let mut out = 0.0;
-        for idx in 0..self.active_lane_len {
-            let (x0, y0) = (self.x[idx], self.y[idx]);
-            let (c, s) = (self.rot_c[idx], self.rot_s[idx]);
-            let x1 = c * x0 - s * y0;
-            let y1 = s * x0 + c * y0;
-            self.x[idx] = x1;
-            self.y[idx] = y1;
-            out += self.gain_mask[idx] * y1;
-        }
-        out
-    }
-
     /// Rotates every active lane once. Per-sample calls use the compile-time baseline
     /// level (SSE2, NEON), which needs no runtime dispatch. Without `mul_add`, every
     /// level matches `process_sample_basic` bit for bit.
@@ -859,58 +731,6 @@ impl OscillatorBank {
             add_vibrato_energy(amps, space, freq_hz, amp_scale * self.gain_mask[idx], depth);
         }
     }
-
-    #[cfg(test)]
-    fn render_block_for_test(
-        &mut self,
-        drive: &[f32],
-        ctrl: crate::life::sound::control::ToneControlBlock,
-        out: &mut [f32],
-        use_optimized: bool,
-    ) {
-        if out.is_empty() {
-            return;
-        }
-
-        for (idx, y) in out.iter_mut().enumerate() {
-            let pitch_hz = ctrl.pitch_hz.start + ctrl.pitch_hz.step * idx as f32;
-            let nominal_pitch_hz = if pitch_hz.is_finite() {
-                pitch_hz.max(1.0)
-            } else {
-                pitch_hz
-            };
-            let amp = ctrl.amp.start + ctrl.amp.step * idx as f32;
-            let drive_sample = drive.get(idx).copied().unwrap_or(0.0);
-            let refreshed =
-                self.pitch_counter == 0 || self.needs_pitch_state_refresh(nominal_pitch_hz);
-            if refreshed {
-                self.refresh_pitch_state(nominal_pitch_hz);
-            }
-            if self.moving {
-                self.refresh_motion_state(nominal_pitch_hz);
-            }
-            if self.spectral_damping_active {
-                self.advance_spectral_env(drive_sample);
-                if refreshed {
-                    self.apply_spectral_damping();
-                }
-            }
-
-            let sample = if use_optimized {
-                self.process_sample()
-            } else {
-                self.advance_norm_correction();
-                self.process_sample_basic()
-            };
-
-            if amp.is_finite() {
-                let drive_gain = self.excitation_gain(drive_sample);
-                *y += amp.max(0.0) * drive_gain * sample;
-            }
-
-            self.pitch_counter = (self.pitch_counter + 1) % PITCH_REFRESH_PERIOD_SAMPLES;
-        }
-    }
 }
 
 fn build_sine_lanes() -> (Vec<f32>, Vec<f32>, usize) {
@@ -985,6 +805,169 @@ pub(super) fn seeded_phase_state(state: &mut u64) -> [f32; 2] {
 mod tests {
     use super::*;
     use crate::life::sound::control::{ControlRamp, ToneControlBlock};
+
+    impl OscillatorBank {
+        pub(in crate::life::sound) fn set_render_cost_oracle(&mut self, enabled: bool) {
+            self.render_cost_oracle = enabled;
+        }
+
+        pub(in crate::life::sound) fn assert_render_state_bits(&self, other: &Self) {
+            for (a, b) in [
+                (&self.freq_mul, &other.freq_mul),
+                (&self.base_gain, &other.base_gain),
+                (&self.damp_exp, &other.damp_exp),
+                (&self.x, &other.x),
+                (&self.y, &other.y),
+                (&self.rot_c, &other.rot_c),
+                (&self.rot_s, &other.rot_s),
+                (&self.gain_mask, &other.gain_mask),
+            ] {
+                assert_eq!(
+                    a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+                    b.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
+                );
+            }
+            let mut a = self.clone();
+            let mut b = other.clone();
+            a.render_cost_oracle = false;
+            b.render_cost_oracle = false;
+            // Debug uses round-trip representations for the remaining finite scalars.
+            assert_eq!(format!("{a:?}"), format!("{b:?}"));
+        }
+
+        #[cfg(feature = "research")]
+        pub(in crate::life::sound) fn spectral_state_for_test(&self) -> (f32, &[f32]) {
+            (self.spectral_env, &self.gain_mask)
+        }
+
+        pub(in crate::life::sound) fn excitation_gain_for_test(&self) -> f32 {
+            if self.is_sine() {
+                1.0
+            } else {
+                1.0 + 0.25 * self.drive_env
+            }
+        }
+
+        pub(super) fn refresh_pitch_state_oracle(&mut self, nominal_pitch_hz: f32) {
+            self.rebuild_count = self.rebuild_count.saturating_add(1);
+
+            if !nominal_pitch_hz.is_finite() || nominal_pitch_hz <= 0.0 {
+                self.gain_mask.fill(0.0);
+                self.active_lane_len = 0;
+                self.last_modes_len = 0;
+                self.last_built_pitch_hz = nominal_pitch_hz;
+                return;
+            }
+
+            if nominal_pitch_hz.to_bits() != self.last_built_pitch_hz.to_bits() {
+                self.motion_block = None;
+            }
+            let max_freq_hz = (self.fs * 0.49).max(1.0);
+
+            self.active_lane_len = 0;
+            self.last_modes_len = 0;
+            let mut culled_from = self.lane_len_real;
+            for idx in 0..self.lane_len_real {
+                let freq_hz = nominal_pitch_hz * self.freq_mul[idx];
+                let is_active = freq_hz.is_finite() && freq_hz > 0.0 && freq_hz <= max_freq_hz;
+                if !is_active {
+                    culled_from = idx;
+                    break;
+                }
+
+                // The motion refresh owns these rotations even between pitch refreshes.
+                if !self.moving {
+                    let dphi = TAU * freq_hz / self.fs;
+                    self.rot_c[idx] = dphi.cos();
+                    self.rot_s[idx] = dphi.sin();
+                }
+                self.gain_mask[idx] = self.base_gain[idx];
+                self.last_modes_len += 1;
+                self.active_lane_len = idx + 1;
+            }
+            for idx in culled_from..self.lane_len_real {
+                self.gain_mask[idx] = 0.0;
+            }
+            for idx in self.lane_len_real..self.lane_len_simd {
+                self.rot_c[idx] = 1.0;
+                self.rot_s[idx] = 0.0;
+                self.gain_mask[idx] = 0.0;
+            }
+
+            self.apply_phase_seed_if_needed();
+            // Newly unculled lanes must be corrected before they rotate again.
+            if nominal_pitch_hz.to_bits() != self.last_built_pitch_hz.to_bits() {
+                self.norm_counter = 0;
+            }
+            self.last_built_pitch_hz = nominal_pitch_hz;
+        }
+
+        /// Per-lane reference for the rotation kernel.
+        fn process_sample_basic(&mut self) -> f32 {
+            let mut out = 0.0;
+            for idx in 0..self.active_lane_len {
+                let (x0, y0) = (self.x[idx], self.y[idx]);
+                let (c, s) = (self.rot_c[idx], self.rot_s[idx]);
+                let x1 = c * x0 - s * y0;
+                let y1 = s * x0 + c * y0;
+                self.x[idx] = x1;
+                self.y[idx] = y1;
+                out += self.gain_mask[idx] * y1;
+            }
+            out
+        }
+
+        fn render_block_for_test(
+            &mut self,
+            drive: &[f32],
+            ctrl: crate::life::sound::control::ToneControlBlock,
+            out: &mut [f32],
+            use_optimized: bool,
+        ) {
+            if out.is_empty() {
+                return;
+            }
+
+            for (idx, y) in out.iter_mut().enumerate() {
+                let pitch_hz = ctrl.pitch_hz.start + ctrl.pitch_hz.step * idx as f32;
+                let nominal_pitch_hz = if pitch_hz.is_finite() {
+                    pitch_hz.max(1.0)
+                } else {
+                    pitch_hz
+                };
+                let amp = ctrl.amp.start + ctrl.amp.step * idx as f32;
+                let drive_sample = drive.get(idx).copied().unwrap_or(0.0);
+                let refreshed =
+                    self.pitch_counter == 0 || self.needs_pitch_state_refresh(nominal_pitch_hz);
+                if refreshed {
+                    self.refresh_pitch_state(nominal_pitch_hz);
+                }
+                if self.moving {
+                    self.refresh_motion_state(nominal_pitch_hz);
+                }
+                if self.spectral_damping_active {
+                    self.advance_spectral_env(drive_sample);
+                    if refreshed {
+                        self.apply_spectral_damping();
+                    }
+                }
+
+                let sample = if use_optimized {
+                    self.process_sample()
+                } else {
+                    self.advance_norm_correction();
+                    self.process_sample_basic()
+                };
+
+                if amp.is_finite() {
+                    let drive_gain = self.excitation_gain(drive_sample);
+                    *y += amp.max(0.0) * drive_gain * sample;
+                }
+
+                self.pitch_counter = (self.pitch_counter + 1) % PITCH_REFRESH_PERIOD_SAMPLES;
+            }
+        }
+    }
 
     fn harmonic_snapshot(motion: f32) -> BodySnapshot {
         BodySnapshot {
@@ -1331,7 +1314,7 @@ mod tests {
             },
             &mut out,
         );
-        assert_eq!(backend.rebuild_count(), 1);
+        assert_eq!(backend.rebuild_count, 1);
     }
 
     #[test]
@@ -1353,7 +1336,7 @@ mod tests {
             },
             &mut out,
         );
-        assert_eq!(backend.rebuild_count(), 1);
+        assert_eq!(backend.rebuild_count, 1);
     }
 
     #[test]
@@ -1375,7 +1358,7 @@ mod tests {
             },
             &mut out,
         );
-        assert_eq!(backend.rebuild_count(), 2);
+        assert_eq!(backend.rebuild_count, 2);
     }
 
     #[test]
@@ -1397,7 +1380,7 @@ mod tests {
             },
             &mut out,
         );
-        assert_eq!(backend.motion_refresh_count(), 2);
+        assert_eq!(backend.motion_refresh_count, 2);
     }
 
     #[test]
@@ -1510,7 +1493,7 @@ mod tests {
         let mut out = [0.0f32; 1];
         backend.render_block(&[0.0], ctrl_a, &mut out);
         backend.render_block(&[0.0], ctrl_b, &mut out);
-        assert_eq!(backend.rebuild_count(), 2);
+        assert_eq!(backend.rebuild_count, 2);
     }
 
     #[test]
@@ -1554,7 +1537,7 @@ mod tests {
         let mut out = [0.0f32; 1];
         backend.render_block(&[0.0], ctrl, &mut out);
         backend.render_block(&[0.0], ctrl, &mut out);
-        assert_eq!(backend.rebuild_count(), 1);
+        assert_eq!(backend.rebuild_count, 1);
         assert_eq!(backend.active_lane_len, 0);
     }
 

@@ -18,6 +18,7 @@ pub(crate) struct DeferredPitch {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::life::voice::voice_control::Dirty;
     use rand::SeedableRng;
 
     fn produced_melodic(intervals: &[i32]) -> crate::life::melodic_continuity::MelodicContinuity {

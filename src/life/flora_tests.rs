@@ -2,6 +2,7 @@ use super::synth::{noise_draw, random_unit};
 use super::*;
 use crate::core::float::unit_gaussian;
 use crate::scenario::control::Routing;
+use std::f32::consts::TAU;
 
 fn spec() -> FloraSpec {
     FloraSpec {

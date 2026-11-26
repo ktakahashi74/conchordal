@@ -4,19 +4,175 @@ use super::candidates::{
 };
 use super::scoring::{
     DEFAULT_LOO_HARMONICS, DEFAULT_MOVE_COST_COEFF, DEFAULT_MOVE_COST_EXP,
-    EXACT_LOO_ROUGHNESS_ERB_STEP, ReferenceLooMode, adjusted_pitch_score,
-    adjusted_pitch_score_with_loo_harmonics, exact_loo_consonance_score_scan,
-    legacy_sample_consonance_score_with_loo, sample_consonance_score_with_loo,
+    EXACT_LOO_ROUGHNESS_ERB_STEP, ReferenceLooMode, adjusted_pitch_score_impl,
+    exact_loo_consonance_score_scan, legacy_sample_consonance_score_with_loo,
+    sample_consonance_score_with_loo,
 };
-use super::{PitchCore, PitchHillClimbPitchCore, PitchPeakSamplerCore};
+use super::{AnyPitchCore, PitchCore, PitchHillClimbPitchCore, PitchPeakSamplerCore};
 use crate::core::harmonicity_kernel::HarmonicityKernel;
 use crate::core::landscape::Landscape;
 use crate::core::log2space::Log2Space;
 use crate::core::psycho_state::roughness_ratio_to_state01;
 use crate::core::roughness_kernel::RoughnessKernel;
 use crate::life::adaptation::{AdaptationConfig, AdaptationContext, FeaturesNow};
+use crate::scenario::control::MoveCostTimeScale;
 use rand::{RngExt, SeedableRng, rngs::SmallRng};
 use std::sync::Arc;
+
+impl AnyPitchCore {
+    pub(crate) fn leave_self_out_for_test(&self) -> bool {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.leave_self_out,
+            AnyPitchCore::PitchPeakSampler(core) => core.leave_self_out,
+        }
+    }
+
+    pub(crate) fn move_cost_coeff_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.move_cost_coeff,
+            AnyPitchCore::PitchPeakSampler(_) => 0.0,
+        }
+    }
+
+    pub(crate) fn proposal_interval_sec_for_test(&self) -> Option<f32> {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.proposal_interval_sec,
+            AnyPitchCore::PitchPeakSampler(_) => None,
+        }
+    }
+
+    pub(crate) fn global_peak_count_for_test(&self) -> usize {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.global_peak_count,
+            AnyPitchCore::PitchPeakSampler(_) => 0,
+        }
+    }
+
+    pub(crate) fn ratio_candidate_count_for_test(&self) -> usize {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.ratio_candidate_count,
+            AnyPitchCore::PitchPeakSampler(_) => 0,
+        }
+    }
+
+    pub(crate) fn use_ratio_candidates_for_test(&self) -> bool {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.use_ratio_candidates,
+            AnyPitchCore::PitchPeakSampler(_) => false,
+        }
+    }
+
+    pub(crate) fn move_cost_time_scale_for_test(&self) -> MoveCostTimeScale {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.move_cost_time_scale,
+            AnyPitchCore::PitchPeakSampler(_) => MoveCostTimeScale::LegacyIntegrationWindow,
+        }
+    }
+
+    pub(crate) fn crowding_strength_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.crowding_strength,
+            AnyPitchCore::PitchPeakSampler(core) => core.crowding_strength,
+        }
+    }
+
+    pub(crate) fn crowding_sigma_cents_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.crowding_sigma_cents,
+            AnyPitchCore::PitchPeakSampler(core) => core.crowding_sigma_cents,
+        }
+    }
+
+    pub(crate) fn temperature_for_test(&self) -> f32 {
+        match self {
+            AnyPitchCore::PitchHillClimb(core) => core.temperature,
+            AnyPitchCore::PitchPeakSampler(core) => core.temperature,
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn adjusted_pitch_score(
+    pitch_log2: f32,
+    current_pitch_log2: f32,
+    integration_window: f32,
+    tessitura_center: f32,
+    tessitura_gravity: f32,
+    landscape_weight: f32,
+    move_cost_coeff: f32,
+    move_cost_exp: u8,
+    landscape: &Landscape,
+    perceptual: &AdaptationContext,
+    leave_self_out: bool,
+    crowding_strength: f32,
+    crowding_sigma_cents: f32,
+    neighbor_pitch_log2: &[f32],
+    neighbor_salience: &[f32],
+) -> f32 {
+    adjusted_pitch_score_impl(
+        pitch_log2,
+        current_pitch_log2,
+        integration_window,
+        tessitura_center,
+        tessitura_gravity,
+        landscape_weight,
+        move_cost_coeff,
+        move_cost_exp,
+        landscape,
+        perceptual,
+        leave_self_out,
+        ReferenceLooMode::ApproxHarmonics,
+        DEFAULT_LOO_HARMONICS,
+        None,
+        None,
+        crowding_strength,
+        crowding_sigma_cents,
+        neighbor_pitch_log2,
+        neighbor_salience,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn adjusted_pitch_score_with_loo_harmonics(
+    pitch_log2: f32,
+    current_pitch_log2: f32,
+    integration_window: f32,
+    tessitura_center: f32,
+    tessitura_gravity: f32,
+    landscape_weight: f32,
+    move_cost_coeff: f32,
+    move_cost_exp: u8,
+    landscape: &Landscape,
+    perceptual: &AdaptationContext,
+    leave_self_out: bool,
+    reference_harmonics: u8,
+    crowding_strength: f32,
+    crowding_sigma_cents: f32,
+    neighbor_pitch_log2: &[f32],
+    neighbor_salience: &[f32],
+) -> f32 {
+    adjusted_pitch_score_impl(
+        pitch_log2,
+        current_pitch_log2,
+        integration_window,
+        tessitura_center,
+        tessitura_gravity,
+        landscape_weight,
+        move_cost_coeff,
+        move_cost_exp,
+        landscape,
+        perceptual,
+        leave_self_out,
+        ReferenceLooMode::ApproxHarmonics,
+        reference_harmonics,
+        None,
+        None,
+        crowding_strength,
+        crowding_sigma_cents,
+        neighbor_pitch_log2,
+        neighbor_salience,
+    )
+}
 
 fn melodic_snapshot(xs: &[f64]) -> crate::life::melodic_continuity::Snapshot {
     let mut prefix = crate::life::melodic_continuity::Prefix::default();

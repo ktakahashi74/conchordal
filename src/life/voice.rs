@@ -10,8 +10,6 @@ use crate::life::phonation_engine::{
 };
 pub use crate::life::phrase_boundary::PhraseTone;
 use crate::life::sound::{BodySnapshot, RenderModulatorSpec};
-#[cfg(test)]
-use crate::scenario::control::ControlUpdate;
 use crate::scenario::control::{
     BodyMethod, PhonationGate, PitchApplyMode, PitchMode, VoiceControl,
 };
@@ -20,8 +18,6 @@ use crate::scenario::{
     ArticulationCoreConfig, PhonationMode, PhonationTimingUpdateKind, VoiceSpec,
 };
 use rand::SeedableRng;
-#[cfg(test)]
-use voice_control::Dirty;
 use voice_phonation::{onset_distance_cents, select_pitch_application};
 use voice_render::TrackedRenderNote;
 
@@ -597,27 +593,6 @@ impl Voice {
 
     pub fn release_gain(&self) -> f32 {
         self.release.gain
-    }
-
-    #[cfg(test)]
-    pub(crate) fn set_accumulated_time_for_test(&mut self, value: f32) {
-        self.pitch_ctl.set_accumulated_time_for_test(value);
-    }
-
-    #[cfg(test)]
-    pub(crate) fn pitch_core_for_test(&self) -> &AnyPitchCore {
-        self.pitch_ctl.core_for_test()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn accumulated_time_for_test(&self) -> f32 {
-        self.pitch_ctl.accumulated_time_for_test()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn set_theta_phase_state_for_test(&mut self, last_phase: f32, initialized: bool) {
-        self.pitch_ctl
-            .set_theta_phase_state_for_test(last_phase, initialized);
     }
 }
 

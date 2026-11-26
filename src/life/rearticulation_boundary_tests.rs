@@ -1,4 +1,5 @@
 use super::*;
+use crate::scenario::control::ControlUpdate;
 
 fn fixture() -> (Voice, Landscape, Timebase, NeuralRhythms, PhonationBatch) {
     let space = Log2Space::new(55.0, 8000.0, 96);

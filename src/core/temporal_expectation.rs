@@ -172,17 +172,6 @@ pub(crate) struct BandEnergyHistory {
 }
 
 impl BandEnergyHistory {
-    #[cfg(test)]
-    pub(crate) fn reference_identity(&self) -> (u64, u64) {
-        self.history_prediction.reference_identity()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn align_refactor_phase(&mut self, other: &Self) {
-        self.history_prediction
-            .align_refactor_phase(&other.history_prediction);
-    }
-
     pub(crate) fn new(step_sec: f32, start_step: u64) -> Self {
         Self {
             history: [[0.0; 3]; HISTORY],
@@ -767,35 +756,6 @@ impl TemporalForecast {
         result
     }
 
-    #[cfg(test)]
-    pub(crate) fn energy_fixture(
-        fs: u32,
-        start: u64,
-        mut energy: impl FnMut(f64) -> [f32; 3],
-    ) -> Self {
-        let step_frames = (fs as f64 / 50.0).round() as usize;
-        let band_energy =
-            std::array::from_fn(|i| energy(i as f64 * step_frames as f64 / fs as f64));
-        let mut forecast = Self {
-            observed_history: None,
-            energy_prediction_model: "fixture",
-            start_frame: start,
-            available_through_frame: start,
-            step_frames,
-            len: FORECAST_LEN,
-            contrast: [[0.0; 3]; FORECAST_LEN],
-            background_energy: band_energy[FORECAST_LEN - 1],
-            band_energy,
-            known_energy_windows: [0; (FORECAST_LEN * FORECAST_STRIDE).div_ceil(64)],
-            energy_recurrence_weight: [[1.0; 3]; FORECAST_LEN],
-            period_step_sec: 0.01,
-            period_weights: [0.0; MAX_DELAY + 1],
-            recurrence_support: 0.0,
-        };
-        forecast.refresh_energy_support();
-        forecast
-    }
-
     pub(crate) fn observed_frame(&self) -> u64 {
         self.start_frame
     }
@@ -876,11 +836,6 @@ impl TemporalForecast {
 }
 
 impl AcousticTemporalExpectation {
-    #[cfg(test)]
-    pub(crate) fn reference_identity(&self) -> (u64, u64) {
-        self.energy.reference_identity()
-    }
-
     /// Rates below 50 Hz cannot resolve the minimum observation window.
     pub(crate) fn new(sample_rate: u32) -> Option<Self> {
         if sample_rate < 50 {
@@ -996,20 +951,6 @@ impl AcousticTemporalExpectation {
         }
     }
 
-    /// The queried frame is a future window position, never a retrospective estimate.
-    #[cfg(test)]
-    pub(crate) fn predict_at_frame(&mut self, frame: u64) -> Option<Prediction> {
-        if frame < self.next_input_frame? {
-            return None;
-        }
-        let ahead_frames = frame.checked_sub(self.observed_through_frame)?;
-        let ahead = ahead_frames / self.window.len() as u64;
-        if ahead + 2 >= self.model.min_delay as u64 {
-            return None;
-        }
-        Some(self.model.predict_at(ahead as usize))
-    }
-
     pub(crate) fn forecast(&mut self) -> Option<TemporalForecast> {
         let mut forecast = TemporalForecast {
             observed_history: Some(self.energy.temporal.snapshot()),
@@ -1091,62 +1032,121 @@ impl AcousticTemporalExpectation {
         forecast.background_energy = external.mean;
         forecast.refresh_energy_support();
     }
-
-    /// Energy-only diagnostic; neither recurrence scratch nor comparison learning is advanced.
-    #[cfg(test)]
-    pub(crate) fn preview_external_energy(
-        &self,
-        external: &BandEnergyHistory,
-    ) -> Option<TemporalForecast> {
-        if external.step_index != self.model.step_index {
-            return None;
-        }
-        let issued = &self.energy_learning.pending
-            [(self.model.step_index % ENERGY_PENDING_LEN as u64) as usize];
-        if issued.step != Some(self.model.step_index) {
-            return None;
-        }
-        let history = external.temporal.snapshot();
-        let latest = if external.step_index > 0 {
-            external.history[((external.step_index - 1) % HISTORY as u64) as usize]
-        } else {
-            [0.; 3]
-        };
-        let raw_recurrence = self.model.energy_forecast(external);
-        let recurrence = std::array::from_fn(|ahead| {
-            std::array::from_fn(|band| {
-                let weight = issued.weight[ahead][band];
-                weight * raw_recurrence[ahead][band] + (1. - weight) * latest[band]
-            })
-        });
-        let candidate = external.history_prediction.forecast(latest, &history);
-        let (band_energy, _) = external
-            .history_prediction
-            .preview_comparison(recurrence, candidate);
-        let mut forecast = TemporalForecast {
-            observed_history: Some(history),
-            energy_prediction_model: "local_history_mix_readonly",
-            start_frame: self.observed_through_frame,
-            available_through_frame: self.next_input_frame?,
-            step_frames: self.window.len() * FORECAST_STRIDE,
-            len: FORECAST_LEN,
-            contrast: [[0.; 3]; FORECAST_LEN],
-            band_energy,
-            known_energy_windows: [0; (FORECAST_LEN * FORECAST_STRIDE).div_ceil(64)],
-            energy_recurrence_weight: issued.weight,
-            background_energy: external.mean,
-            period_step_sec: self.model.step_sec,
-            period_weights: [0.; MAX_DELAY + 1],
-            recurrence_support: 0.,
-        };
-        forecast.refresh_energy_support();
-        Some(forecast)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl BandEnergyHistory {
+        pub(crate) fn reference_identity(&self) -> (u64, u64) {
+            self.history_prediction.reference_identity()
+        }
+
+        pub(crate) fn align_refactor_phase(&mut self, other: &Self) {
+            self.history_prediction
+                .align_refactor_phase(&other.history_prediction);
+        }
+    }
+
+    impl TemporalForecast {
+        pub(crate) fn energy_fixture(
+            fs: u32,
+            start: u64,
+            mut energy: impl FnMut(f64) -> [f32; 3],
+        ) -> Self {
+            let step_frames = (fs as f64 / 50.0).round() as usize;
+            let band_energy =
+                std::array::from_fn(|i| energy(i as f64 * step_frames as f64 / fs as f64));
+            let mut forecast = Self {
+                observed_history: None,
+                energy_prediction_model: "fixture",
+                start_frame: start,
+                available_through_frame: start,
+                step_frames,
+                len: FORECAST_LEN,
+                contrast: [[0.0; 3]; FORECAST_LEN],
+                background_energy: band_energy[FORECAST_LEN - 1],
+                band_energy,
+                known_energy_windows: [0; (FORECAST_LEN * FORECAST_STRIDE).div_ceil(64)],
+                energy_recurrence_weight: [[1.0; 3]; FORECAST_LEN],
+                period_step_sec: 0.01,
+                period_weights: [0.0; MAX_DELAY + 1],
+                recurrence_support: 0.0,
+            };
+            forecast.refresh_energy_support();
+            forecast
+        }
+    }
+
+    impl AcousticTemporalExpectation {
+        pub(crate) fn reference_identity(&self) -> (u64, u64) {
+            self.energy.reference_identity()
+        }
+
+        /// The queried frame is a future window position, never a retrospective estimate.
+        pub(crate) fn predict_at_frame(&mut self, frame: u64) -> Option<Prediction> {
+            if frame < self.next_input_frame? {
+                return None;
+            }
+            let ahead_frames = frame.checked_sub(self.observed_through_frame)?;
+            let ahead = ahead_frames / self.window.len() as u64;
+            if ahead + 2 >= self.model.min_delay as u64 {
+                return None;
+            }
+            Some(self.model.predict_at(ahead as usize))
+        }
+
+        /// Energy-only diagnostic; neither recurrence scratch nor comparison learning is advanced.
+        pub(crate) fn preview_external_energy(
+            &self,
+            external: &BandEnergyHistory,
+        ) -> Option<TemporalForecast> {
+            if external.step_index != self.model.step_index {
+                return None;
+            }
+            let issued = &self.energy_learning.pending
+                [(self.model.step_index % ENERGY_PENDING_LEN as u64) as usize];
+            if issued.step != Some(self.model.step_index) {
+                return None;
+            }
+            let history = external.temporal.snapshot();
+            let latest = if external.step_index > 0 {
+                external.history[((external.step_index - 1) % HISTORY as u64) as usize]
+            } else {
+                [0.; 3]
+            };
+            let raw_recurrence = self.model.energy_forecast(external);
+            let recurrence = std::array::from_fn(|ahead| {
+                std::array::from_fn(|band| {
+                    let weight = issued.weight[ahead][band];
+                    weight * raw_recurrence[ahead][band] + (1. - weight) * latest[band]
+                })
+            });
+            let candidate = external.history_prediction.forecast(latest, &history);
+            let (band_energy, _) = external
+                .history_prediction
+                .preview_comparison(recurrence, candidate);
+            let mut forecast = TemporalForecast {
+                observed_history: Some(history),
+                energy_prediction_model: "local_history_mix_readonly",
+                start_frame: self.observed_through_frame,
+                available_through_frame: self.next_input_frame?,
+                step_frames: self.window.len() * FORECAST_STRIDE,
+                len: FORECAST_LEN,
+                contrast: [[0.; 3]; FORECAST_LEN],
+                band_energy,
+                known_energy_windows: [0; (FORECAST_LEN * FORECAST_STRIDE).div_ceil(64)],
+                energy_recurrence_weight: issued.weight,
+                background_energy: external.mean,
+                period_step_sec: self.model.step_sec,
+                period_weights: [0.; MAX_DELAY + 1],
+                recurrence_support: 0.,
+            };
+            forecast.refresh_energy_support();
+            Some(forecast)
+        }
+    }
 
     #[test]
     fn energy_forecast_preserves_all_horizons_at_readiness_and_onset_boundaries() {
@@ -2151,59 +2151,57 @@ mod tests {
         assert_eq!(allocations.bytes, 0);
         assert!(matches > 0);
     }
-}
 
-#[cfg(test)]
-#[test]
-fn numerical_reference_on_existing_learning_fixture() {
-    use crate::core::history_prediction::reference;
-    reference::start();
-    let mut learning = EnergyForecastLearning::new();
-    for step in 0..1000 {
-        let actual = [0.01 * (1.0 + (step as f32 * 0.031).sin()); 3];
-        learning.observe(step, actual);
-        learning.issue(step + 1, [[0.01; 3]; FORECAST_LEN], actual);
+    #[test]
+    fn numerical_reference_on_existing_learning_fixture() {
+        use crate::core::history_prediction::reference;
+        reference::start();
+        let mut learning = EnergyForecastLearning::new();
+        for step in 0..1000 {
+            let actual = [0.01 * (1.0 + (step as f32 * 0.031).sin()); 3];
+            learning.observe(step, actual);
+            learning.issue(step + 1, [[0.01; 3]; FORECAST_LEN], actual);
+        }
+        let counts = reference::counts();
+        reference::stop();
+        println!("numerical learning fixture {counts:?}");
+        assert!(counts.passed[2] > 0);
+        assert_eq!(counts.failed, [0; 3]);
+        assert_eq!(counts.inconclusive, [0; 3]);
     }
-    let counts = reference::counts();
-    reference::stop();
-    println!("numerical learning fixture {counts:?}");
-    assert!(counts.passed[2] > 0);
-    assert_eq!(counts.failed, [0; 3]);
-    assert_eq!(counts.inconclusive, [0; 3]);
-}
 
-#[cfg(test)]
-#[test]
-fn learning_raw_operand_cancellation_matches_independent_reference() {
-    use crate::core::history_prediction::reference;
-    reference::start();
-    let mut learning = EnergyForecastLearning::new();
-    let unit = 2.0_f32.powi(-23);
-    for (step, baseline, observed) in [
-        (0, 2.0_f32.powi(-30), 1.0 + unit),
-        (1, 2.0_f32.powi(-31), 1.0 - unit),
-    ] {
-        learning.issue(step, [[baseline; 3]; FORECAST_LEN], [1.0; 3]);
-        learning.observe(step, [observed; 3]);
+    #[test]
+    fn learning_raw_operand_cancellation_matches_independent_reference() {
+        use crate::core::history_prediction::reference;
+        reference::start();
+        let mut learning = EnergyForecastLearning::new();
+        let unit = 2.0_f32.powi(-23);
+        for (step, baseline, observed) in [
+            (0, 2.0_f32.powi(-30), 1.0 + unit),
+            (1, 2.0_f32.powi(-31), 1.0 - unit),
+        ] {
+            learning.issue(step, [[baseline; 3]; FORECAST_LEN], [1.0; 3]);
+            learning.observe(step, [observed; 3]);
+        }
+        learning.issue(2, [[0.0; 3]; FORECAST_LEN], [0.0; 3]);
+        let counts = reference::counts();
+        reference::stop();
+        println!("numerical raw scalar cancellation {counts:?}");
+        assert_eq!(learning.pending[2].weight[0][0], 2.0_f32.powi(-55));
+        assert_eq!(counts.failed, [0; 3]);
+        assert_eq!(counts.inconclusive, [0; 3]);
     }
-    learning.issue(2, [[0.0; 3]; FORECAST_LEN], [0.0; 3]);
-    let counts = reference::counts();
-    reference::stop();
-    println!("numerical raw scalar cancellation {counts:?}");
-    assert_eq!(learning.pending[2].weight[0][0], 2.0_f32.powi(-55));
-    assert_eq!(counts.failed, [0; 3]);
-    assert_eq!(counts.inconclusive, [0; 3]);
-}
 
-#[cfg(test)]
-#[test]
-fn learning_complement_preserves_low_parts_near_unit_ratio() {
-    let mut learning = EnergyForecastLearning::new();
-    learning.feature_square[0][0] = Sum { hi: 1e20, lo: 1.0 };
-    learning.residual_cross[0][0] = Sum { hi: 1e20, lo: 0.0 };
-    learning.issue(1, [[0.0; 3]; FORECAST_LEN], [0.0; 3]);
-    let weight = learning.pending[1].weight[0][0];
-    assert_eq!(weight, 1e-20_f32);
-    let old = 1.0 - learning.residual_cross[0][0].total() / learning.feature_square[0][0].total();
-    assert_eq!(old, 0.0);
+    #[test]
+    fn learning_complement_preserves_low_parts_near_unit_ratio() {
+        let mut learning = EnergyForecastLearning::new();
+        learning.feature_square[0][0] = Sum { hi: 1e20, lo: 1.0 };
+        learning.residual_cross[0][0] = Sum { hi: 1e20, lo: 0.0 };
+        learning.issue(1, [[0.0; 3]; FORECAST_LEN], [0.0; 3]);
+        let weight = learning.pending[1].weight[0][0];
+        assert_eq!(weight, 1e-20_f32);
+        let old =
+            1.0 - learning.residual_cross[0][0].total() / learning.feature_square[0][0].total();
+        assert_eq!(old, 0.0);
+    }
 }

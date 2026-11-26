@@ -247,7 +247,10 @@ impl ConsonanceKernel {
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Landscape {
     pub space: Space,
-    pub support: Option<Arc<Snapshot>>,
+    /// Flattened: the packet header keeps `support` at this level, so the wire format
+    /// and acquired frames are unchanged.
+    #[serde(flatten)]
+    pub harmonic: HarmonicExtensions,
     pub subjective_intensity: Vec<f32>,
     pub nsgt_power: Vec<f32>,
     pub consonance_field_score: Vec<f32>,
@@ -255,6 +258,10 @@ pub struct Landscape {
     pub harmonicity01: Vec<f32>,
     pub roughness01: Vec<f32>,
     pub consonance_kernel: ConsonanceKernel,
+}
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct HarmonicExtensions {
+    pub support: Option<Arc<Snapshot>>,
 }
 #[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct VoiceStateInfo {
@@ -317,7 +324,7 @@ fn arrays(
     ] {
         visit(Array::F32(scan))?;
     }
-    if let Some(support) = &mut l.support {
+    if let Some(support) = &mut l.harmonic.support {
         let support = Arc::make_mut(support);
         visit(Array::F64(&mut support.p))?;
         if axes {
@@ -358,7 +365,12 @@ pub struct Encoder {
 
 impl Encoder {
     pub fn encode(&mut self, mut frame: UiFrame) -> Result<Vec<u8>, serde_json::Error> {
-        let support = frame.landscape.support.as_ref().map(|s| &s.geometry.space);
+        let support = frame
+            .landscape
+            .harmonic
+            .support
+            .as_ref()
+            .map(|s| &s.geometry.space);
         let unchanged = self.axes.as_ref().is_some_and(|axes| {
             same_bits(&axes.spec_hz, &frame.spec.spec_hz)
                 && same_bits(&axes.space.0, &frame.landscape.space.centers_hz)
@@ -401,7 +413,7 @@ impl Encoder {
             frame.spec.spec_hz.clear();
             frame.landscape.space.centers_hz.clear();
             frame.landscape.space.centers_log2.clear();
-            if let Some(support) = &mut frame.landscape.support {
+            if let Some(support) = &mut frame.landscape.harmonic.support {
                 let space = &mut Arc::make_mut(support).geometry.space;
                 space.centers_hz.clear();
                 space.centers_log2.clear();
@@ -473,7 +485,7 @@ impl Decoder {
         if !rest.is_empty() {
             return Err("Trailing bytes in UI snapshot".into());
         }
-        let support = frame.landscape.support.as_mut().map(Arc::make_mut);
+        let support = frame.landscape.harmonic.support.as_mut().map(Arc::make_mut);
         if packet.axes {
             let previous = self.axes.take().and_then(|axes| axes.support);
             self.axes = Some(Axes {

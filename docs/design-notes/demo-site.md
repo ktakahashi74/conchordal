@@ -313,6 +313,15 @@ WP-5／WP-5R の `web/src/pages/demo.astro`、`web/src/components/DemoPage.astro
 - 作者の M5 MacBook Air の Chrome、Safari、Firefox で同じことを行う（作者の手元で）。あわせて Chrome で一度、背景の tab のまま全長を鳴らす。
 - 記録する項目は WP-6 と同じ（先行の最小、hop の平均・p99・最大、GUI の時間、browser、負荷）。
 
+**2026-11-26 の記録（main の `c973558e` に browser の GUI の修理を足した版）**。記録は `.orchestration/units/DEMO-ACCEPT-20261126/`。
+- `build-demo.mjs` は、修理の前の main では通らなかった。11-21 の S3-a で `Landscape` の和声支持が `harmonic.support` に移り、native と browser で共有する `src/ui/` はそれに従った。browser の GUI の受け渡しの型（`gui/src/frame.rs`）は古い形のままで、CI は browser の GUI を build していなかった。受け渡しの型を同じ形にし、`#[serde(flatten)]` で packet の形は変えていない。CI に browser の GUI の check を足した（修理の前の tree で失敗し、後で通ることを確かめた）。
+- 修理の後：asset の組み立て、org の build、smoke（二曲、20 秒、音切れ 0、snapshot、CSP の違反 0、外の origin 0、allowlist）、受け口の検査が通った。root の clippy（既定と research）と `cargo test`（1,662 件通過）も通った。
+- blanche の headless Chrome 158 で、二曲を全長で各 5 回鳴らした（毎回 page を読み直すので seed は毎回違う。GUI は全長で表示、音は Chrome の偽の出力で、実時間で消費される）。10 回とも自然に終わり、underrun 0、欠けた frame 0、生成と消費の frame 数が一致した。先行の最小は 1,947 ms 以上だった。
+  - 一 hop の平均は Line 4.02〜4.24 ms、Rain 4.20〜4.37 ms、最も重い 30 秒の窓の平均は 4.7〜5.2 ms だった。Rain の5回目は、外の job で load average が 37 に上がった間で、平均 6.5 ms だった。
+  - 窓ごとの中央値に対する seed の間の幅は、Line で中央値 11 %、Rain で負荷の上がった回を除いて 7 %だった。速さの比は読める（§10 の項目は閉じた）。窓ごとの中央値は同じ記録の `baseline.json` にある。
+  - §4.2 の N3 の見込みは、TD-4 の台本の 2.25 ms から出したもので、いまの二曲には合わない。最も重い窓の 5.0 ms に改善前の M5 との比 1.14 を掛けると、M5 で約 5.7 ms（m ≈ 0.53）になる。M5 で見た遅れ（s = 1.7、T = 10 秒）には 2 秒の先行で耐えるが、M5 より遅い機械への余裕は約 2.9 倍ではなく約 1.3 倍になる（7.5/5.7）。M5 の実測で確かめる。
+- 宣言した受入（blanche の Chrome と Firefox の前面の tab で実際の音の出力、M5 の三つの browser）は、まだ行っていない。headless の結果はその前の確かめである。
+
 **作者の判断**：
 - 載せる曲の採択（作品の約束、§9.3.129）。
 - 演奏の場の文言（作者名義の文章）の確認。
@@ -376,14 +385,13 @@ S-1〜S-3b は、曲が決まる前に、main で動く仮の台本で進めら�
 ## 10. 確かめていないこと
 
 - Cloudflare が GitHub Pages から来る `application/wasm` を圧縮して配るか。配備の後に `Accept-Encoding: br, gzip` を付けて確かめる。圧縮されなければ、Cloudflare の圧縮の規則を足す。
-- OP-3 の後の M5 の実測。N3 の 2.6 ms は見込みである。
+- OP-3 の後の M5 の実測。N3 の 2.6 ms は TD-4 の台本からの見込みで、いまの二曲では約 5.7 ms と見込む（§6 の 2026-11-26 の記録）。
 - Safari での動作。Firefox は DEMO-B1 で Chrome の約 1.37 倍遅かった（WA-1）。
 - 長い時間、背景の tab に置いた時の snapshot の溜まり方。
 - §5.6 の CSP で、eframe と wasm-bindgen の glue が動くか（違反の数で確かめる）。
 - `web_deploy.yml` の中で `GITHUB_TOKEN` を使って Release の asset を取れるか（public の repository なので取れる見込み）。
 - Cloudflare の Worker の route（`/demo/metrics`）が、GitHub Pages を origin とする proxy と並んで動くか。保存先の無料の範囲と保持の期間。
 - 端末の情報を除き、通知だけで既定で送る形が、EU の ePrivacy の扱いで足りるか（法的な確認はしていない）。
-- 基準機の複数の seed で、窓ごとの hop の時間の揺れが、速さの比を読める幅に収まるか（公開の前の基準の取得で分かる）。
 - WebGL の renderer の文字列が、各 browser で何を返すか（Chromium の Apple Silicon で SoC の名前が出るか、Safari と Firefox で丸められるか）。
 
 ## 11. 将来の conchordal.space（作品を共有する SNS）との関係

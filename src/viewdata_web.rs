@@ -42,19 +42,21 @@ impl crate::viewdata::UiFrame {
             diagnostics: diagnostics(self),
             landscape: wire::Landscape {
                 space: space(&l.space),
-                support: l.harmonic.support.as_ref().map(|s| {
-                    std::sync::Arc::new(wire::Snapshot {
-                        geometry: wire::Geometry {
-                            root_start_log2: s.geometry.root_start_log2,
-                            space: space(&s.geometry.space),
-                        },
-                        p: s.p.clone(),
-                        mass: s.mass,
-                        focus: s.focus,
-                        conflict: s.conflict,
-                        end_sample: s.end_sample,
-                    })
-                }),
+                harmonic: wire::HarmonicExtensions {
+                    support: l.harmonic.support.as_ref().map(|s| {
+                        std::sync::Arc::new(wire::Snapshot {
+                            geometry: wire::Geometry {
+                                root_start_log2: s.geometry.root_start_log2,
+                                space: space(&s.geometry.space),
+                            },
+                            p: s.p.clone(),
+                            mass: s.mass,
+                            focus: s.focus,
+                            conflict: s.conflict,
+                            end_sample: s.end_sample,
+                        })
+                    }),
+                },
                 subjective_intensity: l.subjective_intensity.clone(),
                 nsgt_power: l.nsgt_power.clone(),
                 consonance_field_score: l.consonance_field_score.clone(),

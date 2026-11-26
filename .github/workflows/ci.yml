@@ -60,6 +60,13 @@ jobs:
           cargo check --lib --no-default-features
           cargo check --lib --no-default-features --features web
 
+      # The browser GUI compiles the shared src/ui code against its own frame types.
+      - name: Check browser GUI
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          RUSTFLAGS='-C target-feature=+simd128' cargo check --manifest-path gui/Cargo.toml --target wasm32-unknown-unknown --features browser --lib
+
       - name: Tests
         run: cargo test
 

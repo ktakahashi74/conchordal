@@ -191,6 +191,17 @@ Conchordal は `origin/main`（`dee5a91d`）時点で `src/` **181,191 行**・R
 - `src/core/landscape.rs` と `temporal_cognition::harmonic_relations` が互いに依存する点。`harmonic_relations` は分類 D（12/25 の後に再判定）なので、再判定の後に扱う。
 - 身体の二つのモデルの統一。これは設計が要るので、簡素化の期間の整理には入れない。
 
+### 追補：分類 D と `research` 隔離コードの処遇決定（2026-11-26）
+
+**2026-11-26 方針確定（作者採択、未実装）**。基準は `c973558e`。分類 D の 18 項目はいずれも既定 `0` で、現行 `samples/`（トップ 18 曲・`samples/demo/`・`samples/research/`）での使用は 0 曲である一方、`src/core/harmonic_support.rs` の観測スナップショットはネイティブ／Web GUI の Harmony 円で現役使用中であることを確認した上で、次の 4 件を採択した。
+
+1. **`research` feature 隔離コード（51 ファイル・本番 `cfg` 147 箇所・隔離部約 2.4 万行）**：当面 `main` に `research` feature のまま残す（選択肢 A）。`WorkerState` の残り 9 port 整理は急がない。
+2. **分類 D-1 候補層（`listener_profile`・`expressive_section`・`dwell`・`phrase_boundary`・`follow_tonal_context`・`observe_tonal_context`・`melodic_continuity`・`follow_own_sequence`・`remember_pitch_set`、9 語・主要 13 ファイル約 5,740 行）**：`research` feature へ隔離する（選択肢 B）。
+3. **分類 D-2 和声拡張（`set_support_focus_preference`・`set_support_conflict_preference`・`set_related_novelty_preference`・`follow_harmonic_relations`・`follow_harmonic_continuation`・`observe_harmonic_relations`・`harmonic_rhythm`・`tail_roughness_aversion`、8 語・計約 10,080 行）**：GUI の Harmony 円が消費する `harmonic_support` 観測層（約 1,630 行）は本体に維持し、生成側と `temporal_cognition::harmonic_relations`（8 語・約 8,450 行）を `research` feature へ隔離して既定ビルドの `landscape.rs` 相互依存を外す（選択肢 B）。
+4. **分類 D-3 `dcc.coupling_strength`（`src/dcc_coupler.rs` 129 行）**：既定 `0.0` のまま本体に維持する（選択肢 A）。
+
+**実装時期と受入条件**：本記録は方針の確定のみであり、決定 2・3 の隔離コード変更はまだ行っていない。実装は beta デモ公開／12/25 以降に別単位で着手し、既定ビルドと `research` ビルドの双方で全曲 PCM bit 一致、`just gen_rhai_defs`、`cargo clippy --all-targets -- -D warnings`、`web` feature check、`just test` を通して閉じる（新規の試聴・取得は要らない）。
+
 ### 追補：S2-c と S3-a の残り（2026-11-27）
 
 **2026-11-27 完了（SIMP-S2C2、SIMP-S3A2）**。作者の指示（11-26「指示書をやって」）で、手順のうち実装が届いていなかった S2-c と S3-a を進めた。commit は `99eb51cb`（S2C2）と、その上の `b73cb46e`（S3A2）。記録は `.orchestration/units/SIMP-S2C2/`、`SIMP-S3A2/`。
